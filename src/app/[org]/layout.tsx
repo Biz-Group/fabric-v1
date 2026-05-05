@@ -11,6 +11,8 @@ import { useParams } from "next/navigation";
 import { useEffect } from "react";
 import { Toaster } from "sonner";
 import { api } from "../../../convex/_generated/api";
+import { OrgThemeProvider } from "@/components/org-theme-provider";
+import { LoadingScreen } from "@/components/ui/loading-screen";
 
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "";
 
@@ -62,22 +64,13 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
   ]);
 
   if (authLoading || !userLoaded || !orgLoaded || !orgListLoaded) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-        <p className="text-sm text-muted-foreground">Loading...</p>
-      </div>
-    );
+    return <LoadingScreen message="Loading workspace..." />;
   }
 
   // Middleware.auth.protect() should have redirected unauthenticated requests
   // to /sign-in. This is a belt-and-braces guard.
   if (!isAuthenticated || !isSignedIn) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3">
-        <p className="text-sm text-muted-foreground">Redirecting to sign in...</p>
-      </div>
-    );
+    return <LoadingScreen message="Redirecting to sign in..." showSpinner={false} />;
   }
 
   // User is signed in but isn't a member of this subdomain's org. Render a
@@ -124,21 +117,14 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
   // carries the target org. This prevents first-render queries from throwing
   // "No active organization" while Clerk finishes activating the session.
   if (organization?.id !== targetOrgId || activeOrg?.orgId !== targetOrgId) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-        <p className="text-sm text-muted-foreground">
-          Activating your workspace...
-        </p>
-      </div>
-    );
+    return <LoadingScreen message="Activating your workspace..." />;
   }
 
   return (
-    <>
+    <OrgThemeProvider>
       {children}
       <Toaster richColors closeButton position="bottom-right" />
-    </>
+    </OrgThemeProvider>
   );
 }
 

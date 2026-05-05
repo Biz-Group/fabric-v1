@@ -18,6 +18,7 @@ import type * as lib_clerkApi from "../lib/clerkApi.js";
 import type * as lib_orgAuth from "../lib/orgAuth.js";
 import type * as migrations from "../migrations.js";
 import type * as orgIntegrity from "../orgIntegrity.js";
+import type * as orgThemes from "../orgThemes.js";
 import type * as platform from "../platform.js";
 import type * as postCall from "../postCall.js";
 import type * as processFlows from "../processFlows.js";
@@ -25,6 +26,7 @@ import type * as processes from "../processes.js";
 import type * as seed from "../seed.js";
 import type * as summaries from "../summaries.js";
 import type * as summariesHelpers from "../summariesHelpers.js";
+import type * as themeColors from "../themeColors.js";
 import type * as users from "../users.js";
 import type * as voiceRecordings from "../voiceRecordings.js";
 
@@ -45,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   "lib/orgAuth": typeof lib_orgAuth;
   migrations: typeof migrations;
   orgIntegrity: typeof orgIntegrity;
+  orgThemes: typeof orgThemes;
   platform: typeof platform;
   postCall: typeof postCall;
   processFlows: typeof processFlows;
@@ -52,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   seed: typeof seed;
   summaries: typeof summaries;
   summariesHelpers: typeof summariesHelpers;
+  themeColors: typeof themeColors;
   users: typeof users;
   voiceRecordings: typeof voiceRecordings;
 }>;

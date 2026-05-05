@@ -9,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 export function StatCard({
@@ -54,7 +55,7 @@ export function StatCard({
           )}
         >
           {value === undefined ? (
-            <span className="inline-block h-6 w-12 animate-pulse rounded bg-muted" />
+            <Skeleton className="h-6 w-12" />
           ) : value === null ? (
             "—"
           ) : (

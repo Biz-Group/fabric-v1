@@ -7,6 +7,7 @@ import {
   Home,
   LayoutDashboard,
   MessageSquare,
+  Palette,
   Users,
 } from "lucide-react";
 import {
@@ -39,6 +40,11 @@ const navItems = [
     title: "Conversations",
     href: "/admin/conversations",
     icon: MessageSquare,
+  },
+  {
+    title: "Appearance",
+    href: "/admin/appearance",
+    icon: Palette,
   },
 ];
 

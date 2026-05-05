@@ -7,6 +7,8 @@ import { api } from "../../../../convex/_generated/api";
 import { Id } from "../../../../convex/_generated/dataModel";
 import { StatCard } from "@/components/admin/stat-card";
 import { ConversationTranscriptDialog } from "@/components/admin/conversation-transcript-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { LoadingScreen } from "@/components/ui/loading-screen";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -164,13 +166,13 @@ export default function AdminOverviewPage() {
           </div>
         </div>
         {recentConversations === undefined ? (
-          <div className="flex h-20 items-center justify-center rounded-lg border text-sm text-muted-foreground">
-            Loading...
-          </div>
+          <LoadingScreen fullScreen={false} message="Loading recent conversations..." />
         ) : recentConversations.page.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-            No conversations yet.
-          </div>
+          <EmptyState
+            icon={MessageSquare}
+            title="No conversations yet"
+            description="Captured process conversations will appear here as soon as contributors start recording."
+          />
         ) : (
           <div className="divide-y rounded-lg border">
             {recentConversations.page.map((r) => (

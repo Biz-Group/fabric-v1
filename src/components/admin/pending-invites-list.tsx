@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAction } from "convex/react";
+import { Mail } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import {
@@ -14,6 +15,8 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { LoadingScreen } from "@/components/ui/loading-screen";
 
 type PendingInvite = {
   id: string;
@@ -64,8 +67,22 @@ export function PendingInvitesList({
   }, [listInvites]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh, refreshKey]);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await listInvites({});
+        if (!cancelled) setInvites(rows);
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : "Failed to load invitations.";
+        toast.error(msg);
+        if (!cancelled) setInvites([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [listInvites, refreshKey]);
 
   const handleResend = async (invite: PendingInvite) => {
     setMutatingId(invite.id);
@@ -104,17 +121,17 @@ export function PendingInvitesList({
 
   if (invites === undefined) {
     return (
-      <div className="flex h-20 items-center justify-center text-sm text-muted-foreground">
-        Loading invitations...
-      </div>
+      <LoadingScreen fullScreen={false} message="Loading invitations..." />
     );
   }
 
   if (invites.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-        No pending invitations.
-      </div>
+      <EmptyState
+        icon={Mail}
+        title="No pending invitations"
+        description="Outstanding workspace invitations will appear here until they are accepted or expire."
+      />
     );
   }
 

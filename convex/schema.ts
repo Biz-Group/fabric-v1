@@ -1,6 +1,27 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+const rgbValidator = v.object({
+  r: v.number(),
+  g: v.number(),
+  b: v.number(),
+});
+
+const orgThemeTokensValidator = v.object({
+  accent: v.string(),
+  accentForeground: v.string(),
+  subtle: v.string(),
+  border: v.string(),
+  ring: v.string(),
+  selected: v.string(),
+  selectedForeground: v.string(),
+  chart1: v.string(),
+  chart2: v.string(),
+  chart3: v.string(),
+  chart4: v.string(),
+  chart5: v.string(),
+});
+
 export default defineSchema({
   // App-level user profiles (linked to Clerk identity via tokenIdentifier).
   // Identity is global — membership in a specific org lives in `memberships`.
@@ -43,6 +64,42 @@ export default defineSchema({
     .index("by_tokenIdentifier_and_clerkOrgId", ["tokenIdentifier", "clerkOrgId"])
     .index("by_clerkOrgId", ["clerkOrgId"])
     .index("by_userId", ["userId"]),
+
+  // Per-org visual theme derived automatically from the Clerk org logo.
+  // Stored separately from Clerk so the expensive/fragile image read happens
+  // once per logo URL and org pages can hydrate CSS variables cheaply.
+  orgThemes: defineTable({
+    clerkOrgId: v.string(),
+    sourceLogoUrl: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("extracting"),
+      v.literal("ready"),
+      v.literal("failed"),
+      v.literal("override"),
+    ),
+    // Deprecated during final-form migration. Kept optional so existing rows
+    // remain valid until active/candidate fields are fully backfilled.
+    accentRgb: v.optional(rgbValidator),
+    lightTokens: v.optional(orgThemeTokensValidator),
+    darkTokens: v.optional(orgThemeTokensValidator),
+    candidateAccentRgb: v.optional(rgbValidator),
+    candidateLightTokens: v.optional(orgThemeTokensValidator),
+    candidateDarkTokens: v.optional(orgThemeTokensValidator),
+    candidateGeneratedAt: v.optional(v.number()),
+    activeAccentRgb: v.optional(rgbValidator),
+    activeLightTokens: v.optional(orgThemeTokensValidator),
+    activeDarkTokens: v.optional(orgThemeTokensValidator),
+    adminApprovedAt: v.optional(v.number()),
+    approvedByUserId: v.optional(v.id("users")),
+    extractionAttempts: v.optional(v.number()),
+    lastExtractionRequestedAt: v.optional(v.number()),
+    lastExtractionError: v.optional(v.string()),
+    overrideReason: v.optional(v.string()),
+    fallbackReason: v.optional(v.string()),
+    extractedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index("by_clerkOrgId", ["clerkOrgId"]),
 
   // Organizational hierarchy
   functions: defineTable({

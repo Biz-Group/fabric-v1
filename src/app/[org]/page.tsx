@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { api } from "../../../convex/_generated/api";
 import { MillerColumns } from "@/components/miller-columns";
 import { ProfileOnboarding } from "@/components/profile-onboarding";
+import { LoadingScreen } from "@/components/ui/loading-screen";
 
 export default function OrgHomePage() {
   const user = useQuery(api.users.getMe);
@@ -15,23 +16,11 @@ export default function OrgHomePage() {
   }, [storeUser]);
 
   if (user === undefined) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-        <p className="text-sm text-muted-foreground">Loading your workspace...</p>
-      </div>
-    );
+    return <LoadingScreen message="Loading your workspace..." />;
   }
 
   if (user === null) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-        <p className="text-sm text-muted-foreground">
-          Setting up your workspace...
-        </p>
-      </div>
-    );
+    return <LoadingScreen message="Setting up your workspace..." />;
   }
 
   if (!user.profileComplete) {

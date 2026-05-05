@@ -199,8 +199,15 @@ export function AudioPlayerProvider<TData = unknown>({
   }, [])
 
   const seek = useCallback((time: number) => {
-    if (!audioRef.current) return
-    audioRef.current.currentTime = time
+    const audio = audioRef.current
+    if (!audio || !Number.isFinite(time)) return
+
+    const duration = audio.duration
+    const clampedTime = Number.isFinite(duration)
+      ? Math.max(0, Math.min(time, duration))
+      : Math.max(0, time)
+
+    audio.currentTime = clampedTime
   }, [])
 
   const setPlaybackRate = useCallback((rate: number) => {
@@ -222,7 +229,11 @@ export function AudioPlayerProvider<TData = unknown>({
       setReadyState(audioRef.current.readyState)
       setNetworkState(audioRef.current.networkState)
       setTime(audioRef.current.currentTime)
-      setDuration(audioRef.current.duration)
+      setDuration(
+        Number.isFinite(audioRef.current.duration)
+          ? audioRef.current.duration
+          : undefined
+      )
       setPaused(audioRef.current.paused)
       setError(audioRef.current.error)
       setPlaybackRateState(audioRef.current.playbackRate)
@@ -368,9 +379,7 @@ export const AudioPlayerDuration = ({
       {...otherProps}
       className={cn("text-muted-foreground text-sm tabular-nums", className)}
     >
-      {player.duration !== null &&
-      player.duration !== undefined &&
-      !Number.isNaN(player.duration)
+      {player.duration !== undefined && Number.isFinite(player.duration)
         ? formatTime(player.duration)
         : "--:--"}
     </span>

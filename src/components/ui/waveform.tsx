@@ -401,17 +401,28 @@ export const AudioScrubber = ({
   const [isDragging, setIsDragging] = useState(false)
   const [localProgress, setLocalProgress] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
+  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0
+  const safeCurrentTime =
+    Number.isFinite(currentTime) && safeDuration > 0
+      ? Math.max(0, Math.min(currentTime, safeDuration))
+      : 0
+  const currentProgress = safeDuration > 0 ? safeCurrentTime / safeDuration : 0
+  const fallbackWaveformData = useMemo(
+    () =>
+      Array.from({ length: 100 }, (_, index) => {
+        const primaryWave = Math.sin(index * 0.31) * 0.25
+        const secondaryWave = Math.sin(index * 0.11 + 1.3) * 0.2
+
+        return Math.max(0.12, Math.min(0.9, 0.45 + primaryWave + secondaryWave))
+      }),
+    []
+  )
 
   const waveformData =
     data.length > 0
       ? data
-      : Array.from({ length: 100 }, () => 0.2 + Math.random() * 0.6)
-
-  useEffect(() => {
-    if (!isDragging && duration > 0) {
-      setLocalProgress(currentTime / duration)
-    }
-  }, [currentTime, duration, isDragging])
+      : fallbackWaveformData
+  const displayedProgress = isDragging ? localProgress : currentProgress
 
   const handleScrub = useCallback(
     (clientX: number) => {
@@ -419,14 +430,16 @@ export const AudioScrubber = ({
       if (!container) return
 
       const rect = container.getBoundingClientRect()
+      if (rect.width <= 0 || safeDuration === 0) return
+
       const x = Math.max(0, Math.min(clientX - rect.left, rect.width))
       const progress = x / rect.width
-      const newTime = progress * duration
+      const newTime = progress * safeDuration
 
       setLocalProgress(progress)
       onSeek?.(newTime)
     },
-    [duration, onSeek]
+    [safeDuration, onSeek]
   )
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -460,9 +473,9 @@ export const AudioScrubber = ({
   return (
     <div
       aria-label="Audio waveform scrubber"
-      aria-valuemax={duration}
+      aria-valuemax={safeDuration}
       aria-valuemin={0}
-      aria-valuenow={currentTime}
+      aria-valuenow={safeCurrentTime}
       className={cn("relative cursor-pointer select-none", className)}
       onMouseDown={handleMouseDown}
       ref={containerRef}
@@ -484,18 +497,18 @@ export const AudioScrubber = ({
 
       <div
         className="bg-primary/20 pointer-events-none absolute inset-y-0 left-0"
-        style={{ width: `${localProgress * 100}%` }}
+        style={{ width: `${displayedProgress * 100}%` }}
       />
 
       <div
         className="bg-primary pointer-events-none absolute top-0 bottom-0 w-0.5"
-        style={{ left: `${localProgress * 100}%` }}
+        style={{ left: `${displayedProgress * 100}%` }}
       />
 
       {showHandle && (
         <div
           className="border-background bg-primary pointer-events-none absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-lg transition-transform hover:scale-110"
-          style={{ left: `${localProgress * 100}%` }}
+          style={{ left: `${displayedProgress * 100}%` }}
         />
       )}
     </div>
