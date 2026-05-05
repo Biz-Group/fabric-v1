@@ -106,6 +106,30 @@ describe("org theme workflow", () => {
     ).rejects.toThrow("Insufficient permissions");
   });
 
+  test("manual color candidates are inert until approved as overrides", async () => {
+    const t = convexTest(schema, modules);
+    await seedThemeUsers(t);
+    const admin = t.withIdentity(identityFor("theme_admin"));
+
+    await admin.mutation(api.orgThemes.saveManualCandidate, {
+      accentRgb: { r: 180, g: 48, b: 92 },
+    });
+
+    const runtimeBeforeApproval = await admin.query(api.orgThemes.getForCurrentOrg);
+    const candidateState = await admin.query(api.orgThemes.getThemeAdminState);
+    expect(runtimeBeforeApproval).toBeNull();
+    expect(candidateState?.candidateSource).toBe("manual");
+
+    await admin.mutation(api.orgThemes.approveCandidateTheme);
+
+    const runtimeAfterApproval = await admin.query(api.orgThemes.getForCurrentOrg);
+    const approvedState = await admin.query(api.orgThemes.getThemeAdminState);
+    expect(runtimeAfterApproval?.status).toBe("override");
+    expect(approvedState?.activeSource).toBe("manual");
+    expect(approvedState?.candidateSource).toBeUndefined();
+    expect(approvedState?.overrideReason).toBe("Manual accent color selected by admin.");
+  });
+
   test("reset removes active and candidate runtime tokens", async () => {
     const t = convexTest(schema, modules);
     await seedThemeUsers(t);

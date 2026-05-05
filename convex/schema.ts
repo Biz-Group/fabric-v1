@@ -22,6 +22,8 @@ const orgThemeTokensValidator = v.object({
   chart5: v.string(),
 });
 
+const themeSourceValidator = v.union(v.literal("logo"), v.literal("manual"));
+
 export default defineSchema({
   // App-level user profiles (linked to Clerk identity via tokenIdentifier).
   // Identity is global — membership in a specific org lives in `memberships`.
@@ -86,10 +88,12 @@ export default defineSchema({
     candidateAccentRgb: v.optional(rgbValidator),
     candidateLightTokens: v.optional(orgThemeTokensValidator),
     candidateDarkTokens: v.optional(orgThemeTokensValidator),
+    candidateSource: v.optional(themeSourceValidator),
     candidateGeneratedAt: v.optional(v.number()),
     activeAccentRgb: v.optional(rgbValidator),
     activeLightTokens: v.optional(orgThemeTokensValidator),
     activeDarkTokens: v.optional(orgThemeTokensValidator),
+    activeSource: v.optional(themeSourceValidator),
     adminApprovedAt: v.optional(v.number()),
     approvedByUserId: v.optional(v.id("users")),
     extractionAttempts: v.optional(v.number()),

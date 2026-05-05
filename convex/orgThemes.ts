@@ -29,6 +29,13 @@ function hasRuntimeTokens(theme: Awaited<ReturnType<typeof getExistingTheme>>) {
   );
 }
 
+function activeStatusFor(theme: Awaited<ReturnType<typeof getExistingTheme>>) {
+  if (theme?.activeSource === "manual" || theme?.status === "override") {
+    return "override" as const;
+  }
+  return "ready" as const;
+}
+
 function getRuntimeTokens(theme: Awaited<ReturnType<typeof getExistingTheme>>) {
   if (!theme) return null;
   if (theme.status !== "ready" && theme.status !== "override") return null;
@@ -116,6 +123,7 @@ export const saveGeneratedCandidate = mutation({
       candidateAccentRgb: accentRgb,
       candidateLightTokens: tokens.lightTokens,
       candidateDarkTokens: tokens.darkTokens,
+      candidateSource: "logo" as const,
       candidateGeneratedAt: now,
       lastExtractionError: undefined,
       fallbackReason: undefined,
@@ -137,6 +145,47 @@ export const saveGeneratedCandidate = mutation({
   },
 });
 
+export const saveManualCandidate = mutation({
+  args: {
+    sourceLogoUrl: v.optional(v.string()),
+    accentRgb: v.object({
+      r: v.number(),
+      g: v.number(),
+      b: v.number(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const org = await requireOrgAdmin(ctx);
+    const accentRgb = clampRgb(args.accentRgb);
+    const tokens = buildOrgThemeTokens(accentRgb);
+    const now = Date.now();
+    const existing = await getExistingTheme(ctx, org.orgId);
+    const candidateFields = {
+      sourceLogoUrl: args.sourceLogoUrl ?? existing?.sourceLogoUrl ?? "manual",
+      status: "pending" as const,
+      candidateAccentRgb: accentRgb,
+      candidateLightTokens: tokens.lightTokens,
+      candidateDarkTokens: tokens.darkTokens,
+      candidateSource: "manual" as const,
+      candidateGeneratedAt: now,
+      lastExtractionError: undefined,
+      fallbackReason: undefined,
+      updatedAt: now,
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, candidateFields);
+      return existing._id;
+    }
+
+    return await ctx.db.insert("orgThemes", {
+      clerkOrgId: org.orgId,
+      extractionAttempts: 0,
+      ...candidateFields,
+    });
+  },
+});
+
 export const approveCandidateTheme = mutation({
   args: {},
   handler: async (ctx) => {
@@ -147,11 +196,13 @@ export const approveCandidateTheme = mutation({
     }
 
     const now = Date.now();
+    const candidateSource = existing.candidateSource ?? "logo";
     await ctx.db.patch(existing._id, {
-      status: "ready",
+      status: candidateSource === "manual" ? "override" : "ready",
       activeAccentRgb: existing.candidateAccentRgb ?? existing.accentRgb,
       activeLightTokens: existing.candidateLightTokens,
       activeDarkTokens: existing.candidateDarkTokens,
+      activeSource: candidateSource,
       // Legacy fields stay in sync during the migration window.
       accentRgb: existing.candidateAccentRgb ?? existing.accentRgb,
       lightTokens: existing.candidateLightTokens,
@@ -159,10 +210,15 @@ export const approveCandidateTheme = mutation({
       candidateAccentRgb: undefined,
       candidateLightTokens: undefined,
       candidateDarkTokens: undefined,
+      candidateSource: undefined,
       candidateGeneratedAt: undefined,
       adminApprovedAt: now,
       approvedByUserId: org.userId,
       lastExtractionError: undefined,
+      overrideReason:
+        candidateSource === "manual"
+          ? "Manual accent color selected by admin."
+          : undefined,
       fallbackReason: undefined,
       updatedAt: now,
     });
@@ -178,13 +234,17 @@ export const rejectCandidateTheme = mutation({
     if (!existing) return null;
 
     const hasActive = hasRuntimeTokens(existing);
+    const activeStatus = activeStatusFor(existing);
     await ctx.db.patch(existing._id, {
-      status: hasActive ? "ready" : "pending",
+      status: hasActive ? activeStatus : "pending",
       candidateAccentRgb: undefined,
       candidateLightTokens: undefined,
       candidateDarkTokens: undefined,
+      candidateSource: undefined,
       candidateGeneratedAt: undefined,
       fallbackReason: hasActive ? undefined : "Generated theme was rejected.",
+      overrideReason:
+        hasActive && activeStatus === "override" ? existing.overrideReason : undefined,
       updatedAt: Date.now(),
     });
     return existing._id;
@@ -201,11 +261,14 @@ export const markThemeGenerationFailed = mutation({
     const now = Date.now();
     const existing = await getExistingTheme(ctx, org.orgId);
     const hasActive = hasRuntimeTokens(existing);
+    const activeStatus = activeStatusFor(existing);
     const failedFields = {
       sourceLogoUrl: args.sourceLogoUrl,
-      status: hasActive ? "ready" as const : "failed" as const,
+      status: hasActive ? activeStatus : "failed" as const,
       lastExtractionError: cleanReason(args.reason),
       fallbackReason: hasActive ? undefined : cleanReason(args.reason),
+      overrideReason:
+        hasActive && activeStatus === "override" ? existing?.overrideReason : undefined,
       extractedAt: now,
       updatedAt: now,
     };
@@ -216,6 +279,7 @@ export const markThemeGenerationFailed = mutation({
         candidateAccentRgb: undefined,
         candidateLightTokens: undefined,
         candidateDarkTokens: undefined,
+        candidateSource: undefined,
       });
       return existing._id;
     }
@@ -241,15 +305,18 @@ export const resetToNeutral = mutation({
       activeAccentRgb: undefined,
       activeLightTokens: undefined,
       activeDarkTokens: undefined,
+      activeSource: undefined,
       adminApprovedAt: undefined,
       approvedByUserId: undefined,
       candidateAccentRgb: undefined,
       candidateLightTokens: undefined,
       candidateDarkTokens: undefined,
+      candidateSource: undefined,
       candidateGeneratedAt: undefined,
       accentRgb: undefined,
       lightTokens: undefined,
       darkTokens: undefined,
+      overrideReason: undefined,
       fallbackReason: undefined,
       updatedAt: Date.now(),
     });

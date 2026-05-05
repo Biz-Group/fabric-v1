@@ -1,10 +1,10 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { useOrganization } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
-import { Check, Palette, RefreshCw, RotateCcw, X } from "lucide-react";
+import { Check, Palette, Pencil, RefreshCw, RotateCcw, Save, X } from "lucide-react";
 import Image from "next/image";
 import { toast } from "sonner";
 import { api } from "../../../../../convex/_generated/api";
@@ -13,12 +13,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 
 type ThemeTokens = {
@@ -35,6 +37,54 @@ type ThemeTokens = {
   chart4: string;
   chart5: string;
 };
+
+type Rgb = {
+  r: number;
+  g: number;
+  b: number;
+};
+
+const DEFAULT_ACCENT_HEX = "#2563D2";
+
+function rgbChannelToHex(channel: number) {
+  return Math.round(Math.min(255, Math.max(0, channel)))
+    .toString(16)
+    .padStart(2, "0")
+    .toUpperCase();
+}
+
+function rgbToHex(rgb?: Rgb | null) {
+  if (!rgb) return null;
+  return `#${rgbChannelToHex(rgb.r)}${rgbChannelToHex(rgb.g)}${rgbChannelToHex(rgb.b)}`;
+}
+
+function normalizeHex(value: string) {
+  const trimmed = value.trim();
+  const candidate = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+  const shortMatch = candidate.match(/^#([0-9a-fA-F]{3})$/);
+
+  if (shortMatch) {
+    const [red, green, blue] = shortMatch[1].split("");
+    return `#${red}${red}${green}${green}${blue}${blue}`.toUpperCase();
+  }
+
+  if (/^#[0-9a-fA-F]{6}$/.test(candidate)) {
+    return candidate.toUpperCase();
+  }
+
+  return null;
+}
+
+function hexToRgb(value: string): Rgb | null {
+  const normalized = normalizeHex(value);
+  if (!normalized) return null;
+
+  return {
+    r: Number.parseInt(normalized.slice(1, 3), 16),
+    g: Number.parseInt(normalized.slice(3, 5), 16),
+    b: Number.parseInt(normalized.slice(5, 7), 16),
+  };
+}
 
 function getSafeHttpsUrl(imageUrl?: string | null): string | null {
   if (!imageUrl) return null;
@@ -89,7 +139,17 @@ function TokenSwatches({ tokens }: { tokens: ThemeTokens }) {
   );
 }
 
-function ThemePreview({ title, tokens }: { title: string; tokens: ThemeTokens }) {
+function ThemePreview({
+  title,
+  tokens,
+  description = "Preview of the accent tokens before they affect the live workspace.",
+  actions,
+}: {
+  title: string;
+  tokens: ThemeTokens;
+  description?: string;
+  actions?: ReactNode;
+}) {
   const chartColors = [
     tokens.chart1,
     tokens.chart2,
@@ -107,9 +167,8 @@ function ThemePreview({ title, tokens }: { title: string; tokens: ThemeTokens })
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <CardDescription>
-          Preview of the accent tokens before they affect the live workspace.
-        </CardDescription>
+        <CardDescription>{description}</CardDescription>
+        {actions && <CardAction>{actions}</CardAction>}
       </CardHeader>
       <CardContent className="space-y-4">
         <TokenSwatches tokens={tokens} />
@@ -157,11 +216,14 @@ export default function AdminAppearancePage() {
   const theme = useQuery(api.orgThemes.getThemeAdminState);
   const startThemeGeneration = useMutation(api.orgThemes.startThemeGeneration);
   const saveGeneratedCandidate = useMutation(api.orgThemes.saveGeneratedCandidate);
+  const saveManualCandidate = useMutation(api.orgThemes.saveManualCandidate);
   const approveCandidateTheme = useMutation(api.orgThemes.approveCandidateTheme);
   const rejectCandidateTheme = useMutation(api.orgThemes.rejectCandidateTheme);
   const markThemeGenerationFailed = useMutation(api.orgThemes.markThemeGenerationFailed);
   const resetToNeutral = useMutation(api.orgThemes.resetToNeutral);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [isEditingAccent, setIsEditingAccent] = useState(false);
+  const [accentHex, setAccentHex] = useState(DEFAULT_ACCENT_HEX);
 
   const logoUrl = getSafeHttpsUrl(
     organization?.hasImage ? organization.imageUrl : null,
@@ -169,6 +231,11 @@ export default function AdminAppearancePage() {
   const activeTokens = theme?.activeLightTokens ?? theme?.lightTokens ?? null;
   const candidateTokens = theme?.candidateLightTokens ?? null;
   const hasCandidate = Boolean(candidateTokens);
+  const selectedAccentRgb =
+    theme?.activeAccentRgb ?? theme?.accentRgb ?? theme?.candidateAccentRgb ?? null;
+  const initialAccentHex = rgbToHex(selectedAccentRgb) ?? DEFAULT_ACCENT_HEX;
+  const manualAccentRgb = hexToRgb(accentHex);
+  const colorInputValue = normalizeHex(accentHex) ?? initialAccentHex;
 
   const statusLabel = useMemo(() => {
     if (!theme) return "neutral";
@@ -196,6 +263,33 @@ export default function AdminAppearancePage() {
         // Preserve the original extraction error in the user-facing toast.
       }
       toast.error(reason);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleOpenAccentEditor = () => {
+    setAccentHex(initialAccentHex);
+    setIsEditingAccent(true);
+  };
+
+  const handleSaveManualCandidate = async () => {
+    const accentRgb = hexToRgb(accentHex);
+    if (!accentRgb) {
+      toast.error("Enter a valid hex color.");
+      return;
+    }
+
+    setBusyAction("manual");
+    try {
+      await saveManualCandidate({
+        accentRgb,
+        ...(logoUrl ? { sourceLogoUrl: logoUrl } : {}),
+      });
+      setIsEditingAccent(false);
+      toast.success("Theme candidate saved from the selected accent color.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save color.");
     } finally {
       setBusyAction(null);
     }
@@ -236,6 +330,76 @@ export default function AdminAppearancePage() {
       setBusyAction(null);
     }
   };
+
+  const candidateTitle =
+    theme?.candidateSource === "manual" ? "Manual candidate" : "Generated candidate";
+
+  const manualAccentEditor = isEditingAccent ? (
+    <Card>
+      <CardHeader>
+        <CardTitle>Manual accent</CardTitle>
+        <CardDescription>
+          Save a color candidate, then approve it when the preview looks right.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <label className="space-y-2">
+            <span className="text-sm font-medium">Accent color</span>
+            <div className="flex gap-2">
+              <Input
+                type="color"
+                value={colorInputValue}
+                onChange={(event) => setAccentHex(event.target.value.toUpperCase())}
+                aria-label="Accent color"
+                className="h-9 w-12 shrink-0 cursor-pointer p-1"
+              />
+              <Input
+                value={accentHex}
+                onChange={(event) => setAccentHex(event.target.value)}
+                placeholder={DEFAULT_ACCENT_HEX}
+                aria-invalid={!manualAccentRgb}
+                className="h-9 font-mono uppercase"
+              />
+            </div>
+          </label>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsEditingAccent(false)}
+              disabled={busyAction !== null}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSaveManualCandidate}
+              disabled={busyAction !== null || !manualAccentRgb}
+            >
+              <Save />
+              {busyAction === "manual" ? "Saving" : "Save candidate"}
+            </Button>
+          </div>
+        </div>
+        {!manualAccentRgb && (
+          <p className="text-xs text-destructive">Enter a valid hex color.</p>
+        )}
+        <div className="flex items-center gap-3 rounded-lg border p-3">
+          <div
+            className="size-10 shrink-0 rounded-md border"
+            style={{ backgroundColor: colorInputValue }}
+          />
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Candidate accent</p>
+            <p className="font-mono text-xs text-muted-foreground">
+              {manualAccentRgb ? colorInputValue : "Invalid color"}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  ) : null;
 
   if (theme === undefined) {
     return (
@@ -328,7 +492,7 @@ export default function AdminAppearancePage() {
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h3 className="text-sm font-semibold">Generated candidate</h3>
+              <h3 className="text-sm font-semibold">{candidateTitle}</h3>
               <p className="text-xs text-muted-foreground">
                 Approving this promotes the candidate to the live workspace accent.
               </p>
@@ -358,13 +522,45 @@ export default function AdminAppearancePage() {
       )}
 
       {activeTokens ? (
-        <ThemePreview title="Active workspace theme" tokens={activeTokens} />
+        <div className="space-y-3">
+          <ThemePreview
+            title="Active workspace theme"
+            description="Approved accent tokens currently applied to the workspace."
+            tokens={activeTokens}
+            actions={(
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleOpenAccentEditor}
+                disabled={busyAction !== null}
+              >
+                <Pencil />
+                Edit accent
+              </Button>
+            )}
+          />
+          {manualAccentEditor}
+        </div>
       ) : (
-        <EmptyState
-          icon={Palette}
-          title="Neutral theme active"
-          description="No approved org accent is active yet. Generate and approve a candidate to apply one."
-        />
+        <div className="space-y-3">
+          <EmptyState
+            icon={Palette}
+            title="Neutral theme active"
+            description="No approved org accent is active yet. Generate and approve a candidate to apply one."
+            action={(
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleOpenAccentEditor}
+                disabled={busyAction !== null}
+              >
+                <Pencil />
+                Choose accent
+              </Button>
+            )}
+          />
+          {manualAccentEditor}
+        </div>
       )}
     </div>
   );
