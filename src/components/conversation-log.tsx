@@ -40,7 +40,14 @@ import {
   AlertCircle,
   Check,
   ArrowDown,
+  Download,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // --- Helpers ---
 
@@ -58,6 +65,22 @@ function formatDate(timestamp: number): string {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(timestamp));
+}
+
+function formatRelativeDate(timestamp: number): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  const months = Math.floor(days / 30);
+  const years = Math.floor(days / 365);
+
+  if (seconds < 60) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 30) return `${days}d ago`;
+  if (days < 365) return `${months}mo ago`;
+  return `${years}y ago`;
 }
 
 function getAudioUrl(
@@ -142,6 +165,336 @@ interface TranscriptMessage {
   role: string;
   content: string;
   time_in_call_secs: number;
+}
+
+// --- PDF Export ---
+
+type PdfFont = "F1" | "F2";
+
+interface PdfLine {
+  text: string;
+  x: number;
+  y: number;
+  size: number;
+  font: PdfFont;
+}
+
+const PDF_PAGE_WIDTH = 612;
+const PDF_PAGE_HEIGHT = 792;
+const PDF_MARGIN = 54;
+const PDF_BODY_SIZE = 10;
+
+const PDF_TEXT_REPLACEMENTS: Record<string, string> = {
+  "\u2018": "'",
+  "\u2019": "'",
+  "\u201c": '"',
+  "\u201d": '"',
+  "\u2013": "-",
+  "\u2014": "-",
+  "\u2022": "-",
+  "\u2026": "...",
+  "\u00a0": " ",
+};
+
+function normalizeForPdf(value: string): string {
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, (char) =>
+      PDF_TEXT_REPLACEMENTS[char] ?? ""
+    );
+}
+
+function estimatePdfTextWidth(text: string, size: number): number {
+  let width = 0;
+  for (const char of text) {
+    if (char === " ") width += 0.28;
+    else if (/[ilI.,'!:;]/.test(char)) width += 0.28;
+    else if (/[mwMW@#%&]/.test(char)) width += 0.82;
+    else if (/[A-Z0-9]/.test(char)) width += 0.62;
+    else width += 0.5;
+  }
+  return width * size;
+}
+
+function splitLongPdfWord(word: string, maxWidth: number, size: number) {
+  const parts: string[] = [];
+  let current = "";
+
+  for (const char of word) {
+    const candidate = `${current}${char}`;
+    if (current && estimatePdfTextWidth(candidate, size) > maxWidth) {
+      parts.push(current);
+      current = char;
+    } else {
+      current = candidate;
+    }
+  }
+
+  if (current) parts.push(current);
+  return parts;
+}
+
+function wrapPdfText(text: string, maxWidth: number, size: number) {
+  const words = text.replace(/[ \t]+/g, " ").trim().split(" ").filter(Boolean);
+  if (words.length === 0) return [""];
+
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (estimatePdfTextWidth(candidate, size) <= maxWidth) {
+      current = candidate;
+      continue;
+    }
+
+    if (current) lines.push(current);
+
+    if (estimatePdfTextWidth(word, size) > maxWidth) {
+      const parts = splitLongPdfWord(word, maxWidth, size);
+      lines.push(...parts.slice(0, -1));
+      current = parts[parts.length - 1] ?? "";
+    } else {
+      current = word;
+    }
+  }
+
+  if (current) lines.push(current);
+  return lines;
+}
+
+function escapePdfString(value: string): string {
+  return normalizeForPdf(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+}
+
+function sanitizeFilenamePart(value: string): string {
+  return (
+    normalizeForPdf(value)
+      .trim()
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "conversation"
+  );
+}
+
+function buildConversationPdfPages(
+  conversation: Doc<"conversations">,
+  transcript: TranscriptMessage[] | undefined
+) {
+  const pages: PdfLine[][] = [[]];
+  let cursorY = PDF_PAGE_HEIGHT - PDF_MARGIN;
+
+  const currentPage = () => pages[pages.length - 1];
+  const newPage = () => {
+    pages.push([]);
+    cursorY = PDF_PAGE_HEIGHT - PDF_MARGIN;
+  };
+
+  const addLine = (
+    text: string,
+    {
+      x = PDF_MARGIN,
+      size = PDF_BODY_SIZE,
+      font = "F1",
+      lineHeight = size * 1.35,
+      gapBefore = 0,
+    }: {
+      x?: number;
+      size?: number;
+      font?: PdfFont;
+      lineHeight?: number;
+      gapBefore?: number;
+    } = {}
+  ) => {
+    let gap = gapBefore;
+    if (cursorY - gap - lineHeight < PDF_MARGIN) {
+      newPage();
+      gap = 0;
+    }
+
+    cursorY -= gap;
+    currentPage().push({
+      text: normalizeForPdf(text),
+      x,
+      y: cursorY,
+      size,
+      font,
+    });
+    cursorY -= lineHeight;
+  };
+
+  const addWrappedText = (
+    text: string,
+    {
+      x = PDF_MARGIN,
+      size = PDF_BODY_SIZE,
+      font = "F1",
+      lineHeight = 14,
+      gapBefore = 0,
+    }: {
+      x?: number;
+      size?: number;
+      font?: PdfFont;
+      lineHeight?: number;
+      gapBefore?: number;
+    } = {}
+  ) => {
+    const normalized = normalizeForPdf(text);
+    const blocks = normalized.trim() ? normalized.split(/\n{2,}/) : [""];
+    const maxWidth = PDF_PAGE_WIDTH - PDF_MARGIN - x;
+    let isFirstLine = true;
+
+    for (const block of blocks) {
+      const sourceLines = block.split("\n");
+      for (const sourceLine of sourceLines) {
+        const wrapped = wrapPdfText(sourceLine, maxWidth, size);
+        for (const line of wrapped) {
+          addLine(line || " ", {
+            x,
+            size,
+            font,
+            lineHeight,
+            gapBefore: isFirstLine ? gapBefore : 0,
+          });
+          isFirstLine = false;
+        }
+      }
+      addLine(" ", { x, size, font, lineHeight: 6 });
+    }
+  };
+
+  const addSectionHeading = (title: string) => {
+    addLine(title, { size: 12, font: "F2", lineHeight: 16, gapBefore: 12 });
+  };
+
+  addLine("Conversation Export", { size: 18, font: "F2", lineHeight: 24 });
+  addLine(`Contributor: ${conversation.contributorName}`, {
+    size: 9,
+    lineHeight: 12,
+    gapBefore: 3,
+  });
+  addLine(`Recorded: ${formatDate(conversation._creationTime)}`, {
+    size: 9,
+    lineHeight: 12,
+  });
+  if (conversation.durationSeconds != null) {
+    addLine(`Duration: ${formatDuration(conversation.durationSeconds)}`, {
+      size: 9,
+      lineHeight: 12,
+    });
+  }
+
+  addSectionHeading("Summary");
+  addWrappedText(
+    conversation.summary?.trim() || "No summary available.",
+    { gapBefore: 2 }
+  );
+
+  addSectionHeading("Transcript");
+  if (!transcript || transcript.length === 0) {
+    addWrappedText("No transcript available.", { gapBefore: 2 });
+  } else {
+    transcript.forEach((msg, index) => {
+      const speaker = msg.role === "ai" ? "Fabric" : conversation.contributorName;
+      addWrappedText(`[${formatDuration(msg.time_in_call_secs)}] ${speaker}`, {
+        font: "F2",
+        lineHeight: 13,
+        gapBefore: index === 0 ? 2 : 8,
+      });
+      addWrappedText(msg.content, {
+        x: PDF_MARGIN + 12,
+        lineHeight: 14,
+      });
+    });
+  }
+
+  return pages;
+}
+
+function createPdfBlob(pages: PdfLine[][]): Blob {
+  const encoder = new TextEncoder();
+  const pageObjectIds = pages.map((_, index) => 3 + index * 2);
+  const contentObjectIds = pages.map((_, index) => 4 + index * 2);
+  const objects: string[] = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${pageObjectIds
+      .map((id) => `${id} 0 R`)
+      .join(" ")}] /Count ${pages.length} >>`,
+  ];
+
+  pages.forEach((page, index) => {
+    const content = page
+      .map(
+        (line) =>
+          `BT /${line.font} ${line.size} Tf ${line.x.toFixed(2)} ${line.y.toFixed(
+            2
+          )} Td (${escapePdfString(line.text)}) Tj ET`
+      )
+      .join("\n");
+    const contentLength = encoder.encode(content).length;
+
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PDF_PAGE_WIDTH} ${PDF_PAGE_HEIGHT}] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> /F2 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> >> >> /Contents ${contentObjectIds[index]} 0 R >>`
+    );
+    objects.push(`<< /Length ${contentLength} >>\nstream\n${content}\nendstream`);
+  });
+
+  const chunks: string[] = [];
+  const offsets: number[] = [0];
+  let byteOffset = 0;
+  const append = (chunk: string) => {
+    chunks.push(chunk);
+    byteOffset += encoder.encode(chunk).length;
+  };
+
+  append("%PDF-1.4\n");
+  objects.forEach((body, index) => {
+    const objectNumber = index + 1;
+    offsets[objectNumber] = byteOffset;
+    append(`${objectNumber} 0 obj\n${body}\nendobj\n`);
+  });
+
+  const xrefOffset = byteOffset;
+  append(`xref\n0 ${objects.length + 1}\n`);
+  append("0000000000 65535 f \n");
+  for (let i = 1; i <= objects.length; i++) {
+    append(`${String(offsets[i]).padStart(10, "0")} 00000 n \n`);
+  }
+  append(
+    `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+  );
+
+  return new Blob(chunks, { type: "application/pdf" });
+}
+
+function downloadConversationPdf(
+  conversation: Doc<"conversations">,
+  transcript: TranscriptMessage[] | undefined
+) {
+  const pages = buildConversationPdfPages(conversation, transcript);
+  const blob = createPdfBlob(pages);
+  const date = new Date(conversation._creationTime).toISOString().slice(0, 10);
+  const filename = `${sanitizeFilenamePart(
+    conversation.contributorName
+  )}-${date}-conversation.pdf`;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 // --- Waveform Data ---
@@ -607,6 +960,7 @@ function ConversationEntry({
     | undefined;
   const [listened, markListened] = useListenedState(String(conversation._id));
   const activeCardCtx = useContext(ActiveCardContext);
+  const canExportPdf = Boolean(conversation.summary || transcript?.length);
 
   return (
     <Card
@@ -619,7 +973,7 @@ function ConversationEntry({
       )}
     >
       <CardContent className="space-y-3">
-        {/* Header: contributor name + date + duration */}
+        {/* Header: contributor name + date */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10">
@@ -633,12 +987,27 @@ function ConversationEntry({
             {listened && (
               <Check className="h-3 w-3 text-green-500" aria-label="Listened" />
             )}
-            <span>{formatDate(conversation._creationTime)}</span>
-            {conversation.durationSeconds != null && (
-              <>
-                <span>·</span>
-                <span>{formatDuration(conversation.durationSeconds)}</span>
-              </>
+            <Tooltip>
+              <TooltipTrigger
+                render={<span />}
+                className="cursor-default rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {formatRelativeDate(conversation._creationTime)}
+              </TooltipTrigger>
+              <TooltipContent>{formatDate(conversation._creationTime)}</TooltipContent>
+            </Tooltip>
+            {canExportPdf && (
+              <Tooltip>
+                <TooltipTrigger
+                  type="button"
+                  onClick={() => downloadConversationPdf(conversation, transcript)}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="Export conversation PDF"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </TooltipTrigger>
+                <TooltipContent>Export PDF</TooltipContent>
+              </Tooltip>
             )}
           </div>
         </div>
@@ -724,15 +1093,17 @@ function ConversationListWithPlayer({
 
   return (
     <AudioPlayerProvider>
-      <ActiveCardContext.Provider value={ctxValue}>
-        <KeyboardShortcuts />
-        <div className="mt-3 space-y-3">
-          {conversations.map((conv) => (
-            <ConversationEntry key={conv._id} conversation={conv} />
-          ))}
-        </div>
-        <StickyMiniPlayer />
-      </ActiveCardContext.Provider>
+      <TooltipProvider>
+        <ActiveCardContext.Provider value={ctxValue}>
+          <KeyboardShortcuts />
+          <div className="mt-3 space-y-3">
+            {conversations.map((conv) => (
+              <ConversationEntry key={conv._id} conversation={conv} />
+            ))}
+          </div>
+          <StickyMiniPlayer />
+        </ActiveCardContext.Provider>
+      </TooltipProvider>
     </AudioPlayerProvider>
   );
 }
