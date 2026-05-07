@@ -180,7 +180,7 @@ describe("cross-tenant isolation", () => {
     const ids = await seedTwoOrgs(t);
 
     await expect(
-      t.withIdentity(identityForOrgA()).mutation(api.processes.create, {
+      t.withIdentity(identityForOrgA()).action(api.processes.create, {
         departmentId: ids.deptB,
         name: "Malicious process",
       }),

@@ -195,6 +195,13 @@ export const exportForOrg = internalQuery({
         oldId: d._id,
         oldFunctionId: d.functionId,
         name: d.name,
+        description: d.description,
+        descriptionSafetyStatus: d.descriptionSafetyStatus,
+        descriptionSafetyCheckedAt: d.descriptionSafetyCheckedAt,
+        descriptionSafetyModel: d.descriptionSafetyModel,
+        descriptionSafetyPromptVersion: d.descriptionSafetyPromptVersion,
+        descriptionSafetyRisk: d.descriptionSafetyRisk,
+        descriptionSafetyReason: d.descriptionSafetyReason,
         sortOrder: d.sortOrder,
         summary: d.summary,
         summaryUpdatedAt: d.summaryUpdatedAt,
@@ -204,6 +211,13 @@ export const exportForOrg = internalQuery({
         oldId: p._id,
         oldDepartmentId: p.departmentId,
         name: p.name,
+        description: p.description,
+        descriptionSafetyStatus: p.descriptionSafetyStatus,
+        descriptionSafetyCheckedAt: p.descriptionSafetyCheckedAt,
+        descriptionSafetyModel: p.descriptionSafetyModel,
+        descriptionSafetyPromptVersion: p.descriptionSafetyPromptVersion,
+        descriptionSafetyRisk: p.descriptionSafetyRisk,
+        descriptionSafetyReason: p.descriptionSafetyReason,
         sortOrder: p.sortOrder,
         rollingSummary: p.rollingSummary,
       })),
@@ -336,6 +350,28 @@ export const prodImport_insertAll = internalMutation({
       const newId = await ctx.db.insert("departments", {
         functionId: newFunctionId,
         name: d.name as string,
+        description: d.description as string | undefined,
+        descriptionSafetyStatus: d.descriptionSafetyStatus as
+          | "safe"
+          | "blocked"
+          | undefined,
+        descriptionSafetyCheckedAt: d.descriptionSafetyCheckedAt as
+          | number
+          | undefined,
+        descriptionSafetyModel: d.descriptionSafetyModel as string | undefined,
+        descriptionSafetyPromptVersion: d.descriptionSafetyPromptVersion as
+          | string
+          | undefined,
+        descriptionSafetyRisk: d.descriptionSafetyRisk as
+          | "none"
+          | "prompt_injection"
+          | "agent_instruction"
+          | "policy_override"
+          | "sensitive_data_request"
+          | "malicious_or_abusive"
+          | "irrelevant"
+          | undefined,
+        descriptionSafetyReason: d.descriptionSafetyReason as string | undefined,
         sortOrder: d.sortOrder as number,
         summary: d.summary as string | undefined,
         summaryUpdatedAt: d.summaryUpdatedAt as number | undefined,
@@ -358,6 +394,28 @@ export const prodImport_insertAll = internalMutation({
       const newId = await ctx.db.insert("processes", {
         departmentId: newDepartmentId,
         name: p.name as string,
+        description: p.description as string | undefined,
+        descriptionSafetyStatus: p.descriptionSafetyStatus as
+          | "safe"
+          | "blocked"
+          | undefined,
+        descriptionSafetyCheckedAt: p.descriptionSafetyCheckedAt as
+          | number
+          | undefined,
+        descriptionSafetyModel: p.descriptionSafetyModel as string | undefined,
+        descriptionSafetyPromptVersion: p.descriptionSafetyPromptVersion as
+          | string
+          | undefined,
+        descriptionSafetyRisk: p.descriptionSafetyRisk as
+          | "none"
+          | "prompt_injection"
+          | "agent_instruction"
+          | "policy_override"
+          | "sensitive_data_request"
+          | "malicious_or_abusive"
+          | "irrelevant"
+          | undefined,
+        descriptionSafetyReason: p.descriptionSafetyReason as string | undefined,
         sortOrder: p.sortOrder as number,
         rollingSummary: p.rollingSummary as string | undefined,
         clerkOrgId: args.targetOrgId,

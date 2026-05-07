@@ -11,6 +11,7 @@
 import type * as cleanup from "../cleanup.js";
 import type * as conversations from "../conversations.js";
 import type * as departments from "../departments.js";
+import type * as descriptionSafety from "../descriptionSafety.js";
 import type * as functions from "../functions.js";
 import type * as http from "../http.js";
 import type * as invitations from "../invitations.js";
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   cleanup: typeof cleanup;
   conversations: typeof conversations;
   departments: typeof departments;
+  descriptionSafety: typeof descriptionSafety;
   functions: typeof functions;
   http: typeof http;
   invitations: typeof invitations;

@@ -78,6 +78,8 @@ interface RecordingModalProps {
   processName: string;
   functionName: string;
   departmentName: string;
+  departmentDescription?: string;
+  processDescription?: string;
   mode?: RecordingMode;
 }
 
@@ -134,6 +136,8 @@ export function RecordingModal({
   processName,
   functionName,
   departmentName,
+  departmentDescription,
+  processDescription,
   mode = "agent",
 }: RecordingModalProps) {
   // Step state
@@ -302,6 +306,8 @@ export function RecordingModal({
       function_name: functionName,
       department_name: departmentName,
       process_name: processName,
+      department_description: departmentDescription || "None provided.",
+      process_description: processDescription || "None provided.",
       existing_summary: existingSummary,
       prior_conversations: priorSummaries,
     };
@@ -313,6 +319,8 @@ export function RecordingModal({
     functionName,
     departmentName,
     processName,
+    departmentDescription,
+    processDescription,
   ]);
 
   // --- useConversation hook ---

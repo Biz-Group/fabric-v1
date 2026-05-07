@@ -439,15 +439,15 @@ export function MillerColumns() {
   const forceRefreshProcessSummary = useAction(api.summaries.forceRefreshProcessSummary);
   const [processSummaryRefreshing, setProcessSummaryRefreshing] = useState(false);
 
-  // CRUD mutations
+  // CRUD mutations/actions
   const createFunction = useMutation(api.functions.create);
   const updateFunction = useMutation(api.functions.update);
   const removeFunction = useMutation(api.functions.remove);
-  const createDepartment = useMutation(api.departments.create);
-  const updateDepartment = useMutation(api.departments.update);
+  const createDepartment = useAction(api.departments.create);
+  const updateDepartment = useAction(api.departments.update);
   const removeDepartment = useMutation(api.departments.remove);
-  const createProcess = useMutation(api.processes.create);
-  const updateProcess = useMutation(api.processes.update);
+  const createProcess = useAction(api.processes.create);
+  const updateProcess = useAction(api.processes.update);
   const removeProcess = useMutation(api.processes.remove);
 
   // CRUD dialog state
@@ -455,6 +455,7 @@ export function MillerColumns() {
   const [crudMode, setCrudMode] = useState<"create" | "edit" | "delete">("create");
   const [crudEntity, setCrudEntity] = useState<"Function" | "Department" | "Process">("Function");
   const [crudTargetName, setCrudTargetName] = useState("");
+  const [crudTargetDescription, setCrudTargetDescription] = useState("");
   const [crudTargetId, setCrudTargetId] = useState<string | null>(null);
   const [crudCurrentLocationId, setCrudCurrentLocationId] = useState<string | null>(null);
 
@@ -490,11 +491,13 @@ export function MillerColumns() {
       entity: "Function" | "Department" | "Process",
       targetName?: string,
       targetId?: string,
-      currentLocationId?: string
+      currentLocationId?: string,
+      currentDescription?: string
     ) => {
       setCrudMode(mode);
       setCrudEntity(entity);
       setCrudTargetName(targetName ?? "");
+      setCrudTargetDescription(currentDescription ?? "");
       setCrudTargetId(targetId ?? null);
       setCrudCurrentLocationId(currentLocationId ?? null);
       setCrudOpen(true);
@@ -503,7 +506,7 @@ export function MillerColumns() {
   );
 
   const handleCrudConfirm = useCallback(
-    async (name: string, newLocationId?: string) => {
+    async (name: string, newLocationId?: string, description?: string) => {
       if (crudEntity === "Function") {
         if (crudMode === "create") {
           await createFunction({ name });
@@ -519,13 +522,18 @@ export function MillerColumns() {
         }
       } else if (crudEntity === "Department") {
         if (crudMode === "create" && selectedFunctionId) {
-          await createDepartment({ functionId: selectedFunctionId, name });
+          await createDepartment({
+            functionId: selectedFunctionId,
+            name,
+            description,
+          });
         } else if (crudMode === "edit" && crudTargetId) {
           const newFunctionId = newLocationId as Id<"functions"> | undefined;
           await updateDepartment({
             departmentId: crudTargetId as Id<"departments">,
             name,
             functionId: newFunctionId,
+            description,
           });
           if (newFunctionId && newFunctionId !== selectedFunctionId) {
             setSelectedDepartmentId(null);
@@ -540,13 +548,18 @@ export function MillerColumns() {
         }
       } else if (crudEntity === "Process") {
         if (crudMode === "create" && selectedDepartmentId) {
-          await createProcess({ departmentId: selectedDepartmentId, name });
+          await createProcess({
+            departmentId: selectedDepartmentId,
+            name,
+            description,
+          });
         } else if (crudMode === "edit" && crudTargetId) {
           const newDepartmentId = newLocationId as Id<"departments"> | undefined;
           await updateProcess({
             processId: crudTargetId as Id<"processes">,
             name,
             departmentId: newDepartmentId,
+            description,
           });
           if (newDepartmentId && newDepartmentId !== selectedDepartmentId) {
             setSelectedProcessId(null);
@@ -830,7 +843,7 @@ export function MillerColumns() {
                   }
                   onNavigate={mobile ? () => handleSelectDepartment(dept._id, dept.name) : undefined}
                   navigateLabel={`View processes in ${dept.name}`}
-                  onEdit={canEdit ? () => openCrud("edit", "Department", dept.name, dept._id, dept.functionId) : undefined}
+                  onEdit={canEdit ? () => openCrud("edit", "Department", dept.name, dept._id, dept.functionId, dept.description) : undefined}
                   onDelete={canEdit ? () => openCrud("delete", "Department", dept.name, dept._id) : undefined}
                   mobile={mobile}
                 />
@@ -915,7 +928,7 @@ export function MillerColumns() {
                   }
                   onNavigate={mobile ? () => handleSelectProcess(proc._id, proc.name) : undefined}
                   navigateLabel={`Open ${proc.name}`}
-                  onEdit={canEdit ? () => openCrud("edit", "Process", proc.name, proc._id, proc.departmentId) : undefined}
+                  onEdit={canEdit ? () => openCrud("edit", "Process", proc.name, proc._id, proc.departmentId, proc.description) : undefined}
                   onDelete={canEdit ? () => openCrud("delete", "Process", proc.name, proc._id) : undefined}
                   mobile={mobile}
                 />
@@ -949,6 +962,21 @@ export function MillerColumns() {
           {/* On-demand Department Summary */}
           {selectedDepartmentId && !selectedProcessId && (
             <div className="space-y-4 p-4 md:p-6">
+              {selectedDepartment?.description && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      Department Description
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                      {selectedDepartment.description}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
@@ -1224,6 +1252,22 @@ export function MillerColumns() {
             {/* Conversations tab */}
             <TabsContent value={0} className="flex-1 overflow-y-auto scrollbar-hide">
               <div className="space-y-6 p-4 md:p-6">
+                {selectedProcess?.description && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        Process Description
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                        {selectedProcess.description}
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Capture inputs — contributors and admins only */}
                 {canEdit && (
                   <div className="flex flex-col gap-2 sm:flex-row">
@@ -1264,6 +1308,16 @@ export function MillerColumns() {
                     processName={selectedProcessName}
                     functionName={selectedFunctionName}
                     departmentName={selectedDepartmentName}
+                    departmentDescription={
+                      selectedDepartment?.descriptionSafetyStatus === "safe"
+                        ? selectedDepartment.description
+                        : undefined
+                    }
+                    processDescription={
+                      selectedProcess?.descriptionSafetyStatus === "safe"
+                        ? selectedProcess.description
+                        : undefined
+                    }
                     mode={recordingMode}
                   />
                 )}
@@ -1637,30 +1691,33 @@ export function MillerColumns() {
       </Sheet>
 
       {/* CRUD Dialog */}
-      <CrudDialog
-        open={crudOpen}
-        onOpenChange={setCrudOpen}
-        mode={crudMode}
-        entityType={crudEntity}
-        currentName={crudTargetName}
-        currentLocationId={crudCurrentLocationId ?? undefined}
-        locationOptions={
-          crudMode === "edit" && crudEntity === "Department"
-            ? departmentLocationOptions
-            : crudMode === "edit" && crudEntity === "Process"
-              ? processLocationOptions
-              : undefined
-        }
-        locationLabel={
-          crudEntity === "Department"
-            ? "Function"
-            : crudEntity === "Process"
-              ? "Department"
-              : undefined
-        }
-        childCount={crudMode === "delete" ? deleteChildCount : undefined}
-        onConfirm={handleCrudConfirm}
-      />
+      {crudOpen && (
+        <CrudDialog
+          open={crudOpen}
+          onOpenChange={setCrudOpen}
+          mode={crudMode}
+          entityType={crudEntity}
+          currentName={crudTargetName}
+          currentDescription={crudTargetDescription}
+          currentLocationId={crudCurrentLocationId ?? undefined}
+          locationOptions={
+            crudMode === "edit" && crudEntity === "Department"
+              ? departmentLocationOptions
+              : crudMode === "edit" && crudEntity === "Process"
+                ? processLocationOptions
+                : undefined
+          }
+          locationLabel={
+            crudEntity === "Department"
+              ? "Function"
+              : crudEntity === "Process"
+                ? "Department"
+                : undefined
+          }
+          childCount={crudMode === "delete" ? deleteChildCount : undefined}
+          onConfirm={handleCrudConfirm}
+        />
+      )}
     </div>
     </TooltipProvider>
   );

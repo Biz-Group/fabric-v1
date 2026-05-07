@@ -1,5 +1,9 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+  descriptionSafetyRiskValidator,
+  descriptionSafetyStatusValidator,
+} from "./descriptionSafety";
 
 const rgbValidator = v.object({
   r: v.number(),
@@ -118,6 +122,13 @@ export default defineSchema({
   departments: defineTable({
     functionId: v.id("functions"),
     name: v.string(),
+    description: v.optional(v.string()),
+    descriptionSafetyStatus: v.optional(descriptionSafetyStatusValidator),
+    descriptionSafetyCheckedAt: v.optional(v.number()),
+    descriptionSafetyModel: v.optional(v.string()),
+    descriptionSafetyPromptVersion: v.optional(v.string()),
+    descriptionSafetyRisk: v.optional(descriptionSafetyRiskValidator),
+    descriptionSafetyReason: v.optional(v.string()),
     sortOrder: v.number(),
     summary: v.optional(v.string()),
     summaryUpdatedAt: v.optional(v.number()),
@@ -128,6 +139,13 @@ export default defineSchema({
   processes: defineTable({
     departmentId: v.id("departments"),
     name: v.string(),
+    description: v.optional(v.string()),
+    descriptionSafetyStatus: v.optional(descriptionSafetyStatusValidator),
+    descriptionSafetyCheckedAt: v.optional(v.number()),
+    descriptionSafetyModel: v.optional(v.string()),
+    descriptionSafetyPromptVersion: v.optional(v.string()),
+    descriptionSafetyRisk: v.optional(descriptionSafetyRiskValidator),
+    descriptionSafetyReason: v.optional(v.string()),
     sortOrder: v.number(),
     rollingSummary: v.optional(v.string()),
     clerkOrgId: v.string(),

@@ -1,11 +1,114 @@
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import {
+  action,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
 import { internal } from "./_generated/api";
+import { Doc, Id } from "./_generated/dataModel";
+import {
+  buildSafeDescriptionFields,
+  classifyDescriptionSafety,
+  DescriptionSafetyRisk,
+  normalizeDescriptionInput,
+} from "./descriptionSafety";
 import {
   assertOrgOwns,
   requireOrgContributor,
   requireOrgMember,
+  resolveOrgForAction,
 } from "./lib/orgAuth";
+
+type DescriptionUpdate =
+  | { kind: "unchanged" }
+  | { kind: "clear" }
+  | {
+      kind: "set";
+      description: string;
+      descriptionSafetyStatus: "safe";
+      descriptionSafetyCheckedAt: number;
+      descriptionSafetyModel: string;
+      descriptionSafetyPromptVersion: string;
+      descriptionSafetyRisk: DescriptionSafetyRisk;
+      descriptionSafetyReason: string;
+    };
+
+const descriptionUpdateValidator = v.union(
+  v.object({ kind: v.literal("unchanged") }),
+  v.object({ kind: v.literal("clear") }),
+  v.object({
+    kind: v.literal("set"),
+    description: v.string(),
+    descriptionSafetyStatus: v.literal("safe"),
+    descriptionSafetyCheckedAt: v.number(),
+    descriptionSafetyModel: v.string(),
+    descriptionSafetyPromptVersion: v.string(),
+    descriptionSafetyRisk: v.union(
+      v.literal("none"),
+      v.literal("prompt_injection"),
+      v.literal("agent_instruction"),
+      v.literal("policy_override"),
+      v.literal("sensitive_data_request"),
+      v.literal("malicious_or_abusive"),
+      v.literal("irrelevant"),
+    ),
+    descriptionSafetyReason: v.string(),
+  }),
+);
+
+function applyDescriptionUpdate(
+  patch: Record<string, unknown>,
+  descriptionUpdate: DescriptionUpdate,
+) {
+  if (descriptionUpdate.kind === "unchanged") return;
+  if (descriptionUpdate.kind === "clear") {
+    patch.description = undefined;
+    patch.descriptionSafetyStatus = undefined;
+    patch.descriptionSafetyCheckedAt = undefined;
+    patch.descriptionSafetyModel = undefined;
+    patch.descriptionSafetyPromptVersion = undefined;
+    patch.descriptionSafetyRisk = undefined;
+    patch.descriptionSafetyReason = undefined;
+    return;
+  }
+
+  patch.description = descriptionUpdate.description;
+  patch.descriptionSafetyStatus = descriptionUpdate.descriptionSafetyStatus;
+  patch.descriptionSafetyCheckedAt = descriptionUpdate.descriptionSafetyCheckedAt;
+  patch.descriptionSafetyModel = descriptionUpdate.descriptionSafetyModel;
+  patch.descriptionSafetyPromptVersion =
+    descriptionUpdate.descriptionSafetyPromptVersion;
+  patch.descriptionSafetyRisk = descriptionUpdate.descriptionSafetyRisk;
+  patch.descriptionSafetyReason = descriptionUpdate.descriptionSafetyReason;
+}
+
+async function buildDescriptionUpdate(
+  description: string | undefined,
+  current: Pick<
+    Doc<"departments">,
+    "description" | "descriptionSafetyStatus"
+  > | null,
+): Promise<DescriptionUpdate> {
+  if (description === undefined) return { kind: "unchanged" };
+
+  const normalized = normalizeDescriptionInput(description);
+  if (normalized.kind === "empty") return { kind: "clear" };
+
+  if (
+    current?.description === normalized.value &&
+    current.descriptionSafetyStatus === "safe"
+  ) {
+    return { kind: "unchanged" };
+  }
+
+  const decision = await classifyDescriptionSafety(
+    normalized.value,
+    process.env.OPENROUTER_API_KEY,
+  );
+  return { kind: "set", ...buildSafeDescriptionFields(normalized.value, decision) };
+}
 
 export const listByFunction = query({
   args: { functionId: v.id("functions") },
@@ -61,26 +164,84 @@ export const listAll = query({
   },
 });
 
-export const create = mutation({
-  args: { functionId: v.id("functions"), name: v.string() },
-  handler: async (ctx, args) => {
-    const caller = await requireOrgContributor(ctx);
+export const create = action({
+  args: {
+    functionId: v.id("functions"),
+    name: v.string(),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<Id<"departments">> => {
+    const { orgId } = await resolveOrgForAction(ctx);
+    await ctx.runQuery(internal.postCall.requireOrgContributorInternal, {});
+    const parentExists: boolean = await ctx.runQuery(
+      internal.departments.functionExistsInOrg,
+      { functionId: args.functionId, clerkOrgId: orgId },
+    );
+    if (!parentExists) throw new Error("Not found");
+    const descriptionUpdate = await buildDescriptionUpdate(args.description, null);
+    return await ctx.runMutation(internal.departments.createInternal, {
+      functionId: args.functionId,
+      name: args.name,
+      clerkOrgId: orgId,
+      descriptionUpdate,
+    });
+  },
+});
+
+export const functionExistsInOrg = internalQuery({
+  args: { functionId: v.id("functions"), clerkOrgId: v.string() },
+  handler: async (ctx, args): Promise<boolean> => {
+    const fn = await ctx.db.get(args.functionId);
+    return !!fn && fn.clerkOrgId === args.clerkOrgId;
+  },
+});
+
+export const createInternal = internalMutation({
+  args: {
+    functionId: v.id("functions"),
+    name: v.string(),
+    clerkOrgId: v.string(),
+    descriptionUpdate: descriptionUpdateValidator,
+  },
+  handler: async (ctx, args): Promise<Id<"departments">> => {
     const parentFunction = await ctx.db.get(args.functionId);
-    assertOrgOwns(caller, parentFunction);
+    if (!parentFunction || parentFunction.clerkOrgId !== args.clerkOrgId) {
+      throw new Error("Not found");
+    }
 
     const existing = await ctx.db
       .query("departments")
       .withIndex("by_clerkOrgId_and_functionId", (q) =>
-        q.eq("clerkOrgId", caller.orgId).eq("functionId", args.functionId),
+        q.eq("clerkOrgId", args.clerkOrgId).eq("functionId", args.functionId),
       )
       .order("desc")
       .take(1);
     const maxSortOrder = existing.length > 0 ? existing[0].sortOrder : 0;
-    const id = await ctx.db.insert("departments", {
+    const row = {
       functionId: args.functionId,
       name: args.name,
       sortOrder: maxSortOrder + 1,
-      clerkOrgId: caller.orgId,
+      clerkOrgId: args.clerkOrgId,
+    };
+    const descriptionFields =
+      args.descriptionUpdate.kind === "set"
+        ? {
+            description: args.descriptionUpdate.description,
+            descriptionSafetyStatus:
+              args.descriptionUpdate.descriptionSafetyStatus,
+            descriptionSafetyCheckedAt:
+              args.descriptionUpdate.descriptionSafetyCheckedAt,
+            descriptionSafetyModel: args.descriptionUpdate.descriptionSafetyModel,
+            descriptionSafetyPromptVersion:
+              args.descriptionUpdate.descriptionSafetyPromptVersion,
+            descriptionSafetyRisk: args.descriptionUpdate.descriptionSafetyRisk,
+            descriptionSafetyReason:
+              args.descriptionUpdate.descriptionSafetyReason,
+          }
+        : {};
+    const id = await ctx.db.insert("departments", {
+      ...row,
+      ...descriptionFields,
     });
     // Mark function summary as stale
     await ctx.runMutation(internal.summariesHelpers.markFunctionSummaryStale, {
@@ -90,16 +251,60 @@ export const create = mutation({
   },
 });
 
-export const update = mutation({
+export const update = action({
   args: {
     departmentId: v.id("departments"),
     name: v.string(),
     functionId: v.optional(v.id("functions")),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<null> => {
+    const { orgId } = await resolveOrgForAction(ctx);
+    await ctx.runQuery(internal.postCall.requireOrgContributorInternal, {});
+    const dept: Doc<"departments"> | null = await ctx.runQuery(
+      internal.departments.getForDescriptionUpdate,
+      { departmentId: args.departmentId, clerkOrgId: orgId },
+    );
+    if (!dept) throw new Error("Not found");
+
+    const descriptionUpdate = await buildDescriptionUpdate(
+      args.description,
+      dept,
+    );
+
+    await ctx.runMutation(internal.departments.updateInternal, {
+      departmentId: args.departmentId,
+      name: args.name,
+      functionId: args.functionId,
+      clerkOrgId: orgId,
+      descriptionUpdate,
+    });
+    return null;
+  },
+});
+
+export const getForDescriptionUpdate = internalQuery({
+  args: { departmentId: v.id("departments"), clerkOrgId: v.string() },
+  handler: async (ctx, args) => {
+    const dept = await ctx.db.get(args.departmentId);
+    if (!dept || dept.clerkOrgId !== args.clerkOrgId) return null;
+    return dept;
+  },
+});
+
+export const updateInternal = internalMutation({
+  args: {
+    departmentId: v.id("departments"),
+    name: v.string(),
+    functionId: v.optional(v.id("functions")),
+    clerkOrgId: v.string(),
+    descriptionUpdate: descriptionUpdateValidator,
   },
   handler: async (ctx, args) => {
-    const caller = await requireOrgContributor(ctx);
     const dept = await ctx.db.get(args.departmentId);
-    assertOrgOwns(caller, dept);
+    if (!dept || dept.clerkOrgId !== args.clerkOrgId) {
+      throw new Error("Not found");
+    }
 
     const oldName = dept.name;
     const patch: Record<string, unknown> = { name: args.name };
@@ -108,12 +313,14 @@ export const update = mutation({
 
     if (isMoving) {
       const targetFunction = await ctx.db.get(args.functionId!);
-      assertOrgOwns(caller, targetFunction);
+      if (!targetFunction || targetFunction.clerkOrgId !== args.clerkOrgId) {
+        throw new Error("Not found");
+      }
       const existing = await ctx.db
         .query("departments")
         .withIndex("by_clerkOrgId_and_functionId", (q) =>
           q
-            .eq("clerkOrgId", caller.orgId)
+            .eq("clerkOrgId", args.clerkOrgId)
             .eq("functionId", args.functionId!),
         )
         .order("desc")
@@ -122,6 +329,7 @@ export const update = mutation({
       patch.sortOrder = (existing.length > 0 ? existing[0].sortOrder : 0) + 1;
     }
 
+    applyDescriptionUpdate(patch, args.descriptionUpdate);
     await ctx.db.patch(args.departmentId, patch);
 
     // Cascade name change to users referencing the old department name.
