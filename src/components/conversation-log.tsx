@@ -83,14 +83,17 @@ function formatRelativeDate(timestamp: number): string {
   return `${years}y ago`;
 }
 
-function getAudioUrl(
+function useAudioUrl(
   clerkOrgId: string | null | undefined,
   conversationId: Id<"conversations">,
 ): string | null {
-  if (!clerkOrgId) return null;
+  // Token gates access at issue time (membership in the conv's org); the
+  // signed URL is then validated by the audio handler on every fetch.
+  const token = useQuery(api.postCall.getAudioPlaybackToken, { conversationId });
+  if (!clerkOrgId || !token) return null;
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? "";
   const siteUrl = convexUrl.replace(".cloud", ".site");
-  return `${siteUrl}/audio/${clerkOrgId}/${conversationId}`;
+  return `${siteUrl}/audio/${clerkOrgId}/${conversationId}?exp=${token.exp}&sig=${token.sig}`;
 }
 
 // --- localStorage Hooks ---
@@ -951,7 +954,7 @@ function ConversationEntry({
 }) {
   const isProcessing = conversation.status === "processing";
   const isFailed = conversation.status === "failed";
-  const audioUrl = getAudioUrl(
+  const audioUrl = useAudioUrl(
     conversation.clerkOrgId,
     conversation._id,
   );

@@ -1,8 +1,46 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { getActiveOrgClaims } from "./lib/orgAuth";
 import type { Id } from "./_generated/dataModel";
+
+function hexToBytes(hex: string): ArrayBuffer | null {
+  if (hex.length === 0 || hex.length % 2 !== 0) return null;
+  const buf = new ArrayBuffer(hex.length / 2);
+  const view = new Uint8Array(buf);
+  for (let i = 0; i < hex.length; i += 2) {
+    const byte = parseInt(hex.substring(i, i + 2), 16);
+    if (Number.isNaN(byte)) return null;
+    view[i / 2] = byte;
+  }
+  return buf;
+}
+
+// Verify an HMAC-SHA256 signature minted by `getAudioPlaybackToken`. Uses
+// crypto.subtle.verify which performs a timing-safe comparison.
+async function verifyAudioSig(
+  secret: string,
+  clerkOrgId: string,
+  conversationId: string,
+  exp: number,
+  providedHex: string,
+): Promise<boolean> {
+  const sigBytes = hexToBytes(providedHex);
+  if (!sigBytes) return false;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  return crypto.subtle.verify(
+    "HMAC",
+    key,
+    sigBytes,
+    enc.encode(`${clerkOrgId}.${conversationId}.${exp}`),
+  );
+}
 
 const http = httpRouter();
 
@@ -104,14 +142,29 @@ http.route({
     const clerkOrgId = suffix.substring(0, slashIdx);
     const conversationId = suffix.substring(slashIdx + 1) as Id<"conversations">;
 
-    // If the caller has a session, require their active org to match the URL.
-    const identity = await ctx.auth.getUserIdentity();
-    if (identity) {
-      const { orgId: tokenOrgId } = getActiveOrgClaims(identity);
-      if (tokenOrgId && tokenOrgId !== clerkOrgId) {
-        // Don't distinguish wrong-org from not-found — same 404 response.
-        return new Response("Not found", { status: 404 });
-      }
+    // Authorization: require a valid HMAC-signed URL minted by
+    // `getAudioPlaybackToken`, which gates issuance on org membership.
+    // The browser plays audio via crossOrigin="anonymous", so the JWT
+    // never reaches this handler — signed URLs are how access control
+    // travels with the request.
+    const exp = Number(url.searchParams.get("exp"));
+    const sig = url.searchParams.get("sig");
+    if (!sig || !Number.isFinite(exp) || exp < Date.now()) {
+      return new Response("Not found", { status: 404 });
+    }
+    const signingSecret = process.env.AUDIO_SIGNING_SECRET;
+    if (!signingSecret) {
+      return new Response("Server configuration error", { status: 500 });
+    }
+    const sigOk = await verifyAudioSig(
+      signingSecret,
+      clerkOrgId,
+      conversationId,
+      exp,
+      sig,
+    );
+    if (!sigOk) {
+      return new Response("Not found", { status: 404 });
     }
 
     let source:

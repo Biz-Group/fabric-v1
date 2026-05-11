@@ -4,10 +4,15 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import { requireOrgContributor, resolveOrgForAction } from "./lib/orgAuth";
+import {
+  requireOrgContributor,
+  requireOrgMember,
+  resolveOrgForAction,
+} from "./lib/orgAuth";
 
 // Normalize ElevenLabs transcript to the shape our UI expects:
 // ElevenLabs returns { role: "agent"|"user", message: string, time_in_call_secs: number }
@@ -388,6 +393,74 @@ export const conversationExistsByElevenLabsId = internalQuery({
       )
       .first();
     return conv !== null;
+  },
+});
+
+// Signed audio URLs stay valid this long. The HTTP audio endpoint can't run
+// `requireOrgMember` itself (cross-origin <audio> fetches are unauthenticated
+// — the browser uses crossOrigin="anonymous" so no Clerk JWT is sent), so
+// authorization is enforced once at token-mint time and re-verified by HMAC
+// on every byte fetch within the TTL.
+const AUDIO_URL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function bytesToHex(bytes: Uint8Array): string {
+  let out = "";
+  for (let i = 0; i < bytes.length; i++) {
+    out += bytes[i].toString(16).padStart(2, "0");
+  }
+  return out;
+}
+
+async function signAudioPath(
+  secret: string,
+  clerkOrgId: string,
+  conversationId: string,
+  expiresAt: number,
+): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    enc.encode(`${clerkOrgId}.${conversationId}.${expiresAt}`),
+  );
+  return bytesToHex(new Uint8Array(sig));
+}
+
+/**
+ * Returns an HMAC-signed `{ exp, sig }` pair the client can append to an
+ * /audio/{orgId}/{convId} URL. Authorization is enforced here: the caller
+ * must have a membership in the conversation's org. Returns null if the
+ * conversation doesn't exist or belongs to a different org (404-equivalent).
+ */
+export const getAudioPlaybackToken = query({
+  args: { conversationId: v.id("conversations") },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgMember(ctx);
+    const conv = await ctx.db.get(args.conversationId);
+    if (!conv || conv.clerkOrgId !== caller.orgId) return null;
+
+    const secret = process.env.AUDIO_SIGNING_SECRET;
+    if (!secret) {
+      throw new Error(
+        "AUDIO_SIGNING_SECRET is not configured on the Convex deployment",
+      );
+    }
+
+    const exp = Date.now() + AUDIO_URL_TTL_MS;
+    const sig = await signAudioPath(
+      secret,
+      caller.orgId,
+      args.conversationId,
+      exp,
+    );
+    return { exp, sig };
   },
 });
 
