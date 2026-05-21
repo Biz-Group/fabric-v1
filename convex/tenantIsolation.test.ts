@@ -618,7 +618,7 @@ async function seedConversation(
   overrides: Partial<{
     contributorName: string;
     elevenlabsConversationId: string;
-    status: "processing" | "done" | "failed";
+    status: "processing" | "needs_speaker_labels" | "done" | "failed";
     summary: string;
     durationSeconds: number;
   }> = {},

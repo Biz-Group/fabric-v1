@@ -1,8 +1,118 @@
+/// <reference types="vite/client" />
+import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
+import { api } from "./_generated/api";
+import schema from "./schema";
 import {
   coerceAnalysisPayload,
   normalizeScribeTranscript,
 } from "./voiceRecordings";
+
+const modules = import.meta.glob("./**/*.ts");
+
+const ORG_A = "org_voice_a";
+const ORG_B = "org_voice_b";
+const ISSUER = "https://test.clerk";
+
+function identityForOrgA() {
+  return {
+    tokenIdentifier: `${ISSUER}|user_a`,
+    subject: "user_a",
+    issuer: ISSUER,
+    name: "Alice",
+    email: "alice@example.test",
+    orgId: ORG_A,
+    orgSlug: "voice-a",
+  };
+}
+
+function identityForOrgB() {
+  return {
+    tokenIdentifier: `${ISSUER}|user_b`,
+    subject: "user_b",
+    issuer: ISSUER,
+    name: "Bob",
+    email: "bob@example.test",
+    orgId: ORG_B,
+    orgSlug: "voice-b",
+  };
+}
+
+async function seedSpeakerLabelFixture(t: ReturnType<typeof convexTest>) {
+  return await t.run(async (ctx) => {
+    const userAId = await ctx.db.insert("users", {
+      tokenIdentifier: `${ISSUER}|user_a`,
+      name: "Alice",
+      email: "alice@example.test",
+      profileComplete: true,
+    });
+    const userBId = await ctx.db.insert("users", {
+      tokenIdentifier: `${ISSUER}|user_b`,
+      name: "Bob",
+      email: "bob@example.test",
+      profileComplete: true,
+    });
+    await ctx.db.insert("memberships", {
+      tokenIdentifier: `${ISSUER}|user_a`,
+      userId: userAId,
+      clerkOrgId: ORG_A,
+      role: "contributor",
+      createdAt: Date.now(),
+    });
+    await ctx.db.insert("memberships", {
+      tokenIdentifier: `${ISSUER}|user_b`,
+      userId: userBId,
+      clerkOrgId: ORG_B,
+      role: "contributor",
+      createdAt: Date.now(),
+    });
+    const fnA = await ctx.db.insert("functions", {
+      name: "Ops",
+      sortOrder: 0,
+      clerkOrgId: ORG_A,
+    });
+    const deptA = await ctx.db.insert("departments", {
+      functionId: fnA,
+      name: "Payroll",
+      sortOrder: 0,
+      clerkOrgId: ORG_A,
+    });
+    const processA = await ctx.db.insert("processes", {
+      departmentId: deptA,
+      name: "Monthly payroll",
+      sortOrder: 0,
+      clerkOrgId: ORG_A,
+    });
+    const conversationId = await ctx.db.insert("conversations", {
+      processId: processA,
+      clerkOrgId: ORG_A,
+      contributorName: "Recorder",
+      inputMode: "voiceRecord",
+      transcriptionProvider: "elevenlabs-scribe",
+      analysisProvider: "fabric-openrouter",
+      status: "needs_speaker_labels",
+      transcript: [
+        {
+          role: "user",
+          content: "I pull the payroll report.",
+          time_in_call_secs: 0,
+          speakerId: "speaker_0",
+        },
+        {
+          role: "user",
+          content: "Then I approve the final totals.",
+          time_in_call_secs: 4,
+          speakerId: "speaker_1",
+        },
+      ],
+      speakerLabels: [
+        { speakerId: "speaker_0", displayName: "Speaker 1" },
+        { speakerId: "speaker_1", displayName: "Speaker 2" },
+      ],
+    });
+    return { conversationId, userAId, userBId };
+  });
+}
 
 describe("voice recording helpers", () => {
   test("normalizes Scribe word timestamps into transcript chunks", () => {
@@ -25,6 +135,33 @@ describe("voice recording helpers", () => {
         role: "user",
         content: "Pull the report. Validate totals.",
         time_in_call_secs: 0,
+        speakerId: "speaker_0",
+      },
+    ]);
+  });
+
+  test("splits normalized transcript when diarized speaker changes", () => {
+    const transcript = normalizeScribeTranscript({
+      words: [
+        { text: "Pull", start: 0, end: 0.2, type: "word", speaker_id: "speaker_0" },
+        { text: "report", start: 0.25, end: 0.5, type: "word", speaker_id: "speaker_0" },
+        { text: "Approve", start: 1, end: 1.4, type: "word", speaker_id: "speaker_1" },
+        { text: "totals", start: 1.45, end: 1.8, type: "word", speaker_id: "speaker_1" },
+      ],
+    });
+
+    expect(transcript).toEqual([
+      {
+        role: "user",
+        content: "Pull report",
+        time_in_call_secs: 0,
+        speakerId: "speaker_0",
+      },
+      {
+        role: "user",
+        content: "Approve totals",
+        time_in_call_secs: 1,
+        speakerId: "speaker_1",
       },
     ]);
   });
@@ -57,5 +194,82 @@ describe("voice recording helpers", () => {
     expect(JSON.parse(analysis.data_collection.step_issues)).toHaveLength(1);
     expect(analysis.data_collection.dependencies).toBe("HRIS export");
     expect(analysis.success_evaluation.identified_dependencies).toBe(true);
+  });
+});
+
+describe("speaker label submission", () => {
+  test("applies labels, optional org member links, and queues analysis", async () => {
+    const t = convexTest(schema, modules);
+    const { conversationId, userAId } = await seedSpeakerLabelFixture(t);
+
+    await t.withIdentity(identityForOrgA()).mutation(
+      api.voiceRecordings.submitSpeakerLabels,
+      {
+        conversationId,
+        labels: [
+          { speakerId: "speaker_0", displayName: "Alice", userId: userAId },
+          { speakerId: "speaker_1", displayName: "Finance Lead" },
+        ],
+      },
+    );
+
+    const updated = await t.run(async (ctx) => {
+      return await ctx.db.get(conversationId);
+    });
+    expect(updated?.status).toBe("processing");
+    expect(updated?.speakerLabels).toEqual([
+      { speakerId: "speaker_0", displayName: "Alice", userId: userAId },
+      { speakerId: "speaker_1", displayName: "Finance Lead" },
+    ]);
+    expect(updated?.transcript?.map((msg) => msg.speakerName)).toEqual([
+      "Alice",
+      "Finance Lead",
+    ]);
+  });
+
+  test("rejects missing labels", async () => {
+    const t = convexTest(schema, modules);
+    const { conversationId } = await seedSpeakerLabelFixture(t);
+
+    await expect(
+      t.withIdentity(identityForOrgA()).mutation(
+        api.voiceRecordings.submitSpeakerLabels,
+        {
+          conversationId,
+          labels: [{ speakerId: "speaker_0", displayName: "Alice" }],
+        },
+      ),
+    ).rejects.toThrow(/Every speaker needs a label/);
+  });
+
+  test("rejects cross-org submitters and cross-org member links", async () => {
+    const t = convexTest(schema, modules);
+    const { conversationId, userBId } = await seedSpeakerLabelFixture(t);
+
+    await expect(
+      t.withIdentity(identityForOrgB()).mutation(
+        api.voiceRecordings.submitSpeakerLabels,
+        {
+          conversationId,
+          labels: [
+            { speakerId: "speaker_0", displayName: "Alice" },
+            { speakerId: "speaker_1", displayName: "Bob" },
+          ],
+        },
+      ),
+    ).rejects.toThrow(/Not found/);
+
+    await expect(
+      t.withIdentity(identityForOrgA()).mutation(
+        api.voiceRecordings.submitSpeakerLabels,
+        {
+          conversationId,
+          labels: [
+            { speakerId: "speaker_0", displayName: "Alice" },
+            { speakerId: "speaker_1", displayName: "Bob", userId: userBId },
+          ],
+        },
+      ),
+    ).rejects.toThrow(/not in this organization/);
   });
 });

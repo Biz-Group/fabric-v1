@@ -28,6 +28,27 @@ const orgThemeTokensValidator = v.object({
 
 const themeSourceValidator = v.union(v.literal("logo"), v.literal("manual"));
 
+const transcriptMessageValidator = v.object({
+  role: v.string(),
+  content: v.string(),
+  time_in_call_secs: v.number(),
+  speakerId: v.optional(v.string()),
+  speakerName: v.optional(v.string()),
+});
+
+const speakerLabelValidator = v.object({
+  speakerId: v.string(),
+  displayName: v.string(),
+  userId: v.optional(v.id("users")),
+});
+
+const conversationStatusValidator = v.union(
+  v.literal("processing"),
+  v.literal("needs_speaker_labels"),
+  v.literal("done"),
+  v.literal("failed"),
+);
+
 export default defineSchema({
   // App-level user profiles (linked to Clerk identity via tokenIdentifier).
   // Identity is global — membership in a specific org lives in `memberships`.
@@ -176,23 +197,16 @@ export default defineSchema({
     ),
     transcript: v.optional(
       v.array(
-        v.object({
-          role: v.string(),
-          content: v.string(),
-          time_in_call_secs: v.number(),
-        }),
+        transcriptMessageValidator,
       ),
     ),
+    speakerLabels: v.optional(v.array(speakerLabelValidator)),
     summary: v.optional(v.string()),
     // Opaque ElevenLabs analysis payload — kept as v.any() because the
     // upstream schema is not under our control and may change.
     analysis: v.optional(v.any()),
     durationSeconds: v.optional(v.number()),
-    status: v.union(
-      v.literal("processing"),
-      v.literal("done"),
-      v.literal("failed"),
-    ),
+    status: conversationStatusValidator,
     clerkOrgId: v.string(),
   })
     .index("by_clerkOrgId_and_processId", ["clerkOrgId", "processId"])

@@ -23,13 +23,19 @@ function formatRelative(ts: number): string {
   return `${d}d ago`;
 }
 
-function StatusDot({ status }: { status: "processing" | "done" | "failed" }) {
+function StatusDot({
+  status,
+}: {
+  status: "processing" | "needs_speaker_labels" | "done" | "failed";
+}) {
   const color =
     status === "done"
       ? "bg-emerald-500"
       : status === "failed"
         ? "bg-destructive"
-        : "bg-amber-500";
+        : status === "needs_speaker_labels"
+          ? "bg-sky-500"
+          : "bg-amber-500";
   return (
     <span
       className={`inline-block size-2 shrink-0 rounded-full ${color}`}

@@ -56,6 +56,7 @@ export const listAllForOrg = query({
     status: v.optional(
       v.union(
         v.literal("processing"),
+        v.literal("needs_speaker_labels"),
         v.literal("done"),
         v.literal("failed"),
       ),
@@ -180,6 +181,7 @@ export const countForOrg = query({
     status: v.optional(
       v.union(
         v.literal("processing"),
+        v.literal("needs_speaker_labels"),
         v.literal("done"),
         v.literal("failed"),
       ),

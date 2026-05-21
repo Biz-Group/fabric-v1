@@ -19,7 +19,13 @@ import {
 // Our UI expects { role: "ai"|"user", content: string, time_in_call_secs: number }
 function normalizeTranscript(
   raw: Array<{ role: string; message?: string; time_in_call_secs?: number }> | null,
-): Array<{ role: string; content: string; time_in_call_secs: number }> | undefined {
+): Array<{
+  role: string;
+  content: string;
+  time_in_call_secs: number;
+  speakerId?: string;
+  speakerName?: string;
+}> | undefined {
   if (!raw || !Array.isArray(raw)) return undefined;
   return raw.map((msg) => ({
     role: msg.role === "agent" ? "ai" : msg.role,
@@ -79,6 +85,17 @@ export const insertConversation = internalMutation({
           role: v.string(),
           content: v.string(),
           time_in_call_secs: v.number(),
+          speakerId: v.optional(v.string()),
+          speakerName: v.optional(v.string()),
+        }),
+      ),
+    ),
+    speakerLabels: v.optional(
+      v.array(
+        v.object({
+          speakerId: v.string(),
+          displayName: v.string(),
+          userId: v.optional(v.id("users")),
         }),
       ),
     ),
@@ -87,6 +104,7 @@ export const insertConversation = internalMutation({
     durationSeconds: v.optional(v.number()),
     status: v.union(
       v.literal("processing"),
+      v.literal("needs_speaker_labels"),
       v.literal("done"),
       v.literal("failed"),
     ),
@@ -110,6 +128,7 @@ export const insertConversation = internalMutation({
         args.transcriptionProvider ?? "elevenlabs-convai",
       analysisProvider: args.analysisProvider ?? "elevenlabs-convai",
       transcript: args.transcript,
+      speakerLabels: args.speakerLabels,
       summary: args.summary,
       analysis: args.analysis,
       durationSeconds: args.durationSeconds,
@@ -697,6 +716,8 @@ export const updateConversationAnalysis = internalMutation({
           role: v.string(),
           content: v.string(),
           time_in_call_secs: v.number(),
+          speakerId: v.optional(v.string()),
+          speakerName: v.optional(v.string()),
         }),
       ),
     ),
@@ -773,7 +794,11 @@ Rules:
 - Output ONLY the markdown sections above, nothing else.`;
 
 function formatTranscript(
-  transcript: Array<{ role: string; content: string }> | null,
+  transcript: Array<{
+    role: string;
+    content: string;
+    speakerName?: string;
+  }> | null,
   contributorName: string,
   conversationNumber: number,
 ): string {
@@ -781,8 +806,8 @@ function formatTranscript(
     return `[Conversation ${conversationNumber} — ${contributorName}]\n(No transcript available)`;
   }
   const lines = transcript.map(
-    (msg: { role: string; content: string }) =>
-      `${msg.role === "user" ? contributorName : "Agent"}: ${msg.content}`,
+    (msg: { role: string; content: string; speakerName?: string }) =>
+      `${msg.speakerName ?? (msg.role === "user" ? contributorName : "Agent")}: ${msg.content}`,
   );
   return `[Conversation ${conversationNumber} — ${contributorName}]\n${lines.join("\n")}`;
 }
@@ -816,7 +841,11 @@ export const regenerateProcessSummary = internalAction({
       const transcriptBlock = allConversations
         .map((c, i) =>
           formatTranscript(
-            c.transcript as Array<{ role: string; content: string }> | null,
+            c.transcript as Array<{
+              role: string;
+              content: string;
+              speakerName?: string;
+            }> | null,
             c.contributorName,
             i + 1,
           ),
@@ -909,7 +938,11 @@ export const regenerateProcessSummary = internalAction({
     if (conversationCount === 0) return;
 
     const latestTranscript = formatTranscript(
-      latestConversation.transcript as Array<{ role: string; content: string }> | null,
+      latestConversation.transcript as Array<{
+        role: string;
+        content: string;
+        speakerName?: string;
+      }> | null,
       latestConversation.contributorName,
       conversationCount,
     );

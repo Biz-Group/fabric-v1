@@ -227,6 +227,7 @@ export const exportForOrg = internalQuery({
         elevenlabsConversationId: c.elevenlabsConversationId,
         contributorName: c.contributorName,
         transcript: c.transcript,
+        speakerLabels: c.speakerLabels,
         summary: c.summary,
         analysis: c.analysis,
         durationSeconds: c.durationSeconds,
@@ -449,12 +450,29 @@ export const prodImport_insertAll = internalMutation({
           | "fabric-openrouter"
           | undefined,
         transcript: c.transcript as
-          | Array<{ role: string; content: string; time_in_call_secs: number }>
+          | Array<{
+              role: string;
+              content: string;
+              time_in_call_secs: number;
+              speakerId?: string;
+              speakerName?: string;
+            }>
+          | undefined,
+        speakerLabels: c.speakerLabels as
+          | Array<{
+              speakerId: string;
+              displayName: string;
+              userId?: Id<"users">;
+            }>
           | undefined,
         summary: c.summary as string | undefined,
         analysis: c.analysis,
         durationSeconds: c.durationSeconds as number | undefined,
-        status: c.status as "processing" | "done" | "failed",
+        status: c.status as
+          | "processing"
+          | "needs_speaker_labels"
+          | "done"
+          | "failed",
         // userId intentionally omitted — will be null in prod
         clerkOrgId: args.targetOrgId,
       });

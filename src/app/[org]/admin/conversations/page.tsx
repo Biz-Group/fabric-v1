@@ -57,7 +57,7 @@ import {
   downloadCsv,
 } from "@/components/admin/conversations-export";
 
-type Status = "processing" | "done" | "failed";
+type Status = "processing" | "needs_speaker_labels" | "done" | "failed";
 type StatusFilter = "all" | Status;
 
 const PAGE_SIZE = 50;
@@ -80,6 +80,9 @@ function formatDuration(seconds: number | null | undefined): string {
 function StatusBadge({ status }: { status: Status }) {
   if (status === "done") return <Badge variant="secondary">Done</Badge>;
   if (status === "failed") return <Badge variant="destructive">Failed</Badge>;
+  if (status === "needs_speaker_labels") {
+    return <Badge variant="outline">Needs Speaker Labels</Badge>;
+  }
   return <Badge variant="outline">Processing</Badge>;
 }
 
@@ -110,7 +113,12 @@ export default function AdminConversationsPage() {
   const searchParams = useSearchParams();
   const initialStatus = useMemo<StatusFilter>(() => {
     const fromUrl = searchParams.get("status");
-    if (fromUrl === "done" || fromUrl === "processing" || fromUrl === "failed") {
+    if (
+      fromUrl === "done" ||
+      fromUrl === "processing" ||
+      fromUrl === "needs_speaker_labels" ||
+      fromUrl === "failed"
+    ) {
       return fromUrl;
     }
     return "all";
@@ -258,6 +266,9 @@ export default function AdminConversationsPage() {
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="done">Done</SelectItem>
             <SelectItem value="processing">Processing</SelectItem>
+            <SelectItem value="needs_speaker_labels">
+              Needs speaker labels
+            </SelectItem>
             <SelectItem value="failed">Failed</SelectItem>
           </SelectContent>
         </Select>

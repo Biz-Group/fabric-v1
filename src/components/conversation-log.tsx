@@ -48,6 +48,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { SpeakerLabelReview } from "@/components/speaker-label-review";
+import { useConversationAudioUrl } from "@/hooks/use-conversation-audio-url";
 
 // --- Helpers ---
 
@@ -81,19 +83,6 @@ function formatRelativeDate(timestamp: number): string {
   if (days < 30) return `${days}d ago`;
   if (days < 365) return `${months}mo ago`;
   return `${years}y ago`;
-}
-
-function useAudioUrl(
-  clerkOrgId: string | null | undefined,
-  conversationId: Id<"conversations">,
-): string | null {
-  // Token gates access at issue time (membership in the conv's org); the
-  // signed URL is then validated by the audio handler on every fetch.
-  const token = useQuery(api.postCall.getAudioPlaybackToken, { conversationId });
-  if (!clerkOrgId || !token) return null;
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? "";
-  const siteUrl = convexUrl.replace(".cloud", ".site");
-  return `${siteUrl}/audio/${clerkOrgId}/${conversationId}?exp=${token.exp}&sig=${token.sig}`;
 }
 
 // --- localStorage Hooks ---
@@ -168,6 +157,15 @@ interface TranscriptMessage {
   role: string;
   content: string;
   time_in_call_secs: number;
+  speakerId?: string;
+  speakerName?: string;
+}
+
+function transcriptSpeakerName(
+  msg: TranscriptMessage,
+  contributorName: string,
+): string {
+  return msg.speakerName ?? (msg.role === "ai" ? "Fabric" : contributorName);
 }
 
 // --- PDF Export ---
@@ -408,7 +406,7 @@ function buildConversationPdfPages(
     addWrappedText("No transcript available.", { gapBefore: 2 });
   } else {
     transcript.forEach((msg, index) => {
-      const speaker = msg.role === "ai" ? "Fabric" : conversation.contributorName;
+      const speaker = transcriptSpeakerName(msg, conversation.contributorName);
       addWrappedText(`[${formatDuration(msg.time_in_call_secs)}] ${speaker}`, {
         font: "F2",
         lineHeight: 13,
@@ -793,7 +791,7 @@ function SyncedTranscript({
                               : "text-foreground"
                           )}
                         >
-                          {msg.role === "ai" ? "Fabric" : contributorName}
+                          {transcriptSpeakerName(msg, contributorName)}
                         </span>
                         <span
                           className={cn(
@@ -949,12 +947,16 @@ function StickyMiniPlayer() {
 
 function ConversationEntry({
   conversation,
+  canLabelSpeakers,
 }: {
   conversation: Doc<"conversations">;
+  canLabelSpeakers: boolean;
 }) {
   const isProcessing = conversation.status === "processing";
+  const isAwaitingSpeakerLabels =
+    conversation.status === "needs_speaker_labels";
   const isFailed = conversation.status === "failed";
-  const audioUrl = useAudioUrl(
+  const audioUrl = useConversationAudioUrl(
     conversation.clerkOrgId,
     conversation._id,
   );
@@ -1023,6 +1025,13 @@ function ConversationEntry({
           </div>
         )}
 
+        {isAwaitingSpeakerLabels && (
+          <div className="flex items-center gap-2 text-xs text-amber-600">
+            <Mic className="h-3 w-3" />
+            Speaker labels needed
+          </div>
+        )}
+
         {/* Status: failed */}
         {isFailed && (
           <div className="flex items-center gap-2 text-xs text-destructive">
@@ -1044,6 +1053,16 @@ function ConversationEntry({
               </p>
             </CollapsibleContent>
           </Collapsible>
+        )}
+
+        {isAwaitingSpeakerLabels && canLabelSpeakers && (
+          <SpeakerLabelReview conversation={conversation} />
+        )}
+
+        {isAwaitingSpeakerLabels && !canLabelSpeakers && (
+          <p className="text-sm text-muted-foreground">
+            Waiting for a contributor to name speakers before analysis runs.
+          </p>
         )}
 
         {/* Audio Player — play/pause + scrub bar + duration */}
@@ -1076,8 +1095,10 @@ function ConversationEntry({
 
 function ConversationListWithPlayer({
   conversations,
+  canLabelSpeakers,
 }: {
   conversations: Doc<"conversations">[];
+  canLabelSpeakers: boolean;
 }) {
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -1101,7 +1122,11 @@ function ConversationListWithPlayer({
           <KeyboardShortcuts />
           <div className="mt-3 space-y-3">
             {conversations.map((conv) => (
-              <ConversationEntry key={conv._id} conversation={conv} />
+              <ConversationEntry
+                key={conv._id}
+                conversation={conv}
+                canLabelSpeakers={canLabelSpeakers}
+              />
             ))}
           </div>
           <StickyMiniPlayer />
@@ -1121,6 +1146,9 @@ export function ConversationLog({
   const conversations = useQuery(api.conversations.listByProcess, {
     processId,
   });
+  const membership = useQuery(api.users.getMyMembership);
+  const canLabelSpeakers =
+    membership?.role === "admin" || membership?.role === "contributor";
 
   return (
     <div>
@@ -1152,7 +1180,10 @@ export function ConversationLog({
           </CardContent>
         </Card>
       ) : (
-        <ConversationListWithPlayer conversations={conversations} />
+        <ConversationListWithPlayer
+          conversations={conversations}
+          canLabelSpeakers={canLabelSpeakers}
+        />
       )}
     </div>
   );

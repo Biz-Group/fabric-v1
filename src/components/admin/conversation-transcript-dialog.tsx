@@ -12,6 +12,19 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 
+type TranscriptMessage = {
+  role: string;
+  content: string;
+  speakerName?: string;
+};
+
+function transcriptSpeakerName(
+  msg: TranscriptMessage,
+  contributorName: string,
+): string {
+  return msg.speakerName ?? (msg.role === "user" ? contributorName : "Agent");
+}
+
 function formatDuration(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined) return "—";
   const m = Math.floor(seconds / 60);
@@ -98,9 +111,10 @@ export function ConversationTranscriptDialog({
                       }
                     >
                       <span className="mr-1.5 text-xs font-medium uppercase">
-                        {msg.role === "user"
-                          ? conversation.contributorName
-                          : "Agent"}
+                        {transcriptSpeakerName(
+                          msg as TranscriptMessage,
+                          conversation.contributorName,
+                        )}
                       </span>
                       <span className="whitespace-pre-wrap">{msg.content}</span>
                     </div>
@@ -119,8 +133,15 @@ export function ConversationTranscriptDialog({
   );
 }
 
-function StatusBadge({ status }: { status: "processing" | "done" | "failed" }) {
+function StatusBadge({
+  status,
+}: {
+  status: "processing" | "needs_speaker_labels" | "done" | "failed";
+}) {
   if (status === "done") return <Badge variant="secondary">Done</Badge>;
   if (status === "failed") return <Badge variant="destructive">Failed</Badge>;
+  if (status === "needs_speaker_labels") {
+    return <Badge variant="outline">Needs Speaker Labels</Badge>;
+  }
   return <Badge variant="outline">Processing</Badge>;
 }

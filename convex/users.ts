@@ -14,6 +14,7 @@ import {
   getActiveOrgClaims,
   requireAuth,
   requireOrgAdmin,
+  requireOrgContributor,
   requireOrgMember,
   resolveOrgForAction,
 } from "./lib/orgAuth";
@@ -469,6 +470,30 @@ export const listOrgMembers = query({
       }),
     );
     return members;
+  },
+});
+
+/** Contributor-accessible, bounded member options for speaker labeling. */
+export const listOrgMemberOptions = query({
+  args: {},
+  handler: async (ctx) => {
+    const caller = await requireOrgContributor(ctx);
+    const memberships = await ctx.db
+      .query("memberships")
+      .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", caller.orgId))
+      .take(1000);
+    const members = await Promise.all(
+      memberships.map(async (m) => {
+        const user = await ctx.db.get(m.userId);
+        return {
+          userId: m.userId,
+          name: user?.name ?? "Unknown",
+          email: user?.email ?? "",
+          jobTitle: user?.jobTitle ?? null,
+        };
+      }),
+    );
+    return members.sort((a, b) => a.name.localeCompare(b.name));
   },
 });
 

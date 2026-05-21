@@ -3,6 +3,7 @@ import {
   action,
   internalAction,
   internalMutation,
+  internalQuery,
   mutation,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -17,6 +18,8 @@ type TranscriptMessage = {
   role: string;
   content: string;
   time_in_call_secs: number;
+  speakerId?: string;
+  speakerName?: string;
 };
 
 type ScribeWord = {
@@ -51,7 +54,33 @@ type AnalysisPayload = {
   };
 };
 
-const VOICE_RECORDING_ANALYSIS_PROMPT = `You are analyzing a single employee voice recording about one business process.
+type SpeakerLabel = {
+  speakerId: string;
+  displayName: string;
+  userId?: Id<"users">;
+};
+
+type VoiceRecordingForAnalysis = {
+  processId: Id<"processes">;
+  transcript: TranscriptMessage[];
+  durationSeconds?: number;
+};
+
+const transcriptMessageValidator = v.object({
+  role: v.string(),
+  content: v.string(),
+  time_in_call_secs: v.number(),
+  speakerId: v.optional(v.string()),
+  speakerName: v.optional(v.string()),
+});
+
+const speakerLabelValidator = v.object({
+  speakerId: v.string(),
+  displayName: v.string(),
+  userId: v.optional(v.id("users")),
+});
+
+const VOICE_RECORDING_ANALYSIS_PROMPT = `You are analyzing a diarized voice recording about one business process. The transcript lines are prefixed with confirmed speaker names.
 
 Return ONLY a valid JSON object with this exact shape:
 {
@@ -74,7 +103,8 @@ Return ONLY a valid JSON object with this exact shape:
 }
 
 Rules:
-- Base the JSON only on the transcript. Do not invent tools, dependencies, or durations.
+- Base the JSON only on the transcript. Do not invent tools, dependencies, speakers, or durations.
+- Preserve named speakers as actors when the transcript makes their role in the process clear.
 - process_steps, step_connections, and step_issues must be strings containing valid JSON arrays.
 - Use stable kebab-case ids for steps so downstream process-flow generation can merge them.
 - If the transcript is vague, keep fields sparse and mark booleans false where appropriate.`;
@@ -98,7 +128,12 @@ export function normalizeScribeTranscript(
   if (speechWords.length === 0) {
     const text = (data.text ?? "").trim();
     return text
-      ? [{ role: "user", content: text, time_in_call_secs: 0 }]
+      ? [{
+          role: "user",
+          content: text,
+          time_in_call_secs: 0,
+          speakerId: "speaker_0",
+        }]
       : [];
   }
 
@@ -106,6 +141,8 @@ export function normalizeScribeTranscript(
   let content = "";
   let chunkStart = speechWords[0]?.start ?? 0;
   let lastEnd = chunkStart;
+  let currentSpeakerId =
+    (speechWords[0]?.speaker_id ?? "").trim() || "speaker_0";
 
   for (const word of speechWords) {
     const token = (word.text ?? "").trim();
@@ -113,7 +150,9 @@ export function normalizeScribeTranscript(
 
     const start = typeof word.start === "number" ? word.start : lastEnd;
     const end = typeof word.end === "number" ? word.end : start;
+    const speakerId = (word.speaker_id ?? "").trim() || "speaker_0";
     const shouldSplit =
+      speakerId !== currentSpeakerId ||
       content.length > 260 ||
       (content.length > 120 && /[.!?]$/.test(content)) ||
       start - chunkStart > 25;
@@ -123,9 +162,11 @@ export function normalizeScribeTranscript(
         role: "user",
         content,
         time_in_call_secs: chunkStart,
+        speakerId: currentSpeakerId,
       });
       content = token;
       chunkStart = start;
+      currentSpeakerId = speakerId;
     } else {
       content = appendToken(content, token);
     }
@@ -133,14 +174,53 @@ export function normalizeScribeTranscript(
   }
 
   if (content) {
-    chunks.push({ role: "user", content, time_in_call_secs: chunkStart });
+    chunks.push({
+      role: "user",
+      content,
+      time_in_call_secs: chunkStart,
+      speakerId: currentSpeakerId,
+    });
   }
 
   return chunks;
 }
 
+function defaultSpeakerLabels(transcript: TranscriptMessage[]): SpeakerLabel[] {
+  const labels: SpeakerLabel[] = [];
+  const seen = new Set<string>();
+  for (const msg of transcript) {
+    const speakerId = msg.speakerId ?? "speaker_0";
+    if (seen.has(speakerId)) continue;
+    seen.add(speakerId);
+    labels.push({
+      speakerId,
+      displayName: `Speaker ${labels.length + 1}`,
+    });
+  }
+  return labels;
+}
+
+function applySpeakerLabels(
+  transcript: TranscriptMessage[],
+  labels: SpeakerLabel[],
+): TranscriptMessage[] {
+  const labelById = new Map(
+    labels.map((label) => [label.speakerId, label.displayName]),
+  );
+  return transcript.map((msg) => {
+    if (!msg.speakerId) return msg;
+    const speakerName = labelById.get(msg.speakerId);
+    return speakerName ? { ...msg, speakerName } : msg;
+  });
+}
+
 function transcriptText(transcript: TranscriptMessage[]): string {
-  return transcript.map((msg) => msg.content).join("\n");
+  return transcript
+    .map((msg) => {
+      const speaker = msg.speakerName ?? msg.speakerId ?? "Speaker";
+      return `${speaker}: ${msg.content}`;
+    })
+    .join("\n");
 }
 
 function stripJsonFences(content: string): string {
@@ -227,7 +307,7 @@ async function transcribeWithScribe(
   form.append("language_code", "en");
   form.append("tag_audio_events", "true");
   form.append("timestamps_granularity", "word");
-  form.append("diarize", "false");
+  form.append("diarize", "true");
 
   const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
     method: "POST",
@@ -351,13 +431,7 @@ export const finishVoiceRecording = internalMutation({
   args: {
     conversationId: v.id("conversations"),
     clerkOrgId: v.string(),
-    transcript: v.array(
-      v.object({
-        role: v.string(),
-        content: v.string(),
-        time_in_call_secs: v.number(),
-      }),
-    ),
+    transcript: v.array(transcriptMessageValidator),
     summary: v.string(),
     analysis: v.any(),
     durationSeconds: v.optional(v.number()),
@@ -380,6 +454,31 @@ export const finishVoiceRecording = internalMutation({
   },
 });
 
+export const markVoiceRecordingNeedsSpeakerLabels = internalMutation({
+  args: {
+    conversationId: v.id("conversations"),
+    clerkOrgId: v.string(),
+    transcript: v.array(transcriptMessageValidator),
+    speakerLabels: v.array(speakerLabelValidator),
+    durationSeconds: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const conv = await ctx.db.get(args.conversationId);
+    if (!conv || conv.clerkOrgId !== args.clerkOrgId) {
+      throw new Error("Conversation not found in this organization");
+    }
+    await ctx.db.patch(args.conversationId, {
+      transcript: args.transcript,
+      speakerLabels: args.speakerLabels,
+      durationSeconds: args.durationSeconds,
+      inputMode: "voiceRecord",
+      transcriptionProvider: "elevenlabs-scribe",
+      analysisProvider: "fabric-openrouter",
+      status: "needs_speaker_labels",
+    });
+  },
+});
+
 export const markVoiceRecordingFailed = internalMutation({
   args: {
     conversationId: v.id("conversations"),
@@ -389,6 +488,125 @@ export const markVoiceRecordingFailed = internalMutation({
     const conv = await ctx.db.get(args.conversationId);
     if (!conv || conv.clerkOrgId !== args.clerkOrgId) return;
     await ctx.db.patch(args.conversationId, { status: "failed" });
+  },
+});
+
+export const getVoiceRecordingForAnalysis = internalQuery({
+  args: {
+    conversationId: v.id("conversations"),
+    clerkOrgId: v.string(),
+  },
+  handler: async (ctx, args): Promise<VoiceRecordingForAnalysis | null> => {
+    const conv = await ctx.db.get(args.conversationId);
+    if (
+      !conv ||
+      conv.clerkOrgId !== args.clerkOrgId ||
+      (conv.inputMode ?? "agent") !== "voiceRecord" ||
+      conv.status !== "processing" ||
+      !conv.transcript ||
+      conv.transcript.length === 0
+    ) {
+      return null;
+    }
+    return {
+      processId: conv.processId,
+      transcript: conv.transcript,
+      durationSeconds: conv.durationSeconds,
+    };
+  },
+});
+
+export const submitSpeakerLabels = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+    labels: v.array(speakerLabelValidator),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgContributor(ctx);
+    const conv = await ctx.db.get(args.conversationId);
+    assertOrgOwns(caller, conv);
+    if ((conv.inputMode ?? "agent") !== "voiceRecord") {
+      throw new Error("Only voice recordings can be speaker-labeled");
+    }
+    if (conv.status !== "needs_speaker_labels") {
+      throw new Error("This recording is not waiting for speaker labels");
+    }
+    if (!conv.transcript || conv.transcript.length === 0) {
+      throw new Error("No transcript is available to label");
+    }
+
+    const requiredSpeakerIds = new Set<string>();
+    for (const existing of conv.speakerLabels ?? []) {
+      requiredSpeakerIds.add(existing.speakerId);
+    }
+    for (const msg of conv.transcript) {
+      if (msg.speakerId) requiredSpeakerIds.add(msg.speakerId);
+    }
+    if (requiredSpeakerIds.size === 0) {
+      requiredSpeakerIds.add("speaker_0");
+    }
+
+    const labelBySpeakerId = new Map<string, SpeakerLabel>();
+    for (const label of args.labels) {
+      const speakerId = label.speakerId.trim();
+      const displayName = label.displayName.trim();
+      if (!speakerId || !requiredSpeakerIds.has(speakerId)) {
+        throw new Error("Speaker labels do not match this transcript");
+      }
+      if (!displayName) {
+        throw new Error("Every speaker needs a display name");
+      }
+      if (displayName.length > 120) {
+        throw new Error("Speaker names must be 120 characters or fewer");
+      }
+      if (labelBySpeakerId.has(speakerId)) {
+        throw new Error("Duplicate speaker label submitted");
+      }
+      if (label.userId) {
+        const user = await ctx.db.get(label.userId);
+        if (!user) throw new Error("Selected member was not found");
+        const memberships = await ctx.db
+          .query("memberships")
+          .withIndex("by_userId", (q) => q.eq("userId", label.userId!))
+          .take(100);
+        if (!memberships.some((m) => m.clerkOrgId === caller.orgId)) {
+          throw new Error("Selected member is not in this organization");
+        }
+      }
+      labelBySpeakerId.set(
+        speakerId,
+        label.userId
+          ? { speakerId, displayName, userId: label.userId }
+          : { speakerId, displayName },
+      );
+    }
+
+    if (labelBySpeakerId.size !== requiredSpeakerIds.size) {
+      throw new Error("Every speaker needs a label before analysis can run");
+    }
+
+    const speakerLabels = [...requiredSpeakerIds].map((speakerId) => {
+      const label = labelBySpeakerId.get(speakerId);
+      if (!label) {
+        throw new Error("Every speaker needs a label before analysis can run");
+      }
+      return label;
+    });
+    const transcript = applySpeakerLabels(conv.transcript, speakerLabels);
+
+    await ctx.db.patch(args.conversationId, {
+      speakerLabels,
+      transcript,
+      status: "processing",
+    });
+
+    await ctx.scheduler.runAfter(
+      0,
+      internal.voiceRecordings.analyzeVoiceRecordingInternal,
+      { conversationId: args.conversationId, clerkOrgId: caller.orgId },
+    );
+
+    return { status: "processing" as const };
   },
 });
 
@@ -407,10 +625,6 @@ export const processVoiceRecordingInternal = internalAction({
       if (!elevenLabsKey) {
         throw new Error("ELEVENLABS_API_KEY is not configured");
       }
-      const openrouterKey = process.env.OPENROUTER_API_KEY;
-      if (!openrouterKey) {
-        throw new Error("OPENROUTER_API_KEY is not configured");
-      }
 
       const audio = await ctx.storage.get(args.storageId);
       if (!audio) {
@@ -427,29 +641,83 @@ export const processVoiceRecordingInternal = internalAction({
         throw new Error("Scribe returned an empty transcript");
       }
 
-      const analysis = await analyzeTranscript(transcript, openrouterKey);
       const inferredDuration =
         args.durationSeconds ??
         transcript[transcript.length - 1]?.time_in_call_secs;
+      const speakerLabels = defaultSpeakerLabels(transcript);
+
+      await ctx.runMutation(
+        internal.voiceRecordings.markVoiceRecordingNeedsSpeakerLabels,
+        {
+          conversationId: args.conversationId,
+          clerkOrgId: args.clerkOrgId,
+          transcript,
+          speakerLabels,
+          durationSeconds: inferredDuration,
+        },
+      );
+
+      return {
+        status: "needs_speaker_labels" as const,
+        conversationId: args.conversationId,
+      };
+    } catch (error) {
+      console.error("Voice recording transcription failed:", error);
+      await ctx.runMutation(internal.voiceRecordings.markVoiceRecordingFailed, {
+        conversationId: args.conversationId,
+        clerkOrgId: args.clerkOrgId,
+      });
+      return { status: "failed" as const };
+    }
+  },
+});
+
+export const analyzeVoiceRecordingInternal = internalAction({
+  args: {
+    conversationId: v.id("conversations"),
+    clerkOrgId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    try {
+      const openrouterKey = process.env.OPENROUTER_API_KEY;
+      if (!openrouterKey) {
+        throw new Error("OPENROUTER_API_KEY is not configured");
+      }
+
+      const recording: VoiceRecordingForAnalysis | null = await ctx.runQuery(
+        internal.voiceRecordings.getVoiceRecordingForAnalysis,
+        {
+          conversationId: args.conversationId,
+          clerkOrgId: args.clerkOrgId,
+        },
+      );
+      if (!recording) {
+        throw new Error("Voice recording is not ready for analysis");
+      }
+
+      const analysis = await analyzeTranscript(
+        recording.transcript,
+        openrouterKey,
+      );
 
       await ctx.runMutation(internal.voiceRecordings.finishVoiceRecording, {
         conversationId: args.conversationId,
         clerkOrgId: args.clerkOrgId,
-        transcript,
+        transcript: recording.transcript,
         summary: analysis.transcript_summary,
         analysis,
-        durationSeconds: inferredDuration,
+        durationSeconds: recording.durationSeconds,
       });
 
       await ctx.scheduler.runAfter(
         0,
         internal.postCall.regenerateProcessSummary,
-        { processId: args.processId, clerkOrgId: args.clerkOrgId },
+        { processId: recording.processId, clerkOrgId: args.clerkOrgId },
       );
 
       return { status: "done" as const };
     } catch (error) {
-      console.error("Voice recording processing failed:", error);
+      console.error("Voice recording analysis failed:", error);
       await ctx.runMutation(internal.voiceRecordings.markVoiceRecordingFailed, {
         conversationId: args.conversationId,
         clerkOrgId: args.clerkOrgId,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, useAction, useMutation } from "convex/react";
 import { useConversation } from "@elevenlabs/react";
 import type { Status } from "@elevenlabs/react";
@@ -37,6 +37,7 @@ import {
   CollapsibleTrigger,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
+import { SpeakerLabelReview } from "@/components/speaker-label-review";
 import {
   Mic,
   MicOff,
@@ -54,7 +55,13 @@ import {
 
 // --- Types ---
 
-type ModalStep = "name" | "consent" | "recording" | "processing" | "review";
+type ModalStep =
+  | "name"
+  | "consent"
+  | "recording"
+  | "speakerLabels"
+  | "processing"
+  | "review";
 export type RecordingMode = "agent" | "voiceRecord";
 type VoiceRecordState =
   | "idle"
@@ -177,10 +184,16 @@ export function RecordingModal({
   const [voiceRecordError, setVoiceRecordError] = useState<string | null>(null);
   const [submittedVoiceConversationId, setSubmittedVoiceConversationId] =
     useState<Id<"conversations"> | null>(null);
+  const [speakerLabelsSubmitted, setSpeakerLabelsSubmitted] = useState(false);
 
   // Post-call state
   const [postCallResult, setPostCallResult] = useState<{
-    status: "done" | "failed" | "timeout" | "processing";
+    status:
+      | "done"
+      | "failed"
+      | "timeout"
+      | "processing"
+      | "needs_speaker_labels";
     summary?: string;
     transcript?: { role: string; content: string; time_in_call_secs: number }[];
   } | null>(null);
@@ -201,6 +214,15 @@ export function RecordingModal({
   const existingConversations = useQuery(api.conversations.listByProcess, {
     processId,
   });
+  const submittedVoiceConversation = useMemo(
+    () =>
+      submittedVoiceConversationId && existingConversations
+        ? existingConversations.find(
+            (conversation) => conversation._id === submittedVoiceConversationId
+          )
+        : null,
+    [existingConversations, submittedVoiceConversationId]
+  );
 
   // Pre-fill name from user profile
   useEffect(() => {
@@ -229,6 +251,7 @@ export function RecordingModal({
       setRecordedBlob(null);
       setVoiceRecordError(null);
       setSubmittedVoiceConversationId(null);
+      setSpeakerLabelsSubmitted(false);
       audioChunksRef.current = [];
     } else {
       if (timerRef.current) {
@@ -516,6 +539,7 @@ export function RecordingModal({
     setVoiceRecordSeconds(0);
     setVoiceRecordError(null);
     setSubmittedVoiceConversationId(null);
+    setSpeakerLabelsSubmitted(false);
     setVoiceRecordState("idle");
   }, [stopVoiceRecording]);
 
@@ -527,6 +551,7 @@ export function RecordingModal({
     try {
       setVoiceRecordState("uploading");
       setStep("processing");
+      setSpeakerLabelsSubmitted(false);
 
       const uploadUrl = await generateVoiceRecordingUploadUrl({ processId });
       const upload = await fetch(uploadUrl, {
@@ -572,29 +597,42 @@ export function RecordingModal({
       mode !== "voiceRecord" ||
       step !== "processing" ||
       !submittedVoiceConversationId ||
-      !existingConversations
+      !submittedVoiceConversation
     ) {
       return;
     }
 
-    const submittedConversation = existingConversations.find(
-      (conversation) => conversation._id === submittedVoiceConversationId
-    );
-    if (!submittedConversation) return;
+    const nextState =
+      submittedVoiceConversation.status === "needs_speaker_labels" &&
+      !speakerLabelsSubmitted
+        ? ("speakerLabels" as const)
+        : submittedVoiceConversation.status === "done"
+          ? ("done" as const)
+          : submittedVoiceConversation.status === "failed"
+            ? ("failed" as const)
+            : null;
+    if (!nextState) return;
 
-    if (submittedConversation.status === "done") {
-      setPostCallResult({ status: "done" });
-      setVoiceRecordState("success");
-      setStep("review");
-    } else if (submittedConversation.status === "failed") {
-      setPostCallResult({ status: "failed" });
-      setVoiceRecordState("error");
-      setStep("review");
-    }
+    const timer = window.setTimeout(() => {
+      if (nextState === "speakerLabels") {
+        setPostCallResult({ status: "needs_speaker_labels" });
+        setStep("speakerLabels");
+      } else if (nextState === "done") {
+        setPostCallResult({ status: "done" });
+        setVoiceRecordState("success");
+        setStep("review");
+      } else {
+        setPostCallResult({ status: "failed" });
+        setVoiceRecordState("error");
+        setStep("review");
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [
-    existingConversations,
     mode,
+    speakerLabelsSubmitted,
     step,
+    submittedVoiceConversation,
     submittedVoiceConversationId,
   ]);
 
@@ -653,7 +691,7 @@ export function RecordingModal({
       <DialogContent
         className={cn(
           "flex flex-col gap-0 p-0",
-          step === "recording"
+          step === "recording" || step === "speakerLabels"
             ? "h-[90vh] max-h-[90vh] sm:max-w-2xl"
             : "sm:max-w-md"
         )}
@@ -1134,6 +1172,48 @@ export function RecordingModal({
             )}
           </div>
         )}
+
+        {/* Step 4: Speaker labels for diarized voice recordings */}
+        {step === "speakerLabels" &&
+          mode === "voiceRecord" &&
+          submittedVoiceConversation && (
+            <div className="flex h-full flex-col overflow-hidden">
+              <div className="shrink-0 border-b px-4 py-3">
+                <Breadcrumb>
+                  <BreadcrumbList>
+                    <BreadcrumbItem>
+                      <BreadcrumbPage className="text-xs text-muted-foreground">
+                        {functionName}
+                      </BreadcrumbPage>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      <BreadcrumbPage className="text-xs text-muted-foreground">
+                        {departmentName}
+                      </BreadcrumbPage>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      <BreadcrumbPage className="text-xs font-medium">
+                        {processName}
+                      </BreadcrumbPage>
+                    </BreadcrumbItem>
+                  </BreadcrumbList>
+                </Breadcrumb>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6">
+                <SpeakerLabelReview
+                  conversation={submittedVoiceConversation}
+                  onSubmitted={() => {
+                    setSpeakerLabelsSubmitted(true);
+                    setPostCallResult({ status: "processing" });
+                    setVoiceRecordState("processing");
+                    setStep("processing");
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
         {/* Step 4: Processing — post-call pipeline running */}
         {step === "processing" && (
