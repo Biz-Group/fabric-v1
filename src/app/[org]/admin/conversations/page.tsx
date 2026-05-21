@@ -103,7 +103,7 @@ function ConversationTypeBadge({
     inputMode === "audioUpload" ? Upload : isAgent ? Bot : Mic;
 
   return (
-    <Badge variant={isAgent ? "secondary" : "outline"} className="gap-1.5">
+    <Badge variant="secondary" className="gap-1.5">
       <Icon />
       {getConversationTypeLabel(inputMode)}
     </Badge>
