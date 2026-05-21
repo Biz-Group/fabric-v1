@@ -1304,16 +1304,14 @@ export function MillerColumns() {
                         size="lg"
                         aria-label="Upload audio file"
                         title="Upload audio file"
-                        className="min-h-12 justify-center gap-2 rounded-l-none rounded-r-xl px-3"
+                        className="min-h-12 flex-1 justify-start gap-2 rounded-l-none rounded-r-xl"
                         onClick={() => {
                           setRecordingMode("audioUpload");
                           setRecordingOpen(true);
                         }}
                       >
                         <Upload className="h-4 w-4" />
-                        <span className="sr-only sm:not-sr-only sm:inline">
-                          Upload
-                        </span>
+                        Upload Audio
                       </Button>
                     </div>
                   </div>
