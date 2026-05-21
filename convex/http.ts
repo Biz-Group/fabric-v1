@@ -174,7 +174,7 @@ http.route({
           elevenlabsConversationId: string;
         }
       | {
-          inputMode: "voiceRecord";
+          inputMode: "voiceRecord" | "audioUpload";
           audioStorageId: Id<"_storage">;
           audioMimeType: string;
         };
@@ -191,7 +191,7 @@ http.route({
       return new Response("Not found", { status: 404 });
     }
 
-    if (source.inputMode === "voiceRecord") {
+    if (source.inputMode !== "agent") {
       const blob = await ctx.storage.get(source.audioStorageId);
       if (!blob) return new Response("Audio not available", { status: 404 });
       const audioBytes = await blob.arrayBuffer();

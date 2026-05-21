@@ -39,6 +39,7 @@ import {
   Trash2,
   Clock,
   Bot,
+  Upload,
 } from "lucide-react";
 import {
   Tooltip,
@@ -1284,19 +1285,37 @@ export function MillerColumns() {
                       <Bot className="h-4 w-4" />
                       AI Interview
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      aria-label="Start voice record"
-                      className="min-h-12 flex-1 justify-start gap-2 rounded-xl"
-                      onClick={() => {
-                        setRecordingMode("voiceRecord");
-                        setRecordingOpen(true);
-                      }}
-                    >
-                      <Mic className="h-4 w-4" />
-                      Voice Record
-                    </Button>
+                    <div className="flex flex-1 gap-px">
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        aria-label="Start voice record"
+                        className="min-h-12 flex-1 justify-start gap-2 rounded-l-xl rounded-r-none"
+                        onClick={() => {
+                          setRecordingMode("voiceRecord");
+                          setRecordingOpen(true);
+                        }}
+                      >
+                        <Mic className="h-4 w-4" />
+                        Voice Record
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        aria-label="Upload audio file"
+                        title="Upload audio file"
+                        className="min-h-12 justify-center gap-2 rounded-l-none rounded-r-xl px-3"
+                        onClick={() => {
+                          setRecordingMode("audioUpload");
+                          setRecordingOpen(true);
+                        }}
+                      >
+                        <Upload className="h-4 w-4" />
+                        <span className="sr-only sm:not-sr-only sm:inline">
+                          Upload
+                        </span>
+                      </Button>
+                    </div>
                   </div>
                 )}
 

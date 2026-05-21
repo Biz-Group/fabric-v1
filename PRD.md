@@ -24,6 +24,7 @@ Institutional knowledge lives in people's heads. When someone leaves, gets promo
 A single-page app that mirrors the way an organization is structured — Function → Department → Process — where anyone can walk up, pick their process, and have a conversation with an AI agent about what they do. Over time, Fabric builds a comprehensive, voice-sourced map of how the entire company operates.
 
 **Phase 1 (this POC):** Capture, summarize, and replay. A company diary with voice — record, listen back, and see how the organization works at a glance.
+**Phase 1.1 (current capture enhancement):** Support direct voice recordings with ElevenLabs Scribe diarization and a required speaker-labeling review before transcript analysis, process summaries, or process-flow generation run.
 **Phase 1.5 (current):** Visualize — automatically convert captured conversations into interactive process flow diagrams that surface bottlenecks, tribal knowledge risks, automation opportunities, and handoff points.
 **Phase 2 (future):** Query, search, and retrieval — so new joiners and cross-functional teams can ask questions and get answers sourced from the captured knowledge.
 
@@ -58,13 +59,13 @@ When a user selects a process, they see:
 
 **Tab 1: Conversations (default)**
 
-3. **"Record a Conversation" button** — launches the ElevenLabs voice agent widget
-4. **Process Summary Box** — a prominent, always-visible card at the top displaying the AI-generated rolling summary as a structured analyst brief with thematic sections (Overview, Key Stages, Consensus, Tensions & Gaps, Notable Details) and contributor citations. Updated incrementally after each new conversation. Rendered as markdown. This is the "at a glance" view of how this process works.
+3. **"Record a Conversation" button** — launches the recording modal with AI interview and direct Voice Record options
+4. **Process Summary Box** — a prominent, always-visible card at the top displaying the AI-generated rolling summary as a structured analyst brief with thematic sections (Overview, Key Stages, Consensus, Tensions & Gaps, Notable Details) and contributor citations. Updated incrementally after each completed conversation. Rendered as markdown. This is the "at a glance" view of how this process works.
 5. **Conversation log** — a reverse-chronological list of all past sessions for this process, each showing:
    - Contributor name
    - Date and time
-   - AI-generated summary (collapsible)
-   - **Audio player** — inline playback of the recorded conversation (MP3 streamed from ElevenLabs)
+   - AI-generated summary or in-progress speaker-labeling status (collapsible)
+   - **Audio player** — inline playback of the recorded conversation (AI interview audio proxied from ElevenLabs; direct Voice Record audio streamed from Convex Storage)
    - Full transcript (collapsible, nested under summary)
 
 **Tab 2: Process Flow**
@@ -78,12 +79,14 @@ When a user selects a process, they see:
    - **Node selection**: clicking a node highlights it (ring + scale), dims all other nodes and unconnected edges to 10% opacity, and opens a detail panel
    - **Node detail panel** (desktop: 320px slide-in from right; mobile: bottom Sheet at 60vh): shows full description, actors, tools, duration, automation potential, confidence, pain points, risk indicators, sources, and navigable connections ("Comes after" / "Leads to")
    - **Insights bar** at the bottom: step count, handoff count, tool count, total duration, bottleneck count, automation opportunity count
-   - **Staleness tracking**: when new conversations are recorded, the flow is marked stale with an amber "New data available" badge and Refresh button
+   - **Staleness tracking**: when completed conversations add new labeled analysis data, the flow is marked stale with an amber "New data available" badge and Refresh button
    - **Fullscreen mode** via maximize button
    - **Canvas controls**: MiniMap (desktop only), zoom/pan controls, fit-to-view
    - **Process-level insights**: critical path, automation opportunities (prose summaries), top bottlenecks
 
 ### 2.3 Conversation Flow
+
+**AI interview flow:**
 
 1. User navigates to a process.
 2. User clicks "Record a Conversation."
@@ -95,6 +98,14 @@ When a user selects a process, they see:
 8. The Convex action calls Claude Haiku 4.5 (via OpenRouter) for incremental summary generation — passing the existing rolling summary plus the new conversation's full transcript — and updates the process-level structured summary.
 9. Convex's built-in reactivity pushes the update to the UI — the new conversation appears in the log automatically.
 
+**Direct Voice Record flow:**
+
+1. User records microphone audio in the same modal without the AI interviewer.
+2. The frontend uploads the audio blob to Convex Storage.
+3. Convex sends the stored audio to ElevenLabs Scribe with diarization enabled.
+4. The conversation pauses at `needs_speaker_labels`; the contributor names each diarized speaker and may link them to org members.
+5. After labels are submitted, Fabric runs OpenRouter analysis on the labeled transcript, stores the conversation summary and structured extraction, then updates the process-level rolling summary and flow staleness state.
+
 ---
 
 ## 3. Technical Architecture
@@ -105,13 +116,14 @@ When a user selects a process, they see:
 |---|---|
 | Frontend | **Next.js** (React) with **shadcn/ui** + **ElevenLabs UI** components |
 | Voice Agent | `@elevenlabs/react` SDK (`useConversation` hook) |
+| Direct recording capture | Browser `MediaRecorder` + Convex Storage upload |
 | UI Components | ElevenLabs UI registry (Orb, Conversation, ConversationBar, Message, Transcript Viewer, Audio Player, Scrub Bar, Waveform, Voice Button) — built on shadcn/ui |
 | Backend / BaaS | **Convex** (document database, server functions, built-in reactivity) |
-| Conversation Summaries | ElevenLabs Conversation Analysis (built-in, no extra cost) |
+| Conversation Summaries | ElevenLabs Conversation Analysis for AI interviews; Fabric/OpenRouter analysis for direct Voice Record after speaker labeling |
 | Process-level Summaries | Claude Haiku 4.5 via OpenRouter API (OpenAI-compatible) — structured analyst briefs with thematic sections and citations |
 | Process Flow Diagrams | React Flow (`@xyflow/react`) with dagre auto-layout (`@dagrejs/dagre`) — AI-generated from conversation data via Claude Haiku 4.5 |
-| Post-call data | ElevenLabs Conversations API (transcript, summary, analysis) |
-| Audio playback | ElevenLabs Conversations Audio API (`GET .../audio`) — streamed on demand, no storage needed |
+| Post-call data | ElevenLabs Conversations API for AI interviews; ElevenLabs Scribe diarized transcription for direct Voice Record |
+| Audio playback | Org-scoped Convex HTTP proxy; AI interviews stream from ElevenLabs, direct Voice Record streams from Convex Storage |
 | Hosting | Vercel (frontend) + Convex (backend) |
 
 ### 3.2 Data Model (Convex)
@@ -152,15 +164,33 @@ export default defineSchema({
   // Conversation records
   conversations: defineTable({
     processId: v.id("processes"),
-    elevenlabsConversationId: v.string(),   // from startSession() return
+    elevenlabsConversationId: v.optional(v.string()), // AI interview session id
     contributorName: v.string(),
-    transcript: v.optional(v.any()),         // full structured transcript from ElevenLabs
-    summary: v.optional(v.string()),         // from ElevenLabs analysis (no Claude call needed)
-    analysis: v.optional(v.any()),           // ElevenLabs evaluation + data collection results
+    userId: v.optional(v.id("users")),
+    inputMode: v.optional(v.union(v.literal("agent"), v.literal("voiceRecord"))),
+    audioStorageId: v.optional(v.id("_storage")), // direct Voice Record only
+    audioMimeType: v.optional(v.string()),
+    transcriptionProvider: v.optional(v.union(
+      v.literal("elevenlabs-convai"),
+      v.literal("elevenlabs-scribe"),
+    )),
+    analysisProvider: v.optional(v.union(
+      v.literal("elevenlabs-convai"),
+      v.literal("fabric-openrouter"),
+    )),
+    transcript: v.optional(v.any()),         // message array; direct recordings include speakerId/speakerName
+    speakerLabels: v.optional(v.array(v.object({
+      speakerId: v.string(),
+      displayName: v.string(),
+      userId: v.optional(v.id("users")),
+    }))),
+    summary: v.optional(v.string()),         // ElevenLabs for AI interviews; Fabric/OpenRouter for Voice Record
+    analysis: v.optional(v.any()),           // data collection / process-flow input payload
     durationSeconds: v.optional(v.number()),
-    status: v.string(),                      // "processing" | "done" | "failed"
-  }).index("by_process", ["processId"])
-    .index("by_status", ["status"]),
+    status: v.string(),                      // "processing" | "needs_speaker_labels" | "done" | "failed"
+    clerkOrgId: v.string(),
+  }).index("by_clerkOrgId_and_processId", ["clerkOrgId", "processId"])
+    .index("by_clerkOrgId_and_status", ["clerkOrgId", "status"]),
 
   // Process flow diagrams — one per process, AI-generated from conversation data
   processFlows: defineTable({
@@ -341,30 +371,51 @@ ElevenLabs supports webhooks that fire when processing is complete:
 
 Webhook endpoint: a **Convex HTTP action** that receives the webhook payload, extracts transcript + analysis (including the ElevenLabs-generated summary), and inserts directly into the `conversations` table. Then triggers `regenerateProcessSummary` to update the process-level rolling summary via OpenRouter.
 
+#### 3.3.4a Direct Voice Record Pipeline — Scribe, Diarization, Speaker Labels
+
+In addition to AI interview sessions, Fabric supports a direct **Voice Record** mode for contributors who want to record process notes or multi-person discussion without the AI interviewer.
+
+**Direct recording flow:**
+1. Browser records microphone audio with `MediaRecorder`.
+2. Frontend uploads the audio blob to Convex Storage using a signed upload URL.
+3. `voiceRecordings.processVoiceRecording` inserts a `conversations` row with `inputMode: "voiceRecord"` and `status: "processing"`, then schedules transcription.
+4. `processVoiceRecordingInternal` sends the stored audio to ElevenLabs Speech-to-Text (`scribe_v2`) with word timestamps and `diarize=true`.
+5. Fabric normalizes the Scribe word stream into transcript chunks, splitting when `speaker_id` changes, and saves default labels (`Speaker 1`, `Speaker 2`, etc.).
+6. The conversation transitions to `status: "needs_speaker_labels"` and **stops before analysis**.
+7. The contributor reviews diarized speaker samples, assigns display names, and can optionally link each speaker to an org member.
+8. `submitSpeakerLabels` patches `speakerName` onto transcript segments, transitions the conversation back to `processing`, and schedules analysis.
+9. `analyzeVoiceRecordingInternal` runs Fabric's OpenRouter analysis prompt on the labeled transcript, stores `summary` + structured `analysis`, marks the conversation `done`, and only then schedules `regenerateProcessSummary`.
+
+**Why speaker labeling is before analysis:**
+- Process summaries and process flows cite contributors and infer handoffs/actors. Running analysis on unlabeled `speaker_0` / `speaker_1` text would lose important context and could misattribute process ownership.
+- The label gate makes the transcript, conversation summary, rolling process summary, and process-flow extraction use confirmed human-readable speaker names.
+- Duplicate display names are allowed so users can correct over-split diarization by labeling two Scribe speakers as the same person.
+
 #### 3.3.5 Audio Playback — Streamed from ElevenLabs
 
-ElevenLabs provides a dedicated endpoint to retrieve the audio recording of any conversation:
+For AI interview conversations, ElevenLabs provides a dedicated endpoint to retrieve the audio recording:
 
 ```
 GET https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}/audio
 Header: xi-api-key: <API_KEY>
 ```
 
-This returns the raw audio file directly. **Fabric does not store audio files** — instead, a lightweight proxy endpoint (Convex HTTP action) adds the `xi-api-key` header and streams the response to the frontend. The ElevenLabs UI Audio Player / Scrub Bar component points at this proxy URL.
+This returns the raw audio file directly. For AI interviews, Fabric does not store audio files — a lightweight proxy endpoint (Convex HTTP action) adds the `xi-api-key` header and streams the response to the frontend. For direct Voice Record mode, Fabric streams the retained Convex Storage audio object through the same org-scoped audio proxy.
 
 **Why this works for POC:**
-- No file storage needed — removes an entire infrastructure layer
+- No file storage needed for AI interviews — removes an infrastructure layer from the agent path
 - No `post_call_audio` webhook processing — no base64 decoding, no upload pipeline
-- No `audio_url` column in the database — the URL is deterministic from `elevenlabs_conversation_id`
+- No `audio_url` column in the database — playback is resolved from either `elevenlabsConversationId` (AI interview) or `audioStorageId` (direct Voice Record)
 - Retrieval is a read operation, not a generation — **no additional credits consumed**
 - ElevenLabs retains conversation audio natively as part of the Agents Platform (built-in retention)
-- Tradeoff: playback depends on ElevenLabs API availability — acceptable for POC
+- Tradeoff: AI interview playback depends on ElevenLabs API availability; direct voice-record playback depends on Convex Storage availability
 
 **Proxy endpoint pattern:**
 ```
-GET /api/audio/:elevenlabs_conversation_id
-→ Convex HTTP action calls ElevenLabs API with xi-api-key
-→ Streams audio response back to the frontend
+GET /audio/:clerkOrgId/:conversationId?exp=...&sig=...
+→ Convex HTTP action verifies signed URL + org ownership
+→ AI interview: proxy ElevenLabs audio API with xi-api-key
+→ Direct Voice Record: stream Convex Storage blob
 → Frontend <audio> element or ElevenLabs UI Audio Player renders it
 ```
 
@@ -384,7 +435,7 @@ ElevenLabs provides built-in, LLM-powered post-call analysis with two capabiliti
 - `frequency` (string, e.g., "weekly", "monthly")
 - `edge_cases` (list of strings)
 
-These results are returned in the `analysis` field of the conversation details API and in the post-call webhook payload. The analysis object also includes a **transcript summary** — a narrative summary of the conversation generated by ElevenLabs' LLM. **This means ElevenLabs handles all conversation-level summarization natively.** Fabric simply stores the summary and structured data as-is, with no additional LLM call needed per conversation. Claude is only used for the process-level rolling summary (synthesizing multiple conversation summaries together).
+These results are returned in the `analysis` field of the conversation details API and in the post-call webhook payload. The analysis object also includes a **transcript summary** — a narrative summary of the conversation generated by ElevenLabs' LLM. **For AI interviews, ElevenLabs handles all conversation-level summarization natively.** Fabric simply stores the summary and structured data as-is. For direct Voice Record mode, Fabric uses ElevenLabs Scribe only for diarized transcription, then runs its own OpenRouter analysis after speaker labels are confirmed.
 
 ### 3.4 Summarization Pipeline
 
@@ -397,17 +448,19 @@ These results are returned in the `analysis` field of the conversation details A
 
 ---
 
-**Conversation-level summary — handled entirely by ElevenLabs:**
-The `analysis` object returned by the Conversations API (and via the `post_call_transcription` webhook) includes a **transcript summary** generated by ElevenLabs' own LLM-powered analysis. Combined with the Data Collection fields (steps, tools, dependencies, etc.), this gives us everything we need per conversation — **no Claude API call required**.
+**Conversation-level summary — source depends on input mode:**
+For AI interviews, the `analysis` object returned by the Conversations API (and via the `post_call_transcription` webhook) includes a **transcript summary** generated by ElevenLabs' own LLM-powered analysis. Combined with the Data Collection fields (steps, tools, dependencies, etc.), this gives us everything we need for that conversation without a Fabric conversation-level LLM call.
 
-We simply store `analysis.transcript_summary` in `conversations.summary` and the structured `analysis.data_collection` results in `conversations.analysis`.
+For AI interviews, Fabric stores `analysis.transcript_summary` in `conversations.summary` and the structured `analysis.data_collection` results in `conversations.analysis`.
+
+For direct Voice Record mode, Fabric first transcribes with ElevenLabs Scribe diarization, pauses for speaker labels, then sends the labeled transcript to Claude Haiku 4.5 via OpenRouter to generate the conversation-level `summary` and process-flow-compatible `analysis.data_collection`. This is the only current path where Fabric performs a conversation-level LLM call.
 
 **Process-level rolling summary — Claude Haiku 4.5 via OpenRouter (incremental, auto-regenerated):**
 
-After each new conversation is stored, a Convex action generates or updates the process rolling summary using an **incremental approach**:
+After each completed conversation is stored with analysis-ready transcript data, a Convex action generates or updates the process rolling summary using an **incremental approach**:
 
 - **First conversation:** The full transcript is sent to Claude Haiku 4.5 to produce the initial structured summary.
-- **Subsequent conversations:** The *existing rolling summary* plus the *new conversation's full transcript* are sent. The LLM integrates the new information into the existing structure — adding citations, updating consensus, surfacing new tensions. This avoids re-processing all prior transcripts and keeps token cost roughly constant per call.
+- **Subsequent conversations:** The *existing rolling summary* plus the *new completed conversation's full transcript* are sent. The LLM integrates the new information into the existing structure — adding citations, updating consensus, surfacing new tensions. This avoids re-processing all prior transcripts and keeps token cost roughly constant per call.
 
 The transcript (not just ElevenLabs' short summary) is passed to the LLM so it has enough detail to identify themes, contradictions, and nuance.
 
@@ -459,7 +512,7 @@ Unique findings from individual processes worth surfacing
 at the department level.
 ```
 
-- **Staleness**: A department summary becomes stale when: (a) a new conversation is recorded under any child process (the process summary auto-regenerates, then marks the department stale), (b) a process is added or removed from the department.
+- **Staleness**: A department summary becomes stale when: (a) a new completed conversation updates any child process summary, (b) a process is added or removed from the department.
 - **Token efficiency**: If the summary exists and `summaryStale === false`, the action returns the persisted summary without making an LLM call — no tokens wasted on unchanged data.
 - **Force refresh**: A `forceRefresh` flag can bypass the staleness check to regenerate regardless.
 - **UI**: Shows a "Last refreshed: X ago" timestamp and a stale indicator ("New data available") when invalidated.
@@ -497,13 +550,13 @@ function level.
 Function Summary (built from Department Summaries)
   └── Department Summary (built from Process Rolling Summaries)
       └── Process Rolling Summary (built incrementally: prev summary + new transcript)
-          └── Conversation Summary (provided by ElevenLabs — no LLM cost)
+          └── Conversation Summary (ElevenLabs for AI interviews; Fabric/OpenRouter for direct Voice Record after speaker labels)
               └── Full Transcript (stored, passed to process summary generation)
 ```
 
 **Staleness propagation:**
 ```
-New recording → Process summary incrementally updated
+New completed recording → Process summary incrementally updated
   → Process flow marked stale
   → Department summary marked stale
     → Function summary marked stale
@@ -523,14 +576,17 @@ New department added/removed → Function summary marked stale
 | `postCallWebhook` | `httpAction` | HTTP POST (from ElevenLabs `post_call_transcription` webhook) | Receives transcript, summary, analysis, and metadata. Stores in `conversations` table. Triggers process summary regeneration. |
 | `regenerateProcessSummary` | `action` | Called after conversation is inserted | Fetches all conversation summaries for a process → sends to Claude Haiku via OpenRouter → updates `processes.rollingSummary` |
 | `fetchConversation` | `action` | Called by frontend after `onDisconnect` (polling path) | Polls ElevenLabs API for conversation details, inserts into DB when status = `done`, then triggers `regenerateProcessSummary` |
-| `getAudio` | `httpAction` | Called by frontend audio player | Proxies `GET /v1/convai/conversations/{id}/audio` with `xi-api-key` header, streams MP3 back to client |
+| `processVoiceRecording` | `action` | Called after direct Voice Record upload | Inserts a processing conversation, then schedules Scribe transcription with diarization. |
+| `submitSpeakerLabels` | `mutation` | Called from speaker-label review UI | Validates labels, optionally links speakers to org members, patches transcript `speakerName`s, and schedules voice-recording analysis. |
+| `analyzeVoiceRecordingInternal` | `internalAction` | Scheduled after speaker labels are submitted | Runs OpenRouter analysis on the labeled transcript, stores summary/analysis, marks the conversation done, and triggers process summary regeneration. |
+| `getAudio` | `httpAction` | Called by frontend audio player | Verifies org-scoped signed audio URLs; proxies ElevenLabs audio for AI interviews or streams Convex Storage audio for direct Voice Records. |
 | `generateProcessFlow` | `action` | Called by frontend "Generate Process Flow" button | Auth-gated entry point. Sets status to "generating", schedules the internal LLM action. |
 | `generateFlowInternal` | `internalAction` | Scheduled by `generateProcessFlow` | Assembles rolling summary + conversation analysis data into a prompt, calls Claude Haiku 4.5 via OpenRouter, parses JSON response, validates/normalizes nodes and edges, saves to `processFlows` table. |
 | `getProcessFlow` | `query` | Convex subscription from frontend | Returns the `processFlows` document for a given process. Real-time — UI auto-updates when generation completes. |
 | `markFlowStale` | `internalMutation` | Called after `regenerateProcessSummary` | Sets `stale: true` on the process flow when new conversation data arrives. |
 
 **Built-in reactivity (no manual subscriptions needed):**
-Convex queries are reactive by default. Any component using `useQuery` will auto-update when the underlying data changes. When a new conversation record is inserted (or its status changes to `done`), the Process Detail Panel auto-refreshes without a page reload — no channels, no subscriptions, no cleanup.
+Convex queries are reactive by default. Any component using `useQuery` will auto-update when the underlying data changes. When a new conversation record is inserted (or its status changes to `needs_speaker_labels` / `done`), the Process Detail Panel auto-refreshes without a page reload — no channels, no subscriptions, no cleanup.
 
 ```tsx
 // Convex queries are reactive by default — no manual subscriptions needed.
@@ -542,7 +598,7 @@ const process = useQuery(api.processes.get, { processId: selectedProcessId });
 // process.rollingSummary auto-updates when regenerateProcessSummary writes a new value
 ```
 
-**Data flow (POC — polling path):**
+**Data flow (AI interview — polling path):**
 
 1. User starts session → `conversation.startSession()` → receives `conversationId`
 2. User ends session → `onDisconnect` fires
@@ -551,7 +607,18 @@ const process = useQuery(api.processes.get, { processId: selectedProcessId });
 5. Convex action extracts transcript, summary (from `analysis`), and data collection results → inserts into `conversations` table via `ctx.runMutation` (no Claude call needed — ElevenLabs provides the summary)
 6. Convex action calls `regenerateProcessSummary` → Claude Haiku 4.5 (via OpenRouter) incrementally updates the structured process summary (existing summary + new transcript) → updates `processes.rollingSummary`
 7. Convex reactivity auto-updates the frontend → UI refreshes with summary, transcript, and audio player (no manual subscriptions needed)
-8. Audio playback: when user clicks play, the Audio Player component calls `getAudio` HTTP action → proxies the ElevenLabs Audio API → streams MP3 to the browser (no stored files, no additional credits)
+8. Audio playback: when user clicks play, the Audio Player component calls the org-scoped audio HTTP action → proxies the ElevenLabs Audio API → streams MP3 to the browser (no stored files for AI interviews, no additional credits)
+
+**Data flow (direct Voice Record — Scribe + speaker labels):**
+
+1. User records local microphone audio in the browser and uploads the blob to Convex Storage.
+2. `processVoiceRecording` creates a `conversations` row with `inputMode: "voiceRecord"` and `status: "processing"`.
+3. `processVoiceRecordingInternal` sends the audio to ElevenLabs Scribe (`scribe_v2`) with diarization enabled.
+4. Fabric stores the diarized transcript with `speakerId`s and default `speakerLabels`, then sets `status: "needs_speaker_labels"`.
+5. The UI prompts a contributor to name each speaker and optionally link each speaker to an org member.
+6. `submitSpeakerLabels` patches `speakerName`s onto transcript segments and sets status back to `processing`.
+7. `analyzeVoiceRecordingInternal` analyzes the labeled transcript through OpenRouter, saves the conversation summary and structured analysis, sets status to `done`, and schedules `regenerateProcessSummary`.
+8. The process summary and process flow only see labeled speaker names, never raw `speaker_0` / `speaker_1` identifiers.
 
 ### 3.6 Authentication & User Access
 
@@ -913,18 +980,20 @@ Alternatively, the entire modal can use the **Conversation Bar** component, whic
 - **User authentication** — Clerk with prebuilt sign-in/sign-up UI, Convex JWT validation, auth gates on all Convex functions, user profiles with organizational attributes (Job Title, Function, Department, Hire Date), required profile onboarding on first login, Clerk `<UserButton />` in header (Phase 5)
 - **Role-based access control** — three roles (admin, contributor, viewer) stored in Convex `users` table. Admin: full access + user role management + future admin dashboard. Contributor: CRUD hierarchy, record conversations, view summaries. Viewer: browse hierarchy and view summaries only (no CRUD, no recording). New users default to viewer. Role enforcement on both backend (server-side guards on mutations/actions) and frontend (conditional UI rendering). First admin bootstrapped via CLI. (Phase 12)
 - ElevenLabs voice agent integration via `@elevenlabs/react` SDK with dynamic context injection
+- Direct **Voice Record** mode for uploaded browser recordings, using ElevenLabs Scribe diarized transcription and a speaker-labeling review before analysis.
 - Recording UI using **ElevenLabs UI** components (Orb, Conversation, Message, Waveform, Voice Button)
 - **Contributor name prompt** — auto-filled from authenticated user profile; shadcn Dialog still allows override before recording starts
 - **Consent banner** — simple notice before first recording: "This conversation will be recorded, transcribed, and stored."
-- Post-call transcript and summary retrieval via ElevenLabs Conversations API (summary provided by ElevenLabs — no extra LLM call)
-- **Post-call loading state** — ShimmeringText "Processing your conversation..." while ElevenLabs analysis completes, transitioning to post-call review screen
-- Process-level rolling summaries via Claude Haiku through OpenRouter (the only LLM cost — called from Convex actions)
-- ElevenLabs Conversation Analysis (Success Evaluation + Data Collection) configured on platform
+- AI interview post-call transcript and summary retrieval via ElevenLabs Conversations API (summary provided by ElevenLabs — no extra LLM call)
+- **Speaker labeling before analysis** — direct voice recordings pause at `needs_speaker_labels`; contributors assign names and optionally link speakers to org members before conversation summary, process summary, or process-flow extraction runs.
+- **Post-call loading state** — ShimmeringText "Processing your conversation..." while AI interview analysis or direct-recording transcription completes, transitioning to post-call review or speaker-labeling review
+- Process-level rolling summaries via Claude Haiku through OpenRouter, plus direct Voice Record conversation-level analysis after speaker labels are confirmed
+- ElevenLabs Conversation Analysis (Success Evaluation + Data Collection) configured on platform for AI interviews
 - Conversation log per process (contributor name, date, summary, transcript, structured analysis)
-- **Audio playback streamed from ElevenLabs** — no local storage; audio served on-demand via `GET /v1/convai/conversations/{id}/audio` through a proxy Convex HTTP action, rendered with ElevenLabs UI Audio Player / Scrub Bar
-- **Process Summary Box** — prominent, always-visible summary card per process synthesizing all conversations
+- **Audio playback** — AI interviews stream from ElevenLabs through the org-scoped Convex audio proxy; direct Voice Record audio streams from the retained Convex Storage blob through the same signed proxy.
+- **Process Summary Box** — prominent, always-visible summary card per process synthesizing all completed conversations
 - **Empty states** — friendly prompts when a process has no conversations, a department has no processes, etc.
-- Process-level rolling summary (auto-regenerated after each new conversation)
+- Process-level rolling summary (auto-regenerated after each completed conversation)
 - **Persistent department and function summaries** — stored in the database with staleness tracking (`summaryStale` flag) and "Last refreshed" timestamps (`summaryUpdatedAt`). Generated on-demand via Claude Haiku (OpenRouter), with token efficiency guards that skip LLM calls when no new data exists. Function summaries built from department summaries (proper hierarchy) with cascade generation for missing departments.
 - Convex built-in reactivity for live UI updates
 - **Error handling for disconnects** — graceful UI for `onDisconnect` with reason `"error"`, with retry prompt
@@ -940,7 +1009,7 @@ Alternatively, the entire modal can use the **Conversation Bar** component, whic
 - Integrations (Slack, Teams, email digests)
 - ~~Multi-tenant / multi-organization support~~ → **Moved to Phase 13 (see section 3.7)**
 - Multi-language support (Arabic, auto-detect, etc.)
-- Local audio archiving (backup of ElevenLabs audio for long-term retention)
+- Long-term local archiving of AI interview audio beyond ElevenLabs retention
 - Mobile-native app (iOS / Android)
 
 ---
@@ -952,13 +1021,14 @@ Alternatively, the entire modal can use the **Conversation Bar** component, whic
 3. A consent notice is shown before the first recording.
 4. The agent conducts a coherent, contextual interview about the selected process.
 5. After the call, a transcript and summary are visible in the UI, with audio available for playback.
-6. A user can play back any historical conversation directly from the process detail panel.
-7. Multiple conversations from different contributors accumulate under a single process.
-8. A synthesized process summary box is visible at the top of each process and updates with each new conversation.
-9. The app is usable on mobile viewports (stacked navigation) and desktop (Miller columns).
-10. Only authenticated users can access the app. Users can sign up, sign in, complete a profile with organizational attributes, and sign out. Conversations are linked to authenticated user identities.
-11. Viewers can browse the hierarchy and view summaries but cannot create/edit/delete items or record conversations. Contributors can do everything viewers can plus CRUD and recording. Admins can do everything contributors can plus manage user roles.
-12. Each Clerk organization is accessed via its own subdomain (`{slug}.bizfabric.ai` in prod, `{slug}.lvh.me:3000` in dev). A user signed into Org A cannot read or write Org B's data — every Convex function enforces row-level `clerkOrgId` scoping, and a wrong-subdomain visit surfaces the no-access workspace screen instead of the app. The only in-app org switch UI is the nav-bar `<OrganizationSwitcher />`, shown only to users with more than one org membership. The ElevenLabs audio proxy is org-scoped and returns 404 on any cross-org request.
+6. A user can submit a direct voice recording, label diarized speakers before analysis, and see confirmed speaker names in the transcript, summary inputs, and process-flow inputs.
+7. A user can play back any historical conversation directly from the process detail panel.
+8. Multiple conversations from different contributors accumulate under a single process.
+9. A synthesized process summary box is visible at the top of each process and updates with each completed conversation.
+10. The app is usable on mobile viewports (stacked navigation) and desktop (Miller columns).
+11. Only authenticated users can access the app. Users can sign up, sign in, complete a profile with organizational attributes, and sign out. Conversations are linked to authenticated user identities.
+12. Viewers can browse the hierarchy and view summaries but cannot create/edit/delete items or record conversations. Contributors can do everything viewers can plus CRUD and recording. Admins can do everything contributors can plus manage user roles.
+13. Each Clerk organization is accessed via its own subdomain (`{slug}.bizfabric.ai` in prod, `{slug}.lvh.me:3000` in dev). A user signed into Org A cannot read or write Org B's data — every Convex function enforces row-level `clerkOrgId` scoping, and a wrong-subdomain visit surfaces the no-access workspace screen instead of the app. The only in-app org switch UI is the nav-bar `<OrganizationSwitcher />`, shown only to users with more than one org membership. The ElevenLabs audio proxy is org-scoped and returns 404 on any cross-org request.
 
 ---
 
@@ -987,6 +1057,9 @@ With authentication (Phase 5), the contributor name dialog is pre-filled from th
 After the user ends the call, there's a 10-30 second processing window. The UI must not feel broken during this gap.
 **Design:** Show a post-call screen with ShimmeringText ("Processing your conversation...") and the ElevenLabs Orb in a subtle idle animation. When the data lands (via Convex reactivity), transition to the summary + transcript + audio player view.
 
+**Speaker-labeling review for direct voice recordings:**
+Direct Voice Record mode has an intermediate state after transcription and before analysis. The UI should show the retained audio, sample transcript lines per diarized speaker, a free-text name input, and an optional org-member selector. The recording must remain visible in the process conversation log with `needs_speaker_labels` status so a contributor can resume labeling later. Analysis, rolling summaries, and process-flow generation should not consume the recording until labels are submitted.
+
 **Empty states:**
 Every level of the hierarchy needs a zero-data state. Process with no conversations: "No conversations yet — be the first to record how this process works." Department with no processes: "No processes defined yet." These should feel inviting, not empty.
 
@@ -999,7 +1072,7 @@ The `onDisconnect` handler receives a `reason` field: `"user"`, `"agent"`, or `"
 ### 8.3 Operational Considerations
 
 **ElevenLabs pricing tier:**
-Conversation Analysis (Success Evaluation, Data Collection, transcript summary) is a platform feature. Confirm which ElevenLabs plan includes these capabilities — they may not be available on the starter/free tier. Budget accordingly for POC.
+AI interview Conversation Analysis (Success Evaluation, Data Collection, transcript summary) is an ElevenLabs platform feature. Confirm which ElevenLabs plan includes these capabilities — they may not be available on the starter/free tier. Budget accordingly for POC.
 
 **Privacy and consent:**
 Even for an internal POC, employees are being recorded describing their work. A simple consent notice should appear before the first recording: "This conversation will be recorded, transcribed, and stored to help document our processes." One-line banner in the recording modal, not a legal wall. But it needs to be there.
@@ -1039,9 +1112,9 @@ The ElevenLabs SDK requires microphone access. Browsers will prompt for permissi
 ### Backend (Convex)
 
 - [x] **Task 1: Rewrite `regenerateProcessSummary` in `postCall.ts` to incremental model**
-  - Fetch the process's existing `rollingSummary` (if any) and the new conversation's full transcript (not just summary)
+  - Fetch the process's existing `rollingSummary` (if any) and the new completed conversation's full transcript (not just summary)
   - First conversation: send full transcript → produce initial structured summary
-  - Subsequent conversations: send existing `rollingSummary` + new conversation transcript → LLM integrates new info into existing structure
+  - Subsequent conversations: send existing `rollingSummary` + new completed conversation transcript → LLM integrates new info into existing structure
   - Update model to `anthropic/claude-haiku-4.5-latest`, `max_tokens: 8192`
   - New system prompt producing structured output (Overview, Key Stages, Consensus, Tensions & Gaps, Notable Details) with contributor citations
 

@@ -62,7 +62,35 @@ type ModalStep =
   | "speakerLabels"
   | "processing"
   | "review";
-export type RecordingMode = "agent" | "voiceRecord";
+export type RecordingMode = "agent" | "voiceRecord" | "audioUpload";
+
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function probeAudioDuration(file: File): Promise<number | undefined> {
+  if (typeof window === "undefined") return undefined;
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const audio = document.createElement("audio");
+    audio.preload = "metadata";
+    audio.src = url;
+    const cleanup = () => URL.revokeObjectURL(url);
+    audio.onloadedmetadata = () => {
+      cleanup();
+      const d = audio.duration;
+      resolve(Number.isFinite(d) && d > 0 ? Math.round(d) : undefined);
+    };
+    audio.onerror = () => {
+      cleanup();
+      resolve(undefined);
+    };
+  });
+}
 type VoiceRecordState =
   | "idle"
   | "recording"
@@ -181,6 +209,8 @@ export function RecordingModal({
     useState<VoiceRecordState>("idle");
   const [voiceRecordSeconds, setVoiceRecordSeconds] = useState(0);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [uploadedFileSize, setUploadedFileSize] = useState<number | null>(null);
   const [voiceRecordError, setVoiceRecordError] = useState<string | null>(null);
   const [submittedVoiceConversationId, setSubmittedVoiceConversationId] =
     useState<Id<"conversations"> | null>(null);
@@ -249,6 +279,8 @@ export function RecordingModal({
       setVoiceRecordState("idle");
       setVoiceRecordSeconds(0);
       setRecordedBlob(null);
+      setUploadedFileName(null);
+      setUploadedFileSize(null);
       setVoiceRecordError(null);
       setSubmittedVoiceConversationId(null);
       setSpeakerLabelsSubmitted(false);
@@ -536,12 +568,39 @@ export function RecordingModal({
     stopVoiceRecording();
     audioChunksRef.current = [];
     setRecordedBlob(null);
+    setUploadedFileName(null);
+    setUploadedFileSize(null);
     setVoiceRecordSeconds(0);
     setVoiceRecordError(null);
     setSubmittedVoiceConversationId(null);
     setSpeakerLabelsSubmitted(false);
     setVoiceRecordState("idle");
   }, [stopVoiceRecording]);
+
+  const handleAudioFileSelected = useCallback(
+    async (file: File | null) => {
+      if (!file) return;
+      if (!file.type.startsWith("audio/")) {
+        setVoiceRecordError("Please choose an audio file.");
+        setVoiceRecordState("error");
+        return;
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        setVoiceRecordError("Audio files must be 100 MB or smaller.");
+        setVoiceRecordState("error");
+        return;
+      }
+      setVoiceRecordError(null);
+      setRecordedBlob(file);
+      setUploadedFileName(file.name);
+      setUploadedFileSize(file.size);
+      recordingMimeTypeRef.current = file.type || "audio/mpeg";
+      const duration = await probeAudioDuration(file);
+      if (duration) setVoiceRecordSeconds(duration);
+      setVoiceRecordState("stopped");
+    },
+    [],
+  );
 
   const submitVoiceRecording = useCallback(async () => {
     if (!recordedBlob) return;
@@ -571,6 +630,7 @@ export function RecordingModal({
         storageId,
         durationSeconds: voiceRecordSeconds || undefined,
         mimeType,
+        source: mode === "audioUpload" ? "upload" : "record",
       });
       setPostCallResult({ status: result.status });
       setSubmittedVoiceConversationId(result.conversationId);
@@ -590,11 +650,12 @@ export function RecordingModal({
     processId,
     processVoiceRecording,
     voiceRecordSeconds,
+    mode,
   ]);
 
   useEffect(() => {
     if (
-      mode !== "voiceRecord" ||
+      (mode !== "voiceRecord" && mode !== "audioUpload") ||
       step !== "processing" ||
       !submittedVoiceConversationId ||
       !submittedVoiceConversation
@@ -636,9 +697,16 @@ export function RecordingModal({
     submittedVoiceConversationId,
   ]);
 
-  // Handle name submission → acquire mic → show consent
+  // Handle name submission → acquire mic (if needed) → show consent
   const handleNameSubmit = useCallback(async () => {
     if (!contributorName.trim()) return;
+
+    // Audio upload mode never needs the microphone
+    if (mode === "audioUpload") {
+      setMicPermission("granted");
+      setStep("consent");
+      return;
+    }
 
     setMicPermission("checking");
     const result = await acquireMicStream();
@@ -650,13 +718,17 @@ export function RecordingModal({
       setStep("consent");
     }
     // If denied or unavailable, we show the error in the name step
-  }, [contributorName]);
+  }, [contributorName, mode]);
 
-  // Handle consent acceptance → start recording
+  // Handle consent acceptance → start recording (or open file picker)
   const handleConsentAccept = useCallback(() => {
     setStep("recording");
     if (mode === "voiceRecord") {
       startVoiceRecording();
+      return;
+    }
+    if (mode === "audioUpload") {
+      // File picker is rendered inside the recording step; nothing to start.
       return;
     }
     startSession();
@@ -701,14 +773,18 @@ export function RecordingModal({
           <div className="p-6">
             <DialogHeader>
               <DialogTitle>
-                {mode === "voiceRecord"
-                  ? "Record Your Voice"
-                  : "Record a Conversation"}
+                {mode === "audioUpload"
+                  ? "Upload an Audio File"
+                  : mode === "voiceRecord"
+                    ? "Record Your Voice"
+                    : "Record a Conversation"}
               </DialogTitle>
               <DialogDescription>
-                {mode === "voiceRecord"
-                  ? "You're about to record yourself describing "
-                  : "You're about to record a conversation about "}
+                {mode === "audioUpload"
+                  ? "You're about to upload an audio recording about "
+                  : mode === "voiceRecord"
+                    ? "You're about to record yourself describing "
+                    : "You're about to record a conversation about "}
                 <span className="font-medium text-foreground">
                   {processName}
                 </span>
@@ -791,9 +867,11 @@ export function RecordingModal({
               <div className="rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed">
                 <p className="font-medium">Recording notice</p>
                 <p className="mt-1 text-muted-foreground">
-                  {mode === "voiceRecord"
-                    ? "Your recording will be transcribed and stored to help document our processes."
-                    : "This conversation will be recorded, transcribed, and stored to help document our processes."}
+                  {mode === "audioUpload"
+                    ? "Your uploaded audio will be transcribed and stored to help document our processes."
+                    : mode === "voiceRecord"
+                      ? "Your recording will be transcribed and stored to help document our processes."
+                      : "This conversation will be recorded, transcribed, and stored to help document our processes."}
                 </p>
               </div>
               <div className="rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed">
@@ -811,15 +889,24 @@ export function RecordingModal({
                 Back
               </Button>
               <Button onClick={handleConsentAccept} className="gap-2">
-                <Mic className="h-4 w-4" />
-                {mode === "voiceRecord" ? "Start Voice Record" : "Start Recording"}
+                {mode === "audioUpload" ? (
+                  <Upload className="h-4 w-4" />
+                ) : (
+                  <Mic className="h-4 w-4" />
+                )}
+                {mode === "audioUpload"
+                  ? "Choose Audio File"
+                  : mode === "voiceRecord"
+                    ? "Start Voice Record"
+                    : "Start Recording"}
               </Button>
             </DialogFooter>
           </div>
         )}
 
-        {/* Step 3A: Direct voice recording */}
-        {step === "recording" && mode === "voiceRecord" && (
+        {/* Step 3A: Direct voice recording or audio file upload */}
+        {step === "recording" &&
+          (mode === "voiceRecord" || mode === "audioUpload") && (
           <div className="flex h-full flex-col overflow-hidden">
             <div className="shrink-0 border-b px-4 py-3">
               <Breadcrumb>
@@ -846,65 +933,125 @@ export function RecordingModal({
             </div>
 
             <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8 text-center">
-              <div className="space-y-2">
-                <p className="text-sm font-medium">
-                  {voiceRecordState === "recording"
-                    ? "Recording your process notes"
-                    : recordedBlob
-                      ? "Recording ready"
-                      : "Voice record mode"}
-                </p>
-                <p className="text-3xl font-semibold tabular-nums">
-                  {formatRecordingDuration(voiceRecordSeconds)}
-                </p>
-                <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
-                  Speak naturally through the process steps, tools, handoffs,
-                  exceptions, and anything that would help someone understand
-                  how this work gets done.
-                </p>
-              </div>
+              {mode === "audioUpload" ? (
+                <>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">
+                      {recordedBlob
+                        ? "Audio file ready"
+                        : "Choose an audio file"}
+                    </p>
+                    {voiceRecordSeconds > 0 && (
+                      <p className="text-3xl font-semibold tabular-nums">
+                        {formatRecordingDuration(voiceRecordSeconds)}
+                      </p>
+                    )}
+                    <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+                      Upload an existing audio recording (e.g. an interview,
+                      meeting capture, or voice memo). Up to 100 MB. We'll
+                      transcribe and analyze it the same way as a live
+                      recording.
+                    </p>
+                  </div>
 
-              <Button
-                variant={
-                  voiceRecordState === "recording" ? "destructive" : "default"
-                }
-                size="lg"
-                className="min-h-12 w-full max-w-sm gap-2 rounded-xl"
-                onClick={() => {
-                  if (voiceRecordState === "recording") {
-                    stopVoiceRecording();
-                  } else if (
-                    voiceRecordState === "idle" ||
-                    voiceRecordState === "error"
-                  ) {
-                    startVoiceRecording();
-                  }
-                }}
-                disabled={
-                  voiceRecordState === "uploading" ||
-                  voiceRecordState === "stopped" ||
-                  voiceRecordState === "success"
-                }
-              >
-                {voiceRecordState === "recording" ? (
-                  <>
-                    <PhoneOff className="h-4 w-4" />
-                    Stop Recording
-                  </>
-                ) : recordedBlob ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4" />
-                    Recording Captured
-                  </>
-                ) : (
-                  <>
-                    <Mic className="h-4 w-4" />
-                    {voiceRecordState === "error"
-                      ? "Try Again"
-                      : "Start Recording"}
-                  </>
-                )}
-              </Button>
+                  <label className="flex w-full max-w-sm cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-muted-foreground/30 bg-muted/20 p-6 text-sm transition-colors hover:bg-muted/40">
+                    <Upload className="h-6 w-6 text-muted-foreground" />
+                    {recordedBlob && uploadedFileName ? (
+                      <div className="space-y-1">
+                        <p className="font-medium">{uploadedFileName}</p>
+                        {uploadedFileSize !== null && (
+                          <p className="text-xs text-muted-foreground">
+                            {formatFileSize(uploadedFileSize)}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          Click to choose a different file
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">
+                        Click to select an audio file
+                      </p>
+                    )}
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      className="sr-only"
+                      onChange={(e) =>
+                        handleAudioFileSelected(e.target.files?.[0] ?? null)
+                      }
+                      disabled={
+                        voiceRecordState === "uploading" ||
+                        voiceRecordState === "processing"
+                      }
+                    />
+                  </label>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">
+                      {voiceRecordState === "recording"
+                        ? "Recording your process notes"
+                        : recordedBlob
+                          ? "Recording ready"
+                          : "Voice record mode"}
+                    </p>
+                    <p className="text-3xl font-semibold tabular-nums">
+                      {formatRecordingDuration(voiceRecordSeconds)}
+                    </p>
+                    <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+                      Speak naturally through the process steps, tools, handoffs,
+                      exceptions, and anything that would help someone understand
+                      how this work gets done.
+                    </p>
+                  </div>
+
+                  <Button
+                    variant={
+                      voiceRecordState === "recording"
+                        ? "destructive"
+                        : "default"
+                    }
+                    size="lg"
+                    className="min-h-12 w-full max-w-sm gap-2 rounded-xl"
+                    onClick={() => {
+                      if (voiceRecordState === "recording") {
+                        stopVoiceRecording();
+                      } else if (
+                        voiceRecordState === "idle" ||
+                        voiceRecordState === "error"
+                      ) {
+                        startVoiceRecording();
+                      }
+                    }}
+                    disabled={
+                      voiceRecordState === "uploading" ||
+                      voiceRecordState === "stopped" ||
+                      voiceRecordState === "success"
+                    }
+                  >
+                    {voiceRecordState === "recording" ? (
+                      <>
+                        <PhoneOff className="h-4 w-4" />
+                        Stop Recording
+                      </>
+                    ) : recordedBlob ? (
+                      <>
+                        <CheckCircle2 className="h-4 w-4" />
+                        Recording Captured
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="h-4 w-4" />
+                        {voiceRecordState === "error"
+                          ? "Try Again"
+                          : "Start Recording"}
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
 
               {voiceRecordError && (
                 <div className="flex max-w-sm items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-left text-sm text-destructive">
@@ -932,7 +1079,9 @@ export function RecordingModal({
                     disabled={voiceRecordState === "uploading"}
                   >
                     <Upload className="h-4 w-4" />
-                    Submit Recording
+                    {mode === "audioUpload"
+                      ? "Upload & Process"
+                      : "Submit Recording"}
                   </Button>
                 </div>
               ) : (
@@ -1175,7 +1324,7 @@ export function RecordingModal({
 
         {/* Step 4: Speaker labels for diarized voice recordings */}
         {step === "speakerLabels" &&
-          mode === "voiceRecord" &&
+          (mode === "voiceRecord" || mode === "audioUpload") &&
           submittedVoiceConversation && (
             <div className="flex h-full flex-col overflow-hidden">
               <div className="shrink-0 border-b px-4 py-3">
@@ -1226,9 +1375,11 @@ export function RecordingModal({
             </div>
             <ShimmeringText
               text={
-                mode === "voiceRecord"
-                  ? "Processing your recording..."
-                  : "Processing your conversation..."
+                mode === "audioUpload"
+                  ? "Processing your upload..."
+                  : mode === "voiceRecord"
+                    ? "Processing your recording..."
+                    : "Processing your conversation..."
               }
               className="text-sm text-muted-foreground"
             />
@@ -1247,9 +1398,11 @@ export function RecordingModal({
                 {postCallResult?.status === "done" ? (
                   <>
                     <CheckCircle2 className="h-5 w-5 text-green-600" />
-                    {mode === "voiceRecord"
-                      ? "Recording Submitted"
-                      : "Conversation Recorded"}
+                    {mode === "audioUpload"
+                      ? "Audio Uploaded"
+                      : mode === "voiceRecord"
+                        ? "Recording Submitted"
+                        : "Conversation Recorded"}
                   </>
                 ) : postCallResult?.status === "timeout" ||
                   postCallResult?.status === "processing" ? (
@@ -1266,14 +1419,18 @@ export function RecordingModal({
               </DialogTitle>
               <DialogDescription>
                 {postCallResult?.status === "done"
-                  ? mode === "voiceRecord"
-                    ? "Your recording has been transcribed, analyzed, and saved to the process detail panel."
-                    : "Your conversation has been saved and will appear in the process detail panel."
+                  ? mode === "audioUpload"
+                    ? "Your audio file has been transcribed, analyzed, and saved to the process detail panel."
+                    : mode === "voiceRecord"
+                      ? "Your recording has been transcribed, analyzed, and saved to the process detail panel."
+                      : "Your conversation has been saved and will appear in the process detail panel."
                   : postCallResult?.status === "timeout" ||
                       postCallResult?.status === "processing"
-                    ? mode === "voiceRecord"
-                      ? "The recording is being transcribed and analyzed. It will appear automatically once ready."
-                      : "The conversation is still being processed. It will appear automatically once ready."
+                    ? mode === "audioUpload"
+                      ? "The upload is being transcribed and analyzed. It will appear automatically once ready."
+                      : mode === "voiceRecord"
+                        ? "The recording is being transcribed and analyzed. It will appear automatically once ready."
+                        : "The conversation is still being processed. It will appear automatically once ready."
                     : "Something went wrong while processing the recording. Please try again."}
               </DialogDescription>
             </DialogHeader>

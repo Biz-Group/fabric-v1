@@ -18,6 +18,7 @@ import {
   RotateCcw,
   Search,
   Trash2,
+  Upload,
 } from "lucide-react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "../../../../../convex/_generated/api";
@@ -87,7 +88,9 @@ function StatusBadge({ status }: { status: Status }) {
 }
 
 function getConversationTypeLabel(inputMode: ConversationRow["inputMode"]) {
-  return inputMode === "voiceRecord" ? "Voice Recording" : "AI Interview";
+  if (inputMode === "voiceRecord") return "Voice Recording";
+  if (inputMode === "audioUpload") return "Audio Upload";
+  return "AI Interview";
 }
 
 function ConversationTypeBadge({
@@ -95,14 +98,12 @@ function ConversationTypeBadge({
 }: {
   inputMode: ConversationRow["inputMode"];
 }) {
-  const isVoiceRecording = inputMode === "voiceRecord";
-  const Icon = isVoiceRecording ? Mic : Bot;
+  const isAgent = (inputMode ?? "agent") === "agent";
+  const Icon =
+    inputMode === "audioUpload" ? Upload : isAgent ? Bot : Mic;
 
   return (
-    <Badge
-      variant={isVoiceRecording ? "outline" : "secondary"}
-      className="gap-1.5"
-    >
+    <Badge variant={isAgent ? "secondary" : "outline"} className="gap-1.5">
       <Icon />
       {getConversationTypeLabel(inputMode)}
     </Badge>

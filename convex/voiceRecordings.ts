@@ -380,8 +380,16 @@ export const processVoiceRecording = action({
     storageId: v.id("_storage"),
     durationSeconds: v.optional(v.number()),
     mimeType: v.string(),
+    source: v.optional(
+      v.union(v.literal("record"), v.literal("upload")),
+    ),
   },
   handler: async (ctx, args) => {
+    const isUpload = args.source === "upload";
+    if (isUpload && !args.mimeType.startsWith("audio/")) {
+      throw new Error("Only audio file uploads are supported");
+    }
+
     const { orgId, tokenIdentifier } = await resolveOrgForAction(ctx);
     const caller: { orgId: string; userId: Id<"users"> } =
       await ctx.runQuery(internal.postCall.requireOrgContributorInternal, {});
@@ -400,7 +408,7 @@ export const processVoiceRecording = action({
         clerkOrgId: orgId,
         contributorName: user?.name ?? "Anonymous",
         userId: caller.userId,
-        inputMode: "voiceRecord",
+        inputMode: isUpload ? "audioUpload" : "voiceRecord",
         audioStorageId: args.storageId,
         audioMimeType: args.mimeType,
         transcriptionProvider: "elevenlabs-scribe",
@@ -446,9 +454,6 @@ export const finishVoiceRecording = internalMutation({
       summary: args.summary,
       analysis: args.analysis,
       durationSeconds: args.durationSeconds,
-      inputMode: "voiceRecord",
-      transcriptionProvider: "elevenlabs-scribe",
-      analysisProvider: "fabric-openrouter",
       status: "done",
     });
   },
@@ -471,9 +476,6 @@ export const markVoiceRecordingNeedsSpeakerLabels = internalMutation({
       transcript: args.transcript,
       speakerLabels: args.speakerLabels,
       durationSeconds: args.durationSeconds,
-      inputMode: "voiceRecord",
-      transcriptionProvider: "elevenlabs-scribe",
-      analysisProvider: "fabric-openrouter",
       status: "needs_speaker_labels",
     });
   },
@@ -498,10 +500,11 @@ export const getVoiceRecordingForAnalysis = internalQuery({
   },
   handler: async (ctx, args): Promise<VoiceRecordingForAnalysis | null> => {
     const conv = await ctx.db.get(args.conversationId);
+    const mode = conv?.inputMode ?? "agent";
     if (
       !conv ||
       conv.clerkOrgId !== args.clerkOrgId ||
-      (conv.inputMode ?? "agent") !== "voiceRecord" ||
+      (mode !== "voiceRecord" && mode !== "audioUpload") ||
       conv.status !== "processing" ||
       !conv.transcript ||
       conv.transcript.length === 0
@@ -525,7 +528,8 @@ export const submitSpeakerLabels = mutation({
     const caller = await requireOrgContributor(ctx);
     const conv = await ctx.db.get(args.conversationId);
     assertOrgOwns(caller, conv);
-    if ((conv.inputMode ?? "agent") !== "voiceRecord") {
+    const convMode = conv.inputMode ?? "agent";
+    if (convMode !== "voiceRecord" && convMode !== "audioUpload") {
       throw new Error("Only voice recordings can be speaker-labeled");
     }
     if (conv.status !== "needs_speaker_labels") {

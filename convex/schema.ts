@@ -179,7 +179,11 @@ export default defineSchema({
     contributorName: v.string(),
     userId: v.optional(v.id("users")),
     inputMode: v.optional(
-      v.union(v.literal("agent"), v.literal("voiceRecord")),
+      v.union(
+        v.literal("agent"),
+        v.literal("voiceRecord"),
+        v.literal("audioUpload"),
+      ),
     ),
     audioStorageId: v.optional(v.id("_storage")),
     audioMimeType: v.optional(v.string()),

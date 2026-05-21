@@ -439,7 +439,11 @@ export const prodImport_insertAll = internalMutation({
           | string
           | undefined,
         contributorName: c.contributorName as string,
-        inputMode: c.inputMode as "agent" | "voiceRecord" | undefined,
+        inputMode: c.inputMode as
+          | "agent"
+          | "voiceRecord"
+          | "audioUpload"
+          | undefined,
         audioMimeType: c.audioMimeType as string | undefined,
         transcriptionProvider: c.transcriptionProvider as
           | "elevenlabs-convai"
