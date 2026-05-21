@@ -44,7 +44,6 @@ import {
   PhoneOff,
   AlertTriangle,
   Shield,
-  ArrowRight,
   Send,
   Keyboard,
   CheckCircle2,
@@ -57,7 +56,6 @@ import {
 
 type ModalStep =
   | "name"
-  | "consent"
   | "recording"
   | "speakerLabels"
   | "processing"
@@ -182,6 +180,7 @@ export function RecordingModal({
   const user = useQuery(api.users.getMe);
   const membership = useQuery(api.users.getMyMembership);
   const userRole = membership?.role ?? "viewer";
+  const isStoredAudio = mode === "voiceRecord" || mode === "audioUpload";
 
   const [contributorName, setContributorName] = useState("");
   const [nameInitialized, setNameInitialized] = useState(false);
@@ -233,6 +232,9 @@ export function RecordingModal({
   );
   const processVoiceRecording = useAction(
     api.voiceRecordings.processVoiceRecording
+  );
+  const abandonVoiceRecording = useMutation(
+    api.voiceRecordings.abandonVoiceRecording
   );
   const conversationIdRef = useRef<string | null>(null);
 
@@ -655,7 +657,7 @@ export function RecordingModal({
 
   useEffect(() => {
     if (
-      (mode !== "voiceRecord" && mode !== "audioUpload") ||
+      !isStoredAudio ||
       step !== "processing" ||
       !submittedVoiceConversationId ||
       !submittedVoiceConversation
@@ -697,14 +699,14 @@ export function RecordingModal({
     submittedVoiceConversationId,
   ]);
 
-  // Handle name submission → acquire mic (if needed) → show consent
+  // Handle name submission → acquire mic (if needed) → move to recording step
   const handleNameSubmit = useCallback(async () => {
     if (!contributorName.trim()) return;
 
-    // Audio upload mode never needs the microphone
+    // Audio upload mode never needs the microphone; file picker handles capture
     if (mode === "audioUpload") {
       setMicPermission("granted");
-      setStep("consent");
+      setStep("recording");
       return;
     }
 
@@ -712,29 +714,20 @@ export function RecordingModal({
     const result = await acquireMicStream();
     setMicPermission(result.status);
 
-    if (result.status === "granted") {
-      // Keep the stream alive — WebRTC needs it
-      mediaStreamRef.current = result.stream;
-      setStep("consent");
-    }
-    // If denied or unavailable, we show the error in the name step
-  }, [contributorName, mode]);
-
-  // Handle consent acceptance → start recording (or open file picker)
-  const handleConsentAccept = useCallback(() => {
+    if (result.status !== "granted") return;
+    // Keep the stream alive — WebRTC / MediaRecorder needs it
+    mediaStreamRef.current = result.stream;
     setStep("recording");
     if (mode === "voiceRecord") {
       startVoiceRecording();
-      return;
+    } else {
+      startSession();
     }
-    if (mode === "audioUpload") {
-      // File picker is rendered inside the recording step; nothing to start.
-      return;
-    }
-    startSession();
-  }, [mode, startSession, startVoiceRecording]);
+  }, [contributorName, mode, startSession, startVoiceRecording]);
 
-  // Close handler — end session if active and release mic
+  // If the user bails before approving speaker labels, drop the conversation
+  // row + audio so we don't retain half-processed inputs. The server gates
+  // on status, so this is a no-op for already-finalized rows.
   const handleClose = useCallback(() => {
     if (isConnected || isConnecting) {
       conversation.endSession();
@@ -744,6 +737,13 @@ export function RecordingModal({
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
     }
+    if (isStoredAudio && submittedVoiceConversationId && !speakerLabelsSubmitted) {
+      void abandonVoiceRecording({
+        conversationId: submittedVoiceConversationId,
+      }).catch((err) => {
+        console.error("Failed to clean up abandoned recording:", err);
+      });
+    }
     onOpenChange(false);
   }, [
     isConnected,
@@ -751,6 +751,10 @@ export function RecordingModal({
     conversation,
     stopVoiceRecording,
     onOpenChange,
+    isStoredAudio,
+    submittedVoiceConversationId,
+    speakerLabelsSubmitted,
+    abandonVoiceRecording,
   ]);
 
   // --- Render ---
@@ -768,7 +772,7 @@ export function RecordingModal({
             : "sm:max-w-md"
         )}
       >
-        {/* Step 1: Name Prompt */}
+        {/* Step 1: Name + Consent */}
         {step === "name" && (
           <div className="p-6">
             <DialogHeader>
@@ -788,7 +792,8 @@ export function RecordingModal({
                 <span className="font-medium text-foreground">
                   {processName}
                 </span>
-                . Confirm your name to get started.
+                . Confirm your name and review the notices below to get
+                started.
               </DialogDescription>
             </DialogHeader>
             <div className="mt-4 space-y-4">
@@ -800,6 +805,7 @@ export function RecordingModal({
                   Your Name
                 </label>
                 <Input
+                  disabled
                   id="contributor-name"
                   value={contributorName}
                   onChange={(e) => setContributorName(e.target.value)}
@@ -808,6 +814,29 @@ export function RecordingModal({
                     if (e.key === "Enter") handleNameSubmit();
                   }}
                 />
+              </div>
+
+              <div className="rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed">
+                <p className="flex items-center gap-1.5 font-medium">
+                  <Shield className="h-4 w-4 text-primary" />
+                  Recording notice
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  {mode === "audioUpload"
+                    ? "Your uploaded audio will be transcribed and stored to help document our processes."
+                    : mode === "voiceRecord"
+                      ? "Your recording will be transcribed and stored to help document our processes."
+                      : "This conversation will be recorded, transcribed, and stored to help document our processes."}
+                </p>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed">
+                <p className="font-medium">Content guidelines</p>
+                <p className="mt-1 text-muted-foreground">
+                  Please focus on how the process works — the steps, tools, and
+                  handoffs involved. Avoid sharing sensitive information such
+                  as specific salaries, personal situations, confidential
+                  outcomes, or negative comments about individuals.
+                </p>
               </div>
 
               {/* Mic permission errors */}
@@ -847,48 +876,6 @@ export function RecordingModal({
                 }
                 className="gap-2"
               >
-                Continue
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </DialogFooter>
-          </div>
-        )}
-
-        {/* Step 2: Consent Banner */}
-        {step === "consent" && (
-          <div className="p-6">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-primary" />
-                Before we begin
-              </DialogTitle>
-            </DialogHeader>
-            <div className="mt-4 space-y-4">
-              <div className="rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed">
-                <p className="font-medium">Recording notice</p>
-                <p className="mt-1 text-muted-foreground">
-                  {mode === "audioUpload"
-                    ? "Your uploaded audio will be transcribed and stored to help document our processes."
-                    : mode === "voiceRecord"
-                      ? "Your recording will be transcribed and stored to help document our processes."
-                      : "This conversation will be recorded, transcribed, and stored to help document our processes."}
-                </p>
-              </div>
-              <div className="rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed">
-                <p className="font-medium">Content guidelines</p>
-                <p className="mt-1 text-muted-foreground">
-                  Please focus on how the process works — the steps, tools, and
-                  handoffs involved. Avoid sharing sensitive information such as
-                  specific salaries, personal situations, confidential outcomes,
-                  or negative comments about individuals.
-                </p>
-              </div>
-            </div>
-            <DialogFooter className="mt-6">
-              <Button variant="outline" onClick={() => setStep("name")}>
-                Back
-              </Button>
-              <Button onClick={handleConsentAccept} className="gap-2">
                 {mode === "audioUpload" ? (
                   <Upload className="h-4 w-4" />
                 ) : (
@@ -905,8 +892,7 @@ export function RecordingModal({
         )}
 
         {/* Step 3A: Direct voice recording or audio file upload */}
-        {step === "recording" &&
-          (mode === "voiceRecord" || mode === "audioUpload") && (
+        {step === "recording" && isStoredAudio && (
           <div className="flex h-full flex-col overflow-hidden">
             <div className="shrink-0 border-b px-4 py-3">
               <Breadcrumb>
@@ -1324,7 +1310,7 @@ export function RecordingModal({
 
         {/* Step 4: Speaker labels for diarized voice recordings */}
         {step === "speakerLabels" &&
-          (mode === "voiceRecord" || mode === "audioUpload") &&
+          isStoredAudio &&
           submittedVoiceConversation && (
             <div className="flex h-full flex-col overflow-hidden">
               <div className="shrink-0 border-b px-4 py-3">

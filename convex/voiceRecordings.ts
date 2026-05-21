@@ -614,6 +614,30 @@ export const submitSpeakerLabels = mutation({
   },
 });
 
+// User abandoned the modal before completing analysis. Drop the audio bytes
+// and the conversation row so we don't retain inputs we never finished
+// processing. Refuses to delete already-finalized rows.
+export const abandonVoiceRecording = mutation({
+  args: { conversationId: v.id("conversations") },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgContributor(ctx);
+    const conv = await ctx.db.get(args.conversationId);
+    if (!conv) return;
+    assertOrgOwns(caller, conv);
+    if (conv.status === "done") return;
+    const mode = conv.inputMode ?? "agent";
+    if (mode !== "voiceRecord" && mode !== "audioUpload") return;
+    if (conv.audioStorageId) {
+      try {
+        await ctx.storage.delete(conv.audioStorageId);
+      } catch {
+        // Already gone — fall through and delete the row.
+      }
+    }
+    await ctx.db.delete(args.conversationId);
+  },
+});
+
 export const processVoiceRecordingInternal = internalAction({
   args: {
     conversationId: v.id("conversations"),
