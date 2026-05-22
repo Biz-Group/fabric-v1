@@ -14,6 +14,7 @@ import { api } from "../../convex/_generated/api";
 import type { Id, Doc } from "../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Collapsible,
@@ -32,6 +33,7 @@ import {
 } from "@/components/ui/audio-player";
 import { AudioScrubber } from "@/components/ui/waveform";
 import {
+  Bot,
   MessageSquare,
   Mic,
   ChevronRight,
@@ -41,6 +43,7 @@ import {
   Check,
   ArrowDown,
   Download,
+  Upload,
 } from "lucide-react";
 import {
   Tooltip,
@@ -159,6 +162,30 @@ interface TranscriptMessage {
   time_in_call_secs: number;
   speakerId?: string;
   speakerName?: string;
+}
+
+type ConversationInputMode = Doc<"conversations">["inputMode"];
+
+function getConversationTypeLabel(inputMode: ConversationInputMode) {
+  if (inputMode === "voiceRecord") return "Voice Recording";
+  if (inputMode === "audioUpload") return "Audio Upload";
+  return "AI Interview";
+}
+
+function ConversationTypeBadge({
+  inputMode,
+}: {
+  inputMode: ConversationInputMode;
+}) {
+  const isAgent = (inputMode ?? "agent") === "agent";
+  const Icon = inputMode === "audioUpload" ? Upload : isAgent ? Bot : Mic;
+
+  return (
+    <Badge variant="secondary" className="gap-1.5">
+      <Icon />
+      {getConversationTypeLabel(inputMode)}
+    </Badge>
+  );
 }
 
 function transcriptSpeakerName(
@@ -980,13 +1007,14 @@ function ConversationEntry({
       <CardContent className="space-y-3">
         {/* Header: contributor name + date */}
         <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10">
               <User className="h-3.5 w-3.5 text-primary" />
             </div>
-            <span className="text-sm font-medium">
+            <span className="min-w-0 truncate text-sm font-medium">
               {conversation.contributorName}
             </span>
+            <ConversationTypeBadge inputMode={conversation.inputMode} />
           </div>
           <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
             {listened && (
