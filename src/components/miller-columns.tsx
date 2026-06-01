@@ -1,9 +1,18 @@
 "use client";
 
-import { useState, useCallback, useEffect, lazy, Suspense } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  lazy,
+  Suspense,
+} from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useQuery, useAction, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -40,6 +49,7 @@ import {
   Clock,
   Bot,
   Upload,
+  Search,
 } from "lucide-react";
 import {
   Tooltip,
@@ -56,6 +66,7 @@ import {
   type RecordingMode,
 } from "@/components/recording-modal";
 import { CrudDialog } from "@/components/crud-dialog";
+import { CommandPalette } from "@/components/command-palette";
 import { MarkdownSummary } from "@/components/markdown-summary";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -81,12 +92,99 @@ type MobilePreview =
   | { type: "process"; id: Id<"processes">; name: string }
   | null;
 
+// --- URL selection params ---
+// The committed selection is mirrored into the `/[org]` query string so the
+// view is refresh-safe, shareable, and traversable with the Back button.
+
+const PARAM = {
+  fn: "fn",
+  dept: "dept",
+  proc: "proc",
+  tab: "tab",
+} as const;
+
+type SelectionParams = {
+  fn: Id<"functions"> | null;
+  dept: Id<"departments"> | null;
+  proc: Id<"processes"> | null;
+  tab: number;
+};
+
+// Tab index <-> URL token. Only the non-default tab is encoded.
+function tabToParam(tab: number): string | null {
+  return tab === 1 ? "flow" : null;
+}
+function paramToTab(value: string | null): number {
+  return value === "flow" ? 1 : 0;
+}
+
+function readSelectionParams(
+  searchParams: URLSearchParams | ReturnType<typeof useSearchParams>,
+): SelectionParams {
+  const fn = searchParams.get(PARAM.fn);
+  const dept = searchParams.get(PARAM.dept);
+  const proc = searchParams.get(PARAM.proc);
+  return {
+    fn: fn ? (fn as Id<"functions">) : null,
+    dept: dept ? (dept as Id<"departments">) : null,
+    proc: proc ? (proc as Id<"processes">) : null,
+    tab: paramToTab(searchParams.get(PARAM.tab)),
+  };
+}
+
+// Build a query string from the committed selection, deleting descendant keys
+// when a parent is absent so the URL can never describe an impossible path
+// (e.g. a process with no function). Starts from the current params to stay
+// forward-compatible with any unrelated keys.
+function buildSelectionQuery(
+  current: URLSearchParams | ReturnType<typeof useSearchParams>,
+  sel: SelectionParams,
+): string {
+  const params = new URLSearchParams(current.toString());
+
+  const setOrDelete = (key: string, value: string | null) => {
+    if (value) params.set(key, value);
+    else params.delete(key);
+  };
+
+  setOrDelete(PARAM.fn, sel.fn);
+  setOrDelete(PARAM.dept, sel.fn ? sel.dept : null);
+  setOrDelete(PARAM.proc, sel.fn && sel.dept ? sel.proc : null);
+  setOrDelete(
+    PARAM.tab,
+    sel.fn && sel.dept && sel.proc ? tabToParam(sel.tab) : null,
+  );
+
+  return params.toString();
+}
+
+function deepestMobileLevel(sel: {
+  fn: Id<"functions"> | null;
+  dept: Id<"departments"> | null;
+  proc: Id<"processes"> | null;
+}): MobileLevel {
+  if (sel.proc) return 4;
+  if (sel.dept) return 3;
+  if (sel.fn) return 2;
+  return 1;
+}
+
 // --- Column Item ---
+
+type RowStatus = "attention" | "stale" | "knowledge";
+
+const ROW_STATUS_META: Record<RowStatus, { title: string; tone: string }> = {
+  attention: { title: "A conversation needs speaker labels", tone: "bg-amber-500" },
+  stale: { title: "Summary is out of date", tone: "bg-amber-500" },
+  knowledge: { title: "Has a summary", tone: "bg-emerald-500/70" },
+};
 
 function ColumnItem({
   label,
   selected,
   indicator,
+  count,
+  status,
   onClick,
   onNavigate,
   navigateLabel,
@@ -97,6 +195,10 @@ function ColumnItem({
   label: string;
   selected: boolean;
   indicator: "arrow" | "dot";
+  /** Child count for parent rows; suppresses the drill chevron when 0. */
+  count?: number;
+  /** Always-visible status dot conveying scent. */
+  status?: RowStatus;
   onClick: () => void;
   onNavigate?: () => void;
   navigateLabel?: string;
@@ -109,6 +211,14 @@ function ColumnItem({
     mobile ? "size-10" : "size-6",
     selected ? "hover:bg-primary-foreground/20" : "hover:bg-foreground/10"
   );
+  // Edit/Delete reveal on hover/focus (desktop); always shown on mobile.
+  const revealClass = mobile
+    ? undefined
+    : selected
+      ? "opacity-100"
+      : "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100";
+  // Parent rows show a chevron only when they actually have children.
+  const showChevron = indicator === "arrow" && (count === undefined || count > 0);
 
   return (
     <div
@@ -135,13 +245,7 @@ function ColumnItem({
       <div
         className={cn(
           "flex shrink-0 items-center",
-          mobile
-            ? "gap-1.5 px-1.5"
-            : "gap-0.5 pr-2 transition-opacity",
-          !mobile &&
-            (selected
-              ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100")
+          mobile ? "gap-1.5 px-1.5" : "gap-0.5 pr-2"
         )}
       >
         {onEdit && (
@@ -151,7 +255,7 @@ function ColumnItem({
               e.stopPropagation();
               onEdit();
             }}
-            className={actionButtonClass}
+            className={cn(actionButtonClass, revealClass)}
             title="Rename"
             aria-label={`Rename ${label}`}
           >
@@ -165,12 +269,34 @@ function ColumnItem({
               e.stopPropagation();
               onDelete();
             }}
-            className={actionButtonClass}
+            className={cn(actionButtonClass, revealClass)}
             title="Delete"
             aria-label={`Delete ${label}`}
           >
             <Trash2 className={mobile ? "h-4 w-4" : "h-3 w-3"} />
           </button>
+        )}
+        {/* Always-visible scent: status dot + child count */}
+        {status && (
+          <span
+            className={cn(
+              "inline-block h-2 w-2 shrink-0 rounded-full",
+              ROW_STATUS_META[status].tone
+            )}
+            title={ROW_STATUS_META[status].title}
+            aria-label={ROW_STATUS_META[status].title}
+          />
+        )}
+        {count !== undefined && count > 0 && (
+          <span
+            className={cn(
+              "ml-0.5 tabular-nums",
+              mobile ? "text-sm" : "text-[11px]",
+              selected ? "text-primary-foreground/70" : "text-muted-foreground"
+            )}
+          >
+            {count}
+          </span>
         )}
         {onNavigate ? (
           <button
@@ -188,11 +314,14 @@ function ColumnItem({
           >
             <ChevronRight className={mobile ? "h-5 w-5" : "h-4 w-4"} />
           </button>
-        ) : indicator === "arrow" ? (
-          <ChevronRight className="h-4 w-4" />
-        ) : (
-          <span className="inline-block h-2 w-2 rounded-full bg-current" />
-        )}
+        ) : showChevron ? (
+          <ChevronRight
+            className={cn(
+              "h-4 w-4 shrink-0",
+              selected ? "opacity-80" : "opacity-40"
+            )}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -319,7 +448,7 @@ function ColumnHeader({
   );
 }
 
-function MobileAppHeader() {
+function MobileAppHeader({ onSearch }: { onSearch: () => void }) {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b bg-background px-4 md:hidden">
       <WorkspaceBrand
@@ -329,6 +458,14 @@ function MobileAppHeader() {
         logoContainerClassName="h-8 max-w-14 px-0"
         initialsClassName="text-[10px]"
       />
+      <button
+        type="button"
+        onClick={onSearch}
+        className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+        aria-label="Search"
+      >
+        <Search className="h-5 w-5" />
+      </button>
       <UserMenu compact />
     </header>
   );
@@ -418,16 +555,26 @@ export function MillerColumns() {
   const userRole = membership?.role ?? "viewer";
   const canEdit = userRole === "admin" || userRole === "contributor";
 
+  // URL <-> selection sync plumbing. Selection is mirrored into the query
+  // string so the view is refresh-safe, shareable, and Back-traversable.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const isMobile = useIsMobile();
+  // Seed once from the URL (the initializer runs on first render only); later
+  // external URL changes (Back/Forward) are reconciled by the read effect below.
+  const [initialSelection] = useState(() => readSelectionParams(searchParams));
+
   // Column collapse state
   const { collapsed, toggle } = useColumnCollapse();
 
-  // Selection state
+  // Selection state (seeded from the URL so deep links / refresh restore position)
   const [selectedFunctionId, setSelectedFunctionId] =
-    useState<Id<"functions"> | null>(null);
+    useState<Id<"functions"> | null>(initialSelection.fn);
   const [selectedDepartmentId, setSelectedDepartmentId] =
-    useState<Id<"departments"> | null>(null);
+    useState<Id<"departments"> | null>(initialSelection.dept);
   const [selectedProcessId, setSelectedProcessId] =
-    useState<Id<"processes"> | null>(null);
+    useState<Id<"processes"> | null>(initialSelection.proc);
 
   // Recording modal state
   const [recordingOpen, setRecordingOpen] = useState(false);
@@ -435,8 +582,13 @@ export function MillerColumns() {
     useState<RecordingMode>("agent");
 
   // Mobile navigation level
-  const [mobileLevel, setMobileLevel] = useState<MobileLevel>(1);
+  const [mobileLevel, setMobileLevel] = useState<MobileLevel>(
+    deepestMobileLevel(initialSelection),
+  );
   const [mobilePreview, setMobilePreview] = useState<MobilePreview>(null);
+
+  // Active detail tab (0 = Conversations, 1 = Process Flow), seeded from the URL.
+  const [detailTab, setDetailTab] = useState<number>(initialSelection.tab);
 
   // Selected names for breadcrumbs / back buttons
   const [selectedFunctionName, setSelectedFunctionName] = useState("");
@@ -630,9 +782,34 @@ export function MillerColumns() {
     selectedFunctionId ? { functionId: selectedFunctionId } : "skip"
   );
   const allDepartments = useQuery(api.departments.listAll);
+  const allProcesses = useQuery(api.processes.listAll);
+  const attentionProcessIds = useQuery(
+    api.conversations.processIdsNeedingAttention,
+  );
   const processConversations = useQuery(
     api.conversations.listByProcess,
     selectedProcessId ? { processId: selectedProcessId } : "skip"
+  );
+
+  // Row scent, derived from the lists already loaded for navigation/search
+  // (no per-row queries). See plan: "compute on read".
+  const departmentCountByFunction = useMemo(() => {
+    const map = new Map<Id<"functions">, number>();
+    for (const dept of allDepartments ?? []) {
+      map.set(dept.functionId, (map.get(dept.functionId) ?? 0) + 1);
+    }
+    return map;
+  }, [allDepartments]);
+  const processCountByDepartment = useMemo(() => {
+    const map = new Map<Id<"departments">, number>();
+    for (const proc of allProcesses ?? []) {
+      map.set(proc.departmentId, (map.get(proc.departmentId) ?? 0) + 1);
+    }
+    return map;
+  }, [allProcesses]);
+  const attentionProcessIdSet = useMemo(
+    () => new Set(attentionProcessIds ?? []),
+    [attentionProcessIds],
   );
 
   // Display names sourced from the reactive docs so renames reflect immediately,
@@ -677,6 +854,74 @@ export function MillerColumns() {
     }
   }, [selectedProcessId, selectedProcess]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // --- URL <-> selection synchronization ---
+  //
+  // `committed` is the selection the URL should reflect. On mobile a row tap can
+  // *preview* an item (loading its summary) without drilling in, so only ids
+  // at-or-above the current drill level count as committed; on desktop every
+  // selected id is committed.
+  const committed = useMemo<SelectionParams>(() => {
+    const ids = isMobile
+      ? {
+          fn: mobileLevel >= 2 ? selectedFunctionId : null,
+          dept: mobileLevel >= 3 ? selectedDepartmentId : null,
+          proc: mobileLevel >= 4 ? selectedProcessId : null,
+        }
+      : {
+          fn: selectedFunctionId,
+          dept: selectedDepartmentId,
+          proc: selectedProcessId,
+        };
+    return { ...ids, tab: detailTab };
+  }, [
+    isMobile,
+    mobileLevel,
+    selectedFunctionId,
+    selectedDepartmentId,
+    selectedProcessId,
+    detailTab,
+  ]);
+
+  // Write: mirror the committed selection into the URL (push, so Back walks up
+  // the hierarchy). Keyed on `committed` ONLY — deliberately NOT on
+  // `searchParams` — so that an inbound URL change (Back/Forward, applied by the
+  // read effect below) can't race this effect into re-pushing the
+  // pre-navigation selection.
+  useEffect(() => {
+    const target = buildSelectionQuery(searchParams, committed);
+    if (target !== searchParams.toString()) {
+      router.push(target ? `${pathname}?${target}` : pathname, {
+        scroll: false,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- excludes `searchParams` by design; see note above
+  }, [committed, pathname, router]);
+
+  // Read: reconcile state when the URL changes from the outside (Back/Forward,
+  // deep link). Keyed on `searchParams` ONLY — deliberately NOT on the selection
+  // state — so a local selection change can't be clobbered before the write
+  // effect runs. Names reset to "" and re-resolve via the *DisplayName fallbacks.
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- reacting to external URL changes; deps limited to `searchParams` by design */
+  useEffect(() => {
+    const next = readSelectionParams(searchParams);
+    if (
+      next.fn !== selectedFunctionId ||
+      next.dept !== selectedDepartmentId ||
+      next.proc !== selectedProcessId ||
+      next.tab !== detailTab
+    ) {
+      setSelectedFunctionId(next.fn);
+      setSelectedDepartmentId(next.dept);
+      setSelectedProcessId(next.proc);
+      setSelectedFunctionName("");
+      setSelectedDepartmentName("");
+      setSelectedProcessName("");
+      setMobileLevel(deepestMobileLevel(next));
+      setDetailTab(next.tab);
+    }
+  }, [searchParams]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   // Location options for edit modals
   const departmentLocationOptions = (functions ?? []).map((fn) => ({
@@ -765,6 +1010,66 @@ export function MillerColumns() {
     []
   );
 
+  // --- Command palette (⌘K jump-to-anything) ---
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // Jump straight to a full selection path (sets every level at once); the
+  // Phase-2 URL write effect then mirrors it to the query string.
+  const jumpToDepartment = useCallback(
+    (
+      functionId: Id<"functions">,
+      functionName: string,
+      departmentId: Id<"departments">,
+      departmentName: string,
+    ) => {
+      setSelectedFunctionId(functionId);
+      setSelectedFunctionName(functionName);
+      setSelectedDepartmentId(departmentId);
+      setSelectedDepartmentName(departmentName);
+      setSelectedProcessId(null);
+      setSelectedProcessName("");
+      setDeptSummaryError(null);
+      setFuncSummaryError(null);
+      setMobilePreview(null);
+      setMobileLevel(3);
+    },
+    []
+  );
+
+  const jumpToProcess = useCallback(
+    (
+      functionId: Id<"functions">,
+      functionName: string,
+      departmentId: Id<"departments">,
+      departmentName: string,
+      processId: Id<"processes">,
+      processName: string,
+    ) => {
+      setSelectedFunctionId(functionId);
+      setSelectedFunctionName(functionName);
+      setSelectedDepartmentId(departmentId);
+      setSelectedDepartmentName(departmentName);
+      setSelectedProcessId(processId);
+      setSelectedProcessName(processName);
+      setDeptSummaryError(null);
+      setFuncSummaryError(null);
+      setMobilePreview(null);
+      setMobileLevel(4);
+    },
+    []
+  );
+
   // --- Column renderers ---
 
   const functionsColumn = (mobile?: boolean, collapsed?: boolean) => (
@@ -812,6 +1117,8 @@ export function MillerColumns() {
                   label={fn.name}
                   selected={selectedFunctionId === fn._id}
                   indicator="arrow"
+                  count={departmentCountByFunction.get(fn._id) ?? 0}
+                  status={fn.summaryStale ? "stale" : undefined}
                   onClick={() =>
                     mobile
                       ? handlePreviewFunction(fn._id, fn.name)
@@ -903,6 +1210,8 @@ export function MillerColumns() {
                   label={dept.name}
                   selected={selectedDepartmentId === dept._id}
                   indicator="arrow"
+                  count={processCountByDepartment.get(dept._id) ?? 0}
+                  status={dept.summaryStale ? "stale" : undefined}
                   onClick={() =>
                     mobile
                       ? handlePreviewDepartment(dept._id, dept.name)
@@ -994,6 +1303,13 @@ export function MillerColumns() {
                   label={proc.name}
                   selected={selectedProcessId === proc._id}
                   indicator="dot"
+                  status={
+                    attentionProcessIdSet.has(proc._id)
+                      ? "attention"
+                      : proc.rollingSummary
+                        ? "knowledge"
+                        : undefined
+                  }
                   onClick={() =>
                     mobile
                       ? handlePreviewProcess(proc._id, proc.name)
@@ -1308,7 +1624,13 @@ export function MillerColumns() {
             </Breadcrumb>
           </div>
 
-          <Tabs defaultValue={0} className="flex flex-1 flex-col overflow-hidden gap-0">
+          <Tabs
+            value={detailTab}
+            onValueChange={(value) =>
+              setDetailTab(typeof value === "number" ? value : 0)
+            }
+            className="flex flex-1 flex-col overflow-hidden gap-0"
+          >
             <div className="shrink-0 border-b px-4">
               <TabsList variant="line" className="h-9">
                 <TabsTrigger value={0} className="gap-1.5 text-xs">
@@ -1628,7 +1950,21 @@ export function MillerColumns() {
       {/* App header — desktop only */}
       <header className="hidden shrink-0 items-center justify-between border-b bg-background px-6 py-3 md:flex">
         <WorkspaceBrand />
-        <UserMenu />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            aria-label="Search the organization"
+          >
+            <Search className="h-4 w-4" />
+            <span>Search…</span>
+            <kbd className="ml-2 rounded border bg-background px-1.5 font-sans text-[11px] text-muted-foreground">
+              ⌘K
+            </kbd>
+          </button>
+          <UserMenu />
+        </div>
       </header>
 
       {/* Desktop: 4 side-by-side columns */}
@@ -1658,7 +1994,7 @@ export function MillerColumns() {
 
       {/* Mobile: stacked single column */}
       <div className="flex flex-1 flex-col overflow-hidden md:hidden">
-        <MobileAppHeader />
+        <MobileAppHeader onSearch={() => setPaletteOpen(true)} />
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {mobileLevel === 1 && functionsColumn(true)}
           {mobileLevel === 2 && departmentsColumn(true)}
@@ -1807,6 +2143,18 @@ export function MillerColumns() {
           onConfirm={handleCrudConfirm}
         />
       )}
+
+      {/* ⌘K command palette — jump to any function/department/process */}
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        functions={functions ?? []}
+        departments={allDepartments ?? []}
+        processes={allProcesses ?? []}
+        onJumpFunction={handleSelectFunction}
+        onJumpDepartment={jumpToDepartment}
+        onJumpProcess={jumpToProcess}
+      />
     </div>
     </TooltipProvider>
   );

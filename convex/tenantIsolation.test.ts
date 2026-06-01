@@ -165,6 +165,64 @@ describe("cross-tenant isolation", () => {
     expect(result).toEqual([]);
   });
 
+  test("processes.listAll only returns caller's org rows (enriched)", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoOrgs(t);
+
+    const aResults = await t
+      .withIdentity(identityForOrgA())
+      .query(api.processes.listAll);
+    expect(aResults).toHaveLength(1);
+    expect(aResults[0].name).toBe("Lead-Qualification-A");
+    expect(aResults[0].clerkOrgId).toBe(ORG_A);
+    expect(aResults[0].departmentName).toBe("Inside-Sales-A");
+    expect(aResults[0].functionName).toBe("Sales-A");
+
+    const bResults = await t
+      .withIdentity(identityForOrgB())
+      .query(api.processes.listAll);
+    expect(bResults).toHaveLength(1);
+    expect(bResults[0].name).toBe("Lead-Qualification-B");
+  });
+
+  test("conversations.processIdsNeedingAttention is org-scoped", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seedTwoOrgs(t);
+
+    // One needs_speaker_labels conversation in each org.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("conversations", {
+        processId: ids.procA,
+        contributorName: "Alice",
+        status: "needs_speaker_labels",
+        clerkOrgId: ORG_A,
+      });
+      await ctx.db.insert("conversations", {
+        processId: ids.procB,
+        contributorName: "Bob",
+        status: "needs_speaker_labels",
+        clerkOrgId: ORG_B,
+      });
+      // A done conversation in org A must NOT be flagged.
+      await ctx.db.insert("conversations", {
+        processId: ids.procA,
+        contributorName: "Alice",
+        status: "done",
+        clerkOrgId: ORG_A,
+      });
+    });
+
+    const aResult = await t
+      .withIdentity(identityForOrgA())
+      .query(api.conversations.processIdsNeedingAttention);
+    expect(aResult).toEqual([ids.procA]);
+
+    const bResult = await t
+      .withIdentity(identityForOrgB())
+      .query(api.conversations.processIdsNeedingAttention);
+    expect(bResult).toEqual([ids.procB]);
+  });
+
   test("conversations.listByProcess returns empty for cross-tenant parent", async () => {
     const t = convexTest(schema, modules);
     const ids = await seedTwoOrgs(t);

@@ -31,6 +31,27 @@ export const listByProcess = query({
   },
 });
 
+// Process ids in the caller's org that have at least one conversation awaiting
+// speaker labels — the actionable state a contributor can resolve inline. Reads
+// the `by_clerkOrgId_and_status` index, so it returns only the (typically few)
+// pending rows rather than scanning every conversation. Used to flag rows with
+// an "attention" dot in the navigator.
+export const processIdsNeedingAttention = query({
+  args: {},
+  handler: async (ctx): Promise<Id<"processes">[]> => {
+    const caller = await requireOrgMember(ctx);
+    const rows = await ctx.db
+      .query("conversations")
+      .withIndex("by_clerkOrgId_and_status", (q) =>
+        q.eq("clerkOrgId", caller.orgId).eq("status", "needs_speaker_labels"),
+      )
+      .take(500);
+    const ids = new Set<Id<"processes">>();
+    for (const row of rows) ids.add(row.processId);
+    return [...ids];
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Admin surface — org-wide listing, delete, retry. Every query/mutation/action
 // is gated by `requireOrgAdmin` (or equivalent) and filters strictly by

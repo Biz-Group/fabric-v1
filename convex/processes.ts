@@ -128,6 +128,53 @@ export const listByDepartment = query({
   },
 });
 
+// All processes in the caller's org, each enriched with its department and
+// function name/id. Powers the ⌘K command palette (search source) and the
+// per-department process counts in the navigator. Mirrors `departments.listAll`.
+export const listAll = query({
+  args: {},
+  handler: async (ctx) => {
+    const caller = await requireOrgMember(ctx);
+    const processes = await ctx.db
+      .query("processes")
+      .withIndex("by_clerkOrgId_and_departmentId", (q) =>
+        q.eq("clerkOrgId", caller.orgId),
+      )
+      .collect();
+    const departments = await ctx.db
+      .query("departments")
+      .withIndex("by_clerkOrgId_and_functionId", (q) =>
+        q.eq("clerkOrgId", caller.orgId),
+      )
+      .collect();
+    const functions = await ctx.db
+      .query("functions")
+      .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", caller.orgId))
+      .collect();
+    const deptMap = new Map(departments.map((d) => [d._id, d]));
+    const fnMap = new Map(functions.map((f) => [f._id, f.name]));
+    return processes
+      .map((p) => {
+        const dept = deptMap.get(p.departmentId);
+        const functionId = dept?.functionId ?? null;
+        return {
+          ...p,
+          departmentName: dept?.name ?? "Unknown",
+          functionId,
+          functionName: functionId
+            ? fnMap.get(functionId) ?? "Unknown"
+            : "Unknown",
+        };
+      })
+      .sort(
+        (a, b) =>
+          a.functionName.localeCompare(b.functionName) ||
+          a.departmentName.localeCompare(b.departmentName) ||
+          a.sortOrder - b.sortOrder,
+      );
+  },
+});
+
 export const get = query({
   args: { processId: v.id("processes") },
   handler: async (ctx, args) => {
