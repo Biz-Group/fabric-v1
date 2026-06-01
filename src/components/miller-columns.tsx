@@ -327,6 +327,42 @@ function ColumnItem({
   );
 }
 
+// --- Overview Actions ---
+// Edit/Delete were moved off the column rows (where they crowded and truncated
+// long names) onto the function/department/process overview headers.
+function OverviewActions({
+  entityLabel,
+  onEdit,
+  onDelete,
+}: {
+  entityLabel: string;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <button
+        type="button"
+        onClick={onEdit}
+        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+        title={`Rename ${entityLabel}`}
+        aria-label={`Rename ${entityLabel}`}
+      >
+        <Pencil className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+        title={`Delete ${entityLabel}`}
+        aria-label={`Delete ${entityLabel}`}
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 // --- Empty State ---
 
 function EmptyState({
@@ -373,6 +409,7 @@ function ColumnHeader({
   collapsed,
   onToggle,
   mobile,
+  actions,
 }: {
   title: string;
   count?: number;
@@ -381,6 +418,8 @@ function ColumnHeader({
   collapsed?: boolean;
   onToggle?: () => void;
   mobile?: boolean;
+  /** Right-aligned action buttons (e.g. overview edit/delete). */
+  actions?: React.ReactNode;
 }) {
   if (collapsed && Icon) {
     return (
@@ -417,6 +456,7 @@ function ColumnHeader({
           {title}
         </h2>
         <div className={cn("flex items-center gap-1 min-h-[1.625rem]", mobile && "min-h-9 gap-2")}>
+          {actions}
           {count !== undefined && (
             <span className={cn("rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground", mobile && "flex h-8 min-w-8 items-center justify-center px-2 text-xs")}>
               {count}
@@ -1126,8 +1166,8 @@ export function MillerColumns() {
                   }
                   onNavigate={mobile ? () => handleSelectFunction(fn._id, fn.name) : undefined}
                   navigateLabel={`View departments in ${fn.name}`}
-                  onEdit={canEdit ? () => openCrud("edit", "Function", fn.name, fn._id) : undefined}
-                  onDelete={canEdit ? () => openCrud("delete", "Function", fn.name, fn._id) : undefined}
+                  onEdit={canEdit && mobile ? () => openCrud("edit", "Function", fn.name, fn._id) : undefined}
+                  onDelete={canEdit && mobile ? () => openCrud("delete", "Function", fn.name, fn._id) : undefined}
                   mobile={mobile}
                 />
               ))
@@ -1219,8 +1259,8 @@ export function MillerColumns() {
                   }
                   onNavigate={mobile ? () => handleSelectDepartment(dept._id, dept.name) : undefined}
                   navigateLabel={`View processes in ${dept.name}`}
-                  onEdit={canEdit ? () => openCrud("edit", "Department", dept.name, dept._id, dept.functionId, dept.description) : undefined}
-                  onDelete={canEdit ? () => openCrud("delete", "Department", dept.name, dept._id) : undefined}
+                  onEdit={canEdit && mobile ? () => openCrud("edit", "Department", dept.name, dept._id, dept.functionId, dept.description) : undefined}
+                  onDelete={canEdit && mobile ? () => openCrud("delete", "Department", dept.name, dept._id) : undefined}
                   mobile={mobile}
                 />
               ))
@@ -1317,8 +1357,8 @@ export function MillerColumns() {
                   }
                   onNavigate={mobile ? () => handleSelectProcess(proc._id, proc.name) : undefined}
                   navigateLabel={`Open ${proc.name}`}
-                  onEdit={canEdit ? () => openCrud("edit", "Process", proc.name, proc._id, proc.departmentId, proc.description) : undefined}
-                  onDelete={canEdit ? () => openCrud("delete", "Process", proc.name, proc._id) : undefined}
+                  onEdit={canEdit && mobile ? () => openCrud("edit", "Process", proc.name, proc._id, proc.departmentId, proc.description) : undefined}
+                  onDelete={canEdit && mobile ? () => openCrud("delete", "Process", proc.name, proc._id) : undefined}
                   mobile={mobile}
                 />
               ))
@@ -1346,7 +1386,44 @@ export function MillerColumns() {
       )}
       {!selectedProcessId ? (
         <div className="flex flex-1 flex-col overflow-y-auto scrollbar-hide">
-          <ColumnHeader title={selectedDepartmentId ? "Department Overview" : selectedFunctionId ? "Function Overview" : "Process Detail"} mobile={mobile} />
+          <ColumnHeader
+            title={selectedDepartmentId ? "Department Overview" : selectedFunctionId ? "Function Overview" : "Process Detail"}
+            mobile={mobile}
+            actions={
+              canEdit && selectedDepartmentId ? (
+                <OverviewActions
+                  entityLabel={departmentDisplayName}
+                  onEdit={() =>
+                    selectedDepartmentId &&
+                    openCrud(
+                      "edit",
+                      "Department",
+                      departmentDisplayName,
+                      selectedDepartmentId,
+                      selectedDepartment?.functionId,
+                      selectedDepartment?.description
+                    )
+                  }
+                  onDelete={() =>
+                    selectedDepartmentId &&
+                    openCrud("delete", "Department", departmentDisplayName, selectedDepartmentId)
+                  }
+                />
+              ) : canEdit && selectedFunctionId ? (
+                <OverviewActions
+                  entityLabel={functionDisplayName}
+                  onEdit={() =>
+                    selectedFunctionId &&
+                    openCrud("edit", "Function", functionDisplayName, selectedFunctionId)
+                  }
+                  onDelete={() =>
+                    selectedFunctionId &&
+                    openCrud("delete", "Function", functionDisplayName, selectedFunctionId)
+                  }
+                />
+              ) : undefined
+            }
+          />
 
           {/* On-demand Department Summary */}
           {selectedDepartmentId && !selectedProcessId && (
@@ -1587,7 +1664,7 @@ export function MillerColumns() {
       ) : (
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Breadcrumb bar */}
-          <div className="shrink-0 border-b bg-muted/30 px-4 py-3">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b bg-muted/30 px-4 py-3">
             <Breadcrumb>
               <BreadcrumbList>
                 <BreadcrumbItem>
@@ -1622,6 +1699,26 @@ export function MillerColumns() {
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
+            {!mobile && canEdit && selectedProcessId && (
+              <OverviewActions
+                entityLabel={processDisplayName}
+                onEdit={() =>
+                  selectedProcessId &&
+                  openCrud(
+                    "edit",
+                    "Process",
+                    processDisplayName,
+                    selectedProcessId,
+                    selectedProcess?.departmentId,
+                    selectedProcess?.description
+                  )
+                }
+                onDelete={() =>
+                  selectedProcessId &&
+                  openCrud("delete", "Process", processDisplayName, selectedProcessId)
+                }
+              />
+            )}
           </div>
 
           <Tabs

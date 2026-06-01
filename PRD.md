@@ -48,7 +48,7 @@ The entire app is a single-page interface using a Miller column layout (inspired
 - Clicking a Department populates the Process column with its children.
 - Clicking a Process opens the **Process Detail Panel** — either as a fourth column or as a slide-over/modal.
 
-The structure is: **Function → Department → Process**. Users can create, rename, move, and delete items at each level directly from the Miller column UI — no separate admin screen needed.
+The structure is: **Function → Department → Process**. Users can create, rename, move, and delete items at each level directly from the Miller column UI — no separate admin screen needed. On desktop, the add (`+`) button lives in each column header, while rename/delete controls live on the selected item's **overview header** (Function/Department Overview) or the **process detail breadcrumb** — keeping them off the narrow column rows so long names aren't truncated. On mobile (stacked drill-down), the full-width rows carry inline rename/delete controls directly.
 
 ### 2.2 Process Detail Panel
 
@@ -998,7 +998,7 @@ Alternatively, the entire modal can use the **Conversation Bar** component, whic
 
 - Miller column navigation (Function → Department → Process) built with **shadcn/ui** components
 - **Responsive layout** — Miller columns on desktop; stacked drill-down navigation on mobile/tablet (collapse to single-column with back navigation)
-- **Org hierarchy CRUD** — users can create, rename, and delete functions, departments, and processes directly from the Miller column UI via inline add/edit/delete controls (pencil and trash icons on each item, plus button in column headers)
+- **Org hierarchy CRUD** — users can create, rename, and delete functions, departments, and processes directly from the Miller column UI. The add (`+`) button sits in each column header. On desktop, rename/delete (pencil and trash icons) live on the selected item's overview header (Function/Department Overview) and the process detail breadcrumb, rather than on the column rows themselves — this keeps the narrow (220px) columns from truncating long names. On mobile, where rows are full-width, the rename/delete icons remain inline on each row.
 - **Move / reparent** — departments can be moved to a different function, and processes can be moved to a different department (including across functions) via the edit modal, which includes a location dropdown. When a process or department is moved, summaries on both old and new parents are marked stale. If the old parent has no remaining processes with summaries, its department summary is cleared automatically
 - **Non-destructive hierarchy repair** — if orphaned departments or processes are detected in Convex, Fabric reattaches them to recovery parents instead of deleting the affected records. Existing process ids stay stable, so attached conversations and process flows are preserved.
 - **English only** for POC (ElevenLabs agent language set to `"en"`)
