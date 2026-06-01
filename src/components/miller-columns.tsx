@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, lazy, Suspense } from "react";
+import { useState, useCallback, useEffect, lazy, Suspense } from "react";
 import { useQuery, useAction, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -128,7 +128,9 @@ function ColumnItem({
           mobile ? "min-h-14 px-4 py-3 text-base" : "px-3 py-2.5 text-sm"
         )}
       >
-        <span className="truncate">{label}</span>
+        <span className="truncate" title={label}>
+          {label}
+        </span>
       </button>
       <div
         className={cn(
@@ -136,7 +138,10 @@ function ColumnItem({
           mobile
             ? "gap-1.5 px-1.5"
             : "gap-0.5 pr-2 transition-opacity",
-          !mobile && (selected ? "opacity-100" : "opacity-0 group-hover:opacity-100")
+          !mobile &&
+            (selected
+              ? "opacity-100"
+              : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100")
         )}
       >
         {onEdit && (
@@ -199,10 +204,14 @@ function EmptyState({
   icon: Icon,
   title,
   description,
+  actionLabel,
+  onAction,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
+  actionLabel?: string;
+  onAction?: () => void;
 }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
@@ -215,6 +224,12 @@ function EmptyState({
           {description}
         </p>
       </div>
+      {actionLabel && onAction && (
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={onAction}>
+          <Plus className="h-3.5 w-3.5" />
+          {actionLabel}
+        </Button>
+      )}
     </div>
   );
 }
@@ -620,6 +635,49 @@ export function MillerColumns() {
     selectedProcessId ? { processId: selectedProcessId } : "skip"
   );
 
+  // Display names sourced from the reactive docs so renames reflect immediately,
+  // falling back to the snapshot captured at selection time while the doc loads.
+  const functionDisplayName = selectedFunction?.name ?? selectedFunctionName;
+  const departmentDisplayName = selectedDepartment?.name ?? selectedDepartmentName;
+  const processDisplayName = selectedProcess?.name ?? selectedProcessName;
+
+  // Clear selection when a selected entity is removed out from under us (e.g.
+  // deleted by another member). The `get` queries resolve to `null` (not
+  // `undefined`) only once loaded-and-missing, so this never fires mid-load,
+  // and clearing the id skips the query so the null condition can't re-fire.
+  //
+  // This is the legitimate "subscribe to an external system, setState when it
+  // changes" case the lint rule below describes — the external system is the
+  // Convex reactive store telling us the doc no longer exists.
+  /* eslint-disable react-hooks/set-state-in-effect -- reacting to a Convex subscription; see note above */
+  useEffect(() => {
+    if (selectedFunctionId && selectedFunction === null) {
+      setSelectedFunctionId(null);
+      setSelectedFunctionName("");
+      setSelectedDepartmentId(null);
+      setSelectedDepartmentName("");
+      setSelectedProcessId(null);
+      setSelectedProcessName("");
+    }
+  }, [selectedFunctionId, selectedFunction]);
+
+  useEffect(() => {
+    if (selectedDepartmentId && selectedDepartment === null) {
+      setSelectedDepartmentId(null);
+      setSelectedDepartmentName("");
+      setSelectedProcessId(null);
+      setSelectedProcessName("");
+    }
+  }, [selectedDepartmentId, selectedDepartment]);
+
+  useEffect(() => {
+    if (selectedProcessId && selectedProcess === null) {
+      setSelectedProcessId(null);
+      setSelectedProcessName("");
+    }
+  }, [selectedProcessId, selectedProcess]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   // Location options for edit modals
   const departmentLocationOptions = (functions ?? []).map((fn) => ({
     value: fn._id,
@@ -744,6 +802,8 @@ export function MillerColumns() {
                 icon={Building2}
                 title="No functions yet"
                 description="Organizational functions will appear here."
+                actionLabel={canEdit ? "Add function" : undefined}
+                onAction={canEdit ? () => openCrud("create", "Function") : undefined}
               />
             ) : (
               functions.map((fn) => (
@@ -829,6 +889,12 @@ export function MillerColumns() {
                 icon={Layers}
                 title="No departments"
                 description="This function has no departments defined yet."
+                actionLabel={canEdit ? "Add department" : undefined}
+                onAction={
+                  canEdit && selectedFunctionId
+                    ? () => openCrud("create", "Department")
+                    : undefined
+                }
               />
             ) : (
               departments.map((dept) => (
@@ -867,7 +933,7 @@ export function MillerColumns() {
             className="min-h-10 max-w-full gap-2 px-3 text-sm"
           >
             <ChevronLeft className="h-4 w-4" />
-            <span className="truncate">{selectedFunctionName || "Departments"}</span>
+            <span className="truncate">{functionDisplayName || "Departments"}</span>
           </Button>
         </div>
       )}
@@ -914,6 +980,12 @@ export function MillerColumns() {
                 icon={Cog}
                 title="No processes"
                 description="No processes defined yet for this department."
+                actionLabel={canEdit ? "Add process" : undefined}
+                onAction={
+                  canEdit && selectedDepartmentId
+                    ? () => openCrud("create", "Process")
+                    : undefined
+                }
               />
             ) : (
               processes.map((proc) => (
@@ -952,7 +1024,7 @@ export function MillerColumns() {
             className="min-h-10 max-w-full gap-2 px-3 text-sm"
           >
             <ChevronLeft className="h-4 w-4" />
-            <span className="truncate">{selectedDepartmentName || "Processes"}</span>
+            <span className="truncate">{departmentDisplayName || "Processes"}</span>
           </Button>
         </div>
       )}
@@ -991,8 +1063,8 @@ export function MillerColumns() {
                   </CardTitle>
                   <CardDescription>
                     {selectedDepartment?.summary
-                      ? `AI-synthesized overview of processes in ${selectedDepartmentName}.`
-                      : `Generate an AI-synthesized overview of all processes in ${selectedDepartmentName}.`}
+                      ? `AI-synthesized overview of processes in ${departmentDisplayName}.`
+                      : `Generate an AI-synthesized overview of all processes in ${departmentDisplayName}.`}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -1097,8 +1169,8 @@ export function MillerColumns() {
                   </CardTitle>
                   <CardDescription>
                     {selectedFunction?.summary
-                      ? `AI-synthesized overview of departments across ${selectedFunctionName}.`
-                      : `Generate an AI-synthesized overview of all departments across ${selectedFunctionName}.`}
+                      ? `AI-synthesized overview of departments across ${functionDisplayName}.`
+                      : `Generate an AI-synthesized overview of all departments across ${functionDisplayName}.`}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -1211,7 +1283,7 @@ export function MillerColumns() {
                       setMobileLevel(2);
                     }}
                   >
-                    {selectedFunctionName}
+                    {functionDisplayName}
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
@@ -1223,13 +1295,13 @@ export function MillerColumns() {
                       setMobileLevel(3);
                     }}
                   >
-                    {selectedDepartmentName}
+                    {departmentDisplayName}
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
                   <BreadcrumbPage className="text-xs">
-                    {selectedProcessName}
+                    {processDisplayName}
                   </BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
@@ -1322,9 +1394,9 @@ export function MillerColumns() {
                     open={recordingOpen}
                     onOpenChange={setRecordingOpen}
                     processId={selectedProcessId}
-                    processName={selectedProcessName}
-                    functionName={selectedFunctionName}
-                    departmentName={selectedDepartmentName}
+                    processName={processDisplayName}
+                    functionName={functionDisplayName}
+                    departmentName={departmentDisplayName}
                     departmentDescription={
                       selectedDepartment?.descriptionSafetyStatus === "safe"
                         ? selectedDepartment.description

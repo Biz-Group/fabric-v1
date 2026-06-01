@@ -113,7 +113,7 @@ export const listByDepartment = query({
     const caller = await requireOrgMember(ctx);
     const parent = await ctx.db.get(args.departmentId);
     if (!parent || parent.clerkOrgId !== caller.orgId) return [];
-    return await ctx.db
+    const docs = await ctx.db
       .query("processes")
       .withIndex("by_clerkOrgId_and_departmentId", (q) =>
         q
@@ -122,6 +122,9 @@ export const listByDepartment = query({
       )
       .order("asc")
       .collect();
+    // Order by the maintained `sortOrder` field (stable fallback to the
+    // creation order from `.order("asc")` for equal values). See functions.list.
+    return docs.sort((a, b) => a.sortOrder - b.sortOrder);
   },
 });
 

@@ -10,11 +10,16 @@ export const list = query({
   args: {},
   handler: async (ctx) => {
     const caller = await requireOrgMember(ctx);
-    return await ctx.db
+    const docs = await ctx.db
       .query("functions")
       .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", caller.orgId))
       .order("asc")
       .collect();
+    // Order by the maintained `sortOrder` field. Today it tracks creation
+    // order; this makes it authoritative so manual reordering will Just Work.
+    // JS sort is stable, so equal sortOrder falls back to the creation order
+    // established by `.order("asc")` above.
+    return docs.sort((a, b) => a.sortOrder - b.sortOrder);
   },
 });
 

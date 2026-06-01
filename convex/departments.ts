@@ -119,13 +119,16 @@ export const listByFunction = query({
     // matches the "treat cross-org access as empty" UX.
     const parent = await ctx.db.get(args.functionId);
     if (!parent || parent.clerkOrgId !== caller.orgId) return [];
-    return await ctx.db
+    const docs = await ctx.db
       .query("departments")
       .withIndex("by_clerkOrgId_and_functionId", (q) =>
         q.eq("clerkOrgId", caller.orgId).eq("functionId", args.functionId),
       )
       .order("asc")
       .collect();
+    // Order by the maintained `sortOrder` field (stable fallback to the
+    // creation order from `.order("asc")` for equal values). See functions.list.
+    return docs.sort((a, b) => a.sortOrder - b.sortOrder);
   },
 });
 
@@ -157,10 +160,18 @@ export const listAll = query({
       .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", caller.orgId))
       .collect();
     const fnMap = new Map(functions.map((f) => [f._id, f.name]));
-    return depts.map((d) => ({
-      ...d,
-      functionName: fnMap.get(d.functionId) ?? "Unknown",
-    }));
+    return depts
+      .map((d) => ({
+        ...d,
+        functionName: fnMap.get(d.functionId) ?? "Unknown",
+      }))
+      // Grouped by function in the picker, so order by function name then the
+      // per-function `sortOrder` for a predictable, stable list.
+      .sort(
+        (a, b) =>
+          a.functionName.localeCompare(b.functionName) ||
+          a.sortOrder - b.sortOrder,
+      );
   },
 });
 
