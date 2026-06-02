@@ -33,6 +33,8 @@ import { cn } from "@/lib/utils";
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   ChevronsLeft,
   ChevronsRight,
   Building2,
@@ -82,6 +84,8 @@ import { GitBranch } from "lucide-react";
 const ProcessFlow = lazy(() =>
   import("@/components/process-flow").then((m) => ({ default: m.ProcessFlow }))
 );
+
+const PROCESS_SUMMARY_COLLAPSED_HEIGHT = 184;
 
 // --- Types ---
 
@@ -646,6 +650,8 @@ export function MillerColumns() {
   const generateFunctionSummary = useAction(api.summaries.generateFunctionSummary);
   const forceRefreshProcessSummary = useAction(api.summaries.forceRefreshProcessSummary);
   const [processSummaryRefreshing, setProcessSummaryRefreshing] = useState(false);
+  const [expandedProcessSummaryKey, setExpandedProcessSummaryKey] =
+    useState<string | null>(null);
 
   // CRUD mutations/actions
   const createFunction = useMutation(api.functions.create);
@@ -830,6 +836,18 @@ export function MillerColumns() {
     api.conversations.listByProcess,
     selectedProcessId ? { processId: selectedProcessId } : "skip"
   );
+  const processSummary = selectedProcess?.rollingSummary;
+  const processSummaryKey =
+    selectedProcessId && processSummary
+      ? `${selectedProcessId}:${processSummary.length}:${processSummary.slice(0, 24)}`
+      : null;
+  const processSummaryExpanded =
+    processSummaryKey !== null && expandedProcessSummaryKey === processSummaryKey;
+  const processSummaryCollapsed =
+    processSummaryKey !== null && !processSummaryExpanded;
+  const completedProcessConversationCount =
+    processConversations?.filter((conversation) => conversation.status === "done")
+      .length ?? 0;
 
   // Row scent, derived from the lists already loaded for navigation/search
   // (no per-row queries). See plan: "compute on read".
@@ -1837,27 +1855,64 @@ export function MillerColumns() {
                       <FileText className="h-4 w-4 text-muted-foreground" />
                       Process Summary
                     </CardTitle>
-                    {!selectedProcess?.rollingSummary && (
+                    {!processSummary && (
                       <CardDescription>
                         No summary yet — record a conversation to get started.
                       </CardDescription>
                     )}
                   </CardHeader>
-                  {selectedProcess?.rollingSummary && (
-                    <CardContent className="space-y-3">
-                      {processSummaryRefreshing ? (
-                        <div className="relative">
-                          <div className="opacity-50">
-                            <MarkdownSummary content={selectedProcess.rollingSummary} />
+                  {processSummary && (
+                    <CardContent className="space-y-4">
+                      <div className="relative">
+                        <div
+                          className={cn(
+                            "relative",
+                            processSummaryRefreshing && "opacity-50",
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              "relative transition-[max-height] duration-200 ease-linear",
+                              processSummaryCollapsed && "overflow-hidden",
+                            )}
+                            style={
+                              processSummaryCollapsed
+                                ? { maxHeight: PROCESS_SUMMARY_COLLAPSED_HEIGHT }
+                                : undefined
+                            }
+                          >
+                            <MarkdownSummary content={processSummary} />
+                            {processSummaryCollapsed && (
+                              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-card to-card/0" />
+                            )}
                           </div>
+                        </div>
+                        {processSummaryRefreshing && (
                           <div className="absolute inset-0 flex items-center justify-center">
                             <Loader2 className="h-6 w-6 animate-spin text-primary" />
                           </div>
-                        </div>
-                      ) : (
-                        <MarkdownSummary content={selectedProcess.rollingSummary} />
+                        )}
+                      </div>
+                      {processSummaryKey && (
+                        <button
+                          type="button"
+                          className="focus-ring mx-auto flex h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          aria-expanded={processSummaryExpanded}
+                          onClick={() => {
+                            setExpandedProcessSummaryKey(
+                              processSummaryExpanded ? null : processSummaryKey,
+                            );
+                          }}
+                        >
+                          {processSummaryExpanded ? "See less" : "See more"}
+                          {processSummaryExpanded ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </button>
                       )}
-                      {canEdit && selectedProcessId && (processConversations?.filter(c => c.status === "done").length ?? 0) > 1 && (
+                      {canEdit && selectedProcessId && completedProcessConversationCount > 1 && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -1910,7 +1965,7 @@ export function MillerColumns() {
               >
                 <ProcessFlow
                   processId={selectedProcessId!}
-                  conversationCount={processConversations?.filter(c => c.status === "done").length ?? 0}
+                  conversationCount={completedProcessConversationCount}
                 />
               </Suspense>
             </TabsContent>
