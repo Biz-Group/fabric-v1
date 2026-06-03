@@ -48,7 +48,9 @@ The entire app is a single-page interface using a Miller column layout (inspired
 - Clicking a Department populates the Process column with its children.
 - Clicking a Process opens the **Process Detail Panel** — either as a fourth column or as a slide-over/modal.
 
-The structure is: **Function → Department → Process**. Users can create, rename, move, and delete items at each level directly from the Miller column UI — no separate admin screen needed. On desktop, the add (`+`) button lives in each column header, while rename/delete controls live on the selected item's **overview header** (Function/Department Overview) or the **process detail breadcrumb** — keeping them off the narrow column rows so long names aren't truncated. On mobile (stacked drill-down), the full-width rows carry inline rename/delete controls directly.
+The structure is: **Function → Department → Process**. Users with contributor or admin access can create, rename, move, and delete eligible items at each level directly from the Miller column UI — no separate hierarchy admin screen needed. On desktop, the add (`+`) button lives in each column header, while rename/delete controls live on the selected item's **overview header** (Function/Department Overview) or the **process detail breadcrumb** — keeping them off the narrow column rows so long names aren't truncated. On mobile (stacked drill-down), the full-width rows carry inline rename/delete controls directly.
+
+Hierarchy deletion is intentionally non-cascading. A function cannot be deleted while it still has departments, a department cannot be deleted while it still has processes, and a process cannot be deleted while it still has conversations. Delete dialogs show the server-computed eligibility state so viewers see a role blocker, contributors/admins see child-data blockers, and admins get a direct path to **Admin → Conversations** when process conversations must be deleted first. Empty process deletion also removes its derived process-flow diagram before deleting the process row.
 
 ### 2.2 Process Detail Panel
 
@@ -79,7 +81,7 @@ When a user selects a process, they see:
    - **Node selection**: clicking a node highlights it (ring + scale), dims all other nodes and unconnected edges to 10% opacity, and opens a detail panel
    - **Node detail panel** (desktop: 320px slide-in from right; mobile: bottom Sheet at 60vh): shows full description, actors, tools, duration, automation potential, confidence, pain points, risk indicators, sources, and navigable connections ("Comes after" / "Leads to")
    - **Insights bar** at the bottom: step count, handoff count, tool count, total duration, bottleneck count, automation opportunity count
-   - **Staleness tracking**: when completed conversations add new labeled analysis data, the flow is marked stale with an amber "New data available" badge and Refresh button
+   - **Staleness tracking**: when completed conversations add or remove labeled analysis data, the flow is marked stale with an amber "New data available" badge and Refresh button; if the last completed conversation is deleted, the derived flow is removed
    - **Fullscreen mode** via maximize button
    - **Canvas controls**: MiniMap (desktop only), zoom/pan controls, fit-to-view
    - **Process-level insights**: critical path, automation opportunities (prose summaries), top bottlenecks
@@ -117,7 +119,7 @@ When a user selects a process, they see:
 The recording modal opens to a single combined step that confirms the contributor's name and surfaces the recording/content notices inline. Submitting that step requests the microphone (Voice Record / AI Interview) or opens the file picker (Audio Upload).
 
 **Abandonment cleanup:**
-If a contributor closes the modal after upload/recording has reached Convex Storage but before they approve speaker labels, the modal calls the `abandonVoiceRecording` mutation. The mutation deletes the storage object and the conversation row so we don't retain inputs we never finished analyzing. The server gates the cleanup on `status !== "done"` so finalized rows are never affected.
+If a contributor closes the modal after upload/recording has reached Convex Storage but before they approve speaker labels, the modal calls the `abandonVoiceRecording` mutation. The mutation deletes the storage object and the conversation row so we don't retain inputs we never finished analyzing. The server only allows the conversation owner or an org admin to abandon the row, only for `voiceRecord` / `audioUpload` conversations, and gates cleanup on `status !== "done"` so finalized rows are never affected.
 
 ---
 
@@ -260,7 +262,7 @@ export default defineSchema({
 **Convex features used:**
 
 - **Document database** — schema-validated tables with typed fields, references via `v.id()`, and flexible `v.any()` for transcript/analysis storage
-- **Hierarchy integrity guards** — department/process create and move mutations must verify the target parent exists before writing. If legacy orphaned records are found, they are rewired non-destructively into recovery parents rather than deleting child processes, conversations, or process flows.
+- **Hierarchy integrity guards** — department/process create and move mutations must verify the target parent exists before writing. Delete mutations are non-cascading and must refuse to remove parents that still have child records. If legacy orphaned records are found, they are rewired non-destructively into recovery parents rather than deleting child processes, conversations, or process flows.
 - **Server functions** — `actions` for external API calls (ElevenLabs, OpenRouter), `mutations` for database writes, `queries` for reads, `httpAction` for HTTP endpoints (audio proxy)
 - **Built-in reactivity** — all `useQuery` hooks auto-update when data changes. No manual subscriptions needed — the UI updates live when a new conversation is inserted or its status changes
 - **Auth** — Clerk (hosted auth with prebuilt UI) + Convex JWT validation, auth gates on all queries, user profiles with onboarding on first login (Phase 5)
@@ -408,7 +410,7 @@ In addition to AI interview sessions, Fabric supports two contributor-driven cap
 8. `analyzeVoiceRecordingInternal` runs Fabric's OpenRouter analysis prompt on the labeled transcript, stores `summary` + structured `analysis`, marks the conversation `done`, and only then schedules `regenerateProcessSummary`.
 
 **Abandonment cleanup:**
-If a contributor closes the modal after the audio has reached storage but before they approve speaker labels, the frontend calls `voiceRecordings.abandonVoiceRecording`. The mutation deletes the storage object and the conversation row when `status !== "done"`, ensuring we don't retain half-processed audio. The check is gated to `voiceRecord` / `audioUpload` rows so AI interview records (which Fabric does not own the bytes for) are never touched.
+If a contributor closes the modal after the audio has reached storage but before they approve speaker labels, the frontend calls `voiceRecordings.abandonVoiceRecording`. The mutation deletes the storage object and the conversation row when `status !== "done"`, ensuring we don't retain half-processed audio. The check is gated to the row owner or an org admin and to `voiceRecord` / `audioUpload` rows, so AI interview records (which Fabric does not own the bytes for) are never touched.
 
 **Why speaker labeling is before analysis:**
 - Process summaries and process flows cite contributors and infer handoffs/actors. Running analysis on unlabeled `speaker_0` / `speaker_1` text would lose important context and could misattribute process ownership.
@@ -586,6 +588,16 @@ New completed recording → Process summary incrementally updated
     → Function summary marked stale
 ```
 
+Admin deletes completed conversation → Process summary force-refreshed from remaining completed transcripts
+  → Process flow marked stale
+  → Department summary marked stale
+    → Function summary marked stale
+
+Admin deletes the last completed conversation for a process → Process summary cleared
+  → Process flow deleted
+  → Parent summaries cleared or marked stale based on remaining child summaries
+
+Process deleted → Process flow deleted → Department summary cleared/stale → Function summary stale
 New process added/removed → Department summary marked stale → Function summary marked stale
 New department added/removed → Function summary marked stale
 
@@ -598,17 +610,19 @@ New department added/removed → Function summary marked stale
 | Function | Type | Trigger | Purpose |
 |---|---|---|---|
 | `postCallWebhook` | `httpAction` | HTTP POST (from ElevenLabs `post_call_transcription` webhook) | Receives transcript, summary, analysis, and metadata. Stores in `conversations` table. Triggers process summary regeneration. |
-| `regenerateProcessSummary` | `action` | Called after conversation is inserted | Fetches all conversation summaries for a process → sends to Claude Haiku via OpenRouter → updates `processes.rollingSummary` |
+| `regenerateProcessSummary` | `action` / `internalAction` | Called after a completed conversation is inserted, or after an admin deletes a completed conversation and remaining completed transcripts still exist | Fetches conversation summaries/transcripts for a process → sends to Claude Haiku via OpenRouter → updates `processes.rollingSummary`. Admin deletion uses `forceRefresh` so deleted content/citations are removed from the rolling summary. |
 | `fetchConversation` | `action` | Called by frontend after `onDisconnect` (polling path) | Polls ElevenLabs API for conversation details, inserts into DB when status = `done`, then triggers `regenerateProcessSummary` |
 | `processVoiceRecording` | `action` | Called after Voice Record or Audio File Upload completes uploading to Convex Storage | Takes a `source: "record" \| "upload"` arg, inserts a processing conversation with the matching `inputMode`, enforces an `audio/*` MIME prefix for uploads, then schedules Scribe transcription with diarization. |
 | `submitSpeakerLabels` | `mutation` | Called from speaker-label review UI | Validates labels, optionally links speakers to org members, patches transcript `speakerName`s, and schedules voice-recording analysis. |
-| `abandonVoiceRecording` | `mutation` | Called when the recording modal closes mid-flight, before the contributor approves speaker labels | Deletes the Convex Storage object and the conversation row when `status !== "done"`. Gated to `voiceRecord` / `audioUpload` rows so AI interviews are never touched. |
+| `abandonVoiceRecording` | `mutation` | Called when the recording modal closes mid-flight, before the contributor approves speaker labels | Deletes the Convex Storage object and the conversation row when `status !== "done"`. Gated to the row owner or an org admin and to `voiceRecord` / `audioUpload` rows so AI interviews are never touched. |
 | `analyzeVoiceRecordingInternal` | `internalAction` | Scheduled after speaker labels are submitted | Runs OpenRouter analysis on the labeled transcript, stores summary/analysis, marks the conversation done, and triggers process summary regeneration. |
+| `deleteForAdmin` | `mutation` | Called from Admin → Conversations | Admin-only conversation delete. Best-effort deletes owned Convex Storage bytes, deletes the conversation row, skips summary work for non-`done` rows, force-refreshes the process summary when other completed conversations remain, and clears the process summary/deletes the flow when the last completed conversation is removed. |
 | `getAudio` | `httpAction` | Called by frontend audio player | Verifies org-scoped signed audio URLs; proxies ElevenLabs audio for AI interviews or streams Convex Storage audio for Voice Record and Audio File Upload. |
 | `generateProcessFlow` | `action` | Called by frontend "Generate Process Flow" button | Auth-gated entry point. Sets status to "generating", schedules the internal LLM action. |
 | `generateFlowInternal` | `internalAction` | Scheduled by `generateProcessFlow` | Assembles rolling summary + conversation analysis data into a prompt, calls Claude Haiku 4.5 via OpenRouter, parses JSON response, validates/normalizes nodes and edges, saves to `processFlows` table. |
 | `getProcessFlow` | `query` | Convex subscription from frontend | Returns the `processFlows` document for a given process. Real-time — UI auto-updates when generation completes. |
 | `markFlowStale` | `internalMutation` | Called after `regenerateProcessSummary` | Sets `stale: true` on the process flow when new conversation data arrives. |
+| `deleteForProcess` | `internalMutation` | Called before process deletion or when a process loses its last completed conversation | Deletes the derived `processFlows` row for the process. |
 
 **Built-in reactivity (no manual subscriptions needed):**
 Convex queries are reactive by default. Any component using `useQuery` will auto-update when the underlying data changes. When a new conversation record is inserted (or its status changes to `needs_speaker_labels` / `done`), the Process Detail Panel auto-refreshes without a page reload — no channels, no subscriptions, no cleanup.
@@ -650,7 +664,7 @@ const process = useQuery(api.processes.get, { processId: selectedProcessId });
 **Provider:** Clerk (hosted auth with prebuilt UI components)
 **Sign-in method:** Email + password (managed by Clerk)
 **Tenancy:** Multi-tenant via Clerk Organizations (see section 3.7). Every org is accessed through its own subdomain (`biz-group.bizfabric.ai`). All data is row-level scoped by `clerkOrgId` and fully isolated across orgs.
-**RBAC:** Three roles — **admin** (org management + CRUD + recording + viewing), **contributor** (CRUD + recording + viewing), **viewer** (browse hierarchy + view summaries only). Roles live in a Convex `memberships` table keyed by `(tokenIdentifier, clerkOrgId)` — **not** on the user record, because the same person can hold different roles in different orgs. Role checks enforced server-side via `requireOrgContributor`/`requireOrgAdmin` helpers in `convex/lib/orgAuth.ts`. Frontend conditionally renders CRUD controls, Record button, and admin features based on the caller's role for the active org.
+**RBAC:** Three roles — **admin** (org management, conversation cleanup, CRUD, recording, viewing), **contributor** (eligible hierarchy CRUD, recording, viewing), **viewer** (browse hierarchy + view summaries only). Roles live in a Convex `memberships` table keyed by `(tokenIdentifier, clerkOrgId)` — **not** on the user record, because the same person can hold different roles in different orgs. Role checks are enforced server-side via `requireOrgContributor`/`requireOrgAdmin` helpers in `convex/lib/orgAuth.ts`. Frontend conditionally renders CRUD controls, Record button, and admin features based on the caller's role for the active org.
 
 **Why Clerk:** First-class Convex integration via JWT validation. Prebuilt `<SignIn />`, `<SignUp />`, and `<UserButton />` React components — no custom auth UI to build or maintain. Clerk handles all auth infrastructure (account creation, password hashing, session management, JWT signing) externally, keeping the Convex backend focused on business logic. Can be extended with SSO/SAML and organization management for enterprise use.
 
@@ -666,7 +680,16 @@ const process = useQuery(api.processes.get, { processId: selectedProcessId });
 | `department` | optional string | Org department (e.g., "Payroll") — selected from `departments` table |
 | `hireDate` | optional string | ISO date string |
 | `profileComplete` | boolean | `false` until onboarding is done |
-| `role` | optional string | `"admin"` \| `"contributor"` \| `"viewer"` — defaults to `"viewer"` on creation. `v.optional` for backward compatibility with existing docs (treated as `"viewer"` when undefined) |
+| `platformRole` | optional string | `"superAdmin"` or absent — platform-level admin flag, separate from per-org access. Does not grant tenant data access by itself. |
+
+**Membership Table (`memberships`):**
+
+| Field | Type | Description |
+|---|---|---|
+| `tokenIdentifier` | string | Canonical identity from `ctx.auth.getUserIdentity()` |
+| `userId` | `v.id("users")` | Linked global user profile |
+| `clerkOrgId` | string | Active Clerk organization id |
+| `role` | string | `"admin"` \| `"contributor"` \| `"viewer"` — the source of truth for org-scoped UI controls and Convex authorization |
 
 **Conversations table change:** Add optional `userId` field (`v.id("users")`) linking conversations to authenticated users. The existing `contributorName` field is preserved as a denormalized display name.
 
@@ -679,13 +702,13 @@ const process = useQuery(api.processes.get, { processId: selectedProcessId });
 6. After completing onboarding → user accesses the main app
 7. All Convex queries/mutations require authentication via `ctx.auth.getUserIdentity()`
 8. User identity is never passed as a function argument — always derived server-side
-9. Write mutations (create/update/delete on hierarchy, recording conversations) require `contributor` or `admin` role — enforced server-side via `requireContributor(ctx)` in `convex/lib/auth.ts`
-10. User role management (`setUserRole`, `listAllUsers`) requires `admin` role — enforced via `requireAdmin(ctx)`
-11. Frontend conditionally renders CRUD buttons, Record button, and admin features based on `user.role` from `getMe` query
+9. Write mutations for hierarchy create/update/delete and recording flows require `contributor` or `admin` role — enforced server-side via `requireOrgContributor(ctx)` in `convex/lib/orgAuth.ts`. Delete mutations also enforce child-data blockers server-side.
+10. Admin operations such as conversation deletion, membership role changes, member removal, invitation revocation, and appearance reset require `admin` role — enforced via `requireOrgAdmin(ctx)`.
+11. Frontend conditionally renders CRUD buttons, Record button, and admin features based on the active-org membership role from `getMyMembership` / org-scoped user queries.
 
 **Packages:** `@clerk/nextjs`
 **Config files:** `convex/auth.config.ts` (Clerk JWT issuer), `src/proxy.ts` (Clerk middleware)
-**New files:** `convex/users.ts` (user CRUD), `convex/lib/auth.ts` (shared `requireAuth` helper), `src/app/sign-in/page.tsx`, `src/app/sign-up/page.tsx`, `src/components/profile-onboarding.tsx`, `src/components/user-menu.tsx`
+**Current auth files:** `convex/users.ts` (user/profile and membership logic), `convex/lib/orgAuth.ts` (shared active-org role helpers), `src/proxy.ts` (Clerk middleware), `src/app/sign-in/[[...sign-in]]/page.tsx`, `src/app/sign-up/[[...sign-up]]/page.tsx`, `src/components/profile-onboarding.tsx`, `src/components/user-menu.tsx`
 
 ### 3.7 Multi-Tenancy Architecture
 
@@ -693,7 +716,7 @@ Fabric is a multi-tenant B2B SaaS. Every organization (Clerk "org") gets its own
 
 #### 3.7.1 Tenancy model
 
-- **Clerk owns identity + org membership.** Users sign up / sign in via Clerk. Orgs are created by a super-admin in the Clerk Dashboard (no self-serve). Invitations and member management use Clerk's built-in UI (`<OrganizationProfile />`, invite emails).
+- **Clerk owns identity + org membership.** Users sign up / sign in via Clerk. Orgs are created by a super-admin in the Clerk Dashboard (no self-serve). Fabric calls the Clerk Admin API for invitations, pending-invite revocation, and member removal so Clerk membership and Fabric membership remain aligned.
 - **Fabric owns roles.** A Convex `memberships` table stores `(userId, clerkOrgId, role)`. Fabric's three-tier role hierarchy (admin/contributor/viewer) is defined here, not in Clerk — this keeps role evolution independent of Clerk's plan tier and lets the same user hold different roles in different orgs.
 - **Every tenant-scoped row carries `clerkOrgId`.** Functions, departments, processes, conversations, and processFlows each have an indexed `clerkOrgId` field. `users` stays org-agnostic (identity is global, membership is per-org).
 - **Row-level authorization is enforced in every Convex function.** Reads filter by `clerkOrgId` via compound index. Writes stamp `clerkOrgId` on inserts and verify that every parent document referenced in the mutation belongs to the caller's active org (defeats ID-substitution attacks across tenants).
@@ -738,6 +761,8 @@ Middleware (`src/proxy.ts`) extracts the subdomain from the `Host` header and re
 - **Org creation** — admin-provisioned only. A platform `superAdmin` creates the org in the Clerk Dashboard, then runs an internal fan-out action that (a) uses the Clerk Admin API to invite every `superAdmin` user into the new org as `org:admin`, and (b) writes a matching `memberships` row for each. The client-side admin is invited afterward via Clerk's normal invitation flow.
 - **Regular-member provisioning** — when an invited user accepts and signs in for the first time, `users.store` auto-creates a `memberships` row for the active org with role `contributor` (the safe default for new invitees). The org admin can promote them to `admin` or demote them to `viewer` afterward.
 - **Role changes** — admins promote / demote members in their own org via `setMembershipRole`, which only accepts memberships whose `clerkOrgId` matches the caller's active org. The legacy `users.role` field (pre-multi-tenant) is retired once the migration is complete.
+- **Member removal** — admins remove members through `removeMemberFromOrg`, which preflights self-removal and last-admin guards, removes the Clerk org membership first, then deletes the Fabric `memberships` row. If Clerk removal fails, the Fabric row stays in place so access cannot be silently recreated from a still-valid Clerk membership; Clerk 404 is treated as already removed and Fabric cleanup continues.
+- **Pending invitations** — admins can revoke pending invitations. Resend is implemented as revoke + re-invite because Clerk does not expose a separate resend operation; if the re-invite fails after revocation, the admin must invite the person again.
 - **Superadmin bootstrap** — the first platform `superAdmin` is set by the internal mutation `users.bootstrapSuperAdmin` (by email). Subsequent superadmins are promoted / demoted by an existing superAdmin via `users.setPlatformRole`.
 
 #### 3.7.6 Data migration (Biz Group)
@@ -998,19 +1023,19 @@ Alternatively, the entire modal can use the **Conversation Bar** component, whic
 
 - Miller column navigation (Function → Department → Process) built with **shadcn/ui** components
 - **Responsive layout** — Miller columns on desktop; stacked drill-down navigation on mobile/tablet (collapse to single-column with back navigation)
-- **Org hierarchy CRUD** — users can create, rename, and delete functions, departments, and processes directly from the Miller column UI. The add (`+`) button sits in each column header. On desktop, rename/delete (pencil and trash icons) live on the selected item's overview header (Function/Department Overview) and the process detail breadcrumb, rather than on the column rows themselves — this keeps the narrow (220px) columns from truncating long names. On mobile, where rows are full-width, the rename/delete icons remain inline on each row.
+- **Org hierarchy CRUD** — contributors and admins can create, rename, move, and delete eligible functions, departments, and processes directly from the Miller column UI. The add (`+`) button sits in each column header. On desktop, rename/delete (pencil and trash icons) live on the selected item's overview header (Function/Department Overview) and the process detail breadcrumb, rather than on the column rows themselves — this keeps the narrow (220px) columns from truncating long names. On mobile, where rows are full-width, the rename/delete icons remain inline on each row. Deletion is non-cascading: functions with departments, departments with processes, and processes with conversations are blocked until child data is removed.
 - **Move / reparent** — departments can be moved to a different function, and processes can be moved to a different department (including across functions) via the edit modal, which includes a location dropdown. When a process or department is moved, summaries on both old and new parents are marked stale. If the old parent has no remaining processes with summaries, its department summary is cleared automatically
 - **Non-destructive hierarchy repair** — if orphaned departments or processes are detected in Convex, Fabric reattaches them to recovery parents instead of deleting the affected records. Existing process ids stay stable, so attached conversations and process flows are preserved.
 - **English only** for POC (ElevenLabs agent language set to `"en"`)
 - **User authentication** — Clerk with prebuilt sign-in/sign-up UI, Convex JWT validation, auth gates on all Convex functions, user profiles with organizational attributes (Job Title, Function, Department, Hire Date), required profile onboarding on first login, Clerk `<UserButton />` in header (Phase 5)
-- **Role-based access control** — three roles (admin, contributor, viewer) stored in Convex `users` table. Admin: full access + user role management + future admin dashboard. Contributor: CRUD hierarchy, record conversations, view summaries. Viewer: browse hierarchy and view summaries only (no CRUD, no recording). New users default to viewer. Role enforcement on both backend (server-side guards on mutations/actions) and frontend (conditional UI rendering). First admin bootstrapped via CLI. (Phase 12)
+- **Role-based access control** — three roles (admin, contributor, viewer) stored in Convex `memberships` per Clerk org. Admin: full org access, member/invitation management, admin conversation deletion, appearance reset, hierarchy CRUD, recording, viewing. Contributor: eligible hierarchy CRUD, recording, view summaries. Viewer: browse hierarchy and view summaries only (no CRUD, no recording). Role enforcement on both backend (server-side guards on mutations/actions) and frontend (conditional UI rendering). (Phase 12/13)
 - ElevenLabs voice agent integration via `@elevenlabs/react` SDK with dynamic context injection
 - Direct **Voice Record** mode for live browser recordings and **Audio File Upload** mode for pre-existing audio files (Zoom exports, voice memos, etc.), both using ElevenLabs Scribe diarized transcription and a speaker-labeling review before analysis. Voice Record and Upload share the same Convex Storage + Scribe pipeline; the only difference is the byte source. Upload validates `audio/*` MIME type with a 100 MB client-side cap.
 - Recording UI using **ElevenLabs UI** components (Orb, Conversation, Message, Waveform, Voice Button)
 - **Combined contributor name + consent step** — the recording modal opens to a single step that auto-fills the contributor's name from the authenticated user profile and surfaces the recording notice + content guidelines inline. The primary action button doubles as both name-submit and consent-accept, requesting microphone access (Voice Record / AI Interview) or opening the file picker (Audio File Upload) on click.
 - AI interview post-call transcript and summary retrieval via ElevenLabs Conversations API (summary provided by ElevenLabs — no extra LLM call)
 - **Speaker labeling before analysis** — Voice Record and Audio File Upload pause at `needs_speaker_labels`; contributors assign names and optionally link speakers to org members before conversation summary, process summary, or process-flow extraction runs.
-- **Abandonment cleanup** — closing the modal before speaker labels are approved deletes both the Convex Storage audio object and the conversation row so half-processed inputs aren't retained.
+- **Abandonment cleanup** — closing the modal before speaker labels are approved deletes both the Convex Storage audio object and the conversation row so half-processed inputs aren't retained. The server only permits the row owner or an org admin to abandon unfinished `voiceRecord` / `audioUpload` rows.
 - **Post-call loading state** — ShimmeringText "Processing your conversation..." while AI interview analysis or direct-recording transcription completes, transitioning to post-call review or speaker-labeling review
 - Process-level rolling summaries via Claude Haiku through OpenRouter, plus Voice Record / Audio File Upload conversation-level analysis after speaker labels are confirmed
 - ElevenLabs Conversation Analysis (Success Evaluation + Data Collection) configured on platform for AI interviews
@@ -1027,7 +1052,7 @@ Alternatively, the entire modal can use the **Conversation Bar** component, whic
 ### Out of Scope (Phase 2+)
 
 - ~~Role-based access control (admin, contributor, viewer roles)~~ → **Moved to Phase 1 (see section 3.6)**
-- Conversation deletion / editing
+- Contributor self-service conversation deletion / editing
 - Admin UI for managing the org hierarchy (bulk import/export, admin dashboard)
 - Semantic search and Q&A over captured knowledge ("Ask Fabric")
 - Onboarding flows for new joiners
@@ -1052,8 +1077,10 @@ Alternatively, the entire modal can use the **Conversation Bar** component, whic
 9. A synthesized process summary box is visible at the top of each process and updates with each completed conversation.
 10. The app is usable on mobile viewports (stacked navigation) and desktop (Miller columns).
 11. Only authenticated users can access the app. Users can sign up, sign in, complete a profile with organizational attributes, and sign out. Conversations are linked to authenticated user identities.
-12. Viewers can browse the hierarchy and view summaries but cannot create/edit/delete items or record conversations. Contributors can do everything viewers can plus CRUD and recording. Admins can do everything contributors can plus manage user roles.
-13. Each Clerk organization is accessed via its own subdomain (`{slug}.bizfabric.ai` in prod, `{slug}.lvh.me:3000` in dev). A user signed into Org A cannot read or write Org B's data — every Convex function enforces row-level `clerkOrgId` scoping, and a wrong-subdomain visit surfaces the no-access workspace screen instead of the app. The only in-app org switch UI is the nav-bar `<OrganizationSwitcher />`, shown only to users with more than one org membership. The ElevenLabs audio proxy is org-scoped and returns 404 on any cross-org request.
+12. Viewers can browse the hierarchy and view summaries but cannot create/edit/delete items or record conversations. Contributors can do everything viewers can plus eligible hierarchy CRUD and recording. Admins can do everything contributors can plus manage members/invitations, delete retained conversations from Admin → Conversations, and reset workspace appearance.
+13. Hierarchy deletion is role-aware and non-cascading: viewers see a permission blocker, contributors/admins cannot delete parents with child records, and a process with conversations cannot be deleted until an admin removes those conversations.
+14. Admin conversation deletion keeps derived data consistent: deleting a completed conversation force-refreshes or clears the process summary as appropriate, marks or deletes the process flow, and updates parent summary staleness; deleting non-completed rows does not trigger summary regeneration.
+15. Each Clerk organization is accessed via its own subdomain (`{slug}.bizfabric.ai` in prod, `{slug}.lvh.me:3000` in dev). A user signed into Org A cannot read or write Org B's data — every Convex function enforces row-level `clerkOrgId` scoping, and a wrong-subdomain visit surfaces the no-access workspace screen instead of the app. The only in-app org switch UI is the nav-bar `<OrganizationSwitcher />`, shown only to users with more than one org membership. The ElevenLabs audio proxy is org-scoped and returns 404 on any cross-org request.
 
 ---
 
@@ -1083,7 +1110,7 @@ After the user ends the call, there's a 10-30 second processing window. The UI m
 **Design:** Show a post-call screen with ShimmeringText ("Processing your conversation...") and the ElevenLabs Orb in a subtle idle animation. When the data lands (via Convex reactivity), transition to the summary + transcript + audio player view.
 
 **Speaker-labeling review for Voice Record and Audio File Upload:**
-Both contributor-owned audio modes have an intermediate state after transcription and before analysis. The UI should show the retained audio, sample transcript lines per diarized speaker, a free-text name input, and an optional org-member selector. The recording must remain visible in the process conversation log with `needs_speaker_labels` status so a contributor can resume labeling later. Analysis, rolling summaries, and process-flow generation should not consume the recording until labels are submitted. If the contributor closes the modal before approving labels, the `abandonVoiceRecording` mutation removes the storage object and the conversation row so abandoned inputs aren't retained.
+Both contributor-owned audio modes have an intermediate state after transcription and before analysis. The UI should show the retained audio, sample transcript lines per diarized speaker, a free-text name input, and an optional org-member selector. The recording must remain visible in the process conversation log with `needs_speaker_labels` status so a contributor can resume labeling later. Analysis, rolling summaries, and process-flow generation should not consume the recording until labels are submitted. If the contributor closes the modal before approving labels, the `abandonVoiceRecording` mutation removes the storage object and the conversation row so abandoned inputs aren't retained. The server allows only the row owner or an org admin to perform this cleanup and refuses finalized rows.
 
 **Empty states:**
 Every level of the hierarchy needs a zero-data state. Process with no conversations: "No conversations yet — be the first to record how this process works." Department with no processes: "No processes defined yet." These should feel inviting, not empty.
@@ -1219,7 +1246,7 @@ The ElevenLabs SDK requires microphone access. Browsers will prompt for permissi
   - In `postCall.getConversationAudioSource`, return Convex Storage info for both `voiceRecord` and `audioUpload`. Widen the discriminator in the HTTP audio route.
 
 - [x] **Task 4: Add `abandonVoiceRecording` mutation**
-  - Auth-gate to the conversation's org. No-op when `status === "done"` or `inputMode` is not a contributor-owned audio mode. Best-effort `ctx.storage.delete` (tolerates already-gone), then `ctx.db.delete` the row.
+  - Auth-gate to the conversation's org. Allow only the row owner or an org admin. No-op when `status === "done"` or `inputMode` is not a contributor-owned audio mode. Best-effort `ctx.storage.delete` (tolerates already-gone), then `ctx.db.delete` the row.
 
 ### Frontend (Next.js)
 
@@ -1236,7 +1263,7 @@ The ElevenLabs SDK requires microphone access. Browsers will prompt for permissi
   - Remove the `"consent"` modal step. Render the recording notice + content guidelines inline alongside the contributor name input. The single action button doubles as name-submit and consent-accept, dispatching to mic acquisition or file picker based on mode.
 
 - [x] **Task 8: Wire abandonment cleanup**
-  - When the modal closes with a `submittedVoiceConversationId` in flight and `!speakerLabelsSubmitted`, fire `abandonVoiceRecording` (best-effort, fire-and-forget). Server gates on `status !== "done"`.
+  - When the modal closes with a `submittedVoiceConversationId` in flight and `!speakerLabelsSubmitted`, fire `abandonVoiceRecording` (best-effort, fire-and-forget). Server gates on org ownership, row ownership/admin role, contributor-owned input mode, and `status !== "done"`.
 
 - [x] **Task 9: Update the admin conversations badge**
   - In `src/app/[org]/admin/conversations/page.tsx`, recognize `audioUpload` with its own label ("Audio Upload") and the `Upload` icon, alongside the existing AI Interview and Voice Recording badges.
@@ -1250,9 +1277,53 @@ The ElevenLabs SDK requires microphone access. Browsers will prompt for permissi
   - Non-audio MIME rejected client-side and server-side. Files larger than 100 MB rejected client-side.
 
 - [x] **Task 12: Abandonment cleanup verification**
-  - Upload a file, then close the modal at the speaker-labels step. Confirm the storage object and conversation row are both removed. Confirm closing the modal after speaker-label submission does NOT delete (analysis continues in the background).
+  - Upload a file, then close the modal at the speaker-labels step. Confirm the storage object and conversation row are both removed. Confirm a different contributor cannot abandon another user's unfinished row, an admin can clean it up, and closing the modal after speaker-label submission does NOT delete (analysis continues in the background).
 
 - [x] **Task 13: Regression — existing Voice Record + AI Interview flows unchanged**
+
+---
+
+## 13. Implementation Task List — Deletion Flow Hardening (v1.0)
+
+**Goal:** Make every destructive flow role-aware, tenant-scoped, non-cascading where required, and consistent with derived summaries/process flows.
+
+### Backend (Convex)
+
+- [x] **Task 1: Add server-backed delete eligibility**
+  - Functions, departments, and processes expose delete eligibility queries that return role blockers, child-data blockers, and whether the caller has an admin cleanup path.
+  - Delete mutations re-check blockers server-side so the UI cannot bypass non-cascading hierarchy rules.
+
+- [x] **Task 2: Keep process deletion and process flows consistent**
+  - Deleting an empty process deletes its derived `processFlows` row before deleting the process.
+  - Cleanup code that removes all conversations for a process also removes the derived flow.
+
+- [x] **Task 3: Harden admin conversation deletion**
+  - `deleteForAdmin` is admin-only and org-scoped.
+  - It tolerates already-missing Convex Storage bytes, deletes the conversation row, skips summary work for non-`done` rows, force-refreshes the process summary when completed conversations remain, and clears the process summary/deletes the process flow when the last completed conversation is removed.
+
+- [x] **Task 4: Harden recording abandonment**
+  - `abandonVoiceRecording` allows only the row owner or an org admin, only for unfinished `voiceRecord` / `audioUpload` rows.
+  - Finalized rows and AI interview rows are protected.
+
+- [x] **Task 5: Coordinate member removal with Clerk**
+  - Member removal preflights self-removal and last-admin guards, deletes Clerk org membership first, then deletes Fabric membership.
+  - Clerk failures preserve the Fabric membership row; Clerk 404 is treated as already removed and Fabric cleanup continues.
+
+### Frontend (Next.js)
+
+- [x] **Task 6: Make delete dialogs explain blockers**
+  - Delete dialogs show loading, role-blocked, child-blocked, and confirmed-delete states.
+  - Processes with conversations route admins to Admin → Conversations with the process filter applied; contributors are told to ask an admin.
+
+- [x] **Task 7: Confirm admin destructive actions**
+  - Admin conversation deletion uses a confirmation dialog.
+  - Appearance reset uses a confirmation dialog before removing active/candidate theme tokens and returning the workspace to neutral.
+  - Pending invite resend copy explains that resend is revoke + re-invite and may require manually inviting again if the second step fails.
+
+### Testing & Validation
+
+- [x] **Task 8: Deletion-flow regression coverage**
+  - Covered hierarchy delete eligibility, blocked process deletion with conversations, process-flow cleanup, admin conversation deletion summary/flow effects, recording abandonment ownership, and tenant-scoped admin removal behavior.
 
 ---
 
