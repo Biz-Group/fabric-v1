@@ -402,8 +402,49 @@ export const childCount = query({
       .withIndex("by_clerkOrgId_and_processId", (q) =>
         q.eq("clerkOrgId", caller.orgId).eq("processId", args.processId),
       )
-      .collect();
+      .take(1000);
     return children.length;
+  },
+});
+
+export const deleteEligibility = query({
+  args: { processId: v.id("processes") },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgMember(ctx);
+    const process = await ctx.db.get(args.processId);
+    assertOrgOwns(caller, process);
+
+    if (caller.role === "viewer") {
+      return {
+        canDelete: false,
+        blocker: "role" as const,
+        childKind: null,
+        canCleanUpChildren: false,
+      };
+    }
+
+    const children = await ctx.db
+      .query("conversations")
+      .withIndex("by_clerkOrgId_and_processId", (q) =>
+        q.eq("clerkOrgId", caller.orgId).eq("processId", args.processId),
+      )
+      .take(1);
+
+    if (children.length > 0) {
+      return {
+        canDelete: false,
+        blocker: "children" as const,
+        childKind: "conversations" as const,
+        canCleanUpChildren: caller.role === "admin",
+      };
+    }
+
+    return {
+      canDelete: true,
+      blocker: null,
+      childKind: null,
+      canCleanUpChildren: false,
+    };
   },
 });
 
@@ -426,6 +467,10 @@ export const remove = mutation({
       );
     }
     const departmentId = process.departmentId;
+    await ctx.runMutation(internal.processFlows.deleteForProcess, {
+      processId: args.processId,
+      clerkOrgId: caller.orgId,
+    });
     await ctx.db.delete(args.processId);
 
     // Clean up department summary

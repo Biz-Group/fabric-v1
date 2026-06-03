@@ -331,6 +331,27 @@ function stubClerkFetch(responses: Array<unknown>) {
   return { calls };
 }
 
+function stubClerkFetchStatus(status: number, body: unknown = {}) {
+  const calls: FetchCall[] = [];
+  const fetchMock = vi.fn(
+    async (input: string | URL | Request, init?: RequestInit) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      calls.push({ url, init });
+      return new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  return { calls };
+}
+
 describe("user provisioning sync", () => {
   beforeEach(() => {
     process.env.CLERK_SECRET_KEY = "sk_test_abc";
@@ -598,6 +619,28 @@ describe("removeMemberFromOrg — admin gating + Clerk coordination", () => {
     vi.clearAllMocks();
   });
 
+  async function addOrgAMember(
+    t: ReturnType<typeof convexTest>,
+    suffix: string,
+    role: "admin" | "contributor" | "viewer",
+  ): Promise<Id<"memberships">> {
+    return await t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        tokenIdentifier: `${ISSUER}|${suffix}`,
+        name: suffix,
+        email: `${suffix}@a.test`,
+        profileComplete: true,
+      });
+      return await ctx.db.insert("memberships", {
+        tokenIdentifier: `${ISSUER}|${suffix}`,
+        userId,
+        clerkOrgId: ORG_A,
+        role,
+        createdAt: Date.now(),
+      });
+    });
+  }
+
   test("cross-tenant membershipId → Not found (existence does not leak)", async () => {
     const t = convexTest(schema, modules);
     await seedTwoOrgs(t);
@@ -661,6 +704,52 @@ describe("removeMemberFromOrg — admin gating + Clerk coordination", () => {
       }),
     ).rejects.toThrow(/Insufficient permissions/);
     expect(calls).toHaveLength(0);
+  });
+
+  test("successful removal deletes from Clerk before Fabric row", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoOrgs(t);
+    const targetId = await addOrgAMember(t, "user_c", "contributor");
+    const { calls } = stubClerkFetchStatus(200, {});
+
+    await t.withIdentity(identityForOrgA()).action(api.users.removeMemberFromOrg, {
+      membershipId: targetId,
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toContain(`/organizations/${ORG_A}/memberships/user_c`);
+    const row = await t.run(async (ctx) => ctx.db.get(targetId));
+    expect(row).toBeNull();
+  });
+
+  test("Clerk failure preserves Fabric membership", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoOrgs(t);
+    const targetId = await addOrgAMember(t, "user_c", "contributor");
+    stubClerkFetchStatus(500, { error: "upstream unavailable" });
+
+    await expect(
+      t.withIdentity(identityForOrgA()).action(api.users.removeMemberFromOrg, {
+        membershipId: targetId,
+      }),
+    ).rejects.toThrow(/500/);
+
+    const row = await t.run(async (ctx) => ctx.db.get(targetId));
+    expect(row).not.toBeNull();
+  });
+
+  test("Clerk 404 still removes stale Fabric membership", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoOrgs(t);
+    const targetId = await addOrgAMember(t, "user_c", "contributor");
+    stubClerkFetchStatus(404, { error: "not found" });
+
+    await t.withIdentity(identityForOrgA()).action(api.users.removeMemberFromOrg, {
+      membershipId: targetId,
+    });
+
+    const row = await t.run(async (ctx) => ctx.db.get(targetId));
+    expect(row).toBeNull();
   });
 });
 

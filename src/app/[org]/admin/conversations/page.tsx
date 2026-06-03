@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   useAction,
   useConvex,
@@ -112,6 +112,7 @@ function ConversationTypeBadge({
 
 export default function AdminConversationsPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const initialStatus = useMemo<StatusFilter>(() => {
     const fromUrl = searchParams.get("status");
     if (
@@ -124,6 +125,10 @@ export default function AdminConversationsPage() {
     }
     return "all";
   }, [searchParams]);
+  const processIdFilter = useMemo(() => {
+    const fromUrl = searchParams.get("processId");
+    return fromUrl ? (fromUrl as Id<"processes">) : null;
+  }, [searchParams]);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialStatus);
   const [search, setSearch] = useState("");
@@ -135,13 +140,12 @@ export default function AdminConversationsPage() {
 
   const me = useQuery(api.users.getMyMembership);
 
-  const queryArgs = useMemo(
-    () =>
-      statusFilter === "all"
-        ? {}
-        : { status: statusFilter as Status },
-    [statusFilter],
-  );
+  const queryArgs = useMemo(() => {
+    const args: { status?: Status; processId?: Id<"processes"> } = {};
+    if (statusFilter !== "all") args.status = statusFilter as Status;
+    if (processIdFilter) args.processId = processIdFilter;
+    return args;
+  }, [processIdFilter, statusFilter]);
 
   const { results, status, loadMore } = usePaginatedQuery(
     api.conversations.listAllForOrg,
@@ -273,6 +277,15 @@ export default function AdminConversationsPage() {
             <SelectItem value="failed">Failed</SelectItem>
           </SelectContent>
         </Select>
+        {processIdFilter && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.replace("/admin/conversations")}
+          >
+            Clear process filter
+          </Button>
+        )}
       </div>
 
       {isLoading ? (

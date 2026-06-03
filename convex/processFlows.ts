@@ -398,6 +398,21 @@ export const markFlowStale = internalMutation({
   },
 });
 
+export const deleteForProcess = internalMutation({
+  args: { processId: v.id("processes"), clerkOrgId: v.string() },
+  handler: async (ctx, args) => {
+    const flow = await ctx.db
+      .query("processFlows")
+      .withIndex("by_clerkOrgId_and_processId", (q) =>
+        q.eq("clerkOrgId", args.clerkOrgId).eq("processId", args.processId),
+      )
+      .first();
+    if (flow) {
+      await ctx.db.delete(flow._id);
+    }
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Public query: read the flow for a process
 // ---------------------------------------------------------------------------

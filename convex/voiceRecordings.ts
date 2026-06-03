@@ -624,6 +624,9 @@ export const abandonVoiceRecording = mutation({
     const conv = await ctx.db.get(args.conversationId);
     if (!conv) return;
     assertOrgOwns(caller, conv);
+    if (caller.role !== "admin" && conv.userId !== caller.userId) {
+      throw new Error("Insufficient permissions");
+    }
     if (conv.status === "done") return;
     const mode = conv.inputMode ?? "agent";
     if (mode !== "voiceRecord" && mode !== "audioUpload") return;

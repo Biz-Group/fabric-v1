@@ -182,8 +182,7 @@ export function RecordingModal({
   const userRole = membership?.role ?? "viewer";
   const isStoredAudio = mode === "voiceRecord" || mode === "audioUpload";
 
-  const [contributorName, setContributorName] = useState("");
-  const [nameInitialized, setNameInitialized] = useState(false);
+  const contributorName = user?.name ?? "";
 
   // Mic state — start as "prompt" (unchecked); only set to "checking" while acquiring
   const [micPermission, setMicPermission] = useState<
@@ -214,6 +213,7 @@ export function RecordingModal({
   const [submittedVoiceConversationId, setSubmittedVoiceConversationId] =
     useState<Id<"conversations"> | null>(null);
   const [speakerLabelsSubmitted, setSpeakerLabelsSubmitted] = useState(false);
+  const wasOpenRef = useRef(false);
 
   // Post-call state
   const [postCallResult, setPostCallResult] = useState<{
@@ -256,76 +256,63 @@ export function RecordingModal({
     [existingConversations, submittedVoiceConversationId]
   );
 
-  // Pre-fill name from user profile
-  useEffect(() => {
-    if (user?.name && !nameInitialized) {
-      setContributorName(user.name);
-      setNameInitialized(true);
-    }
-  }, [user, nameInitialized]);
+  const resetModalState = useCallback(() => {
+    setStep("name");
+    setMessages([]);
+    setConversationId(null);
+    conversationIdRef.current = null;
+    setDisconnectError(null);
+    setIsMuted(false);
+    setTextMode(false);
+    setTextInput("");
+    setMicPermission("prompt");
+    setPostCallResult(null);
+    setVoiceRecordState("idle");
+    setVoiceRecordSeconds(0);
+    setRecordedBlob(null);
+    setUploadedFileName(null);
+    setUploadedFileSize(null);
+    setVoiceRecordError(null);
+    setSubmittedVoiceConversationId(null);
+    setSpeakerLabelsSubmitted(false);
+    audioChunksRef.current = [];
+  }, []);
 
-  // Reset state when modal opens; clean up mic stream when it closes
-  useEffect(() => {
-    if (open) {
-      setStep("name");
-      setMessages([]);
-      setConversationId(null);
-      conversationIdRef.current = null;
-      setDisconnectError(null);
-      setIsMuted(false);
-      setTextMode(false);
-      setTextInput("");
-      setNameInitialized(false);
-      setMicPermission("prompt");
-      setPostCallResult(null);
-      setVoiceRecordState("idle");
-      setVoiceRecordSeconds(0);
-      setRecordedBlob(null);
-      setUploadedFileName(null);
-      setUploadedFileSize(null);
-      setVoiceRecordError(null);
-      setSubmittedVoiceConversationId(null);
-      setSpeakerLabelsSubmitted(false);
-      audioChunksRef.current = [];
-    } else {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      if (
-        mediaRecorderRef.current &&
-        mediaRecorderRef.current.state !== "inactive"
-      ) {
-        mediaRecorderRef.current.stop();
-      }
-      mediaRecorderRef.current = null;
-      // Release mic stream when modal closes
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-        mediaStreamRef.current = null;
-      }
+  const cleanupRecordingResources = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
     }
-  }, [open]);
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== "inactive"
+    ) {
+      mediaRecorderRef.current.stop();
+    }
+    mediaRecorderRef.current = null;
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+  }, []);
+
+  // Reset state only for a closed -> open transition; clean up resources on close.
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      resetModalState();
+    }
+    if (!open && wasOpenRef.current) {
+      cleanupRecordingResources();
+    }
+    wasOpenRef.current = open;
+  }, [cleanupRecordingResources, open, resetModalState]);
 
   // Cleanup mic stream on unmount
   useEffect(() => {
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      if (
-        mediaRecorderRef.current &&
-        mediaRecorderRef.current.state !== "inactive"
-      ) {
-        mediaRecorderRef.current.stop();
-      }
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-        mediaStreamRef.current = null;
-      }
+      cleanupRecordingResources();
     };
-  }, []);
+  }, [cleanupRecordingResources]);
 
   // Build dynamic variables for the ElevenLabs session.
   // These are injected into {{placeholder}} templates in the agent's
@@ -692,7 +679,7 @@ export function RecordingModal({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [
-    mode,
+    isStoredAudio,
     speakerLabelsSubmitted,
     step,
     submittedVoiceConversation,
@@ -757,13 +744,22 @@ export function RecordingModal({
     abandonVoiceRecording,
   ]);
 
+  const handleDialogOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) {
+        handleClose();
+      }
+    },
+    [handleClose]
+  );
+
   // --- Render ---
 
   // Defense-in-depth: viewers should never reach this component
   if (userRole === "viewer") return null;
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent
         className={cn(
           "flex flex-col gap-0 p-0",
@@ -808,7 +804,6 @@ export function RecordingModal({
                   disabled
                   id="contributor-name"
                   value={contributorName}
-                  onChange={(e) => setContributorName(e.target.value)}
                   placeholder="Enter your name"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleNameSubmit();
@@ -934,7 +929,7 @@ export function RecordingModal({
                     )}
                     <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
                       Upload an existing audio recording (e.g. an interview,
-                      meeting capture, or voice memo). Up to 100 MB. We'll
+                      meeting capture, or voice memo). Up to 100 MB. We&apos;ll
                       transcribe and analyze it the same way as a live
                       recording.
                     </p>
@@ -1062,7 +1057,10 @@ export function RecordingModal({
                   <Button
                     onClick={submitVoiceRecording}
                     className="gap-2 rounded-xl"
-                    disabled={voiceRecordState === "uploading"}
+                    disabled={
+                      voiceRecordState === "uploading" ||
+                      voiceRecordState === "processing"
+                    }
                   >
                     <Upload className="h-4 w-4" />
                     {mode === "audioUpload"

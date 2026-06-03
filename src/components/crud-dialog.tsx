@@ -26,6 +26,13 @@ import {
 type CrudMode = "create" | "edit" | "delete";
 const SAVE_TIMEOUT_MS = 45000;
 
+type DeleteEligibility = {
+  canDelete: boolean;
+  blocker: "role" | "children" | null;
+  childKind: "departments" | "processes" | "conversations" | null;
+  canCleanUpChildren: boolean;
+};
+
 export interface LocationOption {
   value: string;
   label: string;
@@ -42,8 +49,9 @@ interface CrudDialogProps {
   currentLocationId?: string;
   locationOptions?: LocationOption[];
   locationLabel?: string;
-  /** Number of children the target entity has. Used in delete mode to block deletion. undefined = still loading. */
-  childCount?: number;
+  /** Server-computed delete state. undefined = still loading. */
+  deleteEligibility?: DeleteEligibility;
+  onCleanupChildren?: () => void;
   onConfirm: (
     name: string,
     newLocationId?: string,
@@ -129,7 +137,8 @@ export function CrudDialog({
   currentLocationId,
   locationOptions,
   locationLabel,
-  childCount,
+  deleteEligibility,
+  onCleanupChildren,
   onConfirm,
 }: CrudDialogProps) {
   const [name, setName] = useState(mode === "edit" ? currentName ?? "" : "");
@@ -163,6 +172,10 @@ export function CrudDialog({
     mode !== "delete" &&
     (entityType === "Department" || entityType === "Process");
   const descriptionOverLimit = description.length > 2000;
+  const deleteLoading = mode === "delete" && deleteEligibility === undefined;
+  const deleteBlocked =
+    mode === "delete" && deleteEligibility !== undefined && !deleteEligibility.canDelete;
+  const deleteChildKind = deleteEligibility?.childKind;
 
   const hasGroups = locationOptions?.some((opt) => opt.group);
   const groupedOptions = useMemo(() => {
@@ -191,6 +204,12 @@ export function CrudDialog({
       : mode === "edit"
         ? `Edit ${entityType}`
         : `Delete ${entityType}`;
+  const childLabel =
+    deleteChildKind === "departments"
+      ? "departments"
+      : deleteChildKind === "processes"
+        ? "processes"
+        : "conversations";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -199,16 +218,22 @@ export function CrudDialog({
           <DialogTitle>{title}</DialogTitle>
           {mode === "delete" ? (
             <DialogDescription>
-              {childCount !== undefined && childCount > 0 ? (
+              {deleteLoading ? (
+                <>Checking whether <strong>{currentName}</strong> can be deleted...</>
+              ) : deleteEligibility?.blocker === "role" ? (
+                <>
+                  You need contributor or admin access to delete{" "}
+                  <strong>{currentName}</strong>.
+                </>
+              ) : deleteEligibility?.blocker === "children" ? (
                 <>
                   <strong>{currentName}</strong> cannot be deleted because it has{" "}
-                  {childCount}{" "}
-                  {entityType === "Function"
-                    ? childCount === 1 ? "department" : "departments"
-                    : entityType === "Department"
-                      ? childCount === 1 ? "process" : "processes"
-                      : childCount === 1 ? "conversation" : "conversations"}
-                  . Remove all child items first.
+                  {childLabel}.{" "}
+                  {deleteChildKind === "conversations"
+                    ? deleteEligibility.canCleanUpChildren
+                      ? "Delete those conversations from Admin > Conversations first, then try again."
+                      : "Ask a workspace admin to delete those conversations first."
+                    : "Remove all child items first."}
                 </>
               ) : (
                 <>
@@ -322,6 +347,20 @@ export function CrudDialog({
         )}
 
         <DialogFooter>
+          {mode === "delete" &&
+            deleteChildKind === "conversations" &&
+            deleteEligibility?.canCleanUpChildren &&
+            onCleanupChildren && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onCleanupChildren}
+                disabled={loading}
+              >
+                Open conversations
+              </Button>
+            )}
           <DialogClose render={<Button variant="outline" size="sm" />}>
             Cancel
           </DialogClose>
@@ -331,7 +370,7 @@ export function CrudDialog({
             disabled={
               loading ||
               descriptionOverLimit ||
-              (mode === "delete" && (childCount === undefined || childCount > 0)) ||
+              (mode === "delete" && (deleteLoading || deleteBlocked)) ||
               (mode !== "delete" && !name.trim())
             }
             onClick={handleSubmit}

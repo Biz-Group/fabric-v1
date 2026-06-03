@@ -90,8 +90,49 @@ export const childCount = query({
       .withIndex("by_clerkOrgId_and_functionId", (q) =>
         q.eq("clerkOrgId", caller.orgId).eq("functionId", args.functionId),
       )
-      .collect();
+      .take(1000);
     return children.length;
+  },
+});
+
+export const deleteEligibility = query({
+  args: { functionId: v.id("functions") },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgMember(ctx);
+    const target = await ctx.db.get(args.functionId);
+    assertOrgOwns(caller, target);
+
+    if (caller.role === "viewer") {
+      return {
+        canDelete: false,
+        blocker: "role" as const,
+        childKind: null,
+        canCleanUpChildren: false,
+      };
+    }
+
+    const children = await ctx.db
+      .query("departments")
+      .withIndex("by_clerkOrgId_and_functionId", (q) =>
+        q.eq("clerkOrgId", caller.orgId).eq("functionId", args.functionId),
+      )
+      .take(1);
+
+    if (children.length > 0) {
+      return {
+        canDelete: false,
+        blocker: "children" as const,
+        childKind: "departments" as const,
+        canCleanUpChildren: caller.role === "admin",
+      };
+    }
+
+    return {
+      canDelete: true,
+      blocker: null,
+      childKind: null,
+      canCleanUpChildren: false,
+    };
   },
 });
 

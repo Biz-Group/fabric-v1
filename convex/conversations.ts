@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import {
   action,
+  internalMutation,
   internalQuery,
   mutation,
   query,
@@ -247,23 +248,91 @@ export const deleteForAdmin = mutation({
     assertOrgOwns(caller, conv);
 
     const processId = conv.processId;
+    const deletedDoneConversation = conv.status === "done";
     if (conv.audioStorageId) {
-      await ctx.storage.delete(conv.audioStorageId);
+      try {
+        await ctx.storage.delete(conv.audioStorageId);
+      } catch {
+        // Storage may already have been removed by an abandonment/retry path.
+        // The conversation row is the access-control source of truth.
+      }
     }
     await ctx.db.delete(args.conversationId);
 
-    // Rebuild the parent process summary from scratch — the deleted
-    // conversation may have contributed citations/content to the incremental
-    // summary, so a full rebuild is the safe option.
-    await ctx.scheduler.runAfter(
-      0,
-      internal.postCall.regenerateProcessSummary,
-      {
+    if (!deletedDoneConversation) return;
+
+    const remainingDone = await ctx.db
+      .query("conversations")
+      .withIndex("by_clerkOrgId_and_processId_and_status", (q) =>
+        q
+          .eq("clerkOrgId", caller.orgId)
+          .eq("processId", processId)
+          .eq("status", "done"),
+      )
+      .take(1);
+
+    if (remainingDone.length > 0) {
+      await ctx.runMutation(internal.processFlows.markFlowStale, {
         processId,
         clerkOrgId: caller.orgId,
-        forceRefresh: true,
-      },
-    );
+      });
+      const process = await ctx.db.get(processId);
+      if (process && process.clerkOrgId === caller.orgId) {
+        await ctx.runMutation(
+          internal.summariesHelpers.markDepartmentSummaryStale,
+          { departmentId: process.departmentId },
+        );
+      }
+      // Rebuild the parent process summary from scratch — the deleted
+      // conversation may have contributed citations/content to the incremental
+      // summary, so a full rebuild is the safe option.
+      await ctx.scheduler.runAfter(
+        0,
+        internal.postCall.regenerateProcessSummary,
+        {
+          processId,
+          clerkOrgId: caller.orgId,
+          forceRefresh: true,
+        },
+      );
+      return;
+    }
+
+    const process = await ctx.db.get(processId);
+    if (!process || process.clerkOrgId !== caller.orgId) return;
+
+    await ctx.db.patch(processId, { rollingSummary: undefined });
+    await ctx.runMutation(internal.processFlows.deleteForProcess, {
+      processId,
+      clerkOrgId: caller.orgId,
+    });
+
+    const department = await ctx.db.get(process.departmentId);
+    if (!department || department.clerkOrgId !== caller.orgId) return;
+
+    const siblingProcesses = await ctx.db
+      .query("processes")
+      .withIndex("by_clerkOrgId_and_departmentId", (q) =>
+        q
+          .eq("clerkOrgId", caller.orgId)
+          .eq("departmentId", process.departmentId),
+      )
+      .take(1000);
+    const hasSummaries = siblingProcesses.some((p) => p.rollingSummary);
+    if (hasSummaries) {
+      await ctx.runMutation(internal.summariesHelpers.markDepartmentSummaryStale, {
+        departmentId: process.departmentId,
+      });
+    } else {
+      await ctx.db.patch(process.departmentId, {
+        summary: undefined,
+        summaryUpdatedAt: undefined,
+        summaryStale: undefined,
+      });
+      await ctx.runMutation(internal.summariesHelpers.markFunctionSummaryStale, {
+        functionId: department.functionId,
+      });
+    }
   },
 });
 
@@ -312,14 +381,16 @@ export const getFailedForRetry = internalQuery({
 });
 
 /** Internal. Deletes the failed row so the retry can insert a fresh one. */
-export const deleteFailedRow = mutation({
+export const deleteFailedRow = internalMutation({
   args: {
     conversationId: v.id("conversations"),
+    orgId: v.string(),
   },
   handler: async (ctx, args) => {
-    const caller = await requireOrgAdmin(ctx);
     const conv = await ctx.db.get(args.conversationId);
-    assertOrgOwns(caller, conv);
+    if (!conv || conv.clerkOrgId !== args.orgId) {
+      throw new Error("Not found");
+    }
     if (conv.status !== "failed") {
       throw new Error("Only failed conversations can be retried");
     }
@@ -349,10 +420,11 @@ export const retryFetch = action({
     );
 
     // Delete the failed placeholder so fetchConversation can insert a fresh
-    // row. The public `deleteFailedRow` mutation inherits the caller's auth
-    // and re-validates admin + ownership.
-    await ctx.runMutation(api.conversations.deleteFailedRow, {
+    // row. The internal cleanup inherits the admin + ownership checks from
+    // `getFailedForRetry` and re-validates org ownership before deleting.
+    await ctx.runMutation(internal.conversations.deleteFailedRow, {
       conversationId: target.conversationId,
+      orgId,
     });
 
     // Re-trigger the normal fetch pipeline. fetchConversation re-reads auth and

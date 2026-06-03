@@ -38,6 +38,21 @@ function identityForOrgB() {
   };
 }
 
+function identityForOrgAUser(
+  userId: "user_c" | "user_admin",
+  name: string,
+) {
+  return {
+    tokenIdentifier: `${ISSUER}|${userId}`,
+    subject: userId,
+    issuer: ISSUER,
+    name,
+    email: `${userId}@example.test`,
+    orgId: ORG_A,
+    orgSlug: "voice-a",
+  };
+}
+
 async function seedSpeakerLabelFixture(t: ReturnType<typeof convexTest>) {
   return await t.run(async (ctx) => {
     const userAId = await ctx.db.insert("users", {
@@ -87,6 +102,7 @@ async function seedSpeakerLabelFixture(t: ReturnType<typeof convexTest>) {
       processId: processA,
       clerkOrgId: ORG_A,
       contributorName: "Recorder",
+      userId: userAId,
       inputMode: "voiceRecord",
       transcriptionProvider: "elevenlabs-scribe",
       analysisProvider: "fabric-openrouter",
@@ -111,6 +127,29 @@ async function seedSpeakerLabelFixture(t: ReturnType<typeof convexTest>) {
       ],
     });
     return { conversationId, userAId, userBId };
+  });
+}
+
+async function seedOrgAMember(
+  t: ReturnType<typeof convexTest>,
+  userId: "user_c" | "user_admin",
+  role: "admin" | "contributor",
+) {
+  return await t.run(async (ctx) => {
+    const id = await ctx.db.insert("users", {
+      tokenIdentifier: `${ISSUER}|${userId}`,
+      name: userId,
+      email: `${userId}@example.test`,
+      profileComplete: true,
+    });
+    await ctx.db.insert("memberships", {
+      tokenIdentifier: `${ISSUER}|${userId}`,
+      userId: id,
+      clerkOrgId: ORG_A,
+      role,
+      createdAt: Date.now(),
+    });
+    return id;
   });
 }
 
@@ -271,5 +310,62 @@ describe("speaker label submission", () => {
         },
       ),
     ).rejects.toThrow(/not in this organization/);
+  });
+});
+
+describe("voice recording abandonment", () => {
+  test("allows the owner to abandon an unfinished recording", async () => {
+    const t = convexTest(schema, modules);
+    const { conversationId } = await seedSpeakerLabelFixture(t);
+
+    await t
+      .withIdentity(identityForOrgA())
+      .mutation(api.voiceRecordings.abandonVoiceRecording, { conversationId });
+
+    const row = await t.run(async (ctx) => ctx.db.get(conversationId));
+    expect(row).toBeNull();
+  });
+
+  test("blocks same-org contributors who do not own the recording", async () => {
+    const t = convexTest(schema, modules);
+    const { conversationId } = await seedSpeakerLabelFixture(t);
+    await seedOrgAMember(t, "user_c", "contributor");
+
+    await expect(
+      t
+        .withIdentity(identityForOrgAUser("user_c", "Carol"))
+        .mutation(api.voiceRecordings.abandonVoiceRecording, { conversationId }),
+    ).rejects.toThrow(/Insufficient permissions/);
+
+    const row = await t.run(async (ctx) => ctx.db.get(conversationId));
+    expect(row).not.toBeNull();
+  });
+
+  test("allows admins to abandon another member's unfinished recording", async () => {
+    const t = convexTest(schema, modules);
+    const { conversationId } = await seedSpeakerLabelFixture(t);
+    await seedOrgAMember(t, "user_admin", "admin");
+
+    await t
+      .withIdentity(identityForOrgAUser("user_admin", "Admin"))
+      .mutation(api.voiceRecordings.abandonVoiceRecording, { conversationId });
+
+    const row = await t.run(async (ctx) => ctx.db.get(conversationId));
+    expect(row).toBeNull();
+  });
+
+  test("preserves finalized recordings even for the owner", async () => {
+    const t = convexTest(schema, modules);
+    const { conversationId } = await seedSpeakerLabelFixture(t);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(conversationId, { status: "done" });
+    });
+
+    await t
+      .withIdentity(identityForOrgA())
+      .mutation(api.voiceRecordings.abandonVoiceRecording, { conversationId });
+
+    const row = await t.run(async (ctx) => ctx.db.get(conversationId));
+    expect(row?.status).toBe("done");
   });
 });

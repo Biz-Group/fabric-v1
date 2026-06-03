@@ -520,7 +520,7 @@ export const setMembershipRole = mutation({
       const admins = await ctx.db
         .query("memberships")
         .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", caller.orgId))
-        .collect();
+        .take(1000);
       const otherAdmins = admins.filter(
         (m) => m._id !== target._id && m.role === "admin",
       );
@@ -534,7 +534,7 @@ export const setMembershipRole = mutation({
       const admins = await ctx.db
         .query("memberships")
         .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", caller.orgId))
-        .collect();
+        .take(1000);
       const remainingAdmins = admins.filter(
         (m) => m.role === "admin" && m._id !== target._id,
       );
@@ -564,7 +564,7 @@ export const removeMembership = mutation({
       const admins = await ctx.db
         .query("memberships")
         .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", caller.orgId))
-        .collect();
+        .take(1000);
       const remainingAdmins = admins.filter(
         (m) => m.role === "admin" && m._id !== target._id,
       );
@@ -585,8 +585,9 @@ export const removeMembership = mutation({
 
 /**
  * Internal. Verifies the caller (identified by tokenIdentifier) is an admin in
- * `orgId`, that the target membership belongs to the same org, and returns the
- * target's tokenIdentifier so the action can tell Clerk which user to remove.
+ * `orgId`, that the target membership belongs to the same org, and that the
+ * removal won't self-remove or remove the last org admin. Returns the target's
+ * tokenIdentifier so the action can tell Clerk which user to remove.
  */
 export const getMembershipForRemoval = internalQuery({
   args: {
@@ -611,6 +612,21 @@ export const getMembershipForRemoval = internalQuery({
     if (!target || target.clerkOrgId !== args.orgId) {
       throw new Error("Membership not found");
     }
+    if (target.userId === callerMembership.userId) {
+      throw new Error("Cannot remove your own membership.");
+    }
+    if (target.role === "admin") {
+      const admins = await ctx.db
+        .query("memberships")
+        .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", args.orgId))
+        .take(1000);
+      const remainingAdmins = admins.filter(
+        (m) => m.role === "admin" && m._id !== target._id,
+      );
+      if (remainingAdmins.length === 0) {
+        throw new Error("Cannot remove the last admin from this org.");
+      }
+    }
 
     return {
       targetTokenIdentifier: target.tokenIdentifier,
@@ -625,10 +641,10 @@ export const getMembershipForRemoval = internalQuery({
  * last-admin guards) and Clerk's organization membership (so the user's JWT
  * stops carrying this orgId on its next refresh).
  *
- * Ordering rationale: remove the Fabric row first so the user loses Fabric
- * access immediately on their next query. Clerk removal is second; if it
- * fails, the Fabric side is already consistent and the Clerk org can be
- * reconciled by retry or the Clerk dashboard.
+ * Ordering rationale: preflight Fabric-side guards first, remove the Clerk org
+ * membership second, then delete the Fabric row. If Clerk fails, keep the
+ * Fabric row so `users.store` can't recreate access from a still-valid Clerk
+ * organization membership.
  */
 export const removeMemberFromOrg = action({
   args: { membershipId: v.id("memberships") },
@@ -643,12 +659,6 @@ export const removeMemberFromOrg = action({
       },
     );
 
-    // Fabric-side removal first (source of truth for access). This mutation
-    // enforces "cannot remove self" and "cannot remove last admin".
-    await ctx.runMutation(api.users.removeMembership, {
-      membershipId: args.membershipId,
-    });
-
     // Clerk-side removal. 404 is treated as already-consistent.
     const clerkUserId = clerkUserIdFromTokenIdentifier(targetTokenIdentifier);
     try {
@@ -658,9 +668,18 @@ export const removeMemberFromOrg = action({
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("404")) return;
-      throw err;
+      if (msg.includes("404")) {
+        // Already removed from Clerk; continue and drop the Fabric row.
+      } else {
+        throw err;
+      }
     }
+
+    // Fabric-side removal second. This mutation re-enforces "cannot remove
+    // self" and "cannot remove last admin" in case the org changed mid-action.
+    await ctx.runMutation(api.users.removeMembership, {
+      membershipId: args.membershipId,
+    });
   },
 });
 

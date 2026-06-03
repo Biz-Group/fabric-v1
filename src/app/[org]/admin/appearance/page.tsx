@@ -22,6 +22,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 type ThemeTokens = {
   accent: string;
@@ -223,6 +224,7 @@ export default function AdminAppearancePage() {
   const resetToNeutral = useMutation(api.orgThemes.resetToNeutral);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [isEditingAccent, setIsEditingAccent] = useState(false);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [accentHex, setAccentHex] = useState(DEFAULT_ACCENT_HEX);
 
   const logoUrl = getSafeHttpsUrl(
@@ -470,7 +472,7 @@ export default function AdminAppearancePage() {
             <Button
               type="button"
               variant="outline"
-              onClick={handleReset}
+              onClick={() => setResetConfirmOpen(true)}
               disabled={busyAction !== null || (!activeTokens && !candidateTokens)}
             >
               <RotateCcw />
@@ -562,6 +564,15 @@ export default function AdminAppearancePage() {
           {manualAccentEditor}
         </div>
       )}
+      <ConfirmDialog
+        open={resetConfirmOpen}
+        onOpenChange={setResetConfirmOpen}
+        title="Reset workspace theme?"
+        description="This removes the active and candidate accent theme and returns the workspace to the neutral default."
+        confirmLabel="Reset theme"
+        destructive
+        onConfirm={handleReset}
+      />
     </div>
   );
 }

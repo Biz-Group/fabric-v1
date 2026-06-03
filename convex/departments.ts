@@ -379,8 +379,51 @@ export const childCount = query({
           .eq("clerkOrgId", caller.orgId)
           .eq("departmentId", args.departmentId),
       )
-      .collect();
+      .take(1000);
     return children.length;
+  },
+});
+
+export const deleteEligibility = query({
+  args: { departmentId: v.id("departments") },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgMember(ctx);
+    const dept = await ctx.db.get(args.departmentId);
+    assertOrgOwns(caller, dept);
+
+    if (caller.role === "viewer") {
+      return {
+        canDelete: false,
+        blocker: "role" as const,
+        childKind: null,
+        canCleanUpChildren: false,
+      };
+    }
+
+    const children = await ctx.db
+      .query("processes")
+      .withIndex("by_clerkOrgId_and_departmentId", (q) =>
+        q
+          .eq("clerkOrgId", caller.orgId)
+          .eq("departmentId", args.departmentId),
+      )
+      .take(1);
+
+    if (children.length > 0) {
+      return {
+        canDelete: false,
+        blocker: "children" as const,
+        childKind: "processes" as const,
+        canCleanUpChildren: caller.role === "admin",
+      };
+    }
+
+    return {
+      canDelete: true,
+      blocker: null,
+      childKind: null,
+      canCleanUpChildren: false,
+    };
   },
 });
 

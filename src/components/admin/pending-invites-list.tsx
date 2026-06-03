@@ -95,8 +95,10 @@ export function PendingInvitesList({
       await refresh();
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : "Failed to resend invitation.";
-      toast.error(msg);
+        err instanceof Error
+          ? err.message
+          : "Failed to resend invitation.";
+      toast.error(`${msg} If the old invitation was revoked, invite them again.`);
     } finally {
       setMutatingId(null);
     }

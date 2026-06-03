@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 
 /**
@@ -47,6 +48,10 @@ export const removeTestData = internalMutation({
 
       if (remaining.length === 0) {
         await ctx.db.patch(processId, { rollingSummary: undefined });
+        await ctx.runMutation(internal.processFlows.deleteForProcess, {
+          processId,
+          clerkOrgId: args.clerkOrgId,
+        });
       }
     }
 

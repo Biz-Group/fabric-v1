@@ -673,31 +673,37 @@ export function MillerColumns() {
   const [crudTargetId, setCrudTargetId] = useState<string | null>(null);
   const [crudCurrentLocationId, setCrudCurrentLocationId] = useState<string | null>(null);
 
-  // Child-count queries for delete pre-check
-  const deleteFnChildCount = useQuery(
-    api.functions.childCount,
+  // Server-computed delete eligibility for the selected delete target.
+  const deleteFnEligibility = useQuery(
+    api.functions.deleteEligibility,
     crudOpen && crudMode === "delete" && crudEntity === "Function" && crudTargetId
       ? { functionId: crudTargetId as Id<"functions"> }
       : "skip"
   );
-  const deleteDeptChildCount = useQuery(
-    api.departments.childCount,
+  const deleteDeptEligibility = useQuery(
+    api.departments.deleteEligibility,
     crudOpen && crudMode === "delete" && crudEntity === "Department" && crudTargetId
       ? { departmentId: crudTargetId as Id<"departments"> }
       : "skip"
   );
-  const deleteProcChildCount = useQuery(
-    api.processes.childCount,
+  const deleteProcEligibility = useQuery(
+    api.processes.deleteEligibility,
     crudOpen && crudMode === "delete" && crudEntity === "Process" && crudTargetId
       ? { processId: crudTargetId as Id<"processes"> }
       : "skip"
   );
-  const deleteChildCount =
+  const deleteEligibility =
     crudEntity === "Function"
-      ? deleteFnChildCount
+      ? deleteFnEligibility
       : crudEntity === "Department"
-        ? deleteDeptChildCount
-        : deleteProcChildCount;
+        ? deleteDeptEligibility
+        : deleteProcEligibility;
+
+  const handleOpenDeleteCleanup = useCallback(() => {
+    if (crudEntity !== "Process" || !crudTargetId) return;
+    setCrudOpen(false);
+    router.push(`/admin/conversations?processId=${crudTargetId}`);
+  }, [crudEntity, crudTargetId, router]);
 
   const openCrud = useCallback(
     (
@@ -2291,7 +2297,14 @@ export function MillerColumns() {
                 ? "Department"
                 : undefined
           }
-          childCount={crudMode === "delete" ? deleteChildCount : undefined}
+          deleteEligibility={
+            crudMode === "delete" ? deleteEligibility : undefined
+          }
+          onCleanupChildren={
+            crudMode === "delete" && crudEntity === "Process"
+              ? handleOpenDeleteCleanup
+              : undefined
+          }
           onConfirm={handleCrudConfirm}
         />
       )}
