@@ -617,7 +617,7 @@ function ConversationAudioControls({
   if (!audioUrl) return null;
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden">
       <AudioPlayerSkipButton
         seconds={-10}
         variant="ghost"
@@ -651,7 +651,7 @@ function ConversationAudioControls({
           barGap={2}
           barRadius={1}
           showHandle={false}
-          className="flex-1"
+          className="min-w-0 flex-1 overflow-hidden"
         />
       ) : waveformData.length > 0 ? (
         <AudioScrubber
@@ -666,16 +666,21 @@ function ConversationAudioControls({
           barGap={2}
           barRadius={1}
           showHandle={false}
-          className="flex-1"
+          className="min-w-0 flex-1 overflow-hidden"
         />
       ) : isActive ? (
-        <AudioPlayerProgress className="flex-1" />
+        <AudioPlayerProgress className="min-w-0 flex-1" />
       ) : (
-        <div className="flex h-4 flex-1 items-center">
+        <div className="flex h-4 min-w-0 flex-1 items-center overflow-hidden">
           <div className="h-[4px] w-full rounded-full bg-muted" />
         </div>
       )}
-      <AudioPlayerSpeed speeds={[1, 1.5, 2]} variant="ghost" size="icon" />
+      <AudioPlayerSpeed
+        speeds={[1, 1.5, 2]}
+        variant="ghost"
+        size="icon"
+        className="shrink-0"
+      />
       {isActive ? (
         <AudioPlayerTimeToggle className="shrink-0 text-xs" />
       ) : (

@@ -150,7 +150,7 @@ export const Waveform = ({
 
   return (
     <div
-      className={cn("relative", className)}
+      className={cn("relative min-w-0 overflow-hidden", className)}
       ref={containerRef}
       style={{ height: heightStyle }}
       {...props}
@@ -476,7 +476,7 @@ export const AudioScrubber = ({
       aria-valuemax={safeDuration}
       aria-valuemin={0}
       aria-valuenow={safeCurrentTime}
-      className={cn("relative cursor-pointer select-none", className)}
+      className={cn("relative min-w-0 cursor-pointer select-none", className)}
       onMouseDown={handleMouseDown}
       ref={containerRef}
       role="slider"

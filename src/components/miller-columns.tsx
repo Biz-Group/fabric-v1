@@ -1394,7 +1394,7 @@ export function MillerColumns() {
   );
 
   const detailPanel = (mobile?: boolean) => (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-w-0 flex-col overflow-hidden">
       {mobile && selectedProcessId && (
         <div className="shrink-0 border-b bg-background px-2 py-2">
           <Button
@@ -1409,7 +1409,7 @@ export function MillerColumns() {
         </div>
       )}
       {!selectedProcessId ? (
-        <div className="flex flex-1 flex-col overflow-y-auto scrollbar-hide">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto scrollbar-hide">
           <ColumnHeader
             title={selectedDepartmentId ? "Department Overview" : selectedFunctionId ? "Function Overview" : "Process Detail"}
             mobile={mobile}
@@ -1686,7 +1686,7 @@ export function MillerColumns() {
           )}
         </div>
       ) : (
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/* Breadcrumb bar */}
           <div className="flex shrink-0 items-center justify-between gap-2 border-b bg-muted/30 px-4 py-3">
             <Breadcrumb>
@@ -1750,7 +1750,7 @@ export function MillerColumns() {
             onValueChange={(value) =>
               setDetailTab(typeof value === "number" ? value : 0)
             }
-            className="flex flex-1 flex-col overflow-hidden gap-0"
+            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-0"
           >
             <div className="shrink-0 border-b px-4">
               <TabsList variant="line" className="h-9">
@@ -1766,7 +1766,7 @@ export function MillerColumns() {
             </div>
 
             {/* Conversations tab */}
-            <TabsContent value={0} className="flex-1 overflow-y-auto scrollbar-hide">
+            <TabsContent value={0} className="min-h-0 min-w-0 flex-1 overflow-y-auto scrollbar-hide">
               <div className="space-y-6 p-4 md:p-6">
                 {selectedProcess?.description && (
                   <Card>
@@ -1961,7 +1961,7 @@ export function MillerColumns() {
             </TabsContent>
 
             {/* Process Flow tab */}
-            <TabsContent value={1} className="flex flex-1 overflow-hidden">
+            <TabsContent value={1} className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
               <Suspense
                 fallback={
                   <div className="flex flex-1 items-center justify-center">
@@ -2126,7 +2126,7 @@ export function MillerColumns() {
       </header>
 
       {/* Desktop: 4 side-by-side columns */}
-      <div className="hidden flex-1 overflow-hidden md:flex">
+      <div className="hidden min-w-0 flex-1 overflow-hidden md:flex">
         <div className={cn(
           "flex shrink-0 flex-col border-r bg-muted/10 transition-[width] duration-200 ease-linear overflow-hidden",
           collapsed.functions ? "w-12" : "w-[220px]"
@@ -2145,7 +2145,7 @@ export function MillerColumns() {
         )}>
           {processesColumn(false, collapsed.processes)}
         </div>
-        <div className="flex flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {detailPanel()}
         </div>
       </div>

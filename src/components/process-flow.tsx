@@ -154,7 +154,7 @@ function ProcessFlowInner({ processId, conversationCount }: ProcessFlowProps) {
 
   return (
     <Wrapper onClose={() => setIsFullscreen(false)}>
-      <div className="relative flex flex-1">
+      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {/* Staleness banner */}
         {(isStale || hasNewerConversations) && (
           <div className="absolute left-3 top-3 z-10">
@@ -187,7 +187,7 @@ function ProcessFlowInner({ processId, conversationCount }: ProcessFlowProps) {
         </div>
 
         {/* React Flow canvas */}
-        <div className={cn("flex-1", selectedNode && !isMobile && "mr-[320px]")}>
+        <div className={cn("min-w-0 flex-1", selectedNode && !isMobile && "mr-[320px]")}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -388,7 +388,7 @@ function FullscreenWrapper({
 }
 
 function PassthroughWrapper({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-1 flex-col overflow-hidden">{children}</div>;
+  return <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</div>;
 }
 
 // ---------------------------------------------------------------------------
