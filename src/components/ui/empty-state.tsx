@@ -33,7 +33,7 @@ function EmptyState({
       )}
       <h3 className="text-sm font-medium text-foreground">{title}</h3>
       {description && (
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+        <p className="mt-1 max-w-sm break-words text-sm leading-6 text-muted-foreground">
           {description}
         </p>
       )}

@@ -5,10 +5,11 @@ import { useAction, useQuery } from "convex/react";
 import { AlertTriangle, Mail, MessageSquare, Users } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import { Id } from "../../../../convex/_generated/dataModel";
-import { StatCard } from "@/components/admin/stat-card";
-import { ConversationTranscriptDialog } from "@/components/admin/conversation-transcript-dialog";
+import { StatCard } from "@/features/admin/stat-card";
+import { ConversationTranscriptDialog } from "@/features/admin/conversation-transcript-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -45,6 +46,7 @@ function StatusDot({
 }
 
 export default function AdminOverviewPage() {
+  const routes = useWorkspaceRoutes();
   const [sinceSevenDays] = useState(() => Date.now() - SEVEN_DAYS_MS);
   const [sinceFourteenDays] = useState(
     () => Date.now() - 2 * SEVEN_DAYS_MS,
@@ -54,7 +56,7 @@ export default function AdminOverviewPage() {
   >(undefined);
   const [viewingId, setViewingId] = useState<Id<"conversations"> | null>(null);
 
-  const members = useQuery(api.users.listOrgMembers);
+  const membershipStats = useQuery(api.users.getOrgMembershipStats);
   const weeklyConversations = useQuery(api.conversations.countForOrg, {
     since: sinceSevenDays,
   });
@@ -85,15 +87,6 @@ export default function AdminOverviewPage() {
     };
   }, [listInvites]);
 
-  const memberSummary = useMemo(() => {
-    if (!members) return undefined;
-    const counts = { admin: 0, contributor: 0, viewer: 0 };
-    for (const m of members) {
-      counts[m.role as keyof typeof counts] += 1;
-    }
-    return counts;
-  }, [members]);
-
   const weeklyDelta = useMemo(() => {
     if (weeklyConversations === undefined || priorWeekConversations === undefined)
       return null;
@@ -117,14 +110,14 @@ export default function AdminOverviewPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Members"
-          value={members?.length}
+          value={membershipStats?.activeCount}
           hint={
-            memberSummary
-              ? `${memberSummary.admin} admin · ${memberSummary.contributor} contributor · ${memberSummary.viewer} viewer`
+            membershipStats
+              ? `${membershipStats.adminCount} admin · ${membershipStats.contributorCount} contributor · ${membershipStats.viewerCount} viewer`
               : undefined
           }
           icon={Users}
-          href="/admin/users"
+          href={routes.adminUsersHref}
         />
         <StatCard
           label="Pending invites"
@@ -135,14 +128,14 @@ export default function AdminOverviewPage() {
               : undefined
           }
           icon={Mail}
-          href="/admin/users"
+          href={routes.adminUsersHref}
         />
         <StatCard
           label="Conversations this week"
           value={weeklyConversations}
           hint={weeklyDelta ?? undefined}
           icon={MessageSquare}
-          href="/admin/conversations"
+          href={routes.adminConversationsHref}
         />
         <StatCard
           label="Failed conversations"
@@ -153,7 +146,7 @@ export default function AdminOverviewPage() {
               : "All healthy"
           }
           icon={AlertTriangle}
-          href="/admin/conversations?status=failed"
+          href={routes.withWorkspacePath("/admin/conversations?status=failed")}
           tone={
             failedConversations && failedConversations > 0
               ? "destructive"

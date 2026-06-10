@@ -8,6 +8,7 @@ import {
   internalQuery,
   QueryCtx,
 } from "./_generated/server";
+import { clerkUserIdFromTokenIdentifier } from "./lib/clerkApi";
 
 export const migrations = new Migrations<DataModel>(components.migrations);
 
@@ -110,7 +111,9 @@ export const verifyOrgBackfill = internalQuery({
   args: {},
   handler: async (ctx) => {
     let membershipCount = 0;
-    for await (const _ of ctx.db.query("memberships")) membershipCount++;
+    for await (const membership of ctx.db.query("memberships")) {
+      if (membership._id) membershipCount++;
+    }
     return {
       functions: await countUnsetClerkOrgId(ctx, "functions"),
       departments: await countUnsetClerkOrgId(ctx, "departments"),
@@ -119,6 +122,83 @@ export const verifyOrgBackfill = internalQuery({
       processFlows: await countUnsetClerkOrgId(ctx, "processFlows"),
       memberships: { total: membershipCount },
     };
+  },
+});
+
+// --- Membership directory/stat backfill ------------------------------------
+//
+// Backfills the denormalized member directory fields added for scalable member
+// listing/search. Safe to re-run; it only copies current user profile fields
+// onto each membership and preserves existing role/source information.
+//
+// Run with:
+//   npx convex run migrations:run '{"fn":"migrations:backfillMembershipDirectory"}'
+
+function normalizeEmail(email?: string | null): string {
+  return (email ?? "").trim().toLowerCase();
+}
+
+function membershipSearchText(args: {
+  name: string;
+  email: string;
+  jobTitle?: string;
+}): string {
+  return [args.name, args.email, args.jobTitle ?? ""]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+export const backfillMembershipDirectory = migrations.define({
+  table: "memberships",
+  migrateOne: async (ctx, membership) => {
+    const user = await ctx.db.get(membership.userId);
+    if (!user) return;
+
+    const email = user.email ?? "";
+    const emailLower = user.emailLower ?? normalizeEmail(email);
+    const name = user.name || email || "Anonymous";
+    const jobTitle = user.jobTitle?.trim() || undefined;
+    const clerkUserId =
+      user.clerkUserId ??
+      clerkUserIdFromTokenIdentifier(user.tokenIdentifier);
+
+    await ctx.db.patch(membership._id, {
+      status: membership.status ?? "active",
+      source: membership.source ?? "legacy",
+      updatedAt: Date.now(),
+      clerkUserId,
+      name,
+      email,
+      emailLower,
+      profileComplete: user.profileComplete,
+      searchText: membershipSearchText({ name, email, jobTitle }),
+      ...(jobTitle ? { jobTitle } : {}),
+      ...(user.platformRole ? { platformRole: user.platformRole } : {}),
+    });
+  },
+});
+
+export const verifyMembershipDirectoryBackfill = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    let total = 0;
+    let missingDirectoryFields = 0;
+    for await (const membership of ctx.db.query("memberships")) {
+      total++;
+      if (
+        !membership.name ||
+        membership.email === undefined ||
+        !membership.emailLower ||
+        membership.profileComplete === undefined ||
+        !membership.searchText ||
+        !membership.status ||
+        !membership.source
+      ) {
+        missingDirectoryFields++;
+      }
+    }
+    return { total, missingDirectoryFields };
   },
 });
 

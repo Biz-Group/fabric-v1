@@ -36,6 +36,20 @@ function isSameOriginPost(req: NextRequest): boolean {
   );
 }
 
+function hasVerifiedEmail(user: {
+  primaryEmailAddressId: string | null;
+  emailAddresses: Array<{
+    id: string;
+    verification?: { status?: string | null } | null;
+  }>;
+}): boolean {
+  return user.emailAddresses.some(
+    (email) =>
+      email.id === user.primaryEmailAddressId &&
+      email.verification?.status === "verified",
+  );
+}
+
 export async function POST(req: NextRequest) {
   if (!isSameOriginPost(req)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -94,6 +108,12 @@ export async function POST(req: NextRequest) {
     const user = await client.users.getUser(userId);
     if (user.banned || user.locked) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (!hasVerifiedEmail(user)) {
+      return NextResponse.json(
+        { error: "Verify your email before joining this workspace." },
+        { status: 403 },
+      );
     }
 
     try {

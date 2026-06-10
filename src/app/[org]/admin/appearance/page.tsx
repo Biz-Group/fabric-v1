@@ -8,7 +8,7 @@ import { Check, Palette, Pencil, RefreshCw, RotateCcw, Save, X } from "lucide-re
 import Image from "next/image";
 import { toast } from "sonner";
 import { api } from "../../../../../convex/_generated/api";
-import { extractLogoAccentRgb } from "@/lib/logo-theme";
+import { extractLogoAccentRgb } from "@/features/theming/logo-theme";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

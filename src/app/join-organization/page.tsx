@@ -1,5 +1,5 @@
-import { AuthShell } from "@/components/auth-shell";
-import { JoinSubdomainOrganization } from "@/components/join-subdomain-organization";
+import { AuthShell } from "@/features/auth/auth-shell";
+import { JoinSubdomainOrganization } from "@/features/auth/join-subdomain-organization";
 
 export default function JoinOrganizationPage() {
   return (

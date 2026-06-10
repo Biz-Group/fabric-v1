@@ -16,6 +16,9 @@ import {
   resolveOrgForAction,
 } from "./lib/orgAuth";
 
+const DEFAULT_COMPACT_CONVERSATION_LIMIT = 50;
+const MAX_COMPACT_CONVERSATION_LIMIT = 100;
+
 export const listByProcess = query({
   args: { processId: v.id("processes") },
   handler: async (ctx, args) => {
@@ -29,6 +32,52 @@ export const listByProcess = query({
       )
       .order("desc")
       .take(200);
+  },
+});
+
+export const listCompactByProcess = query({
+  args: {
+    processId: v.id("processes"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgMember(ctx);
+    const parent = await ctx.db.get(args.processId);
+    if (!parent || parent.clerkOrgId !== caller.orgId) return [];
+
+    const requestedLimit =
+      args.limit === undefined
+        ? DEFAULT_COMPACT_CONVERSATION_LIMIT
+        : Math.floor(args.limit);
+    const limit = Math.min(
+      Math.max(requestedLimit, 1),
+      MAX_COMPACT_CONVERSATION_LIMIT,
+    );
+
+    const rows = await ctx.db
+      .query("conversations")
+      .withIndex("by_clerkOrgId_and_processId", (q) =>
+        q.eq("clerkOrgId", caller.orgId).eq("processId", args.processId),
+      )
+      .order("desc")
+      .take(limit);
+
+    return rows.map((conversation) => ({
+      _id: conversation._id,
+      _creationTime: conversation._creationTime,
+      processId: conversation.processId,
+      contributorName: conversation.contributorName,
+      userId: conversation.userId ?? null,
+      inputMode: conversation.inputMode ?? "agent",
+      status: conversation.status,
+      durationSeconds: conversation.durationSeconds ?? null,
+      hasAudio: Boolean(
+        conversation.elevenlabsConversationId || conversation.audioStorageId,
+      ),
+      hasTranscript: Boolean(conversation.transcript?.length),
+      hasSummary: Boolean(conversation.summary?.trim()),
+      needsSpeakerLabels: conversation.status === "needs_speaker_labels",
+    }));
   },
 });
 

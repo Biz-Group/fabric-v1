@@ -3,8 +3,8 @@
 import { useQuery, useMutation } from "convex/react";
 import { Suspense, useEffect } from "react";
 import { api } from "../../../convex/_generated/api";
-import { MillerColumns } from "@/components/miller-columns";
-import { ProfileOnboarding } from "@/components/profile-onboarding";
+import { ProcessWorkbench } from "@/features/workbench/process-workbench";
+import { ProfileOnboarding } from "@/features/profile/profile-onboarding";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 
 export default function OrgHomePage() {
@@ -29,11 +29,11 @@ export default function OrgHomePage() {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
-      {/* Suspense boundary required: MillerColumns reads useSearchParams, which
+      {/* Suspense boundary required: ProcessWorkbench reads useSearchParams, which
           would otherwise fail the production build ("Missing Suspense boundary
           with useSearchParams"). */}
       <Suspense fallback={<LoadingScreen message="Loading your workspace..." />}>
-        <MillerColumns />
+        <ProcessWorkbench />
       </Suspense>
     </div>
   );

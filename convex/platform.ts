@@ -5,6 +5,7 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  MutationCtx,
   mutation,
   query,
 } from "./_generated/server";
@@ -34,6 +35,36 @@ function clerkUserIdFromTokenIdentifier(tokenIdentifier: string): string {
     throw new Error(`Unexpected tokenIdentifier format: ${tokenIdentifier}`);
   }
   return tokenIdentifier.substring(idx + 1);
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function memberSearchText(parts: Array<string | undefined>): string {
+  return parts.filter(Boolean).join(" ").toLowerCase();
+}
+
+async function patchStatsIfPresent(
+  ctx: MutationCtx,
+  clerkOrgId: string,
+  delta: { active?: number; admin?: number; contributor?: number; viewer?: number },
+) {
+  const stats = await ctx.db
+    .query("orgMembershipStats")
+    .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
+    .unique();
+  if (!stats) return;
+  await ctx.db.patch(stats._id, {
+    activeCount: Math.max(0, stats.activeCount + (delta.active ?? 0)),
+    adminCount: Math.max(0, stats.adminCount + (delta.admin ?? 0)),
+    contributorCount: Math.max(
+      0,
+      stats.contributorCount + (delta.contributor ?? 0),
+    ),
+    viewerCount: Math.max(0, stats.viewerCount + (delta.viewer ?? 0)),
+    updatedAt: Date.now(),
+  });
 }
 
 // --- Bootstrap -------------------------------------------------------------
@@ -204,6 +235,10 @@ export const upsertAndSeedSuperAdminInternal = internalMutation({
     if (user) {
       await ctx.db.patch(user._id, {
         tokenIdentifier: args.tokenIdentifier,
+        clerkUserId: clerkUserIdFromTokenIdentifier(args.tokenIdentifier),
+        email: args.email,
+        emailLower: normalizeEmail(args.email),
+        name: args.name,
         platformRole: "superAdmin",
       });
       return { userId: user._id, action: "patched-existing" };
@@ -211,7 +246,9 @@ export const upsertAndSeedSuperAdminInternal = internalMutation({
 
     const userId = await ctx.db.insert("users", {
       tokenIdentifier: args.tokenIdentifier,
+      clerkUserId: clerkUserIdFromTokenIdentifier(args.tokenIdentifier),
       email: args.email,
+      emailLower: normalizeEmail(args.email),
       name: args.name,
       profileComplete: false,
       platformRole: "superAdmin",
@@ -312,6 +349,12 @@ export const insertSuperAdminMembershipInternal = internalMutation({
     invitedBy: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("Super-admin user not found");
+    const clerkUserId = clerkUserIdFromTokenIdentifier(args.tokenIdentifier);
+    const emailLower = user.emailLower ?? normalizeEmail(user.email);
+    const name = user.name || user.email || "Super Admin";
+    const searchText = memberSearchText([name, user.email, user.jobTitle]);
     const existing = await ctx.db
       .query("memberships")
       .withIndex("by_tokenIdentifier_and_clerkOrgId", (q) =>
@@ -323,7 +366,37 @@ export const insertSuperAdminMembershipInternal = internalMutation({
     if (existing) {
       // Upgrade to admin if existing membership has a lower role.
       if (existing.role !== "admin") {
-        await ctx.db.patch(existing._id, { role: "admin" });
+        await ctx.db.patch(existing._id, {
+          role: "admin",
+          source: "superAdminFanOut",
+          clerkUserId,
+          name,
+          email: user.email,
+          emailLower,
+          jobTitle: user.jobTitle,
+          profileComplete: user.profileComplete,
+          platformRole: "superAdmin",
+          searchText,
+          updatedAt: Date.now(),
+        });
+        await patchStatsIfPresent(ctx, args.clerkOrgId, {
+          admin: 1,
+          contributor: existing.role === "contributor" ? -1 : 0,
+          viewer: existing.role === "viewer" ? -1 : 0,
+        });
+      } else {
+        await ctx.db.patch(existing._id, {
+          source: "superAdminFanOut",
+          clerkUserId,
+          name,
+          email: user.email,
+          emailLower,
+          jobTitle: user.jobTitle,
+          profileComplete: user.profileComplete,
+          platformRole: "superAdmin",
+          searchText,
+          updatedAt: Date.now(),
+        });
       }
       return { inserted: false, upgraded: existing.role !== "admin" };
     }
@@ -334,6 +407,21 @@ export const insertSuperAdminMembershipInternal = internalMutation({
       role: "admin",
       invitedBy: args.invitedBy,
       createdAt: Date.now(),
+      updatedAt: Date.now(),
+      status: "active",
+      source: "superAdminFanOut",
+      clerkUserId,
+      name,
+      email: user.email,
+      emailLower,
+      jobTitle: user.jobTitle,
+      profileComplete: user.profileComplete,
+      platformRole: "superAdmin",
+      searchText,
+    });
+    await patchStatsIfPresent(ctx, args.clerkOrgId, {
+      active: 1,
+      admin: 1,
     });
     return { inserted: true, upgraded: false };
   },

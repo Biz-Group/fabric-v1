@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import schema from "./schema";
 
@@ -355,6 +355,7 @@ function stubClerkFetchStatus(status: number, body: unknown = {}) {
 describe("user provisioning sync", () => {
   beforeEach(() => {
     process.env.CLERK_SECRET_KEY = "sk_test_abc";
+    process.env.CLERK_JWT_ISSUER_DOMAIN = ISSUER;
   });
 
   afterEach(() => {
@@ -409,8 +410,189 @@ describe("user provisioning sync", () => {
     expect(calls[0].url).toContain("/users/user_new");
     expect(stored.user?.email).toBe("new.member@a.test");
     expect(stored.user?.name).toBe("New Member");
-    expect(stored.membership?.role).toBe("contributor");
+    expect(stored.membership?.role).toBe("viewer");
+    expect(stored.membership?.source).toBe("selfSignup");
+    expect(stored.membership?.emailLower).toBe("new.member@a.test");
+    expect(stored.membership?.searchText).toContain("new member");
     expect(stored.membership?.clerkOrgId).toBe(ORG_A);
+  });
+
+  test("pending invite intent controls accepted member role", async () => {
+    const t = convexTest(schema, modules);
+    stubClerkFetch([
+      {
+        id: "user_invited",
+        first_name: "Invited",
+        last_name: "Admin",
+        primary_email_address_id: "email_1",
+        email_addresses: [
+          {
+            id: "email_1",
+            email_address: "invited.admin@a.test",
+          },
+        ],
+      },
+    ]);
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("membershipIntents", {
+        clerkOrgId: ORG_A,
+        email: "invited.admin@a.test",
+        emailLower: "invited.admin@a.test",
+        requestedRole: "admin",
+        source: "adminInvite",
+        status: "pending",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    });
+
+    const identity = {
+      tokenIdentifier: `${ISSUER}|user_invited`,
+      subject: "user_invited",
+      issuer: ISSUER,
+      name: "JWT Name",
+      orgId: ORG_A,
+      orgSlug: "org-a",
+    };
+
+    const userId = await t
+      .withIdentity(identity)
+      .action(api.users.syncCurrentUserFromClerk, {});
+
+    const stored = await t.run(async (ctx) => {
+      const membership = await ctx.db
+        .query("memberships")
+        .withIndex("by_tokenIdentifier_and_clerkOrgId", (q) =>
+          q
+            .eq("tokenIdentifier", identity.tokenIdentifier)
+            .eq("clerkOrgId", ORG_A),
+        )
+        .unique();
+      const intent = await ctx.db
+        .query("membershipIntents")
+        .withIndex("by_clerkOrgId_and_emailLower", (q) =>
+          q.eq("clerkOrgId", ORG_A).eq("emailLower", "invited.admin@a.test"),
+        )
+        .unique();
+      return { membership, intent };
+    });
+
+    expect(stored.membership?.userId).toBe(userId);
+    expect(stored.membership?.role).toBe("admin");
+    expect(stored.membership?.source).toBe("adminInvite");
+    expect(stored.intent?.status).toBe("accepted");
+    expect(stored.intent?.acceptedUserId).toBe(userId);
+    expect(stored.intent?.acceptedTokenIdentifier).toBe(identity.tokenIdentifier);
+  });
+
+  test("super admins auto-provision as admins in each active org", async () => {
+    const t = convexTest(schema, modules);
+    const tokenIdentifier = `${ISSUER}|user_super`;
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        tokenIdentifier,
+        clerkUserId: "user_super",
+        name: "Super Admin",
+        email: "super@fabric.test",
+        emailLower: "super@fabric.test",
+        profileComplete: true,
+        platformRole: "superAdmin",
+      });
+    });
+
+    const identity = {
+      tokenIdentifier,
+      subject: "user_super",
+      issuer: ISSUER,
+      name: "Super Admin",
+      email: "super@fabric.test",
+      orgSlug: "org-a",
+    };
+
+    await t
+      .withIdentity({ ...identity, orgId: ORG_A })
+      .mutation(api.users.store, {});
+    await t
+      .withIdentity({ ...identity, orgId: ORG_B, orgSlug: "org-b" })
+      .mutation(api.users.store, {});
+
+    const memberships = await t.run(async (ctx) => {
+      return await ctx.db.query("memberships").collect();
+    });
+
+    expect(memberships).toHaveLength(2);
+    expect(
+      memberships.map((m) => ({
+        clerkOrgId: m.clerkOrgId,
+        role: m.role,
+        source: m.source,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        { clerkOrgId: ORG_A, role: "admin", source: "superAdminFanOut" },
+        { clerkOrgId: ORG_B, role: "admin", source: "superAdminFanOut" },
+      ]),
+    );
+  });
+});
+
+describe("Clerk webhook processing", () => {
+  beforeEach(() => {
+    process.env.CLERK_JWT_ISSUER_DOMAIN = ISSUER;
+  });
+
+  test("organization membership webhook creates viewer membership and is idempotent", async () => {
+    const t = convexTest(schema, modules);
+
+    const first = await t.mutation(internal.users.handleClerkWebhook, {
+      eventId: "evt_membership_created",
+      eventType: "organizationMembership.created",
+      data: {
+        organization: { id: ORG_A },
+        public_user_data: {
+          user_id: "user_webhook",
+          first_name: "Webhook",
+          last_name: "Member",
+          identifier: "webhook.member@a.test",
+        },
+        role: "org:admin",
+      },
+    });
+    const second = await t.mutation(internal.users.handleClerkWebhook, {
+      eventId: "evt_membership_created",
+      eventType: "organizationMembership.created",
+      data: {
+        organization: { id: ORG_A },
+        public_user_data: {
+          user_id: "user_webhook",
+          first_name: "Changed",
+          last_name: "Name",
+          identifier: "changed@a.test",
+        },
+        role: "org:admin",
+      },
+    });
+
+    const stored = await t.run(async (ctx) => {
+      const events = await ctx.db.query("processedWebhookEvents").collect();
+      const membership = await ctx.db
+        .query("memberships")
+        .withIndex("by_tokenIdentifier_and_clerkOrgId", (q) =>
+          q
+            .eq("tokenIdentifier", `${ISSUER}|user_webhook`)
+            .eq("clerkOrgId", ORG_A),
+        )
+        .unique();
+      return { events, membership };
+    });
+
+    expect(first.status).toBe("processed");
+    expect(second.status).toBe("duplicate");
+    expect(stored.events).toHaveLength(1);
+    expect(stored.membership?.role).toBe("viewer");
+    expect(stored.membership?.source).toBe("webhook");
+    expect(stored.membership?.emailLower).toBe("webhook.member@a.test");
   });
 });
 
@@ -468,14 +650,29 @@ describe("invitations — admin gating and org scoping", () => {
 
     const result = await t
       .withIdentity(identityForOrgA())
-      .action(api.invitations.invite, { email: "new@a.test" });
+      .action(api.invitations.invite, {
+        email: "new@a.test",
+        role: "viewer",
+      });
 
     expect(result.id).toBe("inv_1");
+    expect(result.role).toBe("viewer");
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toContain(`/organizations/${ORG_A}/invitations`);
+    expect(calls[0].init?.body).toContain('"role":"org:member"');
     // The other org's id must never appear in the URL or body.
     expect(calls[0].url).not.toContain(ORG_B);
     expect(calls[0].init?.body).not.toContain(ORG_B);
+
+    const intent = await t.run(async (ctx) => {
+      return await ctx.db
+        .query("membershipIntents")
+        .withIndex("by_clerkInvitationId", (q) => q.eq("clerkInvitationId", "inv_1"))
+        .unique();
+    });
+    expect(intent?.requestedRole).toBe("viewer");
+    expect(intent?.source).toBe("adminInvite");
+    expect(intent?.status).toBe("pending");
   });
 
   test("invite: rejects Clerk responses whose organization_id doesn't match", async () => {

@@ -19,7 +19,7 @@ import {
   type TranscriptSegment,
   type TranscriptWord as TranscriptWordType,
   type UseTranscriptViewerResult,
-} from "@/hooks/use-transcript-viewer"
+} from "@/features/conversations/use-transcript-viewer"
 import { Button } from "@/components/ui/button"
 import {
   ScrubBarContainer,
