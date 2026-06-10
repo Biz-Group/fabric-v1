@@ -1,6 +1,7 @@
 import { v } from "convex/values";
-import { action, internalQuery } from "./_generated/server";
+import { action, ActionCtx, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { resolveOrgForAction } from "./lib/orgAuth";
 import {
   clerkFetch,
@@ -41,6 +42,30 @@ type ClerkInvitation = {
   expires_at?: number | null;
 };
 
+type Role = "admin" | "contributor" | "viewer";
+
+type AdminCheckResult = {
+  membershipId: Id<"memberships">;
+  userId: Id<"users">;
+};
+
+type InvitationIntentRole = {
+  clerkInvitationId: string | null;
+  emailLower: string;
+  requestedRole: Role;
+};
+
+async function requireAdminForAction(
+  ctx: ActionCtx,
+  orgId: string,
+  tokenIdentifier: string,
+): Promise<AdminCheckResult> {
+  return await ctx.runQuery(internal.invitations.assertAdminFor, {
+    orgId,
+    tokenIdentifier,
+  });
+}
+
 /** Admin-only. Invite a new member to the caller's active org via Clerk. The
  * invitee accepts in Clerk → signs in → `users.store` auto-provisions their
  * Fabric membership with the requested Convex role. Clerk only carries the
@@ -58,10 +83,7 @@ export const invite = action({
   },
   handler: async (ctx, args) => {
     const { orgId, tokenIdentifier } = await resolveOrgForAction(ctx);
-    const caller = await ctx.runQuery(internal.invitations.assertAdminFor, {
-      orgId,
-      tokenIdentifier,
-    });
+    const caller = await requireAdminForAction(ctx, orgId, tokenIdentifier);
     const requestedRole = args.role ?? "contributor";
 
     const inviterClerkUserId = clerkUserIdFromTokenIdentifier(tokenIdentifier);
@@ -108,10 +130,7 @@ export const list = action({
   args: {},
   handler: async (ctx) => {
     const { orgId, tokenIdentifier } = await resolveOrgForAction(ctx);
-    await ctx.runQuery(internal.invitations.assertAdminFor, {
-      orgId,
-      tokenIdentifier,
-    });
+    await requireAdminForAction(ctx, orgId, tokenIdentifier);
 
     const response = (await clerkFetch(
       `/organizations/${orgId}/invitations`,
@@ -119,7 +138,7 @@ export const list = action({
     )) as { data: ClerkInvitation[] } | ClerkInvitation[];
 
     const rows = Array.isArray(response) ? response : response.data;
-    const intentRoles = await ctx.runQuery(
+    const intentRoles: InvitationIntentRole[] = await ctx.runQuery(
       internal.users.getInvitationIntentRoles,
       { clerkOrgId: orgId },
     );
@@ -151,10 +170,7 @@ export const revoke = action({
   args: { invitationId: v.string() },
   handler: async (ctx, args) => {
     const { orgId, tokenIdentifier } = await resolveOrgForAction(ctx);
-    await ctx.runQuery(internal.invitations.assertAdminFor, {
-      orgId,
-      tokenIdentifier,
-    });
+    await requireAdminForAction(ctx, orgId, tokenIdentifier);
 
     const requestingUserId = clerkUserIdFromTokenIdentifier(tokenIdentifier);
     const result = (await clerkFetch(
