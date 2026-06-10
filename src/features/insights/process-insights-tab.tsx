@@ -953,7 +953,7 @@ function EvidenceCoverageSection({
                     </div>
                     <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
                       <div
-                        className="h-full rounded-full bg-primary"
+                        className="h-full rounded-full bg-org-accent"
                         style={{ width: `${percent}%` }}
                       />
                     </div>

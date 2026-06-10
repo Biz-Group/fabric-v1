@@ -799,7 +799,7 @@ function SyncedTranscript({
                 }}
                 className={cn(
                   "group/msg cursor-pointer rounded-md px-3 py-2 text-sm leading-relaxed transition-all duration-300",
-                  isCurrent && "bg-primary/10 text-foreground",
+                  isCurrent && "bg-org-accent-selected text-foreground ring-1 ring-org-accent-border",
                   !isCurrent && msg.role === "ai" && "bg-muted/90",
                   !isCurrent && msg.role !== "ai" && "bg-muted/55",
                   isPast && "opacity-40",
@@ -813,7 +813,7 @@ function SyncedTranscript({
                       className={cn(
                         "font-medium transition-all duration-300",
                         isCurrent && "text-base",
-                        msg.role === "ai" ? "text-primary" : "text-foreground",
+                        msg.role === "ai" ? "text-org-accent" : "text-foreground",
                       )}
                     >
                       {transcriptSpeakerName(msg, contributorName)}
@@ -1026,8 +1026,8 @@ function ConversationEntry({
         {/* Header: contributor name + date */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10">
-              <User className="h-3.5 w-3.5 text-primary" />
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-org-accent-subtle">
+              <User className="h-3.5 w-3.5 text-org-accent" />
             </div>
             <span className="min-w-0 truncate text-sm font-medium">
               {conversation.contributorName}

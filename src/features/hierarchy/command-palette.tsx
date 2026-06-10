@@ -277,11 +277,16 @@ export function CommandPalette({
                     className={cn(
                       "flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm outline-none transition-colors",
                       isActive
-                        ? "bg-accent text-accent-foreground"
+                        ? "border border-org-accent-border bg-org-accent-selected text-org-accent-selected-foreground"
                         : "text-foreground",
                     )}
                   >
-                    <GroupIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <GroupIcon
+                      className={cn(
+                        "h-4 w-4 shrink-0",
+                        isActive ? "text-org-accent" : "text-muted-foreground",
+                      )}
+                    />
                     <span className="min-w-0 flex-1 truncate font-medium">
                       {result.label}
                     </span>

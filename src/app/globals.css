@@ -165,6 +165,10 @@
     @apply border-org-accent-border bg-org-accent-selected text-org-accent-selected-foreground;
   }
 
+  [data-slot="tabs-trigger"][data-active] .tabs-count-badge {
+    @apply bg-org-accent-subtle text-org-accent-selected-foreground ring-1 ring-org-accent-border;
+  }
+
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;

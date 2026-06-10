@@ -36,18 +36,53 @@ function isSameOriginPost(req: NextRequest): boolean {
   );
 }
 
-function hasVerifiedEmail(user: {
-  primaryEmailAddressId: string | null;
+function getVerifiedEmails(user: {
   emailAddresses: Array<{
-    id: string;
+    emailAddress: string;
     verification?: { status?: string | null } | null;
   }>;
-}): boolean {
-  return user.emailAddresses.some(
-    (email) =>
-      email.id === user.primaryEmailAddressId &&
-      email.verification?.status === "verified",
-  );
+}): string[] {
+  return user.emailAddresses
+    .filter((email) => email.verification?.status === "verified")
+    .map((email) => email.emailAddress.toLowerCase());
+}
+
+// Returns true if the org has a pending invitation addressed to one of the
+// caller's verified emails. Matching only *verified* emails is what makes this
+// safe: a user cannot match an invitation for an address they don't own,
+// because Clerk requires email-ownership verification.
+async function hasPendingInvitationFor(
+  client: Awaited<ReturnType<typeof clerkClient>>,
+  organizationId: string,
+  verifiedEmails: string[],
+): Promise<boolean> {
+  if (verifiedEmails.length === 0) return false;
+
+  const verified = new Set(verifiedEmails);
+  const limit = 100;
+  let offset = 0;
+
+  for (;;) {
+    const page = await client.organizations.getOrganizationInvitationList({
+      organizationId,
+      status: ["pending"],
+      limit,
+      offset,
+    });
+
+    if (
+      page.data.some((invitation) =>
+        verified.has(invitation.emailAddress.toLowerCase()),
+      )
+    ) {
+      return true;
+    }
+
+    offset += page.data.length;
+    if (page.data.length < limit || offset >= page.totalCount) {
+      return false;
+    }
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -89,29 +124,30 @@ export async function POST(req: NextRequest) {
     });
 
   if (targetMembership.data.length === 0) {
-    const existingMemberships =
-      await client.users.getOrganizationMembershipList({
-        userId,
-        limit: 1,
-      });
-
-    if (existingMemberships.totalCount > 0) {
-      return NextResponse.json(
-        {
-          error:
-            "This account already belongs to another workspace. Ask an admin to add you here.",
-        },
-        { status: 403 },
-      );
-    }
-
     const user = await client.users.getUser(userId);
     if (user.banned || user.locked) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    if (!hasVerifiedEmail(user)) {
+
+    const verifiedEmails = getVerifiedEmails(user);
+    if (verifiedEmails.length === 0) {
       return NextResponse.json(
         { error: "Verify your email before joining this workspace." },
+        { status: 403 },
+      );
+    }
+
+    const invited = await hasPendingInvitationFor(
+      client,
+      organization.id,
+      verifiedEmails,
+    );
+    if (!invited) {
+      return NextResponse.json(
+        {
+          error:
+            "You need an invitation to join this workspace. Ask an admin to invite you.",
+        },
         { status: 403 },
       );
     }

@@ -100,7 +100,7 @@ function SearchTrigger({
       type="button"
       onClick={onSearch}
       className={cn(
-        "group flex min-w-0 items-center rounded-lg border border-border bg-background text-left text-sm text-muted-foreground shadow-xs transition-colors hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+        "group flex min-w-0 items-center rounded-lg border border-border bg-background text-left text-sm text-muted-foreground shadow-xs transition-colors hover:border-org-accent-border hover:bg-org-accent-subtle hover:text-foreground focus-visible:border-org-accent-ring focus-visible:ring-3 focus-visible:ring-org-accent-ring/35",
         compact ? "size-9 justify-center" : "h-9 w-full max-w-xl gap-2 px-3",
       )}
       aria-label="Search functions, departments, or processes"
@@ -141,7 +141,7 @@ function WorkspaceCard({
         <TooltipTrigger
           render={
             <div
-              className="mx-auto flex size-9 items-center justify-center rounded-md bg-primary/10 text-primary"
+              className="mx-auto flex size-9 items-center justify-center rounded-md bg-org-accent-subtle text-org-accent"
               aria-label={`${orgName} workspace`}
             />
           }
@@ -156,7 +156,7 @@ function WorkspaceCard({
   return (
     <div className="rounded-lg border border-sidebar-border bg-background/80 p-3 shadow-xs">
       <div className="flex items-center gap-2">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-org-accent-subtle text-org-accent">
           <Building2 className="size-4" />
         </div>
         <div className="min-w-0">
@@ -205,11 +205,11 @@ function WorkspaceNav({
           {section.items.map((item) => {
             const Icon = item.icon;
             const className = cn(
-              "flex items-center rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-sidebar-ring/40",
+              "flex items-center rounded-lg border border-transparent text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-sidebar-ring/40",
               collapsed ? "size-9 justify-center" : "h-9 gap-2 px-2.5",
               item.active
-                ? "border border-org-accent-border bg-org-accent-selected text-org-accent-selected-foreground"
-                : "text-sidebar-foreground/72 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                ? "border-org-accent-border bg-org-accent-selected text-org-accent-selected-foreground"
+                : "text-sidebar-foreground/72 hover:bg-org-accent-subtle hover:text-sidebar-accent-foreground",
             );
 
             if (collapsed) {

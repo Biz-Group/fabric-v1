@@ -1190,7 +1190,7 @@ export function ProcessWorkbench() {
                         <MarkdownSummary content={selectedDepartment.summary} />
                       </div>
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                        <Loader2 className="h-6 w-6 animate-spin text-org-accent" />
                       </div>
                     </div>
                   )}
@@ -1296,7 +1296,7 @@ export function ProcessWorkbench() {
                         <MarkdownSummary content={selectedFunction.summary} />
                       </div>
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                        <Loader2 className="h-6 w-6 animate-spin text-org-accent" />
                       </div>
                     </div>
                   )}
@@ -1450,7 +1450,7 @@ export function ProcessWorkbench() {
                   <Mic className="h-3.5 w-3.5" />
                   Conversations
                   {processConversations !== undefined && (
-                    <span className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-semibold text-muted-foreground group-data-[variant=line]/tabs-list:data-active:bg-foreground group-data-[variant=line]/tabs-list:data-active:text-background">
+                    <span className="tabs-count-badge ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-semibold text-muted-foreground">
                       {processConversations.length}
                     </span>
                   )}
@@ -1708,7 +1708,7 @@ export function ProcessWorkbench() {
         >
           <SheetHeader className="border-b p-5 pr-14">
             <div className="flex items-center gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-org-accent-subtle text-org-accent">
                 {mobilePreview?.type === "function" ? (
                   <Building2 className="h-5 w-5" />
                 ) : mobilePreview?.type === "department" ? (
@@ -1746,7 +1746,7 @@ export function ProcessWorkbench() {
               <div className="relative rounded-xl border bg-background p-4">
                 {mobilePreviewLoading && (
                   <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-background/70">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                        <Loader2 className="h-6 w-6 animate-spin text-org-accent" />
                   </div>
                 )}
                 <MarkdownSummary content={mobilePreviewSummary} />

@@ -205,7 +205,10 @@ function ConversationRow({
           type="button"
           variant="outline"
           size="icon-lg"
-          className="size-11 rounded-xl bg-background text-foreground shadow-none"
+          className={cn(
+            "size-11 rounded-xl bg-background text-foreground shadow-none",
+            selected && "border-org-accent-border text-org-accent",
+          )}
           aria-label={conversation.hasAudio ? `Open audio for ${title}` : `Open details for ${title}`}
           onClick={onSelect}
         >
@@ -218,7 +221,7 @@ function ConversationRow({
       </div>
       <button
         type="button"
-        className="flex min-w-0 flex-1 items-start p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="flex min-w-0 flex-1 items-start p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
         aria-expanded={selected}
         aria-current={selected ? "true" : undefined}
         aria-label={`${selected ? "Selected conversation" : "Open conversation"}: ${title}`}
@@ -256,7 +259,7 @@ function ConversationRow({
           <TooltipTrigger
             type="button"
             tabIndex={-1}
-            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-org-accent-subtle hover:text-foreground focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
             aria-label={`Conversation type: ${type.label}`}
           >
             <TypeIcon className="size-3.5" aria-hidden="true" />

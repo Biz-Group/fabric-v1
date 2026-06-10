@@ -154,8 +154,8 @@ function ProcessStatusBadge({
             aria-label={`${workbench.pendingWork.label}, jump to labeling`}
           />
         }
-        className={cn(
-          "gap-1.5 focus-visible:ring-3 focus-visible:ring-ring/50",
+          className={cn(
+          "gap-1.5 focus-visible:ring-3 focus-visible:ring-org-accent-ring/35",
           statusClassName(workbench.pendingWork.status),
         )}
         onClick={onJumpToLabeling}
@@ -207,7 +207,7 @@ function ProcessMetadata({
         />
       ) : (
         <span
-          className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-foreground"
+          className="flex size-6 shrink-0 items-center justify-center rounded-full bg-org-accent-subtle text-[10px] font-semibold text-org-accent"
           aria-hidden="true"
         >
           {getInitials(contributorName)}
@@ -349,7 +349,7 @@ export function ProcessHeader({
                   <BreadcrumbLink
                     href={functionHref}
                     title={functionName || "Function"}
-                    className="block max-w-40 truncate rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="block max-w-40 truncate rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
                     onClick={(event) => {
                       event.preventDefault();
                       onSelectFunction();
@@ -363,7 +363,7 @@ export function ProcessHeader({
                   <BreadcrumbLink
                     href={departmentHref}
                     title={departmentName || "Department"}
-                    className="block max-w-48 truncate rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="block max-w-48 truncate rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
                     onClick={(event) => {
                       event.preventDefault();
                       onSelectDepartment();

@@ -80,7 +80,7 @@ function FlowNodeBase({ data, selected }: NodeProps & { data: ProcessFlowNodeDat
         className={cn(
           "w-[280px] rounded-lg border border-border bg-card/80 backdrop-blur-sm text-card-foreground shadow-sm border-l-[3px] transition-all duration-200",
           config.color,
-          selected && "ring-2 ring-primary shadow-lg scale-[1.02]",
+          selected && "ring-2 ring-org-accent shadow-lg scale-[1.02]",
           !selected && !data.dimmed && "hover:shadow-md",
           data.dimmed && "opacity-40",
         )}

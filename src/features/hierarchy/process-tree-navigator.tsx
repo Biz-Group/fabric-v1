@@ -328,17 +328,16 @@ function TreeRow({
         onClick={onSelect}
         onKeyDown={handleKeyDown}
         className={cn(
-          "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-org-accent-ring/35",
+          "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-transparent px-2 text-left text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-org-accent-ring/35",
           selected
-            ? "bg-org-accent-selected text-org-accent-selected-foreground"
-            : "text-foreground hover:bg-muted",
+            ? "border-org-accent-border bg-org-accent-selected text-org-accent-selected-foreground shadow-xs"
+            : "text-foreground hover:bg-org-accent-subtle",
         )}
       >
         <Icon
           className={cn(
             "size-3.5 shrink-0",
-            selected ? "text-org-accent" : "text-muted-foreground",
-            iconClassName,
+            iconClassName ?? "text-muted-foreground",
           )}
         />
         <span className="min-w-0 flex-1 truncate" title={label}>

@@ -4,7 +4,16 @@ import type { CSSProperties, ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { useOrganization } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
-import { Check, Palette, Pencil, RefreshCw, RotateCcw, Save, X } from "lucide-react";
+import {
+  Check,
+  Palette,
+  Pencil,
+  PlayCircle,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  X,
+} from "lucide-react";
 import Image from "next/image";
 import { toast } from "sonner";
 import { api } from "../../../../../convex/_generated/api";
@@ -116,13 +125,24 @@ function statusVariant(
   return "outline";
 }
 
+function getRestrainedPreviewTokens(tokens: ThemeTokens): ThemeTokens {
+  return {
+    ...tokens,
+    subtle: `color-mix(in oklch, ${tokens.accent} 7%, var(--background))`,
+    border: `color-mix(in oklch, ${tokens.accent} 34%, var(--border))`,
+    selected: `color-mix(in oklch, ${tokens.accent} 11%, var(--background))`,
+    selectedForeground: "var(--foreground)",
+  };
+}
+
 function TokenSwatches({ tokens }: { tokens: ThemeTokens }) {
+  const previewTokens = getRestrainedPreviewTokens(tokens);
   const swatches = [
-    ["Accent", tokens.accent],
-    ["Subtle", tokens.subtle],
-    ["Selected", tokens.selected],
-    ["Border", tokens.border],
-    ["Ring", tokens.ring],
+    ["Accent", previewTokens.accent],
+    ["Subtle", previewTokens.subtle],
+    ["Selected", previewTokens.selected],
+    ["Border", previewTokens.border],
+    ["Ring", previewTokens.ring],
   ] as const;
 
   return (
@@ -158,10 +178,23 @@ function ThemePreview({
     tokens.chart4,
     tokens.chart5,
   ];
+  const previewTokens = getRestrainedPreviewTokens(tokens);
   const selectedStyle = {
-    backgroundColor: tokens.selected,
-    borderColor: tokens.border,
-    color: tokens.selectedForeground,
+    backgroundColor: previewTokens.selected,
+    borderColor: previewTokens.border,
+    color: previewTokens.selectedForeground,
+  } satisfies CSSProperties;
+  const subtleStyle = {
+    backgroundColor: previewTokens.subtle,
+    borderColor: previewTokens.border,
+    color: previewTokens.selectedForeground,
+  } satisfies CSSProperties;
+  const accentStyle = {
+    backgroundColor: tokens.accent,
+    color: tokens.accentForeground,
+  } satisfies CSSProperties;
+  const accentTextStyle = {
+    color: tokens.accent,
   } satisfies CSSProperties;
 
   return (
@@ -173,37 +206,135 @@ function ThemePreview({
       </CardHeader>
       <CardContent className="space-y-4">
         <TokenSwatches tokens={tokens} />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-2 rounded-lg border p-3">
-            <Button
-              type="button"
-              style={{
-                backgroundColor: tokens.accent,
-                color: tokens.accentForeground,
-              }}
-            >
-              Primary action
-            </Button>
-            <div className="rounded-lg border px-3 py-2" style={selectedStyle}>
-              Selected workspace row
-            </div>
-          </div>
-          <div className="space-y-3 rounded-lg border p-3">
-            <div className="flex gap-1.5">
-              {chartColors.map((color, index) => (
+
+        <div className="overflow-hidden rounded-lg border bg-background">
+          <div className="grid min-h-72 md:grid-cols-[12rem_minmax(0,1fr)]">
+            <aside className="border-b bg-muted/20 p-3 md:border-b-0 md:border-r">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">Fabric.</span>
+                <span className="h-4 w-px bg-border" aria-hidden />
+                <span
+                  className="flex size-7 items-center justify-center rounded-md border text-[10px] font-semibold"
+                  style={subtleStyle}
+                >
+                  ORG
+                </span>
+              </div>
+              <div className="mt-4 space-y-1 text-sm">
                 <div
-                  key={color}
-                  className="h-12 flex-1 rounded-md"
-                  style={{ backgroundColor: color }}
-                  title={`Chart ${index + 1}`}
-                />
-              ))}
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full w-2/3 rounded-full"
-                style={{ backgroundColor: tokens.accent }}
-              />
+                  className="flex items-center gap-2 rounded-lg border px-2.5 py-2 font-medium"
+                  style={selectedStyle}
+                >
+                  <span className="size-2 rounded-full" style={accentStyle} />
+                  Processes
+                </div>
+                <div className="rounded-lg px-2.5 py-2 text-muted-foreground">
+                  Admin
+                </div>
+              </div>
+            </aside>
+
+            <div className="min-w-0">
+              <div className="border-b p-3">
+                <div className="truncate text-xs text-muted-foreground">
+                  Learning Technology / Axonify
+                </div>
+                <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
+                  <h4 className="min-w-0 truncate text-base font-semibold">
+                    Axonify Support Ticketing
+                  </h4>
+                  <Button type="button" size="sm" style={accentStyle}>
+                    Primary action
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-[13rem_minmax(0,1fr)]">
+                <div className="space-y-1 border-b p-3 text-sm md:border-b-0 md:border-r">
+                  <div className="flex items-center gap-2 px-2 py-1.5 font-medium">
+                    <span className="size-2 rounded-full bg-muted-foreground/50" />
+                    Learning Technology
+                  </div>
+                  <div className="flex items-center gap-2 px-5 py-1.5 text-muted-foreground">
+                    <span className="size-2 rounded-full bg-muted-foreground/35" />
+                    Axonify
+                  </div>
+                  <div
+                    className="flex items-center gap-2 rounded-md border px-5 py-1.5 font-medium"
+                    style={selectedStyle}
+                  >
+                    <span className="size-2 rounded-full" style={accentStyle} />
+                    <span className="min-w-0 truncate">Support Ticketing</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3 p-3">
+                  <div className="flex items-center gap-3 border-b text-xs">
+                    <span
+                      className="border-b-2 px-1 pb-2 font-medium"
+                      style={{ borderColor: tokens.accent, color: tokens.accent }}
+                    >
+                      Conversations
+                    </span>
+                    <span className="px-1 pb-2 text-muted-foreground">
+                      Process Flow
+                    </span>
+                    <span
+                      className="mb-2 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold"
+                      style={subtleStyle}
+                    >
+                      2
+                    </span>
+                  </div>
+
+                  <div
+                    className="rounded-lg border p-3"
+                    style={selectedStyle}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span
+                        className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background text-sm font-semibold"
+                        style={accentTextStyle}
+                      >
+                        <PlayCircle className="size-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">
+                          AI Interview with Saish
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Apr 22, 1:39 PM - 15:28
+                        </div>
+                      </div>
+                      <span
+                        className="rounded-full border px-2 py-0.5 text-[11px] font-medium"
+                        style={subtleStyle}
+                      >
+                        Completed
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full w-2/3 rounded-full"
+                        style={{ backgroundColor: tokens.accent }}
+                      />
+                    </div>
+                    <div className="flex gap-1.5">
+                      {chartColors.map((color, index) => (
+                        <div
+                          key={color}
+                          className="h-8 flex-1 rounded-md"
+                          style={{ backgroundColor: color }}
+                          title={`Chart ${index + 1}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

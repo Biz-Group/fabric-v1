@@ -123,7 +123,7 @@ function ProcessFlowInner({ processId, conversationCount }: ProcessFlowProps) {
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
             <GitBranch className="h-10 w-10 text-muted-foreground/40" />
-            <Loader2 className="absolute -bottom-1 -right-1 h-5 w-5 animate-spin text-primary" />
+            <Loader2 className="absolute -bottom-1 -right-1 h-5 w-5 animate-spin text-org-accent" />
           </div>
           <div className="text-center">
             <p className="text-sm font-medium">Generating process flow...</p>
@@ -249,7 +249,7 @@ function ProcessFlowInner({ processId, conversationCount }: ProcessFlowProps) {
             )}
             <Controls
               showInteractive={false}
-              className="!bg-background !border-border !shadow-sm [&>button]:!bg-background [&>button]:!border-border [&>button]:!text-foreground"
+              className="!bg-background !border-border !shadow-sm [&>button]:!bg-background [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-org-accent-subtle [&>button:focus-visible]:!outline-org-accent-ring"
             />
           </ReactFlow>
         </div>

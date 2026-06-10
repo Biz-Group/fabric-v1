@@ -178,7 +178,7 @@ function ScrubBarThumb({ className, children, ...props }: ScrubBarThumbProps) {
     <div
       data-slot="scrub-bar-thumb"
       className={cn(
-        "bg-primary absolute top-1/2 block h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors disabled:pointer-events-none disabled:opacity-50",
+        "bg-org-accent absolute top-1/2 block h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors disabled:pointer-events-none disabled:opacity-50",
         className
       )}
       style={{ left: `${progress}%` }}

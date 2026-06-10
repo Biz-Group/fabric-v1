@@ -39,6 +39,13 @@ const THEME_VARIABLES = [
   "--sidebar-ring",
 ];
 
+const RESTRAINED_SUBTLE_SURFACE =
+  "color-mix(in oklch, var(--org-accent) 7%, var(--background))";
+const RESTRAINED_SELECTED_SURFACE =
+  "color-mix(in oklch, var(--org-accent) 11%, var(--background))";
+const RESTRAINED_ACCENT_BORDER =
+  "color-mix(in oklch, var(--org-accent) 34%, var(--border))";
+
 function getIsDarkMode() {
   if (typeof document === "undefined") return false;
   if (document.documentElement.classList.contains("dark")) return true;
@@ -55,11 +62,11 @@ function applyThemeTokens(tokens: ThemeTokens | null) {
 
   style.setProperty("--org-accent", tokens.accent);
   style.setProperty("--org-accent-foreground", tokens.accentForeground);
-  style.setProperty("--org-accent-subtle", tokens.subtle);
-  style.setProperty("--org-accent-border", tokens.border);
+  style.setProperty("--org-accent-subtle", RESTRAINED_SUBTLE_SURFACE);
+  style.setProperty("--org-accent-border", RESTRAINED_ACCENT_BORDER);
   style.setProperty("--org-accent-ring", tokens.ring);
-  style.setProperty("--org-accent-selected", tokens.selected);
-  style.setProperty("--org-accent-selected-foreground", tokens.selectedForeground);
+  style.setProperty("--org-accent-selected", RESTRAINED_SELECTED_SURFACE);
+  style.setProperty("--org-accent-selected-foreground", "var(--foreground)");
   style.setProperty("--primary", tokens.accent);
   style.setProperty("--primary-foreground", tokens.accentForeground);
   style.setProperty("--ring", tokens.ring);

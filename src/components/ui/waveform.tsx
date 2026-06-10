@@ -496,18 +496,18 @@ export const AudioScrubber = ({
       />
 
       <div
-        className="bg-primary/20 pointer-events-none absolute inset-y-0 left-0"
+        className="bg-org-accent/20 pointer-events-none absolute inset-y-0 left-0"
         style={{ width: `${displayedProgress * 100}%` }}
       />
 
       <div
-        className="bg-primary pointer-events-none absolute top-0 bottom-0 w-0.5"
+        className="bg-org-accent pointer-events-none absolute top-0 bottom-0 w-0.5"
         style={{ left: `${displayedProgress * 100}%` }}
       />
 
       {showHandle && (
         <div
-          className="border-background bg-primary pointer-events-none absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-lg transition-transform hover:scale-110"
+          className="border-background bg-org-accent pointer-events-none absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-lg transition-transform hover:scale-110"
           style={{ left: `${displayedProgress * 100}%` }}
         />
       )}

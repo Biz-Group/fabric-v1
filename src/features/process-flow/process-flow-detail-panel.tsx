@@ -215,7 +215,7 @@ export function ProcessFlowDetailPanel({
                   <button
                     key={edge.id}
                     onClick={() => onNavigate(edge.source)}
-                    className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-org-accent-subtle focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
                     aria-label={`Navigate to source node ${sourceNode.label}`}
                   >
                     <ArrowLeft className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -237,7 +237,7 @@ export function ProcessFlowDetailPanel({
                   <button
                     key={edge.id}
                     onClick={() => onNavigate(edge.target)}
-                    className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-org-accent-subtle focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
                     aria-label={`Navigate to target node ${targetNode.label}`}
                   >
                     <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />

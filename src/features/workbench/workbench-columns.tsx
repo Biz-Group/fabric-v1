@@ -45,9 +45,9 @@ export function ColumnItem({
   mobile?: boolean;
 }) {
   const actionButtonClass = cn(
-    "inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+    "inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35",
     mobile ? "size-10" : "size-6",
-    selected ? "hover:bg-primary-foreground/20" : "hover:bg-foreground/10"
+    "hover:bg-org-accent-subtle"
   );
   // Edit/Delete reveal on hover/focus (desktop); always shown on mobile.
   const revealClass = mobile
@@ -61,11 +61,11 @@ export function ColumnItem({
   return (
     <div
       className={cn(
-        "group flex w-full items-center overflow-hidden rounded-lg transition-all",
+        "group flex w-full items-center overflow-hidden rounded-lg border border-transparent transition-all",
         mobile && "min-h-14",
         selected
-          ? "bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/20"
-          : "text-foreground hover:bg-accent hover:text-accent-foreground"
+          ? "border border-org-accent-border bg-org-accent-selected text-org-accent-selected-foreground shadow-sm ring-1 ring-org-accent-border"
+          : "text-foreground hover:bg-org-accent-subtle hover:text-foreground"
       )}
     >
       <button
@@ -73,7 +73,7 @@ export function ColumnItem({
         onClick={onClick}
         className={cn(
           "flex min-w-0 flex-1 items-center text-left font-medium outline-none",
-          "focus-visible:ring-3 focus-visible:ring-ring/50",
+          "focus-visible:ring-3 focus-visible:ring-org-accent-ring/35",
           mobile ? "min-h-14 px-4 py-3 text-base" : "px-3 py-2.5 text-sm"
         )}
       >
@@ -131,7 +131,7 @@ export function ColumnItem({
             className={cn(
               "ml-0.5 tabular-nums",
               mobile ? "text-sm" : "text-[11px]",
-              selected ? "text-primary-foreground/70" : "text-muted-foreground"
+              selected ? "text-org-accent-selected-foreground/70" : "text-muted-foreground"
             )}
           >
             {count}
@@ -183,7 +183,7 @@ export function OverviewActions({
       <button
         type="button"
         onClick={onEdit}
-        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-org-accent-subtle hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
         title={`Rename ${entityLabel}`}
         aria-label={`Rename ${entityLabel}`}
       >
@@ -192,7 +192,7 @@ export function OverviewActions({
       <button
         type="button"
         onClick={onDelete}
-        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
         title={`Delete ${entityLabel}`}
         aria-label={`Delete ${entityLabel}`}
       >
@@ -271,7 +271,7 @@ export function ColumnHeader({
             <button
               type="button"
               onClick={onAdd}
-              className={cn("rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50", mobile && "flex size-9 items-center justify-center rounded-lg p-0")}
+              className={cn("rounded-md p-1 text-muted-foreground transition-colors hover:bg-org-accent-subtle hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35", mobile && "flex size-9 items-center justify-center rounded-lg p-0")}
               title={`Add ${title.slice(0, -1)}`}
               aria-label={`Add ${title.slice(0, -1)}`}
             >
@@ -289,7 +289,7 @@ export function ColumnHeader({
 export function LoadingSpinner() {
   return (
     <div className="flex items-center justify-center py-12">
-      <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+      <div className="h-5 w-5 animate-spin rounded-full border-2 border-org-accent/30 border-t-org-accent" />
     </div>
   );
 }
