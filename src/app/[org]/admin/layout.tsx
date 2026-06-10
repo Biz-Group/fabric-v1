@@ -1,47 +1,25 @@
 "use client";
 
-import { useConvexAuth, useQuery } from "convex/react";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useQuery } from "convex/react";
+import Link from "next/link";
+import { Home, MessageSquare, Palette, Users } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
-import { AdminSidebar } from "@/components/admin-sidebar";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Separator } from "@/components/ui/separator";
+import {
+  WorkspaceAppShell,
+  type WorkspaceNavSection,
+} from "@/features/shell/process-app-shell";
+import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { isAuthenticated, isLoading: authLoading } = useConvexAuth();
-  const membership = useQuery(
-    api.users.getMyMembership,
-    isAuthenticated ? undefined : "skip",
-  );
-  const router = useRouter();
+  const membership = useQuery(api.users.getMyMembership);
+  const routes = useWorkspaceRoutes();
 
-  useEffect(() => {
-    if (authLoading) return;
-    if (!isAuthenticated) {
-      router.replace("/");
-      return;
-    }
-    // `membership` is undefined while loading, null if no active org.
-    if (membership === null) {
-      router.replace("/");
-      return;
-    }
-    if (membership && membership.role !== "admin") {
-      router.replace("/");
-    }
-  }, [authLoading, isAuthenticated, membership, router]);
-
-  if (authLoading || membership === undefined) {
+  if (membership === undefined || membership === null) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-3">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
@@ -50,23 +28,69 @@ export default function AdminLayout({
     );
   }
 
-  if (!membership || membership.role !== "admin") {
-    return null;
+  if (membership.role !== "admin") {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 p-6 text-center">
+        <div>
+          <h1 className="text-lg font-semibold">Admin access required</h1>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            Your current workspace role is {membership.role}. Ask a workspace
+            admin to grant admin access.
+          </p>
+        </div>
+        <Link
+          href={routes.appHref}
+          className="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted"
+        >
+          Back to processes
+        </Link>
+      </div>
+    );
   }
+
+  const adminNavSections: WorkspaceNavSection[] = [
+    {
+      label: "Manage",
+      items: [
+        {
+          href: routes.adminHref,
+          icon: Home,
+          label: "Overview",
+          active: routes.isActivePath("/admin", { exact: true }),
+        },
+        {
+          href: routes.adminUsersHref,
+          icon: Users,
+          label: "Users",
+          active: routes.isActivePath("/admin/users", { exact: true }),
+        },
+        {
+          href: routes.adminConversationsHref,
+          icon: MessageSquare,
+          label: "Conversations",
+          active: routes.isActivePath("/admin/conversations", { exact: true }),
+        },
+        {
+          href: routes.adminAppearanceHref,
+          icon: Palette,
+          label: "Appearance",
+          active: routes.isActivePath("/admin/appearance", { exact: true }),
+        },
+      ],
+    },
+  ];
 
   return (
     <TooltipProvider>
-      <SidebarProvider>
-        <AdminSidebar />
-        <SidebarInset className="min-w-0">
-          <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 !h-4" />
-            <h1 className="text-sm font-medium">Admin</h1>
-          </header>
-          <div className="min-w-0 flex-1 overflow-auto p-6">{children}</div>
-        </SidebarInset>
-      </SidebarProvider>
+      <div className="h-dvh">
+        <WorkspaceAppShell
+          title="Admin"
+          navSections={adminNavSections}
+          mainClassName="overflow-auto"
+        >
+          <div className="min-w-0 flex-1 p-6">{children}</div>
+        </WorkspaceAppShell>
+      </div>
     </TooltipProvider>
   );
 }

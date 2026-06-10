@@ -1,9 +1,14 @@
 "use client";
 
-import { useQuery, useMutation, useAction } from "convex/react";
+import {
+  useAction,
+  useMutation,
+  usePaginatedQuery,
+  useQuery,
+} from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
   Table,
@@ -30,8 +35,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { InviteMemberDialog } from "@/components/admin/invite-member-dialog";
-import { PendingInvitesList } from "@/components/admin/pending-invites-list";
+import { InviteMemberDialog } from "@/features/admin/invite-member-dialog";
+import { PendingInvitesList } from "@/features/admin/pending-invites-list";
 import { MoreHorizontal, Search, UserPlus } from "lucide-react";
 
 const ROLE_OPTIONS = ["admin", "contributor", "viewer"] as const;
@@ -207,25 +212,21 @@ function formatDate(timestamp: number) {
 }
 
 export default function AdminUsersPage() {
-  const members = useQuery(api.users.listOrgMembers);
   const me = useQuery(api.users.getMe);
   const [search, setSearch] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [invitesRefreshKey, setInvitesRefreshKey] = useState(0);
+  const {
+    results: members,
+    status,
+    loadMore,
+  } = usePaginatedQuery(
+    api.users.listOrgMembersPage,
+    { search: search.trim() || undefined },
+    { initialNumItems: 50 },
+  );
 
-  const filtered = useMemo(() => {
-    if (!members) return [];
-    if (!search.trim()) return members;
-    const q = search.toLowerCase();
-    return members.filter(
-      (m) =>
-        m.name.toLowerCase().includes(q) ||
-        m.email.toLowerCase().includes(q) ||
-        (m.jobTitle ?? "").toLowerCase().includes(q),
-    );
-  }, [members, search]);
-
-  if (members === undefined) {
+  if (status === "LoadingFirstPage") {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
@@ -275,7 +276,7 @@ export default function AdminUsersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.length === 0 ? (
+            {members.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={8}
@@ -285,7 +286,7 @@ export default function AdminUsersPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((m) => {
+              members.map((m) => {
                 const role = m.role as Role;
                 const isSelf = me?._id === m.userId;
                 return (
@@ -346,9 +347,21 @@ export default function AdminUsersPage() {
         </Table>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        {filtered.length} of {members.length} members shown
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Showing {members.length} member{members.length === 1 ? "" : "s"}
+        </p>
+        {status !== "Exhausted" && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => loadMore(50)}
+            disabled={status === "LoadingMore"}
+          >
+            {status === "LoadingMore" ? "Loading..." : "Load more"}
+          </Button>
+        )}
+      </div>
 
       <div className="space-y-3 pt-4">
         <div>

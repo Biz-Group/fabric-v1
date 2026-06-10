@@ -52,11 +52,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { ConversationTranscriptDialog } from "@/components/admin/conversation-transcript-dialog";
+import { ConversationTranscriptDialog } from "@/features/admin/conversation-transcript-dialog";
 import {
   buildConversationsCsv,
   downloadCsv,
-} from "@/components/admin/conversations-export";
+} from "@/features/admin/conversations-export";
+import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 
 type Status = "processing" | "needs_speaker_labels" | "done" | "failed";
 type StatusFilter = "all" | Status;
@@ -113,6 +114,7 @@ function ConversationTypeBadge({
 export default function AdminConversationsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const routes = useWorkspaceRoutes();
   const initialStatus = useMemo<StatusFilter>(() => {
     const fromUrl = searchParams.get("status");
     if (
@@ -281,7 +283,7 @@ export default function AdminConversationsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => router.replace("/admin/conversations")}
+            onClick={() => router.replace(routes.adminConversationsHref)}
           >
             Clear process filter
           </Button>

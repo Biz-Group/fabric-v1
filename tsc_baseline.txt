@@ -1,0 +1,19 @@
+convex/deletionFlows.test.ts(1,23): error TS2688: Cannot find type definition file for 'vite/client'.
+convex/deletionFlows.test.ts(8,29): error TS2339: Property 'glob' does not exist on type 'ImportMeta'.
+convex/descriptions.test.ts(1,23): error TS2688: Cannot find type definition file for 'vite/client'.
+convex/descriptions.test.ts(12,29): error TS2339: Property 'glob' does not exist on type 'ImportMeta'.
+convex/descriptions.test.ts(43,18): error TS2345: Argument of type '"by_tokenIdentifier"' is not assignable to parameter of type 'keyof SystemIndexes'.
+convex/descriptions.test.ts(44,14): error TS2345: Argument of type '"tokenIdentifier"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+convex/descriptions.test.ts(57,18): error TS2345: Argument of type '"by_tokenIdentifier_and_clerkOrgId"' is not assignable to parameter of type 'keyof SystemIndexes'.
+convex/descriptions.test.ts(58,14): error TS2345: Argument of type '"tokenIdentifier"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+convex/descriptions.test.ts(58,53): error TS2339: Property 'eq' does not exist on type 'IndexRange'.
+convex/descriptions.test.ts(205,53): error TS2493: Tuple type '[]' of length '0' has no element at index '1'.
+convex/descriptions.test.ts(205,57): error TS2339: Property 'body' does not exist on type 'never'.
+convex/orgThemes.test.ts(1,23): error TS2688: Cannot find type definition file for 'vite/client'.
+convex/orgThemes.test.ts(9,29): error TS2339: Property 'glob' does not exist on type 'ImportMeta'.
+convex/readModels.test.ts(1,23): error TS2688: Cannot find type definition file for 'vite/client'.
+convex/readModels.test.ts(8,29): error TS2339: Property 'glob' does not exist on type 'ImportMeta'.
+convex/tenantIsolation.test.ts(1,23): error TS2688: Cannot find type definition file for 'vite/client'.
+convex/tenantIsolation.test.ts(8,29): error TS2339: Property 'glob' does not exist on type 'ImportMeta'.
+convex/voiceRecordings.test.ts(1,23): error TS2688: Cannot find type definition file for 'vite/client'.
+convex/voiceRecordings.test.ts(11,29): error TS2339: Property 'glob' does not exist on type 'ImportMeta'.

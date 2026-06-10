@@ -1,4 +1,4 @@
-import { FabricHero } from "@/components/auth-shell";
+import { FabricHero } from "@/features/auth/auth-shell";
 
 export default function Home() {
   return (

@@ -49,13 +49,43 @@ const conversationStatusValidator = v.union(
   v.literal("failed"),
 );
 
+const roleValidator = v.union(
+  v.literal("admin"),
+  v.literal("contributor"),
+  v.literal("viewer"),
+);
+
+const membershipSourceValidator = v.union(
+  v.literal("selfSignup"),
+  v.literal("adminInvite"),
+  v.literal("superAdminFanOut"),
+  v.literal("reconcile"),
+  v.literal("webhook"),
+  v.literal("legacy"),
+);
+
+const membershipStatusValidator = v.union(
+  v.literal("active"),
+  v.literal("removed"),
+);
+
+const membershipIntentStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("accepted"),
+  v.literal("revoked"),
+  v.literal("expired"),
+  v.literal("blocked"),
+);
+
 export default defineSchema({
   // App-level user profiles (linked to Clerk identity via tokenIdentifier).
   // Identity is global — membership in a specific org lives in `memberships`.
   users: defineTable({
     tokenIdentifier: v.string(),
+    clerkUserId: v.optional(v.string()),
     name: v.string(),
     email: v.string(),
+    emailLower: v.optional(v.string()),
     jobTitle: v.optional(v.string()),
     function: v.optional(v.string()),
     department: v.optional(v.string()),
@@ -66,9 +96,13 @@ export default defineSchema({
     // cross-org dashboards. Does NOT by itself grant access to any tenant's data —
     // super-admins gain that via auto-provisioned memberships (Model A).
     platformRole: v.optional(v.literal("superAdmin")),
+    lastSyncedFromClerkAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()),
   })
     .index("by_tokenIdentifier", ["tokenIdentifier"])
+    .index("by_clerkUserId", ["clerkUserId"])
     .index("by_email", ["email"])
+    .index("by_emailLower", ["emailLower"])
     .index("by_function", ["function"])
     .index("by_department", ["department"])
     .index("by_platformRole", ["platformRole"]),
@@ -80,17 +114,93 @@ export default defineSchema({
     tokenIdentifier: v.string(),
     userId: v.id("users"),
     clerkOrgId: v.string(),
-    role: v.union(
-      v.literal("admin"),
-      v.literal("contributor"),
-      v.literal("viewer"),
-    ),
+    role: roleValidator,
     invitedBy: v.optional(v.id("users")),
     createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+    removedAt: v.optional(v.number()),
+    status: v.optional(membershipStatusValidator),
+    source: v.optional(membershipSourceValidator),
+    clerkUserId: v.optional(v.string()),
+    name: v.optional(v.string()),
+    email: v.optional(v.string()),
+    emailLower: v.optional(v.string()),
+    jobTitle: v.optional(v.string()),
+    profileComplete: v.optional(v.boolean()),
+    platformRole: v.optional(v.literal("superAdmin")),
+    searchText: v.optional(v.string()),
   })
     .index("by_tokenIdentifier_and_clerkOrgId", ["tokenIdentifier", "clerkOrgId"])
     .index("by_clerkOrgId", ["clerkOrgId"])
-    .index("by_userId", ["userId"]),
+    .index("by_clerkOrgId_and_role", ["clerkOrgId", "role"])
+    .index("by_clerkOrgId_and_emailLower", ["clerkOrgId", "emailLower"])
+    .index("by_userId", ["userId"])
+    .searchIndex("search_member", {
+      searchField: "searchText",
+      filterFields: ["clerkOrgId"],
+    }),
+
+  membershipIntents: defineTable({
+    clerkOrgId: v.string(),
+    email: v.string(),
+    emailLower: v.string(),
+    requestedRole: roleValidator,
+    source: membershipSourceValidator,
+    status: membershipIntentStatusValidator,
+    invitedBy: v.optional(v.id("users")),
+    acceptedUserId: v.optional(v.id("users")),
+    acceptedTokenIdentifier: v.optional(v.string()),
+    clerkInvitationId: v.optional(v.string()),
+    clerkUserId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_clerkOrgId_and_emailLower", ["clerkOrgId", "emailLower"])
+    .index("by_clerkInvitationId", ["clerkInvitationId"])
+    .index("by_clerkOrgId_and_status", ["clerkOrgId", "status"]),
+
+  processedWebhookEvents: defineTable({
+    eventId: v.string(),
+    eventType: v.string(),
+    status: v.union(v.literal("processed"), v.literal("failed")),
+    processedAt: v.number(),
+    error: v.optional(v.string()),
+  }).index("by_eventId", ["eventId"]),
+
+  authAuditEvents: defineTable({
+    clerkOrgId: v.optional(v.string()),
+    actorUserId: v.optional(v.id("users")),
+    targetUserId: v.optional(v.id("users")),
+    targetEmailLower: v.optional(v.string()),
+    membershipId: v.optional(v.id("memberships")),
+    action: v.union(
+      v.literal("selfSignup"),
+      v.literal("inviteCreated"),
+      v.literal("inviteRevoked"),
+      v.literal("membershipAccepted"),
+      v.literal("roleChanged"),
+      v.literal("memberRemoved"),
+      v.literal("webhookProcessed"),
+      v.literal("webhookFailed"),
+      v.literal("blockedJoin"),
+      v.literal("superAdminFanOut"),
+      v.literal("reconcile"),
+    ),
+    detail: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_clerkOrgId_and_createdAt", ["clerkOrgId", "createdAt"])
+    .index("by_targetUserId", ["targetUserId"]),
+
+  orgMembershipStats: defineTable({
+    clerkOrgId: v.string(),
+    activeCount: v.number(),
+    adminCount: v.number(),
+    contributorCount: v.number(),
+    viewerCount: v.number(),
+    pendingInviteCount: v.number(),
+    updatedAt: v.number(),
+  }).index("by_clerkOrgId", ["clerkOrgId"]),
 
   // Per-org visual theme derived automatically from the Clerk org logo.
   // Stored separately from Clerk so the expensive/fragile image read happens

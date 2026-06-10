@@ -20,6 +20,14 @@ import {
   requireOrgMember,
   resolveOrgForAction,
 } from "./lib/orgAuth";
+import {
+  derivePendingWorkStatus,
+  getConversationCounts,
+  getLatestConversation,
+  getLatestDoneConversation,
+  PENDING_WORK_LABELS,
+  summarizeFlow,
+} from "./readModelHelpers";
 
 type DescriptionUpdate =
   | { kind: "unchanged" }
@@ -182,6 +190,98 @@ export const get = query({
     const doc = await ctx.db.get(args.processId);
     if (!doc || doc.clerkOrgId !== caller.orgId) return null;
     return doc;
+  },
+});
+
+export const getWorkbench = query({
+  args: { processId: v.id("processes") },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgMember(ctx);
+    const process = await ctx.db.get(args.processId);
+    if (!process || process.clerkOrgId !== caller.orgId) return null;
+
+    const department = await ctx.db.get(process.departmentId);
+    if (!department || department.clerkOrgId !== caller.orgId) return null;
+
+    const fn = await ctx.db.get(department.functionId);
+    if (!fn || fn.clerkOrgId !== caller.orgId) return null;
+
+    const conversations = await ctx.db
+      .query("conversations")
+      .withIndex("by_clerkOrgId_and_processId", (q) =>
+        q.eq("clerkOrgId", caller.orgId).eq("processId", args.processId),
+      )
+      .order("desc")
+      .take(200);
+    const flow =
+      (await ctx.db
+        .query("processFlows")
+        .withIndex("by_clerkOrgId_and_processId", (q) =>
+          q.eq("clerkOrgId", caller.orgId).eq("processId", args.processId),
+        )
+        .first()) ?? null;
+
+    const conversationCounts = getConversationCounts(conversations);
+    const pendingWorkStatus = derivePendingWorkStatus(conversationCounts);
+    const latestConversation = getLatestConversation(conversations);
+    const latestDoneConversation = getLatestDoneConversation(conversations);
+    // Resolve the contributor's Clerk user id so the client can look up their
+    // uploaded avatar via Clerk's org membership data. Only set when the
+    // conversation is linked to a Fabric user (agent interviews); free-text
+    // contributors on voice/upload flows fall back to initials.
+    const latestContributorUser =
+      latestConversation?.userId != null
+        ? await ctx.db.get(latestConversation.userId)
+        : null;
+    const latestContributorClerkUserId =
+      latestContributorUser?.tokenIdentifier.split("|").pop() || null;
+    const flowSummary = summarizeFlow(flow, conversationCounts.done);
+    const lastUpdatedAt = Math.max(
+      process._creationTime,
+      latestDoneConversation?._creationTime ?? 0,
+      flowSummary?.generatedAt ?? 0,
+    );
+
+    return {
+      process: {
+        _id: process._id,
+        _creationTime: process._creationTime,
+        departmentId: process.departmentId,
+        name: process.name,
+        description: process.description ?? null,
+        descriptionSafetyStatus: process.descriptionSafetyStatus ?? null,
+        rollingSummary: process.rollingSummary ?? null,
+      },
+      department: {
+        _id: department._id,
+        _creationTime: department._creationTime,
+        functionId: department.functionId,
+        name: department.name,
+        description: department.description ?? null,
+        descriptionSafetyStatus: department.descriptionSafetyStatus ?? null,
+      },
+      function: {
+        _id: fn._id,
+        _creationTime: fn._creationTime,
+        name: fn.name,
+      },
+      pendingWork: {
+        status: pendingWorkStatus,
+        label: PENDING_WORK_LABELS[pendingWorkStatus],
+      },
+      conversationCounts,
+      latestContributor: latestConversation
+        ? {
+            conversationId: latestConversation._id,
+            name: latestConversation.contributorName,
+            at: latestConversation._creationTime,
+            inputMode: latestConversation.inputMode ?? "agent",
+            clerkUserId: latestContributorClerkUserId,
+          }
+        : null,
+      lastUpdatedAt,
+      flow: flowSummary,
+    };
   },
 });
 

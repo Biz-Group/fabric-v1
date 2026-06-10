@@ -11,7 +11,7 @@ import { useParams } from "next/navigation";
 import { useEffect } from "react";
 import { Toaster } from "sonner";
 import { api } from "../../../convex/_generated/api";
-import { OrgThemeProvider } from "@/components/org-theme-provider";
+import { OrgThemeProvider } from "@/features/theming/org-theme-provider";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "";

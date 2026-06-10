@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ui } from "@clerk/ui";
-import { ConvexClientProvider } from "@/components/convex-client-provider";
+import { ConvexClientProvider } from "@/components/providers/convex-client-provider";
 import "./globals.css";
 
 const clerkTaskUrls = {

@@ -15,6 +15,75 @@ function hexToBytes(hex: string): ArrayBuffer | null {
   return buf;
 }
 
+function base64ToBytes(value: string): ArrayBuffer | null {
+  try {
+    const decoded = atob(value);
+    const buf = new ArrayBuffer(decoded.length);
+    const view = new Uint8Array(buf);
+    for (let i = 0; i < decoded.length; i++) {
+      view[i] = decoded.charCodeAt(i);
+    }
+    return buf;
+  } catch {
+    return null;
+  }
+}
+
+function clerkWebhookSecretBytes(secret: string): ArrayBuffer {
+  if (!secret.startsWith("whsec_")) {
+    return new TextEncoder().encode(secret).buffer;
+  }
+  const decoded = base64ToBytes(secret.slice("whsec_".length));
+  if (!decoded) throw new Error("Invalid Clerk webhook secret");
+  return decoded;
+}
+
+function clerkWebhookSignatures(header: string): ArrayBuffer[] {
+  return header
+    .split(" ")
+    .flatMap((part) => part.split(","))
+    .map((part) => part.trim())
+    .filter((part) => part && part !== "v1")
+    .map(base64ToBytes)
+    .filter((bytes): bytes is ArrayBuffer => bytes !== null);
+}
+
+async function verifyClerkWebhook(
+  req: Request,
+  body: string,
+): Promise<{ ok: boolean; eventId: string | null }> {
+  const secret = process.env.CLERK_WEBHOOK_SIGNING_SECRET;
+  if (!secret) return { ok: false, eventId: null };
+
+  const eventId = req.headers.get("svix-id");
+  const timestamp = req.headers.get("svix-timestamp");
+  const signature = req.headers.get("svix-signature");
+  if (!eventId || !timestamp || !signature) {
+    return { ok: false, eventId };
+  }
+
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts)) return { ok: false, eventId };
+  const ageMs = Math.abs(Date.now() - ts * 1000);
+  if (ageMs > 5 * 60 * 1000) return { ok: false, eventId };
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    clerkWebhookSecretBytes(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  const payload = new TextEncoder().encode(`${eventId}.${timestamp}.${body}`);
+  const signatures = clerkWebhookSignatures(signature);
+  for (const sig of signatures) {
+    if (await crypto.subtle.verify("HMAC", key, sig, payload)) {
+      return { ok: true, eventId };
+    }
+  }
+  return { ok: false, eventId };
+}
+
 // Verify an HMAC-SHA256 signature minted by `getAudioPlaybackToken`. Uses
 // crypto.subtle.verify which performs a timing-safe comparison.
 async function verifyAudioSig(
@@ -43,6 +112,43 @@ async function verifyAudioSig(
 }
 
 const http = httpRouter();
+
+http.route({
+  path: "/clerk/webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    const body = await req.text();
+    const verification = await verifyClerkWebhook(req, body);
+    if (!verification.ok || !verification.eventId) {
+      return new Response("Invalid signature", { status: 401 });
+    }
+
+    let payload: { type?: unknown; data?: unknown };
+    try {
+      payload = JSON.parse(body) as { type?: unknown; data?: unknown };
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
+    if (typeof payload.type !== "string") {
+      return new Response("Missing event type", { status: 400 });
+    }
+
+    const result: { status: string; error?: string } = await ctx.runMutation(
+      internal.users.handleClerkWebhook,
+      {
+        eventId: verification.eventId,
+        eventType: payload.type,
+        data: payload.data,
+      },
+    );
+    if (result.status === "failed") {
+      return new Response(result.error ?? "Webhook processing failed", {
+        status: 500,
+      });
+    }
+    return new Response("ok", { status: 200 });
+  }),
+});
 
 // Multi-tenant CORS: the browser's Origin is always a specific subdomain
 // (e.g. `https://biz-group.bizfabric.ai`), not the apex. A single static
