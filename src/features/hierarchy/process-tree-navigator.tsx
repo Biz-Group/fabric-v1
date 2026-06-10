@@ -162,6 +162,45 @@ function countLabel(count: number, singular: string) {
   return `${count} ${singular}${count === 1 ? "" : "s"}`;
 }
 
+function getCreateContext(
+  tree: ProcessTreeData | undefined,
+  selectedFunctionId: Id<"functions"> | null,
+  selectedDepartmentId: Id<"departments"> | null,
+  selectedProcessId: Id<"processes"> | null,
+): {
+  functionNode: ProcessTreeFunction | null;
+  departmentNode: ProcessTreeDepartment | null;
+} {
+  if (!tree) {
+    return { functionNode: null, departmentNode: null };
+  }
+
+  let functionNode =
+    tree.functions.find((fn) => fn._id === selectedFunctionId) ?? null;
+  let departmentNode: ProcessTreeDepartment | null = null;
+
+  if (selectedDepartmentId || selectedProcessId) {
+    for (const fn of tree.functions) {
+      const matchingDepartment =
+        fn.departments.find(
+          (department) =>
+            department._id === selectedDepartmentId ||
+            department.processes.some(
+              (process) => process._id === selectedProcessId,
+            ),
+        ) ?? null;
+
+      if (matchingDepartment) {
+        functionNode = fn;
+        departmentNode = matchingDepartment;
+        break;
+      }
+    }
+  }
+
+  return { functionNode, departmentNode };
+}
+
 function TreeSkeleton() {
   return (
     <div className="space-y-2 p-3">
@@ -414,15 +453,76 @@ export function ProcessTreeNavigator({
     setExpandedDepartmentIds((ids) => cloneWithToggledId(ids, id));
   };
 
+  const {
+    functionNode: selectedFunctionForCreate,
+    departmentNode: selectedDepartmentForCreate,
+  } = getCreateContext(
+    tree,
+    selectedFunctionId,
+    selectedDepartmentId,
+    selectedProcessId,
+  );
+
   return (
     <aside
       aria-label="Process tree"
       className="flex h-full w-[320px] shrink-0 flex-col border-r bg-muted/10 lg:w-[360px]"
     >
       <div className="shrink-0 border-b bg-background px-4 py-3">
-        <div className="flex items-center gap-2">
-          <GitBranch className="size-4 shrink-0 text-muted-foreground" />
-          <h2 className="truncate text-sm font-semibold">Process Tree</h2>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <GitBranch className="size-4 shrink-0 text-muted-foreground" />
+            <h2 className="truncate text-sm font-semibold">Process Tree</h2>
+          </div>
+          {canEdit && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    aria-label="Add hierarchy item"
+                  />
+                }
+              >
+                <span>Add</span>
+                <Plus className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-auto min-w-44">
+                <DropdownMenuItem onClick={onCreateFunction}>
+                  <Building2 className="size-4" />
+                  Function
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={!selectedFunctionForCreate}
+                  onClick={() => {
+                    if (selectedFunctionForCreate) {
+                      onCreateDepartment(selectedFunctionForCreate);
+                    }
+                  }}
+                >
+                  <Layers className="size-4" />
+                  Department
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={!selectedFunctionForCreate || !selectedDepartmentForCreate}
+                  onClick={() => {
+                    if (selectedFunctionForCreate && selectedDepartmentForCreate) {
+                      onCreateProcess(
+                        selectedFunctionForCreate,
+                        selectedDepartmentForCreate,
+                      );
+                    }
+                  }}
+                >
+                  <Cog className="size-4" />
+                  Process
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
