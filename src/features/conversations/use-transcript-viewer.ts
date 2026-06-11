@@ -211,10 +211,17 @@ function useTranscriptViewer({
   )
 
   useEffect(() => {
-    setCurrentTime(0)
-    setDuration(guessedDuration)
-    setIsPlaying(false)
-    setCurrentWordIndex(words.length ? 0 : -1)
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+      setCurrentTime(0)
+      setDuration(guessedDuration)
+      setIsPlaying(false)
+      setCurrentWordIndex(words.length ? 0 : -1)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [words.length, alignment, guessedDuration])
 
   const findWordIndex = useCallback(

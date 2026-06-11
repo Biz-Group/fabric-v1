@@ -715,6 +715,8 @@ function SyncedTranscript({
   const scrollRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const prevIndexRef = useRef(-1);
+  const autoOpen = !expanded && isActive && player.isPlaying && !userToggled;
+  const collapsibleOpen = open || autoOpen;
 
   // Derive active message index from playback time
   const activeIndex = useMemo(() => {
@@ -727,16 +729,17 @@ function SyncedTranscript({
     return idx;
   }, [isActive, player.isPlaying, transcript, time]);
 
-  // Auto-expand transcript when playback starts
   useEffect(() => {
-    if (expanded) return;
-    if (isActive && player.isPlaying && !userToggled) {
-      setOpen(true);
+    if (!isActive && userToggled) {
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (!cancelled) setUserToggled(false);
+      });
+      return () => {
+        cancelled = true;
+      };
     }
-    if (!isActive) {
-      setUserToggled(false);
-    }
-  }, [expanded, isActive, player.isPlaying, userToggled]);
+  }, [isActive, userToggled]);
 
   // Scroll active line to center of the fixed-height container
   useEffect(() => {
@@ -848,7 +851,7 @@ function SyncedTranscript({
 
   return (
     <Collapsible
-      open={open}
+      open={collapsibleOpen}
       onOpenChange={(val) => {
         setOpen(val);
         setUserToggled(true);
@@ -934,27 +937,34 @@ function StickyMiniPlayer() {
   const player = useAudioPlayer<{ contributorName: string }>();
   const time = useAudioPlayerTime();
   const activeCardCtx = useContext(ActiveCardContext);
-  const [cardOutOfView, setCardOutOfView] = useState(false);
+  const activeItemId = player.activeItem ? String(player.activeItem.id) : null;
+  const [cardVisibility, setCardVisibility] = useState<{
+    itemId: string | null;
+    outOfView: boolean;
+  }>({ itemId: null, outOfView: false });
 
   useEffect(() => {
-    if (!player.activeItem || !activeCardCtx) {
-      setCardOutOfView(false);
-      return;
-    }
+    if (!activeItemId || !activeCardCtx) return;
 
     const cardEl = activeCardCtx.cardRefs.current.get(
-      String(player.activeItem.id)
+      activeItemId
     );
     if (!cardEl) return;
 
     const observer = new IntersectionObserver(
-      ([entry]) => setCardOutOfView(!entry.isIntersecting),
+      ([entry]) =>
+        setCardVisibility({
+          itemId: activeItemId,
+          outOfView: !entry.isIntersecting,
+        }),
       { threshold: 0 }
     );
     observer.observe(cardEl);
     return () => observer.disconnect();
-  }, [player.activeItem, activeCardCtx]);
+  }, [activeItemId, activeCardCtx]);
 
+  const cardOutOfView =
+    cardVisibility.itemId === activeItemId && cardVisibility.outOfView;
   if (!player.activeItem || !player.isPlaying || !cardOutOfView) return null;
 
   const name = player.activeItem.data?.contributorName ?? "Playing";

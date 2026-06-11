@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import { cn } from "@/lib/utils";
 
 export type WorkspaceBrandOrganization = {
@@ -76,9 +78,12 @@ export function WorkspaceBrandLockup({
             aria-label={orgName ? `${orgName} workspace` : "Workspace"}
           >
             {showOrgLogo ? (
-              <img
+              <Image
                 src={imageSrc}
                 alt={orgName ? `${orgName} logo` : "Workspace logo"}
+                width={96}
+                height={32}
+                unoptimized
                 className="block max-h-full w-auto max-w-full object-contain"
               />
             ) : (

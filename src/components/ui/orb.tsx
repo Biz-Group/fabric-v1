@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useId, useMemo, useRef, useState } from "react"
 import { useTexture } from "@react-three/drei"
 import { Canvas, useFrame, useThree } from "@react-three/fiber"
 import * as THREE from "three"
@@ -94,12 +94,18 @@ function Scene({
   const { gl } = useThree()
   const circleRef =
     useRef<THREE.Mesh<THREE.CircleGeometry, THREE.ShaderMaterial>>(null)
-  const initialColorsRef = useRef<[string, string]>(colors)
+  const [initialColors] = useState<[string, string]>(() => colors)
   const targetColor1Ref = useRef(new THREE.Color(colors[0]))
   const targetColor2Ref = useRef(new THREE.Color(colors[1]))
   const animSpeedRef = useRef(0.1)
+  const generatedId = useId()
   const perlinNoiseTexture = useTexture(
-    "https://storage.googleapis.com/eleven-public-cdn/images/perlin-noise.png"
+    "https://storage.googleapis.com/eleven-public-cdn/images/perlin-noise.png",
+    (texture) => {
+      texture.wrapS = THREE.RepeatWrapping
+      texture.wrapT = THREE.RepeatWrapping
+      texture.needsUpdate = true
+    }
   )
 
   const agentRef = useRef<AgentState>(agentState)
@@ -129,10 +135,11 @@ function Scene({
     )
   }, [manualOutput, outputVolumeRef, getOutputVolume])
 
-  const random = useMemo(
-    () => splitmix32(seed ?? Math.floor(Math.random() * 2 ** 32)),
-    [seed]
+  const resolvedSeed = useMemo(
+    () => seed ?? hashStringToSeed(generatedId),
+    [seed, generatedId]
   )
+  const random = useMemo(() => splitmix32(resolvedSeed), [resolvedSeed])
   const offsets = useMemo(
     () =>
       new Float32Array(Array.from({ length: 7 }, () => random() * Math.PI * 2)),
@@ -161,6 +168,7 @@ function Scene({
     return () => observer.disconnect()
   }, [])
 
+  /* eslint-disable react-hooks/immutability -- Three shader uniforms are mutable render-loop state, not React state. */
   useFrame((_, delta: number) => {
     const mat = circleRef.current?.material
     if (!mat) return
@@ -216,6 +224,7 @@ function Scene({
     u.uColor1.value.lerp(targetColor1Ref.current, 0.08)
     u.uColor2.value.lerp(targetColor2Ref.current, 0.08)
   })
+  /* eslint-enable react-hooks/immutability */
 
   useEffect(() => {
     const canvas = gl.domElement
@@ -231,24 +240,19 @@ function Scene({
   }, [gl])
 
   const uniforms = useMemo(() => {
-    perlinNoiseTexture.wrapS = THREE.RepeatWrapping
-    perlinNoiseTexture.wrapT = THREE.RepeatWrapping
-    const isDark =
-      typeof document !== "undefined" &&
-      document.documentElement.classList.contains("dark")
     return {
-      uColor1: new THREE.Uniform(new THREE.Color(initialColorsRef.current[0])),
-      uColor2: new THREE.Uniform(new THREE.Color(initialColorsRef.current[1])),
+      uColor1: new THREE.Uniform(new THREE.Color(initialColors[0])),
+      uColor2: new THREE.Uniform(new THREE.Color(initialColors[1])),
       uOffsets: { value: offsets },
       uPerlinTexture: new THREE.Uniform(perlinNoiseTexture),
       uTime: new THREE.Uniform(0),
       uAnimation: new THREE.Uniform(0.1),
-      uInverted: new THREE.Uniform(isDark ? 1 : 0),
+      uInverted: new THREE.Uniform(0),
       uInputVolume: new THREE.Uniform(0),
       uOutputVolume: new THREE.Uniform(0),
       uOpacity: new THREE.Uniform(0),
     }
-  }, [perlinNoiseTexture, offsets])
+  }, [initialColors, perlinNoiseTexture, offsets])
 
   return (
     <mesh ref={circleRef}>
@@ -273,6 +277,15 @@ function splitmix32(a: number) {
     t = Math.imul(t, 0x735a2d97)
     return ((t = t ^ (t >>> 15)) >>> 0) / 4294967296
   }
+}
+
+function hashStringToSeed(value: string) {
+  let hash = 0x811c9dc5
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return hash >>> 0
 }
 
 function clamp01(n: number) {

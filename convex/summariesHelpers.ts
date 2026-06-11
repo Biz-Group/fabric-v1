@@ -28,7 +28,7 @@ export const markDepartmentSummaryStale = internalMutation({
     const dept = await ctx.db.get(args.departmentId);
     if (!dept) return;
     await ctx.db.patch(args.departmentId, { summaryStale: true });
-    const _cascade: null = await ctx.runMutation(
+    await ctx.runMutation(
       internal.summariesHelpers.markFunctionSummaryStale,
       { functionId: dept.functionId },
     );
@@ -247,7 +247,7 @@ export const generateDepartmentSummaryInternal = internalAction({
       return { summary: null, message: "Failed to generate summary." };
     }
 
-    const _save: null = await ctx.runMutation(
+    await ctx.runMutation(
       internal.summariesHelpers.saveDepartmentSummary,
       { departmentId: args.departmentId, summary: generated },
     );
