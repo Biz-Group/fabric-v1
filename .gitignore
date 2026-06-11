@@ -46,3 +46,7 @@ BRANDING_KIT.md
 /.claude
 /.agents
 dump.json
+/.agents
+/.claude
+CLAUDE.md
+AGENTS.md

@@ -511,6 +511,45 @@ export function ProcessWorkbench() {
   }, [selectedProcessId, selectedProcess]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  // A shared process link may arrive with only `proc` in the query string.
+  // Hydrate the missing ancestors from the workbench read model so the tree and
+  // URL can settle on the full function -> department -> process path.
+  /* eslint-disable react-hooks/set-state-in-effect -- reacting to Convex data for a URL-selected process */
+  useEffect(() => {
+    if (!selectedProcessId || !processWorkbench) return;
+
+    const nextFunctionId = processWorkbench.function._id;
+    const nextFunctionName = processWorkbench.function.name;
+    const nextDepartmentId = processWorkbench.department._id;
+    const nextDepartmentName = processWorkbench.department.name;
+    const nextProcessName = processWorkbench.process.name;
+
+    if (selectedFunctionId !== nextFunctionId) {
+      setSelectedFunctionId(nextFunctionId);
+    }
+    if (selectedFunctionName !== nextFunctionName) {
+      setSelectedFunctionName(nextFunctionName);
+    }
+    if (selectedDepartmentId !== nextDepartmentId) {
+      setSelectedDepartmentId(nextDepartmentId);
+    }
+    if (selectedDepartmentName !== nextDepartmentName) {
+      setSelectedDepartmentName(nextDepartmentName);
+    }
+    if (selectedProcessName !== nextProcessName) {
+      setSelectedProcessName(nextProcessName);
+    }
+  }, [
+    selectedProcessId,
+    processWorkbench,
+    selectedFunctionId,
+    selectedFunctionName,
+    selectedDepartmentId,
+    selectedDepartmentName,
+    selectedProcessName,
+  ]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   // --- URL <-> selection synchronization ---
   //
   // `committed` is the selection the URL should reflect. On mobile a row tap can
@@ -545,6 +584,10 @@ export function ProcessWorkbench() {
   // read effect below) can't race this effect into re-pushing the
   // pre-navigation selection.
   useEffect(() => {
+    if (committed.proc && (!committed.fn || !committed.dept)) {
+      return;
+    }
+
     const target = buildSelectionQuery(searchParams, committed);
     if (target !== searchParams.toString()) {
       router.push(target ? `${pathname}?${target}` : pathname, {

@@ -201,6 +201,54 @@ function getCreateContext(
   return { functionNode, departmentNode };
 }
 
+function getSelectedAncestorIds(
+  tree: ProcessTreeData | undefined,
+  selectedFunctionId: Id<"functions"> | null,
+  selectedDepartmentId: Id<"departments"> | null,
+  selectedProcessId: Id<"processes"> | null,
+): {
+  functionId: Id<"functions"> | null;
+  departmentId: Id<"departments"> | null;
+} {
+  if (!tree) {
+    return {
+      functionId: selectedFunctionId,
+      departmentId: selectedDepartmentId,
+    };
+  }
+
+  if (selectedProcessId) {
+    for (const fn of tree.functions) {
+      for (const department of fn.departments) {
+        if (
+          department.processes.some(
+            (process) => process._id === selectedProcessId,
+          )
+        ) {
+          return { functionId: fn._id, departmentId: department._id };
+        }
+      }
+    }
+  }
+
+  if (selectedDepartmentId) {
+    for (const fn of tree.functions) {
+      if (
+        fn.departments.some(
+          (department) => department._id === selectedDepartmentId,
+        )
+      ) {
+        return { functionId: fn._id, departmentId: selectedDepartmentId };
+      }
+    }
+  }
+
+  return {
+    functionId: selectedFunctionId,
+    departmentId: selectedDepartmentId,
+  };
+}
+
 function TreeSkeleton() {
   return (
     <div className="space-y-2 p-3">
@@ -408,39 +456,52 @@ export function ProcessTreeNavigator({
   onEditProcess,
   onDeleteProcess,
 }: ProcessTreeNavigatorProps) {
+  const selectedAncestorIds = getSelectedAncestorIds(
+    tree,
+    selectedFunctionId,
+    selectedDepartmentId,
+    selectedProcessId,
+  );
+  const selectedAncestorKey = [
+    selectedAncestorIds.functionId ?? "",
+    selectedAncestorIds.departmentId ?? "",
+    selectedProcessId ?? "",
+  ].join(":");
   const [expandedFunctionIds, setExpandedFunctionIds] = useState(
-    () => new Set<Id<"functions">>(),
+    () =>
+      selectedAncestorIds.functionId
+        ? new Set<Id<"functions">>([selectedAncestorIds.functionId])
+        : new Set<Id<"functions">>(),
   );
   const [expandedDepartmentIds, setExpandedDepartmentIds] = useState(
-    () => new Set<Id<"departments">>(),
+    () =>
+      selectedAncestorIds.departmentId
+        ? new Set<Id<"departments">>([selectedAncestorIds.departmentId])
+        : new Set<Id<"departments">>(),
   );
 
-  // Auto-expand ancestors when selection changes (e.g. from another column or a
-  // deep link), using the "adjust state when a prop changes" render-time pattern.
-  // It fires only when the selected id actually changes, so the chevron can still
-  // collapse a selected node afterward — the set stays the source of truth.
-  const [prevSelectedFunctionId, setPrevSelectedFunctionId] =
-    useState(selectedFunctionId);
-  if (selectedFunctionId !== prevSelectedFunctionId) {
-    setPrevSelectedFunctionId(selectedFunctionId);
-    if (selectedFunctionId) {
+  // Auto-expand ancestors when the selected path changes (e.g. from another
+  // column, command palette, or a deep link). Because this is keyed by the path,
+  // the chevron can still collapse the selected node afterward.
+  const [prevSelectedAncestorKey, setPrevSelectedAncestorKey] =
+    useState(selectedAncestorKey);
+  if (selectedAncestorKey !== prevSelectedAncestorKey) {
+    setPrevSelectedAncestorKey(selectedAncestorKey);
+    const functionId = selectedAncestorIds.functionId;
+    const departmentId = selectedAncestorIds.departmentId;
+
+    if (functionId) {
       setExpandedFunctionIds((ids) =>
-        ids.has(selectedFunctionId)
+        ids.has(functionId)
           ? ids
-          : new Set(ids).add(selectedFunctionId),
+          : new Set(ids).add(functionId),
       );
     }
-  }
-
-  const [prevSelectedDepartmentId, setPrevSelectedDepartmentId] =
-    useState(selectedDepartmentId);
-  if (selectedDepartmentId !== prevSelectedDepartmentId) {
-    setPrevSelectedDepartmentId(selectedDepartmentId);
-    if (selectedDepartmentId) {
+    if (departmentId) {
       setExpandedDepartmentIds((ids) =>
-        ids.has(selectedDepartmentId)
+        ids.has(departmentId)
           ? ids
-          : new Set(ids).add(selectedDepartmentId),
+          : new Set(ids).add(departmentId),
       );
     }
   }
