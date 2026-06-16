@@ -801,7 +801,7 @@ export function RecordingModal({
                   Your Name
                 </label>
                 <Input
-                  disabled
+                  // disabled
                   id="contributor-name"
                   value={contributorName}
                   placeholder="Enter your name"
