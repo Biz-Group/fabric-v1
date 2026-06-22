@@ -102,6 +102,398 @@ Return ONLY a valid JSON object with this exact shape (no markdown fences, no ex
   }
 }`;
 
+const FLOW_TOOL_NAME = "return_process_flow";
+const FLOW_GENERATION_MAX_TOKENS = 32768;
+const FLOW_TOKEN_LIMIT_ERROR_MESSAGE =
+  "Process flow response was too large for the AI response limit. Please try again; if it keeps failing, this process needs simplified flow generation.";
+
+type FlowNodeCategory = "start" | "end" | "action" | "decision" | "handoff" | "wait";
+type FlowAutomationPotential = "none" | "low" | "medium" | "high";
+type FlowConfidence = "high" | "medium" | "low";
+type FlowEdgeType = "sequential" | "conditional" | "parallel" | "fallback";
+
+type ParsedFlowResponse = {
+  nodes?: unknown[];
+  edges?: unknown[];
+  insights?: Record<string, unknown>;
+};
+
+type NormalizedFlowNode = {
+  id: string;
+  label: string;
+  description: string;
+  category: FlowNodeCategory;
+  actors: string[];
+  tools: string[];
+  estimatedDuration?: string;
+  painPoints: string[];
+  automationPotential: FlowAutomationPotential;
+  confidence: FlowConfidence;
+  isBottleneck: boolean;
+  isTribalKnowledge: boolean;
+  riskIndicators: string[];
+  sources: string[];
+};
+
+type NormalizedFlowEdge = {
+  id: string;
+  source: string;
+  target: string;
+  type: FlowEdgeType;
+  label?: string;
+  isHappyPath: boolean;
+};
+
+type NormalizedFlowInsights = {
+  totalEstimatedDuration?: string;
+  criticalPath: string[];
+  handoffCount: number;
+  toolCount: number;
+  automationOpportunities: string[];
+  topBottlenecks: string[];
+};
+
+type OpenRouterFlowMessage = {
+  content?: unknown;
+  tool_calls?: Array<{ function?: { name?: unknown; arguments?: unknown } }>;
+};
+
+type OpenRouterFlowChoice = {
+  finish_reason?: unknown;
+  native_finish_reason?: unknown;
+  message?: OpenRouterFlowMessage;
+};
+
+const FLOW_RESPONSE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    nodes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          label: { type: "string" },
+          description: { type: "string" },
+          category: {
+            type: "string",
+            enum: ["start", "end", "action", "decision", "handoff", "wait"],
+          },
+          actors: { type: "array", items: { type: "string" } },
+          tools: { type: "array", items: { type: "string" } },
+          estimatedDuration: { type: "string" },
+          painPoints: { type: "array", items: { type: "string" } },
+          automationPotential: {
+            type: "string",
+            enum: ["none", "low", "medium", "high"],
+          },
+          confidence: {
+            type: "string",
+            enum: ["high", "medium", "low"],
+          },
+          isBottleneck: { type: "boolean" },
+          isTribalKnowledge: { type: "boolean" },
+          riskIndicators: { type: "array", items: { type: "string" } },
+          sources: { type: "array", items: { type: "string" } },
+        },
+        required: [
+          "id",
+          "label",
+          "description",
+          "category",
+          "actors",
+          "tools",
+          "painPoints",
+          "automationPotential",
+          "confidence",
+          "isBottleneck",
+          "isTribalKnowledge",
+          "riskIndicators",
+          "sources",
+        ],
+      },
+    },
+    edges: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          source: { type: "string" },
+          target: { type: "string" },
+          type: {
+            type: "string",
+            enum: ["sequential", "conditional", "parallel", "fallback"],
+          },
+          label: { type: "string" },
+          isHappyPath: { type: "boolean" },
+        },
+        required: ["id", "source", "target", "type", "isHappyPath"],
+      },
+    },
+    insights: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        totalEstimatedDuration: { type: "string" },
+        criticalPath: { type: "array", items: { type: "string" } },
+        handoffCount: { type: "number" },
+        toolCount: { type: "number" },
+        automationOpportunities: { type: "array", items: { type: "string" } },
+        topBottlenecks: { type: "array", items: { type: "string" } },
+      },
+      required: [
+        "criticalPath",
+        "handoffCount",
+        "toolCount",
+        "automationOpportunities",
+        "topBottlenecks",
+      ],
+    },
+  },
+  required: ["nodes", "edges", "insights"],
+} as const;
+
+export function buildFlowGenerationRequestBody(userContent: string) {
+  return {
+    model: "anthropic/claude-haiku-4.5",
+    messages: [
+      { role: "system", content: FLOW_EXTRACTION_SYSTEM_PROMPT },
+      { role: "user", content: userContent },
+    ],
+    temperature: 0,
+    max_tokens: FLOW_GENERATION_MAX_TOKENS,
+    stream: false,
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: FLOW_TOOL_NAME,
+          description:
+            "Return the merged process flow diagram for the supplied process conversations.",
+          parameters: FLOW_RESPONSE_SCHEMA,
+        },
+      },
+    ],
+    tool_choice: {
+      type: "function",
+      function: { name: FLOW_TOOL_NAME },
+    },
+  };
+}
+
+function contentBlocksToText(content: unknown): string | null {
+  if (typeof content === "string") {
+    const trimmed = content.trim();
+    return trimmed ? trimmed : null;
+  }
+
+  if (!Array.isArray(content)) return null;
+
+  const text = content
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (!part || typeof part !== "object") return "";
+      const record = part as Record<string, unknown>;
+      return typeof record.text === "string" ? record.text : "";
+    })
+    .join("")
+    .trim();
+
+  return text ? text : null;
+}
+
+function extractBalancedJsonObject(content: string): string | null {
+  const start = content.indexOf("{");
+  if (start < 0) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < content.length; i++) {
+    const char = content[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+    } else if (char === "{") {
+      depth++;
+    } else if (char === "}") {
+      depth--;
+      if (depth === 0) {
+        return content.slice(start, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function parseJsonObjectText(content: string): unknown {
+  const trimmed = content.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1]?.trim();
+  const balanced = extractBalancedJsonObject(fenced ?? trimmed);
+  const candidates = [trimmed, fenced, balanced].filter(
+    (candidate): candidate is string => typeof candidate === "string" && candidate.length > 0,
+  );
+
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Flow response was not valid JSON.");
+}
+
+export function parseFlowResponsePayload(payload: unknown): ParsedFlowResponse {
+  let parsed: unknown;
+  const text = contentBlocksToText(payload);
+
+  if (text) {
+    parsed = parseJsonObjectText(text);
+  } else {
+    parsed = payload;
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Flow response was not a JSON object.");
+  }
+
+  return parsed as ParsedFlowResponse;
+}
+
+export function extractFlowResponsePayload(result: unknown): unknown | null {
+  const message = (
+    result as { choices?: OpenRouterFlowChoice[] }
+  ).choices?.[0]?.message;
+
+  const toolCall = message?.tool_calls?.find(
+    (call) => call.function?.name === FLOW_TOOL_NAME,
+  );
+
+  if (toolCall?.function?.arguments !== undefined) {
+    return toolCall.function.arguments;
+  }
+
+  return message?.content ?? null;
+}
+
+export function getFlowFinishReason(result: unknown): string | null {
+  const choice = (result as { choices?: OpenRouterFlowChoice[] }).choices?.[0];
+  const reason = choice?.finish_reason ?? choice?.native_finish_reason;
+  return typeof reason === "string" && reason.trim() ? reason : null;
+}
+
+export function isTokenLimitFinishReason(reason: string | null): boolean {
+  if (!reason) return false;
+  const normalized = reason.toLowerCase();
+  return (
+    normalized === "length" ||
+    normalized === "max_tokens" ||
+    normalized.includes("max_token") ||
+    normalized.includes("token_limit")
+  );
+}
+
+export function normalizeFlowResponse(parsed: ParsedFlowResponse): {
+  nodes: NormalizedFlowNode[];
+  edges: NormalizedFlowEdge[];
+  insights: NormalizedFlowInsights;
+} {
+  const validCategories = new Set(["start", "end", "action", "decision", "handoff", "wait"]);
+  const validAutomation = new Set(["none", "low", "medium", "high"]);
+  const validConfidence = new Set(["high", "medium", "low"]);
+  const validEdgeTypes = new Set(["sequential", "conditional", "parallel", "fallback"]);
+
+  const nodes = (parsed.nodes ?? []).map((n: unknown) => {
+    const node = n as Record<string, unknown>;
+    return {
+      id: String(node.id ?? ""),
+      label: String(node.label ?? ""),
+      description: String(node.description ?? ""),
+      category: validCategories.has(String(node.category))
+        ? (String(node.category) as FlowNodeCategory)
+        : ("action" as const),
+      actors: Array.isArray(node.actors) ? node.actors.map(String) : [],
+      tools: Array.isArray(node.tools) ? node.tools.map(String) : [],
+      estimatedDuration: node.estimatedDuration ? String(node.estimatedDuration) : undefined,
+      painPoints: Array.isArray(node.painPoints) ? node.painPoints.map(String) : [],
+      automationPotential: validAutomation.has(String(node.automationPotential))
+        ? (String(node.automationPotential) as FlowAutomationPotential)
+        : ("none" as const),
+      confidence: validConfidence.has(String(node.confidence))
+        ? (String(node.confidence) as FlowConfidence)
+        : ("medium" as const),
+      isBottleneck: node.isBottleneck === true,
+      isTribalKnowledge: node.isTribalKnowledge === true,
+      riskIndicators: Array.isArray(node.riskIndicators) ? node.riskIndicators.map(String) : [],
+      sources: Array.isArray(node.sources) ? node.sources.map(String) : [],
+    };
+  }).filter((n) => n.id && n.label);
+
+  const nodeIds = new Set(nodes.map((n) => n.id));
+
+  const edges = (parsed.edges ?? [])
+    .map((e: unknown) => {
+      const edge = e as Record<string, unknown>;
+      return {
+        id: String(edge.id ?? `${edge.source}-${edge.target}`),
+        source: String(edge.source ?? ""),
+        target: String(edge.target ?? ""),
+        type: validEdgeTypes.has(String(edge.type))
+          ? (String(edge.type) as FlowEdgeType)
+          : ("sequential" as const),
+        label: edge.label ? String(edge.label) : undefined,
+        isHappyPath: edge.isHappyPath !== false,
+      };
+    })
+    .filter((e) => e.source && e.target && nodeIds.has(e.source) && nodeIds.has(e.target));
+
+  const rawInsights = (parsed.insights ?? {}) as Record<string, unknown>;
+  const insights = {
+    totalEstimatedDuration: rawInsights.totalEstimatedDuration
+      ? String(rawInsights.totalEstimatedDuration)
+      : undefined,
+    criticalPath: Array.isArray(rawInsights.criticalPath)
+      ? rawInsights.criticalPath.map(String).filter((id) => nodeIds.has(id))
+      : [],
+    handoffCount: typeof rawInsights.handoffCount === "number"
+      ? rawInsights.handoffCount
+      : nodes.filter((n) => n.category === "handoff").length,
+    toolCount: typeof rawInsights.toolCount === "number"
+      ? rawInsights.toolCount
+      : new Set(nodes.flatMap((n) => n.tools)).size,
+    automationOpportunities: Array.isArray(rawInsights.automationOpportunities)
+      ? rawInsights.automationOpportunities.map(String)
+      : [],
+    topBottlenecks: Array.isArray(rawInsights.topBottlenecks)
+      ? rawInsights.topBottlenecks.map(String)
+      : nodes.filter((n) => n.isBottleneck).map((n) => n.label),
+  };
+
+  return { nodes, edges, insights };
+}
+
 // ---------------------------------------------------------------------------
 // Helpers: safely parse JSON fields from ElevenLabs analysis
 // ---------------------------------------------------------------------------
@@ -493,14 +885,7 @@ export const generateFlowInternal = internalAction({
           Authorization: `Bearer ${openrouterKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          model: "anthropic/claude-haiku-4.5",
-          messages: [
-            { role: "system", content: FLOW_EXTRACTION_SYSTEM_PROMPT },
-            { role: "user", content: userContent },
-          ],
-          max_tokens: 8192,
-        }),
+        body: JSON.stringify(buildFlowGenerationRequestBody(userContent)),
       },
     );
 
@@ -517,10 +902,26 @@ export const generateFlowInternal = internalAction({
       return;
     }
 
-    const result = await response.json();
-    const content: string | null = result.choices?.[0]?.message?.content?.trim() ?? null;
+    const result: unknown = await response.json();
+    const finishReason = getFlowFinishReason(result);
+    const payload = extractFlowResponsePayload(result);
 
-    if (!content) {
+    if (isTokenLimitFinishReason(finishReason)) {
+      console.error("Process flow generation hit the AI response token limit:", {
+        finishReason,
+        maxTokens: FLOW_GENERATION_MAX_TOKENS,
+      });
+      await ctx.runMutation(internal.processFlows.saveProcessFlow, {
+        processId: args.processId,
+        clerkOrgId: args.clerkOrgId,
+        status: "failed",
+        conversationCount: data.conversations.length,
+        errorMessage: FLOW_TOKEN_LIMIT_ERROR_MESSAGE,
+      });
+      return;
+    }
+
+    if (payload === null || (typeof payload === "string" && !payload.trim())) {
       await ctx.runMutation(internal.processFlows.saveProcessFlow, {
         processId: args.processId,
         clerkOrgId: args.clerkOrgId,
@@ -531,17 +932,14 @@ export const generateFlowInternal = internalAction({
       return;
     }
 
-    const jsonStr = content.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
-
-    let parsed: {
-      nodes?: unknown[];
-      edges?: unknown[];
-      insights?: Record<string, unknown>;
-    };
+    let parsed: ParsedFlowResponse;
     try {
-      parsed = JSON.parse(jsonStr);
+      parsed = parseFlowResponsePayload(payload);
     } catch (e) {
-      console.error("Failed to parse flow JSON:", e, "\nRaw content:", content);
+      console.error("Failed to parse flow JSON:", {
+        error: e instanceof Error ? e.message : "Unknown parse error",
+        payloadType: Array.isArray(payload) ? "array" : typeof payload,
+      });
       await ctx.runMutation(internal.processFlows.saveProcessFlow, {
         processId: args.processId,
         clerkOrgId: args.clerkOrgId,
@@ -552,76 +950,7 @@ export const generateFlowInternal = internalAction({
       return;
     }
 
-    const validCategories = new Set(["start", "end", "action", "decision", "handoff", "wait"]);
-    const validAutomation = new Set(["none", "low", "medium", "high"]);
-    const validConfidence = new Set(["high", "medium", "low"]);
-    const validEdgeTypes = new Set(["sequential", "conditional", "parallel", "fallback"]);
-
-    const nodes = (parsed.nodes ?? []).map((n: unknown) => {
-      const node = n as Record<string, unknown>;
-      return {
-        id: String(node.id ?? ""),
-        label: String(node.label ?? ""),
-        description: String(node.description ?? ""),
-        category: validCategories.has(String(node.category))
-          ? (String(node.category) as "start" | "end" | "action" | "decision" | "handoff" | "wait")
-          : ("action" as const),
-        actors: Array.isArray(node.actors) ? node.actors.map(String) : [],
-        tools: Array.isArray(node.tools) ? node.tools.map(String) : [],
-        estimatedDuration: node.estimatedDuration ? String(node.estimatedDuration) : undefined,
-        painPoints: Array.isArray(node.painPoints) ? node.painPoints.map(String) : [],
-        automationPotential: validAutomation.has(String(node.automationPotential))
-          ? (String(node.automationPotential) as "none" | "low" | "medium" | "high")
-          : ("none" as const),
-        confidence: validConfidence.has(String(node.confidence))
-          ? (String(node.confidence) as "high" | "medium" | "low")
-          : ("medium" as const),
-        isBottleneck: node.isBottleneck === true,
-        isTribalKnowledge: node.isTribalKnowledge === true,
-        riskIndicators: Array.isArray(node.riskIndicators) ? node.riskIndicators.map(String) : [],
-        sources: Array.isArray(node.sources) ? node.sources.map(String) : [],
-      };
-    }).filter((n) => n.id && n.label);
-
-    const nodeIds = new Set(nodes.map((n) => n.id));
-
-    const edges = (parsed.edges ?? [])
-      .map((e: unknown) => {
-        const edge = e as Record<string, unknown>;
-        return {
-          id: String(edge.id ?? `${edge.source}-${edge.target}`),
-          source: String(edge.source ?? ""),
-          target: String(edge.target ?? ""),
-          type: validEdgeTypes.has(String(edge.type))
-            ? (String(edge.type) as "sequential" | "conditional" | "parallel" | "fallback")
-            : ("sequential" as const),
-          label: edge.label ? String(edge.label) : undefined,
-          isHappyPath: edge.isHappyPath !== false,
-        };
-      })
-      .filter((e) => e.source && e.target && nodeIds.has(e.source) && nodeIds.has(e.target));
-
-    const rawInsights = (parsed.insights ?? {}) as Record<string, unknown>;
-    const insights = {
-      totalEstimatedDuration: rawInsights.totalEstimatedDuration
-        ? String(rawInsights.totalEstimatedDuration)
-        : undefined,
-      criticalPath: Array.isArray(rawInsights.criticalPath)
-        ? rawInsights.criticalPath.map(String).filter((id) => nodeIds.has(id))
-        : [],
-      handoffCount: typeof rawInsights.handoffCount === "number"
-        ? rawInsights.handoffCount
-        : nodes.filter((n) => n.category === "handoff").length,
-      toolCount: typeof rawInsights.toolCount === "number"
-        ? rawInsights.toolCount
-        : new Set(nodes.flatMap((n) => n.tools)).size,
-      automationOpportunities: Array.isArray(rawInsights.automationOpportunities)
-        ? rawInsights.automationOpportunities.map(String)
-        : [],
-      topBottlenecks: Array.isArray(rawInsights.topBottlenecks)
-        ? rawInsights.topBottlenecks.map(String)
-        : nodes.filter((n) => n.isBottleneck).map((n) => n.label),
-    };
+    const { nodes, edges, insights } = normalizeFlowResponse(parsed);
 
     await ctx.runMutation(internal.processFlows.saveProcessFlow, {
       processId: args.processId,
