@@ -132,34 +132,42 @@ export function PdfMarkdown({ content }: { content: string }) {
         }
 
         if (block.kind === "ul" || block.kind === "ol") {
+          const ordered = block.kind === "ol";
           return (
-            <View key={i} style={{ marginVertical: 3, paddingLeft: 2 }}>
+            <View key={i} style={{ marginVertical: 4 }}>
               {block.items.map((item, j) => (
-                <View
+                // Block text (not a flex row) so wrapped lines stack correctly;
+                // hanging indent aligns continuation lines under the content.
+                <Text
                   key={j}
-                  style={{ flexDirection: "row", marginBottom: 2.5 }}
+                  style={{
+                    fontSize: 9.5,
+                    color: COLORS.body,
+                    lineHeight: 1.45,
+                    marginBottom: 2.5,
+                  }}
                 >
                   <Text
                     style={{
-                      width: block.kind === "ol" ? 14 : 9,
-                      fontSize: 9,
-                      color: block.kind === "ol" ? COLORS.accent : COLORS.faint,
-                      fontFamily:
-                        block.kind === "ol" ? "Helvetica-Bold" : "Helvetica",
+                      fontFamily: ordered ? "Helvetica-Bold" : "Helvetica",
+                      color: ordered ? COLORS.accent : COLORS.faint,
                     }}
                   >
-                    {block.kind === "ol" ? `${j + 1}.` : "•"}
+                    {ordered ? `${j + 1}.  ` : "•  "}
                   </Text>
-                  <InlineText
-                    text={item}
-                    style={{
-                      flex: 1,
-                      fontSize: 9.5,
-                      color: COLORS.body,
-                      lineHeight: 1.45,
-                    }}
-                  />
-                </View>
+                  {parseInline(item).map((run, k) =>
+                    run.bold ? (
+                      <Text
+                        key={k}
+                        style={{ fontFamily: "Helvetica-Bold", color: COLORS.ink }}
+                      >
+                        {run.text}
+                      </Text>
+                    ) : (
+                      <Text key={k}>{run.text}</Text>
+                    ),
+                  )}
+                </Text>
               ))}
             </View>
           );

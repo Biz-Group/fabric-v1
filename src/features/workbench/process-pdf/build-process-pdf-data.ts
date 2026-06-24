@@ -73,11 +73,6 @@ export type ProcessPdfData = {
   nodeNumber: Record<string, number>;
   edges: FlowEdge[];
 
-  // Layout for the SVG diagram (top-left coords, normalized so min = 0).
-  layout: NodeBox[];
-  graphWidth: number;
-  graphHeight: number;
-
   handoffs: HandoffItem[];
   toolUsage: ToolUsage[];
   heavyAreas: HeavyArea[];
@@ -95,7 +90,12 @@ export type ProcessPdfData = {
   totalEstimatedDuration: string | null;
 };
 
-function computeLayout(nodes: FlowNode[], edges: FlowEdge[]) {
+/**
+ * Runs dagre purely to derive a stable left-to-right reading order for the
+ * nodes (its rank assignment ≈ topological order). Returns node positions so
+ * the caller can number steps in flow order.
+ */
+function computeNodeOrder(nodes: FlowNode[], edges: FlowEdge[]): NodeBox[] {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({
@@ -119,30 +119,18 @@ function computeLayout(nodes: FlowNode[], edges: FlowEdge[]) {
 
   dagre.layout(g);
 
-  const boxes: NodeBox[] = nodes.map((node) => {
+  return nodes.map((node) => {
     const pos = g.node(node.id);
     const height =
       node.category === "decision" ? NODE_HEIGHT_DECISION : NODE_HEIGHT_BASE;
     return {
       id: node.id,
-      x: (pos?.x ?? 0) - NODE_WIDTH / 2,
-      y: (pos?.y ?? 0) - height / 2,
+      x: pos?.x ?? 0,
+      y: pos?.y ?? 0,
       width: NODE_WIDTH,
       height,
     };
   });
-
-  const minX = Math.min(...boxes.map((b) => b.x), 0);
-  const minY = Math.min(...boxes.map((b) => b.y), 0);
-  const normalized = boxes.map((b) => ({
-    ...b,
-    x: b.x - minX,
-    y: b.y - minY,
-  }));
-  const graphWidth = Math.max(...normalized.map((b) => b.x + b.width), 1);
-  const graphHeight = Math.max(...normalized.map((b) => b.y + b.height), 1);
-
-  return { boxes: normalized, graphWidth, graphHeight };
 }
 
 export function buildProcessPdfData(input: ProcessPdfInput): ProcessPdfData {
@@ -156,9 +144,6 @@ export function buildProcessPdfData(input: ProcessPdfInput): ProcessPdfData {
     | "steps"
     | "nodeNumber"
     | "edges"
-    | "layout"
-    | "graphWidth"
-    | "graphHeight"
     | "handoffs"
     | "toolUsage"
     | "heavyAreas"
@@ -196,9 +181,6 @@ export function buildProcessPdfData(input: ProcessPdfInput): ProcessPdfData {
       steps: [],
       nodeNumber: {},
       edges: [],
-      layout: [],
-      graphWidth: 1,
-      graphHeight: 1,
       handoffs: [],
       toolUsage: [],
       heavyAreas: [],
@@ -215,13 +197,10 @@ export function buildProcessPdfData(input: ProcessPdfInput): ProcessPdfData {
     };
   }
 
-  const { boxes, graphWidth, graphHeight } = computeLayout(
-    flow.nodes,
-    flow.edges,
-  );
+  const boxes = computeNodeOrder(flow.nodes, flow.edges);
 
-  // Number nodes in left-to-right reading order (the flow direction), matching
-  // the diagram so step cards and arrows cross-reference cleanly.
+  // Number nodes in left-to-right reading order (the flow direction) so the
+  // flowchart, step cards, and cross-references all line up.
   const orderedIds = [...boxes]
     .sort((a, b) => a.x - b.x || a.y - b.y)
     .map((b) => b.id);
@@ -313,9 +292,6 @@ export function buildProcessPdfData(input: ProcessPdfInput): ProcessPdfData {
     steps,
     nodeNumber,
     edges: flow.edges,
-    layout: boxes,
-    graphWidth,
-    graphHeight,
     handoffs,
     toolUsage,
     heavyAreas,

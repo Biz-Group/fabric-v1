@@ -21,7 +21,7 @@ import {
   type ProcessPdfInput,
   type StepNode,
 } from "./build-process-pdf-data";
-import type { FlowNode } from "@/features/insights/insights-derivations";
+import { type FlowNode, pluralize } from "@/features/insights/insights-derivations";
 
 // ---------------------------------------------------------------------------
 // Formatting
@@ -130,10 +130,9 @@ function BulletList({
   return (
     <View>
       {items.map((item, i) => (
-        <View key={i} style={s.bulletRow}>
-          <View style={s.bulletDot} />
-          <Text style={s.bulletText}>{item}</Text>
-        </View>
+        <Text key={i} style={s.bulletText}>
+          {`•  ${item}`}
+        </Text>
       ))}
     </View>
   );
@@ -192,13 +191,15 @@ function MetricTile({ metric }: { metric: ProcessPdfData["metrics"][number] }) {
       <Text
         style={{
           fontFamily: "Helvetica-Bold",
-          fontSize: 19,
+          fontSize: 18,
+          lineHeight: 1.1,
           color: COLORS.ink,
+          marginBottom: 3,
         }}
       >
         {metric.value}
       </Text>
-      <Text style={{ fontSize: 6.8, color: COLORS.faint, lineHeight: 1.3 }}>
+      <Text style={{ fontSize: 6.8, color: COLORS.faint, lineHeight: 1.25 }}>
         {metric.detail}
       </Text>
     </View>
@@ -326,7 +327,7 @@ function Cover({ data }: { data: ProcessPdfData }) {
 
       {!data.hasFlow && (
         <View style={[s.cardSoft, { marginBottom: 6 }]}>
-          <Text style={{ fontSize: 9.5, color: COLORS.body }}>
+          <Text style={{ fontSize: 9.5, color: COLORS.body, lineHeight: 1.5 }}>
             {FLOW_STATUS_COPY[data.flowStatus]}.{" "}
             {data.flowErrorMessage
               ? data.flowErrorMessage
@@ -420,11 +421,13 @@ function StepCard({
   const tools = Array.from(new Set(step.tools.filter(Boolean)));
 
   return (
-    <View style={[s.card, { marginBottom: 8 }]} wrap={false}>
+    <View style={[s.card, { marginBottom: 8 }]}>
       {/* Header */}
       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 5 }}>
         <NumberMedallion number={step.number} category={step.category} />
-        <Text style={[s.cardTitle, { flex: 1 }]}>{step.label}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={s.cardTitle}>{step.label}</Text>
+        </View>
       </View>
       <View
         style={{
@@ -497,7 +500,7 @@ function StepCard({
               edge.target;
             return (
               <Text key={edge.id} style={[s.muted, { marginBottom: 1 }]}>
-                {"→ "}
+                <Text style={{ color: COLORS.faint }}>{"» "}</Text>
                 {targetNum ? `#${targetNum} ` : ""}
                 {targetLabel}
                 {edge.label ? `  (${edge.label})` : ""}
@@ -516,7 +519,7 @@ function StepsSection({ data }: { data: ProcessPdfData }) {
     <View>
       <SectionHeader
         title="Process Steps"
-        count={`${data.steps.length} steps`}
+        count={pluralize(data.steps.length, "step")}
       />
       {data.steps.map((step) => (
         <StepCard key={step.id} step={step} data={data} />
@@ -539,7 +542,7 @@ function InsightCard({
   children: React.ReactNode;
 }) {
   return (
-    <View style={[s.card, { marginBottom: 10 }]} wrap={false}>
+    <View style={[s.card, { marginBottom: 10 }]}>
       <View
         style={{
           flexDirection: "row",
@@ -580,16 +583,14 @@ function MiniItem({
       <View
         style={{
           flexDirection: "row",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 4,
-          marginBottom: 2,
+          alignItems: "flex-start",
+          marginBottom: 3,
         }}
       >
-        <Text style={[s.body, { fontFamily: "Helvetica-Bold", flex: 1 }]}>
-          {title}
-        </Text>
-        {rightChips}
+        <View style={{ flex: 1, paddingRight: 6 }}>
+          <Text style={[s.body, { fontFamily: "Helvetica-Bold" }]}>{title}</Text>
+        </View>
+        {rightChips ? <View style={{ flexShrink: 0 }}>{rightChips}</View> : null}
       </View>
       {children}
     </View>
@@ -617,7 +618,7 @@ function ConfidenceBar({
       >
         <Text style={s.muted}>{label}</Text>
         <Text style={s.faint}>
-          {count} nodes · {percent}%
+          {pluralize(count, "node")} · {percent}%
         </Text>
       </View>
       <View
@@ -653,29 +654,24 @@ function InsightsSection({ data }: { data: ProcessPdfData }) {
       {(data.criticalPathLabels.length > 0 || data.totalEstimatedDuration) && (
         <View style={[s.cardSoft, { marginBottom: 10 }]}>
           {data.totalEstimatedDuration ? (
-            <Text style={[s.body, { marginBottom: 4 }]}>
-              <Text style={{ fontFamily: "Helvetica-Bold", color: COLORS.ink }}>
-                Estimated duration:{" "}
-              </Text>
-              {data.totalEstimatedDuration}
-            </Text>
+            <View style={{ marginBottom: data.criticalPathLabels.length > 0 ? 8 : 0 }}>
+              <Text style={s.eyebrow}>Estimated duration</Text>
+              <Text style={s.muted}>{data.totalEstimatedDuration}</Text>
+            </View>
           ) : null}
           {data.criticalPathLabels.length > 0 && (
-            <>
+            <View>
               <Text style={s.eyebrow}>Critical path</Text>
               <Text style={s.muted}>
-                {data.criticalPathLabels.join("  →  ")}
+                {data.criticalPathLabels.join("  »  ")}
               </Text>
-            </>
+            </View>
           )}
         </View>
       )}
 
       {/* Bottlenecks */}
-      <InsightCard
-        title="Bottlenecks"
-        count={`${data.bottlenecks.length} steps`}
-      >
+      <InsightCard title="Bottlenecks" count={pluralize(data.bottlenecks.length, "step")}>
         {data.bottlenecks.length === 0 ? (
           <Text style={s.muted}>No bottleneck steps are marked.</Text>
         ) : (
@@ -702,7 +698,10 @@ function InsightsSection({ data }: { data: ProcessPdfData }) {
       {/* Automation */}
       <InsightCard
         title="Automation Opportunities"
-        count={`${data.automationOpportunities.length + data.automationCandidates.length} signals`}
+        count={pluralize(
+          data.automationOpportunities.length + data.automationCandidates.length,
+          "signal",
+        )}
       >
         {data.automationOpportunities.length > 0 && (
           <>
@@ -735,32 +734,10 @@ function InsightsSection({ data }: { data: ProcessPdfData }) {
         )}
       </InsightCard>
 
-      {/* Handoffs */}
-      <InsightCard title="Handoffs" count={`${data.handoffs.length} signals`}>
-        {data.handoffs.length === 0 ? (
-          <Text style={s.muted}>
-            No handoff steps or actor-change edges are present.
-          </Text>
-        ) : (
-          data.handoffs.map((item) => (
-            <MiniItem
-              key={item.id}
-              title={`${item.source.label}  →  ${item.target.label}`}
-            >
-              <Text style={s.faint}>
-                {item.actors.length > 0
-                  ? item.actors.join(", ")
-                  : "Actors not specified"}
-              </Text>
-            </MiniItem>
-          ))
-        )}
-      </InsightCard>
-
       {/* Tools */}
       <InsightCard
         title="Tools & Systems"
-        count={`${data.toolUsage.length} tools`}
+        count={pluralize(data.toolUsage.length, "tool")}
       >
         {data.toolUsage.length === 0 ? (
           <Text style={s.muted}>No tools are attached to the flow nodes.</Text>
@@ -786,7 +763,7 @@ function InsightsSection({ data }: { data: ProcessPdfData }) {
       {/* Decision points */}
       <InsightCard
         title="Decision Points"
-        count={`${data.decisionNodes.length} decisions`}
+        count={pluralize(data.decisionNodes.length, "decision")}
       >
         {data.decisionNodes.length === 0 ? (
           <Text style={s.muted}>No decision nodes are present.</Text>
@@ -804,7 +781,7 @@ function InsightsSection({ data }: { data: ProcessPdfData }) {
                       edge.target;
                     return (
                       <Text key={edge.id} style={[s.muted, { marginBottom: 1 }]}>
-                        {"→ "}
+                        <Text style={{ color: COLORS.faint }}>{"» "}</Text>
                         {edge.label ?? edge.type}: {targetLabel}
                         {edge.isHappyPath ? "" : "  — exception"}
                       </Text>
@@ -820,7 +797,7 @@ function InsightsSection({ data }: { data: ProcessPdfData }) {
       {/* Tribal knowledge */}
       <InsightCard
         title="Tribal Knowledge Risk"
-        count={`${data.tribalKnowledge.length} steps`}
+        count={pluralize(data.tribalKnowledge.length, "step")}
       >
         {data.tribalKnowledge.length === 0 ? (
           <Text style={s.muted}>
@@ -898,9 +875,9 @@ export function ProcessPdfDocument({ data }: { data: ProcessPdfData }) {
         <Footer processName={data.processName} />
       </Page>
 
-      {/* Flow diagram (landscape) */}
+      {/* Flow diagram (vertical flowchart, auto-paginates) */}
       {data.hasFlow && (
-        <Page size="A4" orientation="landscape" style={s.page}>
+        <Page size="A4" style={s.page}>
           <SectionHeader
             title="Process Flow"
             count={`${data.steps.length} steps · ${data.edges.length} connections`}

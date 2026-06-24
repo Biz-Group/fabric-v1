@@ -81,7 +81,9 @@ export const s = StyleSheet.create({
     paddingHorizontal: PAGE.marginX,
     fontFamily: "Helvetica",
     fontSize: 9.5,
-    lineHeight: 1.5,
+    // NOTE: do NOT set lineHeight here. An inherited lineHeight on the page
+    // makes react-pdf render wrapped text taller than the box it measured,
+    // causing overflow/overlap. lineHeight is set per-Text instead.
     color: COLORS.body,
     backgroundColor: COLORS.white,
   },
@@ -165,7 +167,7 @@ export const s = StyleSheet.create({
   },
   body: { fontSize: 9.5, color: COLORS.body, lineHeight: 1.5 },
   muted: { fontSize: 9, color: COLORS.muted, lineHeight: 1.5 },
-  faint: { fontSize: 8.5, color: COLORS.faint },
+  faint: { fontSize: 8.5, color: COLORS.faint, lineHeight: 1.4 },
 
   // --- Chips / badges ---
   chip: {
@@ -186,14 +188,13 @@ export const s = StyleSheet.create({
   },
 
   // --- Bullets ---
-  bulletRow: { flexDirection: "row", marginBottom: 3 },
-  bulletDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: COLORS.faint,
-    marginTop: 5,
-    marginRight: 6,
+  // Plain block text with an inline marker — identical structure to the
+  // summary paragraphs that render correctly. No flex row, no textIndent
+  // (both miscompute height in react-pdf and cause overlap).
+  bulletText: {
+    fontSize: 9,
+    color: COLORS.body,
+    lineHeight: 1.45,
+    marginBottom: 3,
   },
-  bulletText: { flex: 1, fontSize: 9, color: COLORS.body, lineHeight: 1.45 },
 });
