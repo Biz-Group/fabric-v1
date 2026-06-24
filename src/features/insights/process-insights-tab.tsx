@@ -2,7 +2,6 @@
 
 import { useCallback, useState } from "react";
 import { useAction, useQuery } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
 import type { LucideIcon } from "lucide-react";
 import {
   AlertCircle,
@@ -30,14 +29,26 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-
-type ProcessFlow = NonNullable<
-  FunctionReturnType<typeof api.processFlows.getProcessFlow>
->;
-type FlowNode = ProcessFlow["nodes"][number];
-type FlowEdge = ProcessFlow["edges"][number];
-type Confidence = FlowNode["confidence"];
-type AutomationPotential = FlowNode["automationPotential"];
+import {
+  type FlowNode,
+  type FlowEdge,
+  type Confidence,
+  type AutomationPotential,
+  type HandoffItem,
+  type ToolUsage,
+  type HeavyArea,
+  actorList,
+  deriveAutomationCandidates,
+  deriveBottlenecks,
+  deriveConfidenceCounts,
+  deriveDecisionBranches,
+  deriveHandoffs,
+  deriveHeavyAreas,
+  deriveToolUsage,
+  getNodeMap,
+  pluralize,
+  uniqueStrings,
+} from "@/features/insights/insights-derivations";
 
 type ProcessInsightsTabProps = {
   processId: Id<"processes">;
@@ -45,25 +56,6 @@ type ProcessInsightsTabProps = {
   canGenerate: boolean;
   isActive: boolean;
   onOpenProcessFlow: () => void;
-};
-
-type HandoffItem = {
-  id: string;
-  source: FlowNode;
-  target: FlowNode;
-  edge: FlowEdge | null;
-  actors: string[];
-};
-
-type ToolUsage = {
-  name: string;
-  steps: FlowNode[];
-};
-
-type HeavyArea = {
-  node: FlowNode;
-  toolCount: number;
-  handoffSignals: number;
 };
 
 const CATEGORY_LABELS: Record<FlowNode["category"], string> = {
@@ -137,189 +129,6 @@ function formatGeneratedAt(epochMs: number | null | undefined) {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-function normalizeText(value: string) {
-  return value.trim().toLocaleLowerCase();
-}
-
-function uniqueStrings(values: string[]) {
-  const byKey = new Map<string, string>();
-  for (const value of values) {
-    const trimmed = value.trim();
-    if (!trimmed) continue;
-    const key = normalizeText(trimmed);
-    if (!byKey.has(key)) byKey.set(key, trimmed);
-  }
-  return Array.from(byKey.values()).sort((a, b) => a.localeCompare(b));
-}
-
-function pluralize(count: number, singular: string, plural = `${singular}s`) {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
-function actorList(node: FlowNode) {
-  return uniqueStrings(node.actors).join(", ") || "Actor not specified";
-}
-
-function getNodeMap(nodes: FlowNode[]) {
-  return new Map(nodes.map((node) => [node.id, node]));
-}
-
-function actorsChanged(source: FlowNode, target: FlowNode) {
-  const sourceActors = uniqueStrings(source.actors).map(normalizeText);
-  const targetActors = uniqueStrings(target.actors).map(normalizeText);
-  if (sourceActors.length === 0 || targetActors.length === 0) return false;
-  if (sourceActors.length !== targetActors.length) return true;
-  return sourceActors.some((actor) => !targetActors.includes(actor));
-}
-
-function deriveHandoffs(nodes: FlowNode[], edges: FlowEdge[]) {
-  const nodeMap = getNodeMap(nodes);
-  const seen = new Set<string>();
-  const representedHandoffNodes = new Set<string>();
-  const items: HandoffItem[] = [];
-
-  for (const edge of edges) {
-    const source = nodeMap.get(edge.source);
-    const target = nodeMap.get(edge.target);
-    if (!source || !target) continue;
-
-    const isHandoff =
-      source.category === "handoff" ||
-      target.category === "handoff" ||
-      actorsChanged(source, target);
-
-    if (!isHandoff) continue;
-
-    const id = `edge:${edge.id}`;
-    seen.add(id);
-    if (source.category === "handoff") representedHandoffNodes.add(source.id);
-    if (target.category === "handoff") representedHandoffNodes.add(target.id);
-    items.push({
-      id,
-      source,
-      target,
-      edge,
-      actors: uniqueStrings([...source.actors, ...target.actors]),
-    });
-  }
-
-  for (const node of nodes) {
-    if (node.category !== "handoff") continue;
-
-    const incoming = edges.find((edge) => edge.target === node.id);
-    const outgoing = edges.find((edge) => edge.source === node.id);
-    const source = incoming ? nodeMap.get(incoming.source) : undefined;
-    const target = outgoing ? nodeMap.get(outgoing.target) : undefined;
-    const id = `node:${node.id}`;
-
-    if (seen.has(id)) continue;
-    if (representedHandoffNodes.has(node.id)) continue;
-    items.push({
-      id,
-      source: source ?? node,
-      target: target ?? node,
-      edge: outgoing ?? incoming ?? null,
-      actors: uniqueStrings([
-        ...(source?.actors ?? []),
-        ...node.actors,
-        ...(target?.actors ?? []),
-      ]),
-    });
-  }
-
-  return items;
-}
-
-function deriveToolUsage(nodes: FlowNode[]) {
-  const byTool = new Map<string, ToolUsage>();
-
-  for (const node of nodes) {
-    for (const tool of uniqueStrings(node.tools)) {
-      const key = normalizeText(tool);
-      const current = byTool.get(key);
-      if (current) {
-        current.steps.push(node);
-      } else {
-        byTool.set(key, { name: tool, steps: [node] });
-      }
-    }
-  }
-
-  return Array.from(byTool.values()).sort(
-    (a, b) => b.steps.length - a.steps.length || a.name.localeCompare(b.name),
-  );
-}
-
-function deriveHeavyAreas(nodes: FlowNode[], handoffs: HandoffItem[]) {
-  const handoffCountByNode = new Map<string, number>();
-
-  for (const item of handoffs) {
-    handoffCountByNode.set(
-      item.source.id,
-      (handoffCountByNode.get(item.source.id) ?? 0) + 1,
-    );
-    handoffCountByNode.set(
-      item.target.id,
-      (handoffCountByNode.get(item.target.id) ?? 0) + 1,
-    );
-  }
-
-  return nodes
-    .map((node): HeavyArea => ({
-      node,
-      toolCount: uniqueStrings(node.tools).length,
-      handoffSignals:
-        (handoffCountByNode.get(node.id) ?? 0) +
-        (node.category === "handoff" ? 1 : 0),
-    }))
-    .filter((area) => area.toolCount >= 2 || area.handoffSignals > 0)
-    .sort(
-      (a, b) =>
-        b.toolCount +
-          b.handoffSignals -
-          (a.toolCount + a.handoffSignals) ||
-        a.node.label.localeCompare(b.node.label),
-    );
-}
-
-function deriveBottlenecks(flow: ProcessFlow) {
-  const topBottleneckKeys = new Set(
-    flow.insights.topBottlenecks.map(normalizeText),
-  );
-
-  return flow.nodes.filter(
-    (node) =>
-      node.isBottleneck ||
-      topBottleneckKeys.has(normalizeText(node.id)) ||
-      topBottleneckKeys.has(normalizeText(node.label)),
-  );
-}
-
-function deriveAutomationCandidates(nodes: FlowNode[]) {
-  return nodes
-    .filter((node) => node.automationPotential !== "none")
-    .sort(
-      (a, b) =>
-        AUTOMATION_LABELS[b.automationPotential].rank -
-          AUTOMATION_LABELS[a.automationPotential].rank ||
-        a.label.localeCompare(b.label),
-    );
-}
-
-function deriveDecisionBranches(node: FlowNode, edges: FlowEdge[]) {
-  return edges.filter((edge) => edge.source === node.id);
-}
-
-function deriveConfidenceCounts(nodes: FlowNode[]) {
-  const counts: Record<Confidence, number> = {
-    high: 0,
-    medium: 0,
-    low: 0,
-  };
-  for (const node of nodes) counts[node.confidence] += 1;
-  return counts;
 }
 
 function MetricTile({

@@ -8,6 +8,7 @@ import {
   Bot,
   Check,
   ChevronDown,
+  Download,
   GitBranch,
   Loader2,
   Mic,
@@ -55,6 +56,8 @@ type ProcessHeaderProps = {
   onEditProcess: () => void;
   onMoveProcess: () => void;
   onDeleteProcess: () => void;
+  onDownloadProcess: () => void;
+  isDownloading: boolean;
   onStartInterview: () => void;
   onRecordVoice: () => void;
   onUploadAudio: () => void;
@@ -293,6 +296,8 @@ export function ProcessHeader({
   onEditProcess,
   onMoveProcess,
   onDeleteProcess,
+  onDownloadProcess,
+  isDownloading,
   onStartInterview,
   onRecordVoice,
   onUploadAudio,
@@ -446,7 +451,7 @@ export function ProcessHeader({
                 )}
                 {copyLabel}
               </Button>
-              <div className={cn(!canEdit && "md:hidden")}>
+              <div>
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={
@@ -461,7 +466,7 @@ export function ProcessHeader({
                   >
                     <MoreHorizontal className="size-4" />
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent role="menu" align="end" className="w-44">
+                  <DropdownMenuContent role="menu" align="end" className="w-48">
                     <DropdownMenuItem
                       className="md:hidden"
                       disabled={copyState === "copying"}
@@ -476,9 +481,21 @@ export function ProcessHeader({
                       )}
                       {copyLabel}
                     </DropdownMenuItem>
+                    <DropdownMenuSeparator className="md:hidden" />
+                    <DropdownMenuItem
+                      disabled={isDownloading}
+                      onClick={onDownloadProcess}
+                    >
+                      {isDownloading ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Download className="size-4" />
+                      )}
+                      {isDownloading ? "Preparing PDF…" : "Download PDF"}
+                    </DropdownMenuItem>
                     {canEdit && (
                       <>
-                        <DropdownMenuSeparator className="md:hidden" />
+                        <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={onEditProcess}>
                           <Pencil className="size-4" />
                           Edit process

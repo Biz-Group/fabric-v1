@@ -69,6 +69,7 @@ import {
 import { CrudDialog } from "@/features/hierarchy/crud-dialog";
 import { CommandPalette } from "@/features/hierarchy/command-palette";
 import { MarkdownSummary } from "@/features/workbench/markdown-summary";
+import { useProcessPdfDownload } from "@/features/workbench/process-pdf/use-process-pdf-download";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Sheet,
@@ -200,6 +201,10 @@ export function ProcessWorkbench() {
   const generateFunctionSummary = useAction(api.summaries.generateFunctionSummary);
   const forceRefreshProcessSummary = useAction(api.summaries.forceRefreshProcessSummary);
   const [processSummaryRefreshing, setProcessSummaryRefreshing] = useState(false);
+
+  // Process report PDF export (flow fetched + rendered on demand).
+  const { download: downloadProcessPdf, isDownloading: isDownloadingPdf } =
+    useProcessPdfDownload();
 
   // CRUD mutations/actions
   const createFunction = useMutation(api.functions.create);
@@ -936,6 +941,29 @@ export function ProcessWorkbench() {
     openCrud("delete", "Process", workbenchProcessName, selectedProcessId);
   }, [openCrud, selectedProcessId, workbenchProcessName]);
 
+  const handleDownloadProcess = useCallback(() => {
+    if (!selectedProcessId) return;
+    void downloadProcessPdf({
+      processId: selectedProcessId,
+      processName: workbenchProcessName,
+      functionName: workbenchFunctionName,
+      departmentName: workbenchDepartmentName,
+      summary: processSummary ?? null,
+      contributorName: processWorkbench?.latestContributor?.name ?? null,
+      lastUpdatedAt: processWorkbench?.lastUpdatedAt ?? null,
+      completedConversationCount: completedProcessConversationCount,
+    });
+  }, [
+    downloadProcessPdf,
+    selectedProcessId,
+    workbenchProcessName,
+    workbenchFunctionName,
+    workbenchDepartmentName,
+    processSummary,
+    processWorkbench,
+    completedProcessConversationCount,
+  ]);
+
   // --- Mobile navigation columns ---
   // On desktop the hierarchy is the nested ProcessTreeNavigator. These single
   // columns are the mobile-only drill-down (functions → departments →
@@ -1451,6 +1479,8 @@ export function ProcessWorkbench() {
             onEditProcess={handleEditSelectedProcess}
             onMoveProcess={handleEditSelectedProcess}
             onDeleteProcess={handleDeleteSelectedProcess}
+            onDownloadProcess={handleDownloadProcess}
+            isDownloading={isDownloadingPdf}
             onStartInterview={() => handleOpenRecordingMode("agent")}
             onRecordVoice={() => handleOpenRecordingMode("voiceRecord")}
             onUploadAudio={() => handleOpenRecordingMode("audioUpload")}
