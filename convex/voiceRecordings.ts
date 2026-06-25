@@ -10,6 +10,7 @@ import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import {
   assertOrgOwns,
+  requireOrgAdmin,
   requireOrgContributor,
   resolveOrgForAction,
 } from "./lib/orgAuth";
@@ -611,6 +612,69 @@ export const submitSpeakerLabels = mutation({
     );
 
     return { status: "processing" as const };
+  },
+});
+
+export const retryAudioProcessing = mutation({
+  args: { conversationId: v.id("conversations") },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgAdmin(ctx);
+    const conv = await ctx.db.get(args.conversationId);
+    assertOrgOwns(caller, conv);
+
+    if (conv.status !== "failed") {
+      throw new Error("Only failed audio conversations can be retried");
+    }
+
+    const mode = conv.inputMode ?? "agent";
+    if (mode !== "voiceRecord" && mode !== "audioUpload") {
+      throw new Error("Only failed audio conversations can be retried");
+    }
+
+    const hasTranscript = Boolean(conv.transcript?.length);
+
+    if (hasTranscript) {
+      await ctx.db.patch(args.conversationId, {
+        status: "processing",
+        summary: undefined,
+        analysis: undefined,
+      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.voiceRecordings.analyzeVoiceRecordingInternal,
+        { conversationId: args.conversationId, clerkOrgId: caller.orgId },
+      );
+      return { status: "processing" as const, retryStage: "analysis" as const };
+    }
+
+    if (!conv.audioStorageId) {
+      throw new Error("Audio file is no longer available for retry");
+    }
+
+    await ctx.db.patch(args.conversationId, {
+      status: "processing",
+      transcript: undefined,
+      speakerLabels: undefined,
+      summary: undefined,
+      analysis: undefined,
+    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.voiceRecordings.processVoiceRecordingInternal,
+      {
+        conversationId: args.conversationId,
+        processId: conv.processId,
+        clerkOrgId: caller.orgId,
+        storageId: conv.audioStorageId,
+        durationSeconds: conv.durationSeconds,
+        mimeType: conv.audioMimeType ?? "audio/webm",
+      },
+    );
+
+    return {
+      status: "processing" as const,
+      retryStage: "transcription" as const,
+    };
   },
 });
 

@@ -153,6 +153,64 @@ async function seedOrgAMember(
   });
 }
 
+async function seedFailedAudioConversation(
+  t: ReturnType<typeof convexTest>,
+  overrides: Partial<{
+    clerkOrgId: string;
+    inputMode: "agent" | "voiceRecord" | "audioUpload";
+    withAudioStorage: boolean;
+    transcript: Array<{
+      role: string;
+      content: string;
+      time_in_call_secs: number;
+      speakerId?: string;
+      speakerName?: string;
+    }>;
+    summary: string;
+    analysis: Record<string, unknown>;
+  }> = {},
+) {
+  return await t.run(async (ctx) => {
+    const clerkOrgId = overrides.clerkOrgId ?? ORG_A;
+    const fn = await ctx.db.insert("functions", {
+      name: "Ops",
+      sortOrder: 0,
+      clerkOrgId,
+    });
+    const dept = await ctx.db.insert("departments", {
+      functionId: fn,
+      name: "Payroll",
+      sortOrder: 0,
+      clerkOrgId,
+    });
+    const processId = await ctx.db.insert("processes", {
+      departmentId: dept,
+      name: "Monthly payroll",
+      sortOrder: 0,
+      clerkOrgId,
+    });
+    const audioStorageId = overrides.withAudioStorage
+      ? await ctx.storage.store(new Blob(["audio"], { type: "audio/webm" }))
+      : undefined;
+    const conversationId = await ctx.db.insert("conversations", {
+      processId,
+      clerkOrgId,
+      contributorName: "Uploader",
+      inputMode: overrides.inputMode ?? "audioUpload",
+      audioStorageId,
+      audioMimeType: audioStorageId ? "audio/webm" : undefined,
+      transcriptionProvider: "elevenlabs-scribe",
+      analysisProvider: "fabric-openrouter",
+      transcript: overrides.transcript,
+      summary: overrides.summary,
+      analysis: overrides.analysis,
+      durationSeconds: 42,
+      status: "failed",
+    });
+    return { conversationId, processId };
+  });
+}
+
 describe("voice recording helpers", () => {
   test("normalizes Scribe word timestamps into transcript chunks", () => {
     const transcript = normalizeScribeTranscript({
@@ -367,5 +425,105 @@ describe("voice recording abandonment", () => {
 
     const row = await t.run(async (ctx) => ctx.db.get(conversationId));
     expect(row?.status).toBe("done");
+  });
+});
+
+describe("audio retry", () => {
+  test("queues transcription retry for a failed audio upload without a transcript", async () => {
+    const t = convexTest(schema, modules);
+    await seedOrgAMember(t, "user_admin", "admin");
+    const { conversationId } = await seedFailedAudioConversation(t, {
+      withAudioStorage: true,
+    });
+
+    const result = await t
+      .withIdentity(identityForOrgAUser("user_admin", "Admin"))
+      .mutation(api.voiceRecordings.retryAudioProcessing, { conversationId });
+
+    expect(result).toEqual({
+      status: "processing",
+      retryStage: "transcription",
+    });
+    const row = await t.run(async (ctx) => ctx.db.get(conversationId));
+    expect(row?.status).toBe("processing");
+    expect(row?.summary).toBeUndefined();
+    expect(row?.analysis).toBeUndefined();
+  });
+
+  test("queues summary retry for a failed audio upload with a transcript", async () => {
+    const t = convexTest(schema, modules);
+    await seedOrgAMember(t, "user_admin", "admin");
+    const transcript = [
+      {
+        role: "user",
+        content: "I pull the payroll report.",
+        time_in_call_secs: 0,
+        speakerId: "speaker_0",
+        speakerName: "Alice",
+      },
+    ];
+    const { conversationId } = await seedFailedAudioConversation(t, {
+      transcript,
+      summary: "Stale summary",
+      analysis: { stale: true },
+    });
+
+    const result = await t
+      .withIdentity(identityForOrgAUser("user_admin", "Admin"))
+      .mutation(api.voiceRecordings.retryAudioProcessing, { conversationId });
+
+    expect(result).toEqual({
+      status: "processing",
+      retryStage: "analysis",
+    });
+    const row = await t.run(async (ctx) => ctx.db.get(conversationId));
+    expect(row?.status).toBe("processing");
+    expect(row?.transcript).toEqual(transcript);
+    expect(row?.summary).toBeUndefined();
+    expect(row?.analysis).toBeUndefined();
+  });
+
+  test("rejects cross-org audio retry attempts", async () => {
+    const t = convexTest(schema, modules);
+    await seedOrgAMember(t, "user_admin", "admin");
+    const { conversationId } = await seedFailedAudioConversation(t, {
+      clerkOrgId: ORG_B,
+      withAudioStorage: true,
+    });
+
+    await expect(
+      t
+        .withIdentity(identityForOrgAUser("user_admin", "Admin"))
+        .mutation(api.voiceRecordings.retryAudioProcessing, { conversationId }),
+    ).rejects.toThrow(/Not found/);
+  });
+
+  test("requires admin role for audio retry", async () => {
+    const t = convexTest(schema, modules);
+    await seedOrgAMember(t, "user_c", "contributor");
+    const { conversationId } = await seedFailedAudioConversation(t, {
+      withAudioStorage: true,
+    });
+
+    await expect(
+      t
+        .withIdentity(identityForOrgAUser("user_c", "Carol"))
+        .mutation(api.voiceRecordings.retryAudioProcessing, { conversationId }),
+    ).rejects.toThrow(/Insufficient permissions/);
+  });
+
+  test("rejects non-audio failed conversations", async () => {
+    const t = convexTest(schema, modules);
+    await seedOrgAMember(t, "user_admin", "admin");
+    const { conversationId } = await seedFailedAudioConversation(t, {
+      inputMode: "agent",
+      withAudioStorage: true,
+    });
+
+    await expect(
+      t
+        .withIdentity(identityForOrgAUser("user_admin", "Admin"))
+        .mutation(api.voiceRecordings.retryAudioProcessing, { conversationId }),
+    ).rejects.toThrow(/Only failed audio conversations/);
   });
 });

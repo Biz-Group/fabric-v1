@@ -94,6 +94,19 @@ function getConversationTypeLabel(inputMode: ConversationRow["inputMode"]) {
   return "AI Interview";
 }
 
+function isStoredAudioConversation(inputMode: ConversationRow["inputMode"]) {
+  return inputMode === "voiceRecord" || inputMode === "audioUpload";
+}
+
+function getRetryLabel(conversation: ConversationRow) {
+  if (!isStoredAudioConversation(conversation.inputMode)) {
+    return "Retry fetch";
+  }
+  return conversation.transcript?.length
+    ? "Retry summary generation"
+    : "Retry transcription";
+}
+
 function ConversationTypeBadge({
   inputMode,
 }: {
@@ -157,7 +170,10 @@ export default function AdminConversationsPage() {
 
   const convex = useConvex();
   const deleteConversation = useMutation(api.conversations.deleteForAdmin);
-  const retryConversation = useAction(api.conversations.retryFetch);
+  const retryAgentConversation = useAction(api.conversations.retryFetch);
+  const retryAudioConversation = useMutation(
+    api.voiceRecordings.retryAudioProcessing,
+  );
 
   const filtered = useMemo(() => {
     if (!search.trim()) return results;
@@ -184,10 +200,24 @@ export default function AdminConversationsPage() {
     }
   };
 
-  const handleRetry = async (id: Id<"conversations">) => {
-    setRetryingId(id);
+  const handleRetry = async (conversation: ConversationRow) => {
+    setRetryingId(conversation._id);
     try {
-      const result = await retryConversation({ conversationId: id });
+      if (isStoredAudioConversation(conversation.inputMode)) {
+        const result = await retryAudioConversation({
+          conversationId: conversation._id,
+        });
+        toast.success(
+          result.retryStage === "analysis"
+            ? "Summary retry queued."
+            : "Transcription retry queued.",
+        );
+        return;
+      }
+
+      const result = await retryAgentConversation({
+        conversationId: conversation._id,
+      });
       if (result.status === "done") toast.success("Retry succeeded.");
       else if (result.status === "failed") toast.error("Retry failed again.");
       else toast.info(`Retry queued (status: ${result.status}).`);
@@ -362,13 +392,13 @@ export default function AdminConversationsPage() {
                           </DropdownMenuItem>
                           {r.status === "failed" && (
                             <DropdownMenuItem
-                              onClick={() => handleRetry(r._id)}
+                              onClick={() => handleRetry(r)}
                               disabled={retryingId === r._id}
                             >
                               <RotateCcw />
                               {retryingId === r._id
                                 ? "Retrying..."
-                                : "Retry fetch"}
+                                : getRetryLabel(r)}
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem
