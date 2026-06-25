@@ -344,7 +344,7 @@ async function analyzeTranscript(
           content: `Transcript:\n\n${transcriptText(transcript)}`,
         },
       ],
-      max_tokens: 4096,
+      max_tokens: 8192,
     }),
   });
 
