@@ -173,4 +173,31 @@ describe("process flow generation helpers", () => {
     expect(normalized.insights.toolCount).toBe(2);
     expect(normalized.insights.topBottlenecks).toEqual(["Approve Request"]);
   });
+
+  test("defaults missing automation potential to low, not none", () => {
+    const normalized = normalizeFlowResponse({
+      nodes: [
+        {
+          id: "do-thing",
+          label: "Do Thing",
+          description: "A step with no automationPotential field.",
+          category: "action",
+          actors: [],
+          tools: [],
+          painPoints: [],
+          confidence: "medium",
+          isBottleneck: false,
+          isTribalKnowledge: false,
+          riskIndicators: [],
+          sources: [],
+        },
+      ],
+      edges: [],
+      insights: {},
+    });
+
+    // "none" would mean "already automated" and hide the step from automation
+    // candidates; an unknown value must remain a (weak) candidate instead.
+    expect(normalized.nodes[0].automationPotential).toBe("low");
+  });
 });

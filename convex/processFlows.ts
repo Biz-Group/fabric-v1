@@ -438,9 +438,13 @@ export function normalizeFlowResponse(parsed: ParsedFlowResponse): {
       tools: Array.isArray(node.tools) ? node.tools.map(String) : [],
       estimatedDuration: node.estimatedDuration ? String(node.estimatedDuration) : undefined,
       painPoints: Array.isArray(node.painPoints) ? node.painPoints.map(String) : [],
+      // Default unknown/invalid automation potential to "low" (a weak
+      // candidate), never "none". In this taxonomy "none" means "already
+      // automated", so coercing missing values to "none" would silently hide
+      // the step from automation candidates in the Insights tab.
       automationPotential: validAutomation.has(String(node.automationPotential))
         ? (String(node.automationPotential) as FlowAutomationPotential)
-        : ("none" as const),
+        : ("low" as const),
       confidence: validConfidence.has(String(node.confidence))
         ? (String(node.confidence) as FlowConfidence)
         : ("medium" as const),

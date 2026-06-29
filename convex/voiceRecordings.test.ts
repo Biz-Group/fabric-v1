@@ -6,6 +6,7 @@ import schema from "./schema";
 import {
   coerceAnalysisPayload,
   normalizeScribeTranscript,
+  parseAnalysisResponse,
 } from "./voiceRecordings";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -291,6 +292,55 @@ describe("voice recording helpers", () => {
     expect(JSON.parse(analysis.data_collection.step_issues)).toHaveLength(1);
     expect(analysis.data_collection.dependencies).toBe("HRIS export");
     expect(analysis.success_evaluation.identified_dependencies).toBe(true);
+  });
+
+  test("parses a well-formed analysis response into a payload", () => {
+    const payload = {
+      transcript_summary: "Contributor walked through the payroll close.",
+      data_collection: {
+        process_steps: "[]",
+        step_connections: "[]",
+        step_issues: "[]",
+      },
+    };
+    const analysis = parseAnalysisResponse(
+      { choices: [{ message: { content: JSON.stringify(payload) } }] },
+      "Fallback",
+    );
+
+    expect(analysis.transcript_summary).toBe(
+      "Contributor walked through the payroll close.",
+    );
+  });
+
+  test("detects token-limit truncation instead of throwing a parse error", () => {
+    // A truncated payload — JSON.parse would normally throw an opaque error.
+    expect(() =>
+      parseAnalysisResponse(
+        {
+          choices: [
+            {
+              finish_reason: "length",
+              message: { content: '{"transcript_summary":"Contributor expl' },
+            },
+          ],
+        },
+        "Fallback",
+      ),
+    ).toThrow(/token limit/i);
+  });
+
+  test("reports unparseable (non-truncated) JSON distinctly", () => {
+    expect(() =>
+      parseAnalysisResponse(
+        {
+          choices: [
+            { finish_reason: "stop", message: { content: "not json at all" } },
+          ],
+        },
+        "Fallback",
+      ),
+    ).toThrow(/unparseable JSON/i);
   });
 });
 

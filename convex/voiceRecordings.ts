@@ -14,6 +14,10 @@ import {
   requireOrgContributor,
   resolveOrgForAction,
 } from "./lib/orgAuth";
+import {
+  getFlowFinishReason as getOpenRouterFinishReason,
+  isTokenLimitFinishReason,
+} from "./processFlows";
 
 type TranscriptMessage = {
   role: string;
@@ -324,6 +328,49 @@ async function transcribeWithScribe(
   return (await response.json()) as ScribeResponse;
 }
 
+// Analysis output is verbose JSON (process_steps + connections + issues, each an
+// escaped JSON-array string), so give it more headroom than the rolling summary
+// to reduce truncation. Residual truncation is still detected explicitly below.
+const VOICE_ANALYSIS_MAX_TOKENS = 16384;
+
+/**
+ * Turns a raw OpenRouter chat-completion result into an AnalysisPayload.
+ * Detects token-limit truncation explicitly — a truncated payload would
+ * otherwise blow up in JSON.parse and surface as an opaque failure — and
+ * distinguishes it from genuinely malformed JSON.
+ */
+export function parseAnalysisResponse(
+  result: unknown,
+  fallbackSummary: string,
+): AnalysisPayload {
+  const finishReason = getOpenRouterFinishReason(result);
+  if (isTokenLimitFinishReason(finishReason)) {
+    throw new Error(
+      `Voice recording analysis hit the AI response token limit (finish_reason: ${finishReason}). The recording may be too long to analyze in a single pass.`,
+    );
+  }
+
+  const content = (
+    result as { choices?: Array<{ message?: { content?: unknown } }> }
+  ).choices?.[0]?.message?.content;
+  if (typeof content !== "string" || !content.trim()) {
+    throw new Error("OpenRouter returned an empty analysis response");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripJsonFences(content));
+  } catch (error) {
+    throw new Error(
+      `Voice recording analysis returned unparseable JSON: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+  }
+
+  return coerceAnalysisPayload(parsed, fallbackSummary);
+}
+
 async function analyzeTranscript(
   transcript: TranscriptMessage[],
   openrouterKey: string,
@@ -344,7 +391,7 @@ async function analyzeTranscript(
           content: `Transcript:\n\n${transcriptText(transcript)}`,
         },
       ],
-      max_tokens: 8192,
+      max_tokens: VOICE_ANALYSIS_MAX_TOKENS,
     }),
   });
 
@@ -353,16 +400,7 @@ async function analyzeTranscript(
     throw new Error(`OpenRouter API error ${response.status}: ${body}`);
   }
 
-  const result = await response.json();
-  const content = result.choices?.[0]?.message?.content;
-  if (typeof content !== "string" || !content.trim()) {
-    throw new Error("OpenRouter returned an empty analysis response");
-  }
-
-  return coerceAnalysisPayload(
-    JSON.parse(stripJsonFences(content)),
-    fallbackSummary,
-  );
+  return parseAnalysisResponse(await response.json(), fallbackSummary);
 }
 
 export const generateUploadUrl = mutation({
