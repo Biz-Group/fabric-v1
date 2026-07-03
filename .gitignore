@@ -43,11 +43,12 @@ todo.txt
 /.vscode
 .codex
 BRANDING_KIT.md
-/.claude
-/.agents
 dump.json
 /.agents
 /.claude
 CLAUDE.md
 AGENTS.md
 docs/process-flow-generation-v2-plan.md
+/v1
+/.agents
+/.claude

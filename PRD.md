@@ -132,6 +132,27 @@ If a contributor closes the modal after upload/recording has reached Convex Stor
 **Failure handling — retry and truncation:**
 Voice Record and Audio File Upload conversations that fail transcription or analysis are marked `status: "failed"` and surfaced in Admin → Conversations, where an admin can retry them. Retry resumes from whichever stage actually failed: if a transcript already exists, only analysis re-runs; if transcription itself failed, it re-runs from the original stored audio. Separately, the analysis step explicitly detects when the AI response was cut off by the token limit (rather than letting a truncated payload fail as an opaque JSON parse error) and raises a clear "recording may be too long to analyze in a single pass" error instead.
 
+### 2.4 Admin Console
+
+Users with the `admin` role get a separate, full-screen console at `/[org]/admin`, reached via an "Admin" item in the main nav bar that's only rendered for admins. Visiting any `/admin/*` route directly with a non-admin role renders an "Admin access required" blocker with a link back to the workspace, rather than the console itself. The console has its own left-nav with four sections: **Overview**, **Users**, **Conversations**, **Appearance**.
+
+**Overview** — a snapshot of workspace health:
+- Four stat cards: **Members** (active count, with an admin/contributor/viewer breakdown), **Pending invites**, **Conversations this week** (with a "+N vs prior week" delta), and **Failed conversations** (rendered in a destructive/red tone when non-zero; clicking it deep-links to the Conversations section pre-filtered to `status=failed`).
+- A **Recent conversations** list — the last 5 captured across every process, each row showing a status dot, contributor name, process name badge, a summary snippet, and a relative timestamp ("3h ago"). Clicking a row opens the same transcript dialog used elsewhere in the console.
+
+**Users** — member directory and invitation management:
+- A searchable (name, email, job title), paginated (50 per page, "Load more") table: Name (with a "(you)" tag for the current admin), Email, Role, Job Title, Platform (a "Super Admin" badge for platform-level super-admins, else blank), Profile (Complete/Incomplete badge), Joined Org date, and a row action menu.
+- **Role changes** are an inline dropdown (admin/contributor/viewer); promoting someone to admin or demoting an existing admin requires an explicit confirmation dialog. Admins cannot change their own role (shown as a static badge instead of a dropdown).
+- **Removal** is a destructive row action ("Remove from workspace") behind a confirmation dialog; admins cannot remove themselves.
+- An **"Invite member"** button opens a dialog to invite by email + role; a **Pending invitations** list below the table shows outstanding Clerk invites with revoke/resend actions (§3.7.5).
+
+**Conversations** — org-wide conversation log, independent of which process it's viewed from:
+- A search box (matches contributor, process, summary, or type) plus a status filter (All / Done / Processing / Needs speaker labels / Failed) and an optional process filter carried via a URL query param (with a "Clear process filter" button) — this is what the hierarchy delete-blocker flow and the Overview "Failed conversations" card link into.
+- A paginated table: Created date, Contributor, Type (AI Interview / Voice Recording / Audio Upload, each with a distinct icon badge), Process (plus its function/department), Duration, Status badge, and a row action menu (View transcript; Retry — shown only when `status: "failed"`, labeled "Retry fetch" for AI interviews or "Retry transcription"/"Retry summary generation" for Voice Record/Audio Upload depending on whether a transcript already exists; Delete, behind a confirmation dialog that explains the parent process summary will be regenerated).
+- An **"Export CSV"** button streams every row matching the current filters (paginating through all of them client-side, not just the visible page) into a downloadable `conversations-{org-slug}-{date}.csv` file.
+
+**Appearance** — org branding and theming; see §3.8 for the full generate/approve/reset workflow.
+
 ---
 
 ## 3. Technical Architecture
@@ -1360,7 +1381,7 @@ Alternatively, the entire modal can use the **Conversation Bar** component, whic
 - Convex built-in reactivity for live UI updates
 - **Error handling for disconnects** — graceful UI for `onDisconnect` with reason `"error"`, with retry prompt
 - **Admin retry for failed recordings** — Voice Record / Audio File Upload conversations that fail transcription or analysis can be retried by an admin from Admin → Conversations, resuming from the failed stage (§2.3, §3.3.4a)
-- **Admin dashboard** (`/[org]/admin`) — overview stats (members, invitations, conversations), org-wide conversation log with filtering, search, CSV export, and retry, member management (invite/role-change/remove), and org appearance settings
+- **Admin Console** (`/[org]/admin`) — Overview stats, org-wide conversation log with filtering/search/CSV export/retry, member management (invite/role-change/remove), and org appearance settings, across four dedicated sections (§2.4)
 - **Process Insights tab** — derived analytics (handoffs, tool usage, bottlenecks, automation candidates, tribal-knowledge risk, decision branches, evidence coverage) computed from the generated process flow (§2.2)
 - **PDF export** — client-side, on-demand process report generation (§2.2)
 - **Org branding / appearance** — admin-configurable accent/chart colors generated from the org's logo or entered manually, with a candidate/approve workflow (§3.8)
