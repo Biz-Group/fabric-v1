@@ -8,6 +8,7 @@ import {
   mutation,
   MutationCtx,
   query,
+  QueryCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
@@ -331,6 +332,52 @@ export const listActiveTenantsInternal = internalQuery({
 
 // --- Console queries ---------------------------------------------------------
 
+type TenantCounts = {
+  memberCount: number;
+  adminCount: number;
+  pendingInviteCount: number;
+};
+
+/**
+ * Member/admin/pending counts for a tenant. Prefers the denormalized
+ * `orgMembershipStats` row (kept current by the membership mutations), but
+ * falls back to a live count when the row is absent — which is the case for
+ * tenants that predate the stats row or were created directly in Clerk
+ * rather than through the console. Bounded to a single org.
+ */
+async function tenantCounts(
+  ctx: QueryCtx,
+  clerkOrgId: string,
+): Promise<TenantCounts> {
+  const stats = await ctx.db
+    .query("orgMembershipStats")
+    .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
+    .unique();
+  if (stats) {
+    return {
+      memberCount: stats.activeCount,
+      adminCount: stats.adminCount,
+      pendingInviteCount: stats.pendingInviteCount,
+    };
+  }
+
+  let memberCount = 0;
+  let adminCount = 0;
+  for await (const membership of ctx.db
+    .query("memberships")
+    .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))) {
+    memberCount++;
+    if (membership.role === "admin") adminCount++;
+  }
+  const pending = await ctx.db
+    .query("membershipIntents")
+    .withIndex("by_clerkOrgId_and_status", (q) =>
+      q.eq("clerkOrgId", clerkOrgId).eq("status", "pending"),
+    )
+    .take(1000);
+  return { memberCount, adminCount, pendingInviteCount: pending.length };
+}
+
 export const list = query({
   args: {},
   handler: async (ctx) => {
@@ -338,12 +385,7 @@ export const list = query({
     const rows = await ctx.db.query("tenants").order("desc").take(500);
     return await Promise.all(
       rows.map(async (tenant) => {
-        const stats = await ctx.db
-          .query("orgMembershipStats")
-          .withIndex("by_clerkOrgId", (q) =>
-            q.eq("clerkOrgId", tenant.clerkOrgId),
-          )
-          .unique();
+        const counts = await tenantCounts(ctx, tenant.clerkOrgId);
         return {
           tenantId: tenant._id,
           clerkOrgId: tenant.clerkOrgId,
@@ -354,9 +396,9 @@ export const list = query({
           status: tenant.status,
           provisioningErrors: tenant.provisioningErrors ?? [],
           createdAt: tenant.createdAt,
-          memberCount: stats?.activeCount ?? null,
-          adminCount: stats?.adminCount ?? null,
-          pendingInviteCount: stats?.pendingInviteCount ?? null,
+          memberCount: counts.memberCount,
+          adminCount: counts.adminCount,
+          pendingInviteCount: counts.pendingInviteCount,
         };
       }),
     );
@@ -373,10 +415,7 @@ export const get = query({
     if (!tenantId) return null;
     const tenant = await ctx.db.get(tenantId);
     if (!tenant) return null;
-    const stats = await ctx.db
-      .query("orgMembershipStats")
-      .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", tenant.clerkOrgId))
-      .unique();
+    const counts = await tenantCounts(ctx, tenant.clerkOrgId);
     return {
       tenantId: tenant._id,
       clerkOrgId: tenant.clerkOrgId,
@@ -389,9 +428,9 @@ export const get = query({
       firstInviteEmail: tenant.firstInviteEmail ?? null,
       hasRetainedLogo: tenant.logoStorageId !== undefined,
       createdAt: tenant.createdAt,
-      memberCount: stats?.activeCount ?? null,
-      adminCount: stats?.adminCount ?? null,
-      pendingInviteCount: stats?.pendingInviteCount ?? null,
+      memberCount: counts.memberCount,
+      adminCount: counts.adminCount,
+      pendingInviteCount: counts.pendingInviteCount,
     };
   },
 });
@@ -936,6 +975,12 @@ export const backfillTenantsFromClerk = internalAction({
           slug: org.slug,
           ...(org.image_url ? { logoUrl: org.image_url } : {}),
           allowedEmailDomains: allowedDomainsFromMetadata(org.public_metadata),
+        });
+        // Materialize the denormalized stats row so the console's fast count
+        // path applies to these pre-existing tenants (the live fallback would
+        // otherwise scan memberships on every load).
+        await ctx.runMutation(internal.users.rebuildOrgMembershipStats, {
+          clerkOrgId: org.id,
         });
         processed++;
       }
