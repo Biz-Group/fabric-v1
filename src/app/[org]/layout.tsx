@@ -8,7 +8,7 @@ import {
 } from "@clerk/nextjs";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import { OrgThemeProvider } from "@/features/theming/org-theme-provider";
@@ -73,21 +73,23 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
     return <LoadingScreen message="Redirecting to sign in..." showSpinner={false} />;
   }
 
-  // User is signed in but isn't a member of this subdomain's org. Render a
-  // flat "no access" screen — never an org picker on this surface (the
-  // picker is a nav-bar concern, only for multi-org admins inside the app).
-  // List clickable links to whichever subdomains they DO have access to so
-  // they can jump to a valid one without re-signing in. The Clerk session
-  // cookie is scoped to the apex, so the link works without a fresh login.
+  // User is signed in but isn't a member of this subdomain's org yet.
+  // Enrollment is open: offer to join this workspace directly (same API the
+  // sign-up/sign-in handoff uses), and list the subdomains they already have
+  // access to. The Clerk session cookie is scoped to the apex, so those links
+  // work without a fresh login.
   if (!matchingMembership) {
     const orgs = userMemberships.data ?? [];
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-5 p-6 text-center">
-        <h2 className="text-xl font-semibold">No access to this workspace</h2>
+        <h2 className="text-xl font-semibold">
+          You&apos;re not in this workspace yet
+        </h2>
         <p className="max-w-md text-sm text-muted-foreground">
-          Your account isn&apos;t a member of {slugFromUrl}. Sign in from the
-          subdomain that matches your organization.
+          Your account isn&apos;t a member of {slugFromUrl}. You can join it
+          now, or switch to a workspace you already belong to.
         </p>
+        <JoinWorkspaceButton />
         {orgs.length > 0 && (
           <div className="mt-2 flex flex-col items-center gap-2">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -125,6 +127,57 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
       {children}
       <Toaster richColors closeButton position="bottom-right" />
     </OrgThemeProvider>
+  );
+}
+
+function JoinWorkspaceButton() {
+  const { setActive } = useClerk();
+  const [joining, setJoining] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleJoin = async () => {
+    setJoining(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/join-subdomain-organization", {
+        method: "POST",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(
+          data?.error ?? "We could not join this workspace. Please try again.",
+        );
+      }
+      const data = (await response.json()) as { organizationId: string };
+      await setActive({ organization: data.organizationId });
+      // Full reload so useOrganizationList picks up the new membership and
+      // the layout re-evaluates from a clean slate.
+      window.location.reload();
+    } catch (joinError) {
+      setError(
+        joinError instanceof Error
+          ? joinError.message
+          : "We could not join this workspace. Please try again.",
+      );
+      setJoining(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <button
+        type="button"
+        onClick={() => void handleJoin()}
+        disabled={joining}
+        className="h-11 rounded-xl bg-foreground px-5 text-sm font-medium text-background hover:bg-foreground/90 disabled:opacity-60"
+      >
+        {joining ? "Joining..." : "Join this workspace"}
+      </button>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </div>
   );
 }
 

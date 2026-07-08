@@ -66,6 +66,47 @@ async function requireAdminForAction(
   });
 }
 
+// Clerk's default invitation email links to the hosted Account Portal, which
+// strands invitees outside the tenant subdomain. Point the link at the
+// tenant's own /sign-up instead: Clerk appends `__clerk_ticket`, the <SignUp>
+// component consumes it, and the invitee joins the org atomically with the
+// invited email enforced. Returns null (Clerk default) when the slug or
+// ROOT_DOMAIN isn't available.
+export function inviteRedirectUrl(orgSlug: string | null): string | null {
+  const root = process.env.ROOT_DOMAIN?.trim();
+  if (!root || !orgSlug) return null;
+  const rootHost = root.split(":")[0];
+  const isLocal =
+    rootHost === "localhost" ||
+    rootHost === "127.0.0.1" ||
+    rootHost === "lvh.me" ||
+    rootHost.endsWith(".localhost") ||
+    rootHost.endsWith(".lvh.me");
+  const scheme = isLocal ? "http" : "https";
+  return `${scheme}://${orgSlug}.${root}/sign-up`;
+}
+
+/** Emails (lowercased) from `candidates` that already hold an active
+ * membership in the org. Used to hide fulfilled invitations from the pending
+ * list: with open subdomain enrollment a user can join directly, which leaves
+ * their Clerk invitation pending forever. */
+export const getMemberEmailsAmong = internalQuery({
+  args: { orgId: v.string(), emailsLower: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const memberEmails: string[] = [];
+    for (const emailLower of args.emailsLower) {
+      const membership = await ctx.db
+        .query("memberships")
+        .withIndex("by_clerkOrgId_and_emailLower", (q) =>
+          q.eq("clerkOrgId", args.orgId).eq("emailLower", emailLower),
+        )
+        .first();
+      if (membership) memberEmails.push(emailLower);
+    }
+    return memberEmails;
+  },
+});
+
 /** Admin-only. Invite a new member to the caller's active org via Clerk. The
  * invitee accepts in Clerk → signs in → `users.store` auto-provisions their
  * Fabric membership with the requested Convex role. Clerk only carries the
@@ -82,11 +123,12 @@ export const invite = action({
     ),
   },
   handler: async (ctx, args) => {
-    const { orgId, tokenIdentifier } = await resolveOrgForAction(ctx);
+    const { orgId, orgSlug, tokenIdentifier } = await resolveOrgForAction(ctx);
     const caller = await requireAdminForAction(ctx, orgId, tokenIdentifier);
     const requestedRole = args.role ?? "contributor";
 
     const inviterClerkUserId = clerkUserIdFromTokenIdentifier(tokenIdentifier);
+    const redirectUrl = inviteRedirectUrl(orgSlug);
     const invitation = (await clerkFetch(
       `/organizations/${orgId}/invitations`,
       {
@@ -95,6 +137,7 @@ export const invite = action({
           email_address: args.email,
           role: "org:member",
           inviter_user_id: inviterClerkUserId,
+          ...(redirectUrl ? { redirect_url: redirectUrl } : {}),
         },
       },
     )) as ClerkInvitation;
@@ -143,11 +186,26 @@ export const list = action({
       { clerkOrgId: orgId },
     );
 
+    // Users can join directly via the subdomain (open enrollment), which
+    // fulfills an invitation without Clerk ever marking it accepted. Hide
+    // those from the pending list so admins don't re-invite existing members.
+    const memberEmails: string[] = await ctx.runQuery(
+      internal.invitations.getMemberEmailsAmong,
+      {
+        orgId,
+        emailsLower: rows.map((row) =>
+          row.email_address.trim().toLowerCase(),
+        ),
+      },
+    );
+    const alreadyMembers = new Set(memberEmails);
+
     // Defense-in-depth: filter out any rows whose organization_id doesn't match
     // the JWT-derived orgId. The Clerk URL already scopes by org, but this
     // belt-and-braces guards against API shape drift.
     return rows
       .filter((row) => row.organization_id === orgId)
+      .filter((row) => !alreadyMembers.has(row.email_address.trim().toLowerCase()))
       .map((row) => ({
         role:
           intentRoles.find(

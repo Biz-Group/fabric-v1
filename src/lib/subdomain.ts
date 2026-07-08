@@ -1,5 +1,9 @@
-const RESERVED_SUBDOMAINS = new Set(["www", "app"]);
-const TENANT_SUBDOMAIN_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+import {
+  isValidTenantSlug,
+  TENANTS_CONSOLE_SUBDOMAIN,
+} from "../../convex/lib/slugs";
+
+export { TENANTS_CONSOLE_SUBDOMAIN };
 
 function getHostname(host: string | null | undefined): string | null {
   if (!host) return null;
@@ -18,10 +22,20 @@ function getHostname(host: string | null | undefined): string | null {
 }
 
 export function isValidTenantSubdomain(subdomain: string): boolean {
-  return (
-    TENANT_SUBDOMAIN_PATTERN.test(subdomain) &&
-    !RESERVED_SUBDOMAINS.has(subdomain)
-  );
+  return isValidTenantSlug(subdomain);
+}
+
+/** True when the request host is the platform tenant-management console
+ * (`tenants.<root>`). Reserved subdomains resolve to null in
+ * `getTenantSubdomain`, so the console needs its own host check. */
+export function isTenantsConsoleHost(
+  host: string | null | undefined,
+  rootDomain: string | null | undefined,
+): boolean {
+  const hostname = getHostname(host);
+  const rootHostname = getHostname(rootDomain);
+  if (!hostname || !rootHostname) return false;
+  return hostname === `${TENANTS_CONSOLE_SUBDOMAIN}.${rootHostname}`;
 }
 
 export function getTenantSubdomain(

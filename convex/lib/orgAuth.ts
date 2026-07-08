@@ -128,12 +128,12 @@ export function assertOrgOwns<T extends { clerkOrgId?: string }>(
  */
 export async function resolveOrgForAction(
   ctx: ActionCtx,
-): Promise<{ orgId: string; tokenIdentifier: string }> {
+): Promise<{ orgId: string; orgSlug: string | null; tokenIdentifier: string }> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new Error("Not authenticated");
-  const { orgId } = getActiveOrgClaims(identity);
+  const { orgId, orgSlug } = getActiveOrgClaims(identity);
   if (!orgId) throw new Error("No active organization");
-  return { orgId, tokenIdentifier: identity.tokenIdentifier };
+  return { orgId, orgSlug, tokenIdentifier: identity.tokenIdentifier };
 }
 
 // ---- Platform-scope helpers ------------------------------------------------

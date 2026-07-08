@@ -24,6 +24,11 @@ import {
   clerkFetch,
   clerkUserIdFromTokenIdentifier,
 } from "./lib/clerkApi";
+import {
+  allowedDomainsFromMetadata,
+  markTenantDeleted,
+  upsertTenantFromClerkOrg,
+} from "./tenants";
 
 const roleValidator = v.union(
   v.literal("admin"),
@@ -1315,6 +1320,42 @@ export const handleClerkWebhook = internalMutation({
               detail: "Clerk organizationMembership.deleted",
             });
           }
+        }
+      }
+
+      // Keep the platform tenant registry in sync with orgs created/edited
+      // outside the console (e.g. directly in the Clerk dashboard).
+      if (
+        args.eventType === "organization.created" ||
+        args.eventType === "organization.updated"
+      ) {
+        const clerkOrgId = getString(data.id);
+        const name = getString(data.name);
+        const slug = getString(data.slug);
+        if (clerkOrgId && name && slug) {
+          await upsertTenantFromClerkOrg(
+            ctx,
+            {
+              clerkOrgId,
+              name,
+              slug,
+              logoUrl: getString(data.image_url),
+              allowedEmailDomains: allowedDomainsFromMetadata(
+                (data.public_metadata ?? null) as Record<
+                  string,
+                  unknown
+                > | null,
+              ),
+            },
+            "clerkSync",
+          );
+        }
+      }
+
+      if (args.eventType === "organization.deleted") {
+        const clerkOrgId = getString(data.id);
+        if (clerkOrgId) {
+          await markTenantDeleted(ctx, clerkOrgId);
         }
       }
 

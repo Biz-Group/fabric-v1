@@ -12,6 +12,7 @@ import {
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { requireSuperAdmin } from "./lib/orgAuth";
+import { clerkFetch } from "./lib/clerkApi";
 
 // ---------------------------------------------------------------------------
 // Platform-role management (super-admin layer)
@@ -297,6 +298,28 @@ export const requireSuperAdminInternal = internalQuery({
   },
 });
 
+/** Super-admin-only. Look up a user by email for the console's promote flow.
+ * Bounded, exact-match lookup — not a directory search. */
+export const findUserByEmail = query({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    await requireSuperAdmin(ctx);
+    const emailLower = normalizeEmail(args.email);
+    if (!emailLower) return null;
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_emailLower", (q) => q.eq("emailLower", emailLower))
+      .first();
+    if (!user) return null;
+    return {
+      userId: user._id,
+      name: user.name,
+      email: user.email,
+      platformRole: user.platformRole ?? null,
+    };
+  },
+});
+
 // --- Promote / demote ------------------------------------------------------
 
 /**
@@ -427,7 +450,7 @@ export const insertSuperAdminMembershipInternal = internalMutation({
   },
 });
 
-type FanOutResult = {
+export type FanOutResult = {
   clerkOrgId: string;
   superAdminsProcessed: number;
   membershipsInserted: number;
@@ -441,7 +464,7 @@ type FanOutResult = {
  * memberships row. Used by both the UI-facing action (auth-gated) and the
  * CLI-friendly internal action.
  */
-async function fanOutImpl(
+export async function fanOutImpl(
   ctx: ActionCtx,
   clerkOrgId: string,
   invitedBy: Id<"users"> | undefined,
@@ -555,5 +578,73 @@ export const fanOutSuperAdminMembershipsInternal = internalAction({
   args: { clerkOrgId: v.string() },
   handler: async (ctx, args): Promise<FanOutResult> => {
     return fanOutImpl(ctx, args.clerkOrgId, undefined);
+  },
+});
+
+// --- Tenant enrollment domains ----------------------------------------------
+//
+// Each tenant's subdomain sign-up is gated by email domain: a user may join
+// `<slug>.<root>` only when a verified email of theirs matches the tenant's
+// `allowedEmailDomains` (stored in Clerk org public metadata), a platform
+// staff domain, or a pending invitation. These actions are how the allowed
+// list is managed until a tenant-management console exists.
+
+const EMAIL_DOMAIN_PATTERN =
+  /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+export function normalizeEmailDomains(domains: string[]): string[] {
+  const normalized = domains
+    .map((domain) => domain.trim().toLowerCase().replace(/^@/, ""))
+    .filter((domain) => domain.length > 0);
+  for (const domain of normalized) {
+    if (!EMAIL_DOMAIN_PATTERN.test(domain)) {
+      throw new Error(`Invalid email domain: "${domain}"`);
+    }
+  }
+  return [...new Set(normalized)];
+}
+
+type SetAllowedDomainsResult = {
+  clerkOrgId: string;
+  allowedEmailDomains: string[];
+};
+
+export async function setAllowedEmailDomainsImpl(
+  clerkOrgId: string,
+  domains: string[],
+): Promise<SetAllowedDomainsResult> {
+  const allowedEmailDomains = normalizeEmailDomains(domains);
+  // Clerk merges public_metadata keys, so this replaces only
+  // `allowedEmailDomains` and leaves other metadata untouched.
+  await clerkFetch(`/organizations/${clerkOrgId}/metadata`, {
+    method: "PATCH",
+    body: { public_metadata: { allowedEmailDomains } },
+  });
+  return { clerkOrgId, allowedEmailDomains };
+}
+
+/**
+ * UI-facing action. Super-admin-gated via JWT. Replaces the tenant's allowed
+ * email domain list (pass the full list each time; [] closes the tenant to
+ * everyone except platform staff and invited users).
+ */
+export const setOrgAllowedEmailDomains = action({
+  args: { clerkOrgId: v.string(), domains: v.array(v.string()) },
+  handler: async (ctx, args): Promise<SetAllowedDomainsResult> => {
+    await ctx.runQuery(internal.platform.requireSuperAdminInternal, {});
+    return setAllowedEmailDomainsImpl(args.clerkOrgId, args.domains);
+  },
+});
+
+/**
+ * CLI-friendly variant. Deployment-key auth is the gate here.
+ *
+ *   npx convex run platform:setOrgAllowedEmailDomainsInternal \
+ *     '{"clerkOrgId":"org_xxxxx","domains":["clientco.com","clientco.ae"]}'
+ */
+export const setOrgAllowedEmailDomainsInternal = internalAction({
+  args: { clerkOrgId: v.string(), domains: v.array(v.string()) },
+  handler: async (_ctx, args): Promise<SetAllowedDomainsResult> => {
+    return setAllowedEmailDomainsImpl(args.clerkOrgId, args.domains);
   },
 });

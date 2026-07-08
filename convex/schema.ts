@@ -167,6 +167,38 @@ export default defineSchema({
     error: v.optional(v.string()),
   }).index("by_eventId", ["eventId"]),
 
+  // Platform-level tenant registry backing tenants.<root>. A *mirror* of
+  // Clerk organizations (Clerk stays the source of truth), kept in sync by
+  // the createTenant provisioning action, organization.* webhooks, and the
+  // CLI backfill. Gives the console a reactive list plus per-tenant
+  // provisioning state that Clerk has no place for.
+  tenants: defineTable({
+    clerkOrgId: v.string(),
+    name: v.string(),
+    slug: v.string(),
+    logoUrl: v.optional(v.string()),
+    allowedEmailDomains: v.array(v.string()),
+    status: v.union(
+      v.literal("active"),
+      // Provisioning step(s) failed after org creation; see
+      // provisioningErrors. "Retry provisioning" re-runs them idempotently.
+      v.literal("needsAttention"),
+      // Org deleted in Clerk; row kept for audit/history.
+      v.literal("deleted"),
+    ),
+    provisioningErrors: v.optional(v.array(v.string())),
+    // Retained so retryProvisioning can re-run failed steps.
+    logoStorageId: v.optional(v.id("_storage")),
+    firstInviteEmail: v.optional(v.string()),
+    firstInviteRole: v.optional(roleValidator),
+    createdBy: v.optional(v.id("users")),
+    source: v.union(v.literal("console"), v.literal("clerkSync")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_clerkOrgId", ["clerkOrgId"])
+    .index("by_slug", ["slug"]),
+
   authAuditEvents: defineTable({
     clerkOrgId: v.optional(v.string()),
     actorUserId: v.optional(v.id("users")),

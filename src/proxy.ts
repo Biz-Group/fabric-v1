@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { getTenantSubdomain } from "@/lib/subdomain";
+import { getTenantSubdomain, isTenantsConsoleHost } from "@/lib/subdomain";
 
 // Auth pages live only on tenant subdomains, never on apex. Apex is pure
 // marketing.
@@ -27,6 +27,33 @@ export default clerkMiddleware(
   async (auth, req) => {
     const host = req.headers.get("host");
     const subdomain = getTenantSubdomain(host, ROOT_DOMAIN);
+
+    // Platform tenant-management console (tenants.<root>) — Biz Group staff
+    // only. Auth pages render directly; the org-join handoff is meaningless
+    // here (there's no tenant org), so it bounces to `/`, and everything else
+    // is rewritten into the `src/app/tenants-console` tree behind auth.
+    // Authorization (super-admin) is enforced by the console layout + every
+    // Convex function it calls; middleware only guarantees authentication.
+    if (isTenantsConsoleHost(host, ROOT_DOMAIN)) {
+      if (isAuthPath(req)) return;
+      if (isJoinOrganizationPath(req)) {
+        const url = req.nextUrl.clone();
+        url.pathname = "/";
+        return NextResponse.redirect(url);
+      }
+      const url = req.nextUrl.clone();
+      if (
+        url.pathname === "/tenants-console" ||
+        url.pathname.startsWith("/tenants-console/")
+      ) {
+        // Defensive — path already rewritten; don't double-prefix.
+        await auth.protect();
+        return;
+      }
+      url.pathname = `/tenants-console${url.pathname === "/" ? "" : url.pathname}`;
+      await auth.protect();
+      return NextResponse.rewrite(url);
+    }
 
     // Apex request — marketing landing only. Anyone hitting /sign-in or
     // /sign-up on the apex gets redirected to the marketing page (sign-in is
@@ -61,15 +88,12 @@ export default clerkMiddleware(
     if (!isSubdomainPublicPath(req)) await auth.protect();
     return NextResponse.rewrite(url);
   },
-  {
-    // Clerk matches organization patterns against the incoming request path.
-    // Since this app carries the org in the subdomain and only rewrites the
-    // pathname later, the client-side `setActive` fallback in `[org]/layout`
-    // is still needed for initial hits to `/` on a tenant subdomain.
-    organizationSyncOptions: {
-      organizationPatterns: ["/:slug", "/:slug/(.*)"],
-    },
-  },
+  // No organizationSyncOptions: Clerk matches organization patterns against
+  // the incoming (pre-rewrite) request path, but this app carries the org in
+  // the subdomain — so `/:slug` patterns would misread ordinary path segments
+  // (`/sign-in`, `/processes`, ...) as org slugs and could never activate the
+  // right org. Activation is handled client-side by the `setActive` fallback
+  // in `[org]/layout` instead.
 );
 
 export const config = {
