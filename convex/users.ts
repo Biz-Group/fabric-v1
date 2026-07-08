@@ -414,7 +414,10 @@ async function upsertUserAndMembership(
     return user._id;
   }
 
-  let role: Role = "viewer";
+  // Default Fabric role for members with no invite intent (e.g. walk-up
+  // domain-matched sign-ups): contributor, so new joiners can capture work
+  // without an admin having to upgrade them first.
+  let role: Role = "contributor";
   let source: MembershipSource = args.source ?? "selfSignup";
   let invitedBy = args.invitedBy ?? undefined;
   let matchedIntent: Doc<"membershipIntents"> | null = null;

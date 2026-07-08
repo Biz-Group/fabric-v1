@@ -410,7 +410,7 @@ describe("user provisioning sync", () => {
     expect(calls[0].url).toContain("/users/user_new");
     expect(stored.user?.email).toBe("new.member@a.test");
     expect(stored.user?.name).toBe("New Member");
-    expect(stored.membership?.role).toBe("viewer");
+    expect(stored.membership?.role).toBe("contributor");
     expect(stored.membership?.source).toBe("selfSignup");
     expect(stored.membership?.emailLower).toBe("new.member@a.test");
     expect(stored.membership?.searchText).toContain("new member");
@@ -542,7 +542,7 @@ describe("Clerk webhook processing", () => {
     process.env.CLERK_JWT_ISSUER_DOMAIN = ISSUER;
   });
 
-  test("organization membership webhook creates viewer membership and is idempotent", async () => {
+  test("organization membership webhook creates default contributor membership and is idempotent", async () => {
     const t = convexTest(schema, modules);
 
     const first = await t.mutation(internal.users.handleClerkWebhook, {
@@ -590,7 +590,7 @@ describe("Clerk webhook processing", () => {
     expect(first.status).toBe("processed");
     expect(second.status).toBe("duplicate");
     expect(stored.events).toHaveLength(1);
-    expect(stored.membership?.role).toBe("viewer");
+    expect(stored.membership?.role).toBe("contributor");
     expect(stored.membership?.source).toBe("webhook");
     expect(stored.membership?.emailLower).toBe("webhook.member@a.test");
   });

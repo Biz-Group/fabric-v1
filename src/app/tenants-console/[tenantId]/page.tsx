@@ -5,7 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -29,6 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { LogoFileButton } from "@/features/tenants-console/logo-file-button";
 import { TenantInvitations } from "@/features/tenants-console/tenant-invitations";
 import {
   tenantHostname,
@@ -331,7 +332,6 @@ function LogoCard({ tenant }: { tenant: TenantView }) {
   const generateLogoUploadUrl = useMutation(api.tenants.generateLogoUploadUrl);
   const updateLogo = useAction(api.tenants.updateLogo);
   const [uploading, setUploading] = useState(false);
-  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFile = async (file: File) => {
     setUploading(true);
@@ -355,7 +355,6 @@ function LogoCard({ tenant }: { tenant: TenantView }) {
       );
     } finally {
       setUploading(false);
-      if (inputRef.current) inputRef.current.value = "";
     }
   };
 
@@ -381,15 +380,10 @@ function LogoCard({ tenant }: { tenant: TenantView }) {
             {tenant.name.slice(0, 2)}
           </span>
         )}
-        <Input
-          ref={inputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/svg+xml"
+        <LogoFileButton
+          label={uploading ? "Uploading..." : "Replace logo"}
           disabled={uploading}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void handleFile(file);
-          }}
+          onSelect={(file) => void handleFile(file)}
         />
       </CardContent>
     </Card>

@@ -2,7 +2,7 @@
 
 import { useAction, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { LogoFileButton } from "@/features/tenants-console/logo-file-button";
 import { tenantHostname } from "@/features/tenants-console/tenant-url";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -63,7 +64,6 @@ export default function NewTenantPage() {
   const [firstUserEmail, setFirstUserEmail] = useState("");
   const [firstUserRole, setFirstUserRole] = useState<Role>("admin");
   const [submitting, setSubmitting] = useState(false);
-  const logoInputRef = useRef<HTMLInputElement | null>(null);
 
   const effectiveSlug = slugTouched ? slug : slugify(name);
   const slugValid = effectiveSlug.length > 0 && isValidTenantSlug(effectiveSlug);
@@ -205,25 +205,25 @@ export default function NewTenantPage() {
                   className="h-10 w-10 rounded-md object-cover ring-1 ring-border"
                 />
               )}
-              <Input
-                ref={logoInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
+              <LogoFileButton
+                label={logoFile ? "Change image" : "Choose image"}
                 disabled={submitting}
+                onSelect={setLogoFile}
               />
               {logoFile && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={submitting}
-                  onClick={() => {
-                    setLogoFile(null);
-                    if (logoInputRef.current) logoInputRef.current.value = "";
-                  }}
-                >
-                  Clear
-                </Button>
+                <>
+                  <span className="max-w-48 truncate text-xs text-muted-foreground">
+                    {logoFile.name}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={submitting}
+                    onClick={() => setLogoFile(null)}
+                  >
+                    Remove
+                  </Button>
+                </>
               )}
             </div>
           </div>
