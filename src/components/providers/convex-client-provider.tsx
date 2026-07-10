@@ -6,15 +6,15 @@ import { useAuth } from "@clerk/nextjs";
 import { ReactNode, useMemo } from "react";
 
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
-  const client = useMemo(
-    () =>
-      process.env.NEXT_PUBLIC_CONVEX_URL
-        ? new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL)
-        : null,
-    [],
-  );
-
-  if (!client) return <>{children}</>;
+  const client = useMemo(() => {
+    const url = process.env.NEXT_PUBLIC_CONVEX_URL;
+    if (!url) {
+      throw new Error(
+        "NEXT_PUBLIC_CONVEX_URL is not set. Configure it in the environment before starting the app.",
+      );
+    }
+    return new ConvexReactClient(url);
+  }, []);
 
   return (
     <ConvexProviderWithClerk client={client} useAuth={useAuth}>

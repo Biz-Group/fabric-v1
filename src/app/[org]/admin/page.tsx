@@ -52,7 +52,7 @@ export default function AdminOverviewPage() {
     () => Date.now() - 2 * SEVEN_DAYS_MS,
   );
   const [pendingInvitesCount, setPendingInvitesCount] = useState<
-    number | undefined
+    number | null | undefined
   >(undefined);
   const [viewingId, setViewingId] = useState<Id<"conversations"> | null>(null);
 
@@ -79,7 +79,8 @@ export default function AdminOverviewPage() {
         const rows = await listInvites({});
         if (!cancelled) setPendingInvitesCount(rows.length);
       } catch {
-        if (!cancelled) setPendingInvitesCount(0);
+        // Surface the load failure as "—" rather than a misleading 0.
+        if (!cancelled) setPendingInvitesCount(null);
       }
     })();
     return () => {

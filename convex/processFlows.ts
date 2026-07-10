@@ -881,21 +881,36 @@ export const generateFlowInternal = internalAction({
       userContent += `Conversation Data:\n\n${conversationBlocks}`;
     }
 
-    const response = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${openrouterKey}`,
-          "Content-Type": "application/json",
+    let result: unknown;
+    try {
+      const response = await fetch(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${openrouterKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(buildFlowGenerationRequestBody(userContent)),
         },
-        body: JSON.stringify(buildFlowGenerationRequestBody(userContent)),
-      },
-    );
+      );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("OpenRouter API error:", response.status, errorText);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("OpenRouter API error:", response.status, errorText);
+        await ctx.runMutation(internal.processFlows.saveProcessFlow, {
+          processId: args.processId,
+          clerkOrgId: args.clerkOrgId,
+          status: "failed",
+          conversationCount: data.conversations.length,
+          errorMessage: "Failed to generate process flow. Please try again.",
+        });
+        return;
+      }
+
+      result = await response.json();
+    } catch (error) {
+      console.error("OpenRouter request failed:", error);
       await ctx.runMutation(internal.processFlows.saveProcessFlow, {
         processId: args.processId,
         clerkOrgId: args.clerkOrgId,
@@ -906,7 +921,6 @@ export const generateFlowInternal = internalAction({
       return;
     }
 
-    const result: unknown = await response.json();
     const finishReason = getFlowFinishReason(result);
     const payload = extractFlowResponsePayload(result);
 

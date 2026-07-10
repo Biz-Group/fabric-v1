@@ -226,7 +226,7 @@ export default function AdminUsersPage() {
     { initialNumItems: 50 },
   );
 
-  if (status === "LoadingFirstPage") {
+  if (status === "LoadingFirstPage" || me === undefined) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />

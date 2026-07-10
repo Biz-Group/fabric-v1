@@ -1574,6 +1574,7 @@ export function ProcessWorkbench() {
             {/* Conversations tab */}
             <TabsContent value={1} className="min-h-0 min-w-0 flex-1 overflow-y-auto md:overflow-hidden">
               <ProcessConversationsTab
+                key={selectedProcessId}
                 processId={selectedProcessId!}
                 canLabelSpeakers={canEdit}
                 labelingJumpKey={labelingJumpKey}
@@ -1583,6 +1584,7 @@ export function ProcessWorkbench() {
             {/* Process Flow tab */}
             <TabsContent value={2} className="min-h-0 min-w-0 flex-1 overflow-y-auto md:overflow-hidden">
               <ProcessFlowTab
+                key={selectedProcessId}
                 processId={selectedProcessId!}
                 conversationCount={completedProcessConversationCount}
                 flow={

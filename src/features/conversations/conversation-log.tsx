@@ -583,6 +583,14 @@ function ConversationAudioControls({
   const restoredRef = useRef(false);
   const listenedRef = useRef(false);
 
+  // The focused playback panel reuses this instance across conversations, so
+  // reset the per-conversation flags when the conversation changes — otherwise
+  // a prior conversation's "listened" state suppresses tracking for the new one.
+  useEffect(() => {
+    restoredRef.current = false;
+    listenedRef.current = false;
+  }, [conversationId]);
+
   // Save playback position periodically & track listened state
   useEffect(() => {
     if (!isActive) {

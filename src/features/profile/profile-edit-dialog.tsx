@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +67,10 @@ export function ProfileEditDialog({
         hireDate: form.hireDate,
       });
       handleOpenChange(false);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not save your profile.",
+      );
     } finally {
       setLoading(false);
     }

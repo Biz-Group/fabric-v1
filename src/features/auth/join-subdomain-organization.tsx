@@ -38,6 +38,7 @@ export function JoinSubdomainOrganization() {
   const hasStarted = useRef(false);
   const hasSynced = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [targetOrganizationId, setTargetOrganizationId] = useState<
     string | null
   >(null);
@@ -74,7 +75,7 @@ export function JoinSubdomainOrganization() {
           : "We could not join this workspace. Please try again.",
       );
     });
-  }, [isLoaded, router, setActive, userId]);
+  }, [isLoaded, router, setActive, userId, retryKey]);
 
   useEffect(() => {
     if (
@@ -131,6 +132,7 @@ export function JoinSubdomainOrganization() {
             hasSynced.current = false;
             setError(null);
             setTargetOrganizationId(null);
+            setRetryKey((key) => key + 1);
           }}
           className="h-11 rounded-xl bg-foreground px-4 text-sm font-medium text-background hover:bg-foreground/90"
         >

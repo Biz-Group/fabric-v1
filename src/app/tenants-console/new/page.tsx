@@ -2,7 +2,7 @@
 
 import { useAction, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -72,6 +72,12 @@ export default function NewTenantPage() {
     () => (logoFile ? URL.createObjectURL(logoFile) : null),
     [logoFile],
   );
+  // Revoke the object URL when it changes or the page unmounts, so previewing
+  // logos doesn't leak blob URLs.
+  useEffect(() => {
+    if (!logoPreview) return;
+    return () => URL.revokeObjectURL(logoPreview);
+  }, [logoPreview]);
 
   const canSubmit =
     name.trim().length > 0 &&

@@ -173,11 +173,13 @@ export const getLatestConversation = internalQuery({
   handler: async (ctx, args) => {
     const conversation = await ctx.db
       .query("conversations")
-      .withIndex("by_clerkOrgId_and_processId", (q) =>
-        q.eq("clerkOrgId", args.clerkOrgId).eq("processId", args.processId),
+      .withIndex("by_clerkOrgId_and_processId_and_status", (q) =>
+        q
+          .eq("clerkOrgId", args.clerkOrgId)
+          .eq("processId", args.processId)
+          .eq("status", "done"),
       )
       .order("desc")
-      .filter((q) => q.eq(q.field("status"), "done"))
       .first();
     if (!conversation) return null;
     return {
@@ -322,9 +324,9 @@ export const fetchConversation = action({
 
       if (data.status === "done") {
         const transcript = normalizeTranscript(data.transcript);
-        const summary = data.analysis?.transcript_summary ?? null;
+        const summary = data.analysis?.transcript_summary ?? undefined;
         const analysis = data.analysis ?? null;
-        const durationSeconds = data.metadata?.call_duration_secs ?? null;
+        const durationSeconds = data.metadata?.call_duration_secs ?? undefined;
 
         await ctx.runMutation(internal.postCall.insertConversation, {
           processId: args.processId,
@@ -614,9 +616,9 @@ export const importConversation = internalAction({
     }
 
     const transcript = normalizeTranscript(data.transcript);
-    const summary = data.analysis?.transcript_summary ?? null;
+    const summary = data.analysis?.transcript_summary ?? undefined;
     const analysis = data.analysis ?? null;
-    const durationSeconds = data.metadata?.call_duration_secs ?? null;
+    const durationSeconds = data.metadata?.call_duration_secs ?? undefined;
 
     await ctx.runMutation(internal.postCall.insertConversation, {
       processId: args.processId,
@@ -674,7 +676,7 @@ export const refreshConversationAnalysis = internalAction({
     }
 
     const data = await response.json();
-    const transcript = normalizeTranscript(data.transcript);
+    const transcript = normalizeTranscript(data.transcript) ?? existing.transcript;
     const summary = data.analysis?.transcript_summary ?? existing.summary;
     const analysis = data.analysis ?? existing.analysis;
     const durationSeconds = data.metadata?.call_duration_secs ?? existing.durationSeconds;

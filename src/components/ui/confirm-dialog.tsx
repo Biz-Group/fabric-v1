@@ -39,6 +39,9 @@ export function ConfirmDialog({
     try {
       await onConfirm();
       onOpenChange(false);
+    } catch {
+      // Callers surface their own error (e.g. a toast) and rethrow to keep the
+      // dialog open. Swallow here so it doesn't become an unhandled rejection.
     } finally {
       setPending(false);
     }

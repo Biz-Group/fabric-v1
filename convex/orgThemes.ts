@@ -280,6 +280,7 @@ export const markThemeGenerationFailed = mutation({
         candidateLightTokens: undefined,
         candidateDarkTokens: undefined,
         candidateSource: undefined,
+        candidateGeneratedAt: undefined,
       });
       return existing._id;
     }

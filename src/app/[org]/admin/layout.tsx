@@ -1,7 +1,8 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
+import { useEffect } from "react";
 import { Home, MessageSquare, Palette, Users } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,7 +18,17 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const membership = useQuery(api.users.getMyMembership);
+  const storeUser = useMutation(api.users.store);
   const routes = useWorkspaceRoutes();
+
+  // getMyMembership returns null (not undefined) when the Convex user/membership
+  // row doesn't exist yet — which happens if /admin is the first route hit in a
+  // session (e.g. a bookmarked deep link) before the row is provisioned. Store
+  // it here (as the org home and console layouts do) so membership resolves
+  // instead of spinning on the null-as-loading state forever.
+  useEffect(() => {
+    void storeUser();
+  }, [storeUser]);
 
   if (membership === undefined || membership === null) {
     return (

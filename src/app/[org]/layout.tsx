@@ -31,12 +31,29 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
   const { isLoaded: userLoaded, isSignedIn } = useUser();
   const { organization, isLoaded: orgLoaded } = useOrganization();
   const { setActive, isLoaded: orgListLoaded, userMemberships } =
-    useOrganizationList({ userMemberships: true });
+    useOrganizationList({
+      userMemberships: { infinite: true, pageSize: 100 },
+    });
+  const {
+    hasNextPage: hasMoreMemberships,
+    isFetching: fetchingMemberships,
+    fetchNext: fetchNextMemberships,
+  } = userMemberships;
   const activeOrg = useQuery(api.users.getActiveOrg);
   const matchingMembership = userMemberships.data?.find(
     (m) => m.organization.slug === slugFromUrl,
   );
   const targetOrgId = matchingMembership?.organization.id;
+
+  // Clerk paginates userMemberships (default page size). Platform staff are
+  // fanned out to every tenant, so a user can have more memberships than one
+  // page holds — drain all pages before concluding non-membership, otherwise a
+  // real member of a later page hits the "not in this workspace" screen.
+  useEffect(() => {
+    if (hasMoreMemberships && !fetchingMemberships) {
+      fetchNextMemberships();
+    }
+  }, [hasMoreMemberships, fetchingMemberships, fetchNextMemberships]);
 
   // Clerk's organization sync patterns only match pathnames. Since this app
   // encodes the org in the subdomain and rewrites `/` to `/<slug>` later in
@@ -71,6 +88,15 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
   // to /sign-in. This is a belt-and-braces guard.
   if (!isAuthenticated || !isSignedIn) {
     return <LoadingScreen message="Redirecting to sign in..." showSpinner={false} />;
+  }
+
+  // Don't conclude non-membership until every membership page has loaded —
+  // the target org may still be on a not-yet-fetched page.
+  if (
+    !matchingMembership &&
+    (userMemberships.hasNextPage || userMemberships.isFetching)
+  ) {
+    return <LoadingScreen message="Loading workspace..." />;
   }
 
   // User is signed in but isn't a member of this subdomain's org yet.
