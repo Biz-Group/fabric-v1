@@ -319,6 +319,35 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_clerkOrgId", ["clerkOrgId"]),
 
+  // Platform tenant registry backing the tenant console (§3.7.7). A mirror of
+  // Clerk organizations — Clerk stays the source of truth — carrying
+  // provisioning state Clerk has no place for. Kept in sync by the
+  // createTenant action, the organization.* webhooks, and the CLI backfill.
+  tenants: defineTable({
+    clerkOrgId: v.string(),
+    name: v.string(),
+    slug: v.string(),
+    logoUrl: v.optional(v.string()),
+    allowedEmailDomains: v.array(v.string()), // enrollment gate (§3.7.6)
+    status: v.union(
+      v.literal("active"),
+      v.literal("needsAttention"), // a provisioning step failed; retryable
+      v.literal("deleted"), // org removed in Clerk; row kept for history
+    ),
+    provisioningErrors: v.optional(v.array(v.string())),
+    logoStorageId: v.optional(v.id("_storage")), // retained for retry
+    firstInviteEmail: v.optional(v.string()),
+    firstInviteRole: v.optional(
+      v.union(v.literal("admin"), v.literal("contributor"), v.literal("viewer")),
+    ),
+    createdBy: v.optional(v.id("users")),
+    source: v.union(v.literal("console"), v.literal("clerkSync")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_clerkOrgId", ["clerkOrgId"])
+    .index("by_slug", ["slug"]),
+
   // Per-org branding theme derived from the Clerk org logo, or a manual
   // override (see §3.8). "candidate*" holds an unapproved generation;
   // "active*" is what's actually applied — gated by explicit admin approval.
@@ -907,12 +936,12 @@ Every Function/Department/Process **description** (a free-text field contributor
 
 | Function | Purpose |
 |---|---|
-| `users.store` / `syncCurrentUserFromClerk` / `handleClerkWebhook` | Auto-provisions a user + membership on first authenticated request; keeps `users`/`memberships`/`membershipIntents` in sync with Clerk (webhook-driven, idempotent). |
+| `users.store` / `syncCurrentUserFromClerk` / `handleClerkWebhook` | Auto-provisions a user + membership on first authenticated request; keeps `users`/`memberships`/`membershipIntents`/`tenants` in sync with Clerk (webhook-driven, idempotent). Handles `user.*`, `organizationMembership.*`, `organizationInvitation.revoked`, and `organization.created/updated/deleted` events. |
 | `users.getMe/getActiveOrg/getMyMembership` | Current user/org/role reads. |
 | `users.completeProfile/updateProfile` | Onboarding (live) + profile edits (`updateProfile` exists and works, but the only UI component that calls it is not currently rendered anywhere — see the review note in §6). |
 | `users.listOrgMembersPage/listOrgMembers/searchOrgMembers/getOrgMembershipStats` | Member directory (paginated, searchable) and denormalized org stats for the admin Users page. |
 | `users.setMembershipRole/removeMemberFromOrg` | Role changes and member removal, with last-admin and self-removal guards; Clerk membership is removed before the Fabric row to avoid recreating access from a stale Clerk membership. |
-| `invitations.invite/list/revoke` | Admin-only, Clerk-backed invitation management; resend is implemented as revoke + re-invite. |
+| `invitations.invite/list/revoke` | Admin-only, Clerk-backed invitation management; invitations carry a `redirect_url` to the tenant's own `/sign-up` so the email link lands on-subdomain; resend is implemented as revoke + re-invite; `list` hides invitations whose invitee already joined. |
 
 **Org theming (`orgThemes.ts`):**
 
@@ -921,18 +950,31 @@ Every Function/Department/Process **description** (a free-text field contributor
 | `getForCurrentOrg` / `getThemeAdminState` | Runtime theme tokens (any member) and admin-facing theme state. |
 | `startThemeGeneration/saveGeneratedCandidate/saveManualCandidate/approveCandidateTheme/rejectCandidateTheme/resetToNeutral` | Admin-only logo-color-extraction workflow — see the new "Org Branding / Appearance" section below. |
 
-**Platform / super-admin (`platform.ts`) — CLI-invoked, no in-app UI beyond a read-only badge:**
+**Platform / super-admin (`platform.ts`):**
 
 | Function | Purpose |
 |---|---|
 | `bootstrapSuperAdmin` / `setPlatformRole` | Bootstraps and manages the platform `superAdmin` flag. |
 | `fanOutSuperAdminMemberships` | Makes every super-admin a real Clerk + Fabric member of a given org (Model A, §3.7.2) — not an access bypass. |
+| `findUserByEmail` | Super-admin-gated exact-email lookup, backing the console's promote-a-super-admin flow. |
+| `setOrgAllowedEmailDomains` (+ `…Internal`) | Sets a tenant's enrollment domain allowlist in Clerk org public metadata (§3.7.6). |
+
+**Tenant console (`tenants.ts`) — super-admin-gated backend of `tenants.bizfabric.ai` (§3.7.7):**
+
+| Function | Purpose |
+|---|---|
+| `list` / `get` / `listTenantMembers` | Reactive tenant registry reads (with member/admin/pending counts, falling back to a live count when the denormalized stats row is absent). |
+| `createTenant` / `retryProvisioning` | Provisions a new tenant (Clerk org + staff fan-out + logo + optional first-user invite); non-fatal steps are recorded per-tenant and re-runnable. |
+| `renameTenant` / `updateLogo` / `updateAllowedEmailDomains` / `generateLogoUploadUrl` | Per-tenant settings edits (slug is immutable from the console). |
+| `listTenantInvitations` / `inviteTenantUser` / `revokeTenantInvitation` | Platform-scoped invitation management for any tenant. |
+| `fanOutToAllTenants` | Re-runs the super-admin fan-out across every tenant (after a promotion, or on demand). |
+| `backfillTenantsFromClerk` | CLI backfill that seeds/refreshes the mirror (and stats rows) from every Clerk org. |
 
 **HTTP endpoints (`http.ts`):**
 
 | Route | Purpose |
 |---|---|
-| `POST /clerk/webhook` | Clerk user/org/membership webhook sync, HMAC(Svix)-verified with a 5-minute replay window, idempotent via `processedWebhookEvents`. |
+| `POST /clerk/webhook` | Clerk user/org/membership/organization webhook sync, HMAC(Svix)-verified with a 5-minute replay window, idempotent via `processedWebhookEvents`. |
 | `GET /audio/:clerkOrgId/:conversationId` (+ `OPTIONS`) | Org-scoped, HMAC-signed audio proxy: streams ElevenLabs audio for AI interviews or the Convex Storage blob for Voice Record/Upload, with HTTP Range support. Returns 404 on any org mismatch. |
 
 **Ops tooling — internal-only, invoked via `npx convex run` (not exposed in any UI):**
@@ -940,7 +982,7 @@ Every Function/Department/Process **description** (a free-text field contributor
 | Function | Purpose |
 |---|---|
 | `orgIntegrity.auditHierarchyIntegrity/repairHierarchyOrphans/auditAllOrgs` | Detects and repairs orphaned hierarchy rows or missing/mismatched `clerkOrgId` values. |
-| `migrations.*` (via `@convex-dev/migrations`) | The `clerkOrgId` backfill migrators (§3.7.6) and a dev→prod tenant-move pipeline (`exportForOrg` → `prodImportFromStorage` → `prodImport_insertAll`). |
+| `migrations.*` (via `@convex-dev/migrations`) | The `clerkOrgId` backfill migrators (§3.7.8) and a dev→prod tenant-move pipeline (`exportForOrg` → `prodImportFromStorage` → `prodImport_insertAll`). |
 | `cleanup.removeTestData` | Deletes seed/test conversations for an org. |
 | `seed.seed` | Idempotently seeds a demo Function→Department→Process tree with sample conversations for an org. |
 
@@ -1019,26 +1061,27 @@ const process = useQuery(api.processes.get, { processId: selectedProcessId });
 | `status` | optional string | `"active"` \| `"removed"` |
 | `name`/`email`/`emailLower`/`jobTitle`/`profileComplete`/`platformRole`/`searchText` | denormalized | Copied from `users` so the member directory (paginated, searchable via a `search_member` search index) avoids a per-row join |
 
-**Membership sync & audit infrastructure:** `memberships` and `membershipIntents` (pending/accepted/revoked invite tracking) are kept in sync with Clerk by a webhook handler (`POST /clerk/webhook`, HMAC/Svix-verified) reacting to `user.created/updated/deleted`, `organizationMembership.created/deleted`, and `organizationInvitation.revoked` events; `processedWebhookEvents` makes this idempotent. Every membership/role/invite action is additionally recorded in an append-only `authAuditEvents` log, and `orgMembershipStats` keeps denormalized per-org counts (active/admin/contributor/viewer/pending-invite) so the admin dashboard doesn't scan the full membership table.
+**Membership sync & audit infrastructure:** `memberships`, `membershipIntents` (pending/accepted/revoked invite tracking), and the `tenants` registry (§3.7.7) are kept in sync with Clerk by a webhook handler (`POST /clerk/webhook`, HMAC/Svix-verified) reacting to `user.created/updated/deleted`, `organizationMembership.created/deleted`, `organizationInvitation.revoked`, and `organization.created/updated/deleted` events; `processedWebhookEvents` makes this idempotent. Every membership/role/invite action is additionally recorded in an append-only `authAuditEvents` log, and `orgMembershipStats` keeps denormalized per-org counts (active/admin/contributor/viewer/pending-invite) so the admin dashboard doesn't scan the full membership table.
 
 **Conversations table change:** Add optional `userId` field (`v.id("users")`) linking conversations to authenticated users. The existing `contributorName` field is preserved as a denormalized display name.
 
 **Auth flow:**
-1. User visits the app → Clerk middleware (`src/proxy.ts`) redirects to `/sign-in` if not authenticated
-2. User signs up via Clerk's prebuilt `<SignUp />` component (collects name, email, password)
-3. Clerk issues a JWT → `ConvexProviderWithClerk` sends it with every Convex request → Convex validates via `convex/auth.config.ts`
-4. On first authenticated visit, a `store` mutation creates a `users` record linked via `tokenIdentifier`
-5. If `profileComplete === false` → user sees a profile onboarding screen (Name pre-filled from Clerk, plus Job Title, Function, Department, Hire Date)
-6. After completing onboarding → user accesses the main app
-7. All Convex queries/mutations require authentication via `ctx.auth.getUserIdentity()`
-8. User identity is never passed as a function argument — always derived server-side
-9. Write mutations for hierarchy create/update/delete and recording flows require `contributor` or `admin` role — enforced server-side via `requireOrgContributor(ctx)` in `convex/lib/orgAuth.ts`. Delete mutations also enforce child-data blockers server-side.
-10. Admin operations such as conversation deletion, membership role changes, member removal, invitation revocation, and appearance reset require `admin` role — enforced via `requireOrgAdmin(ctx)`.
-11. Frontend conditionally renders CRUD buttons, Record button, and admin features based on the active-org membership role from `getMyMembership` / org-scoped user queries.
+1. User lands on a tenant subdomain (`{slug}.bizfabric.ai`) → Clerk middleware (`src/proxy.ts`) sends signed-out visitors to that subdomain's `/sign-in`. Invitation emails link straight to the subdomain's `/sign-up` via the invitation's `redirect_url`.
+2. User signs up or signs in via Clerk's prebuilt `<SignUp />` / `<SignIn />` on the subdomain. **Both** redirect to `/join-organization` afterward (not straight into the app) so the org-join handoff always runs.
+3. Clerk issues a JWT → `ConvexProviderWithClerk` sends it with every Convex request → Convex validates via `convex/auth.config.ts`.
+4. `/join-organization` POSTs to `/api/join-subdomain-organization`, which resolves the org from the subdomain slug and, subject to the enrollment gate (§3.7.6), adds the user to the Clerk org. Existing members pass straight through (idempotent). It then activates the org via `setActive` and syncs the Fabric profile.
+5. On first authenticated visit a `store` mutation creates the `users` record (linked via `tokenIdentifier`) and a `memberships` row for the active org — role from the invite intent when present, otherwise the `contributor` default (§3.7.5).
+6. If `profileComplete === false` → profile onboarding screen (Name pre-filled from Clerk, plus Job Title, Function, Department, Hire Date).
+7. After completing onboarding → user accesses the main app.
+8. All Convex queries/mutations require authentication via `ctx.auth.getUserIdentity()`.
+9. User identity is never passed as a function argument — always derived server-side.
+10. Write mutations for hierarchy create/update/delete and recording flows require `contributor` or `admin` role — enforced server-side via `requireOrgContributor(ctx)` in `convex/lib/orgAuth.ts`. Delete mutations also enforce child-data blockers server-side.
+11. Admin operations such as conversation deletion, membership role changes, member removal, invitation revocation, and appearance reset require `admin` role — enforced via `requireOrgAdmin(ctx)`.
+12. Frontend conditionally renders CRUD buttons, Record button, and admin features based on the active-org membership role from `getMyMembership` / org-scoped user queries.
 
 **Packages:** `@clerk/nextjs`
 **Config files:** `convex/auth.config.ts` (Clerk JWT issuer), `src/proxy.ts` (Clerk middleware)
-**Current auth files:** `convex/users.ts` (user/profile and membership logic), `convex/invitations.ts` (Clerk-backed invitations), `convex/lib/orgAuth.ts` (shared active-org role helpers), `convex/lib/clerkApi.ts` (Clerk Backend API wrapper), `src/proxy.ts` (Clerk middleware), `src/app/sign-in/[[...sign-in]]/page.tsx`, `src/app/sign-up/[[...sign-up]]/page.tsx`, `src/app/join-organization/page.tsx` (invite-acceptance handoff), `src/features/profile/profile-onboarding.tsx`, `src/features/shell/user-menu.tsx`
+**Current auth files:** `convex/users.ts` (user/profile and membership logic), `convex/invitations.ts` (Clerk-backed invitations), `convex/lib/orgAuth.ts` (shared active-org role helpers), `convex/lib/clerkApi.ts` (Clerk Backend API wrapper), `convex/lib/slugs.ts` (shared tenant-slug + reserved-subdomain rules), `src/proxy.ts` (Clerk middleware), `src/lib/subdomain.ts` (host → slug / console-host parsing), `src/app/sign-in/[[...sign-in]]/page.tsx`, `src/app/sign-up/[[...sign-up]]/page.tsx`, `src/app/join-organization/page.tsx` + `src/features/auth/join-subdomain-organization.tsx` (org-join handoff), `src/app/api/join-subdomain-organization/route.ts` (server-side enrollment gate, §3.7.6), `src/features/profile/profile-onboarding.tsx`, `src/features/shell/user-menu.tsx`
 
 ### 3.7 Multi-Tenancy Architecture
 
@@ -1046,7 +1089,7 @@ Fabric is a multi-tenant B2B SaaS. Every organization (Clerk "org") gets its own
 
 #### 3.7.1 Tenancy model
 
-- **Clerk owns identity + org membership.** Users sign up / sign in via Clerk. Orgs are created by a super-admin in the Clerk Dashboard (no self-serve). Fabric calls the Clerk Admin API for invitations, pending-invite revocation, and member removal so Clerk membership and Fabric membership remain aligned.
+- **Clerk owns identity + org membership.** Users sign up / sign in via Clerk. Orgs are created by a super-admin through the tenant console (§3.7.7), which calls the Clerk Admin API — or, as a fallback, directly in the Clerk Dashboard (the `organization.*` webhook then mirrors them into the registry). There is no end-user self-serve org creation. Fabric calls the Clerk Admin API for invitations, pending-invite revocation, and member removal so Clerk membership and Fabric membership remain aligned.
 - **Fabric owns roles.** A Convex `memberships` table stores `(userId, clerkOrgId, role)`. Fabric's three-tier role hierarchy (admin/contributor/viewer) is defined here, not in Clerk — this keeps role evolution independent of Clerk's plan tier and lets the same user hold different roles in different orgs.
 - **Every tenant-scoped row carries `clerkOrgId`.** Functions, departments, processes, conversations, and processFlows each have an indexed `clerkOrgId` field. `users` stays org-agnostic (identity is global, membership is per-org).
 - **Row-level authorization is enforced in every Convex function.** Reads filter by `clerkOrgId` via compound index. Writes stamp `clerkOrgId` on inserts and verify that every parent document referenced in the mutation belongs to the caller's active org (defeats ID-substitution attacks across tenants).
@@ -1071,11 +1114,13 @@ Production URLs take the form `{org-slug}.bizfabric.ai/<path>` (e.g. `biz-group.
 
 Local development uses `lvh.me` — a public DNS name that resolves `*.lvh.me` to `127.0.0.1` — so developers visit `biz-group.lvh.me:3000` without editing their hosts file. The env var `NEXT_PUBLIC_ROOT_DOMAIN` controls the active root (`lvh.me:3000` in dev, `bizfabric.ai` in prod).
 
-Middleware (`src/proxy.ts`) extracts the subdomain from the `Host` header and rewrites the request internally from `/<anything>` to `/<subdomain>/<anything>`, matching the Next.js `src/app/[org]/...` route tree. Users always see the subdomain-only URL in the browser; the `[org]` segment is an implementation detail. Because the org lives in the subdomain rather than the request pathname, Clerk's `organizationSyncOptions` is only a best-effort hint here, and `src/app/[org]/layout.tsx` still performs a client-side `setActive` fallback on initial tenant hits after authentication. The tenant auth pages themselves stay outside `[org]` so they can render branded public marketing + Clerk surfaces at `/sign-in` and `/sign-up` on each subdomain.
+Middleware (`src/proxy.ts`) extracts the subdomain from the `Host` header and rewrites the request internally from `/<anything>` to `/<subdomain>/<anything>`, matching the Next.js `src/app/[org]/...` route tree. Users always see the subdomain-only URL in the browser; the `[org]` segment is an implementation detail. Because the org lives in the subdomain rather than the request pathname, Clerk's `organizationSyncOptions` was **removed** — its `/:slug` patterns match the pre-rewrite pathname and would misread ordinary path segments (`/sign-in`, `/processes`) as org slugs; instead `src/app/[org]/layout.tsx` performs a client-side `setActive` on initial tenant hits after authentication. The tenant auth pages themselves stay outside `[org]` so they can render branded public marketing + Clerk surfaces at `/sign-in` and `/sign-up` on each subdomain.
+
+A set of **reserved subdomains** (`www`, `app`, `tenants`, `accounts`, `clerk`, `api`, `mail`, `admin`, `status`) can never be tenant slugs — enforced by `isValidTenantSlug` in `convex/lib/slugs.ts`, the single source of truth shared by the middleware host parsing (`src/lib/subdomain.ts`) and the tenant-creation validation. `tenants.bizfabric.ai` is carved out for the platform tenant console (§3.7.7): the middleware detects that host and rewrites into the `src/app/tenants-console/...` tree instead of `[org]`.
 
 #### 3.7.4 Cross-org access control
 
-- When a signed-in user visits a subdomain for an org they don't belong to, `src/app/[org]/layout.tsx` detects the missing slug ↔ membership match and renders a flat "No access to this workspace" screen with links to valid workspace subdomains plus sign-out. This surface intentionally does not show a general org picker.
+- When a signed-in user visits a subdomain for an org they don't belong to, `src/app/[org]/layout.tsx` detects the missing slug ↔ membership match and renders a "You're not in this workspace yet" screen offering a **Join this workspace** action (which calls the same `/api/join-subdomain-organization` gate, §3.7.6), plus links to workspaces they already belong to and sign-out. This surface intentionally does not show a general org picker. The join attempt still passes through the enrollment gate, so it only succeeds for a domain-matched, staff, or invited user.
 - The only org-switch UI inside the app is the nav-bar `<OrganizationSwitcher />`, and it is rendered only for users with more than one org membership. Single-org users never see it.
 - Wrong-subdomain login is not hard-blocked before authentication. A user may complete sign-in on the wrong tenant subdomain, but app access is denied immediately afterwards unless the URL slug matches one of their org memberships.
 - Every Convex function calls `requireOrgMember(ctx)` (or `requireOrgContributor` / `requireOrgAdmin`), which:
@@ -1088,14 +1133,42 @@ Middleware (`src/proxy.ts`) extracts the subdomain from the `Host` header and re
 
 #### 3.7.5 Membership provisioning
 
-- **Org creation** — admin-provisioned only. A platform `superAdmin` creates the org in the Clerk Dashboard, then runs an internal fan-out action that (a) uses the Clerk Admin API to invite every `superAdmin` user into the new org as `org:admin`, and (b) writes a matching `memberships` row for each. The client-side admin is invited afterward via Clerk's normal invitation flow.
-- **Regular-member provisioning** — when an invited user accepts and signs in for the first time, `users.store` auto-creates a `memberships` row for the active org with role `contributor` (the safe default for new invitees). The org admin can promote them to `admin` or demote them to `viewer` afterward.
-- **Role changes** — admins promote / demote members in their own org via `setMembershipRole`, which only accepts memberships whose `clerkOrgId` matches the caller's active org. The legacy `users.role` field (pre-multi-tenant) has been retired (§3.7.7).
+- **Org creation** — super-admin-provisioned only, via the tenant console (§3.7.7; `tenants.createTenant`). Creating a tenant provisions the Clerk org, fans out every `superAdmin` into it as `org:admin` with a matching `memberships` row, uploads the logo, sets the enrollment domain allowlist, and optionally sends the first-user invitation. The same fan-out runs from the CLI (`fanOutSuperAdminMemberships`) or console Team page for orgs created directly in the Clerk Dashboard.
+- **Regular-member provisioning** — when a user joins (via the enrollment gate, §3.7.6) and signs in for the first time, `users.store` auto-creates a `memberships` row for the active org. Role comes from the matching invite intent when the user was invited; otherwise it defaults to `contributor` (the safe default for walk-up domain-matched, webhook, and reconcile joins alike). The org admin can promote them to `admin` or demote them to `viewer` afterward.
+- **Role changes** — admins promote / demote members in their own org via `setMembershipRole`, which only accepts memberships whose `clerkOrgId` matches the caller's active org. The legacy `users.role` field (pre-multi-tenant) has been retired (§3.7.9).
 - **Member removal** — admins remove members through `removeMemberFromOrg`, which preflights self-removal and last-admin guards, removes the Clerk org membership first, then deletes the Fabric `memberships` row. If Clerk removal fails, the Fabric row stays in place so access cannot be silently recreated from a still-valid Clerk membership; Clerk 404 is treated as already removed and Fabric cleanup continues.
 - **Pending invitations** — admins can revoke pending invitations. Resend is implemented as revoke + re-invite because Clerk does not expose a separate resend operation; if the re-invite fails after revocation, the admin must invite the person again.
 - **Superadmin bootstrap** — the first platform `superAdmin` is set by the internal mutation `users.bootstrapSuperAdmin` (by email). Subsequent superadmins are promoted / demoted by an existing superAdmin via `users.setPlatformRole`.
 
-#### 3.7.6 Data migration (Biz Group) — complete
+#### 3.7.6 Enrollment & domain-gated self-join
+
+The server-side enrollment gate lives in `src/app/api/join-subdomain-organization/route.ts` and is invoked by the `/join-organization` handoff (post sign-up/sign-in) and the "Join this workspace" screen (§3.7.4). It performs a same-origin POST check, resolves the org from the subdomain slug, and requires an authenticated user with at least one **verified** email. It then evaluates, in order:
+
+1. **Already a member** → pass straight through (idempotent).
+2. A verified email domain is in the tenant's **`allowedEmailDomains`** (Clerk org public metadata) → join.
+3. A verified email domain is a **platform-staff domain** (`PLATFORM_STAFF_EMAIL_DOMAINS`, default `bizgroup.ae`) → join. This is how every Biz Group staff member gets into *any* tenant workspace without per-tenant configuration.
+4. Otherwise, a **pending Clerk invitation** addressed to one of the verified emails → join. This is the escape hatch for out-of-domain externals an admin has explicitly invited.
+5. None of the above → **403**, with the reason logged server-side (`email_domain_not_allowed`, `no_verified_email`, `organization_not_found`, `banned_or_locked`, …) so failures surface as logs rather than only support tickets. The schema reserves a `blockedJoin` audit action for the same purpose.
+
+Matching only **verified** emails is what makes rules 2–4 safe: a user cannot claim a domain or an invitation for an address they don't own, because Clerk verifies email ownership. On success the user is added as Clerk `org:member`; the Fabric role is decided later at provisioning (§3.7.5) — invited users get their intent role, everyone else the `contributor` default.
+
+A tenant with an **empty** `allowedEmailDomains` list is invite-only (plus platform staff) — the safe default for a freshly created workspace. The policy is intentionally per-tenant: `biz-group.bizfabric.ai` admits `@bizgroup.ae` only (as its own domain and as staff), whereas a client tenant admits its own domain(s) **plus** `@bizgroup.ae` staff. Domains are managed per tenant from the console (§3.7.7) or `platform.setOrgAllowedEmailDomains`, and are stored normalized (lowercased, `@`-stripped, deduped, validated against a domain pattern).
+
+#### 3.7.7 Tenant management console (`tenants.bizfabric.ai`)
+
+A super-admin-only platform surface for managing every tenant, served from the reserved `tenants` subdomain (§3.7.3) within the same Next.js app (`src/app/tenants-console/...`). It reuses the same Clerk session — the session cookie is scoped to the apex domain, so a staff member signed in at any workspace is already signed in here (no separate credentials). Authorization is two-layer, matching the rest of Fabric: the console layout renders an "access required" blocker unless `users.getMe` reports `platformRole === "superAdmin"`, and **every** `convex/tenants.ts` function independently re-checks `requireSuperAdmin` server-side — the layout gate is UX only.
+
+The console is backed by the `tenants` mirror table (Clerk stays the source of truth), kept in sync three ways: the `createTenant` action, the `organization.created/updated/deleted` webhooks (so orgs created directly in Clerk still appear), and the `backfillTenantsFromClerk` CLI backfill (run once at rollout, since existing orgs predate the mirror). Member/admin/pending counts prefer the denormalized `orgMembershipStats` row and fall back to a live count when it is absent (tenants that predate the stats row, or were created directly in Clerk); the backfill also materializes those rows so the fast path applies going forward.
+
+**Screens:**
+- **Tenants list** — every workspace with logo, name, slug (linking to the subdomain), member/admin/pending-invite counts, allowed domains, and provisioning status.
+- **New-tenant wizard** — client name; an auto-derived, live-validated, immutable slug (checked against the reserved list); allowed email domains; an optional logo upload; and an optional first user with a role picker (admin/contributor/viewer) invited via the standard Clerk email. It runs the provisioning steps in §3.7.5; non-fatal failures surface as a retryable "provisioning incomplete" panel rather than blocking creation.
+- **Tenant detail** — rename (display name only — the slug is immutable from the console; change it directly in Clerk if ever truly needed), replace logo, edit allowed email domains, send / revoke invitations, and a read-only member list.
+- **Platform team** — list super-admins; promote (look up an existing Fabric account by email, flip `platformRole`, then auto-fan-out into every tenant) / demote (blocked for self); and a manual "sync access to all tenants" action.
+
+Provisioning is idempotent and step-wise: `createTenant` records any per-step failures on the tenant row (`status: "needsAttention"`, `provisioningErrors[]`), and `retryProvisioning` safely re-runs the failed steps (staff fan-out, logo upload, first-user invite). The logo `storageId` and first-invite details are retained on the row so retries have what they need.
+
+#### 3.7.8 Data migration (Biz Group) — complete
 
 The existing Fabric deployment held real data for Biz Group. Migration followed the widen-migrate-narrow pattern using the `@convex-dev/migrations` component, and **the schema-level narrow step is done**: `convex/schema.ts` now declares `clerkOrgId: v.string()` (required) on every tenant-scoped table (`functions`, `departments`, `processes`, `conversations`, `processFlows`), with only compound `by_clerkOrgId_and_*` indexes — no optional `clerkOrgId` and no legacy single-field indexes remain.
 
@@ -1105,13 +1178,16 @@ The existing Fabric deployment held real data for Biz Group. Migration followed 
 
 `convex/migrations.ts` and `convex/orgIntegrity.ts` (`auditHierarchyIntegrity`, `repairHierarchyOrphans`, `auditAllOrgs`) remain in the codebase as ongoing ops tooling — CLI-invoked auditing/repair for tenant data — not as an active in-flight migration. `convex/migrations.ts` also carries a separate, reusable dev→prod tenant-move pipeline (`exportForOrg` → `prodImportGenerateUploadUrl` → `prodImportFromStorage` → `prodImport_insertAll`) used for moving an org's hierarchy between Convex deployments. The full phased plan is tracked in [TASK_LIST.md](TASK_LIST.md) Phase 13 — note that document was last substantially updated before several features in this PRD shipped, so treat its checkboxes as historical rather than a live status board.
 
-#### 3.7.7 Packages, config, and new files
+#### 3.7.9 Packages, config, and new files
 
 - **Packages:** `@convex-dev/migrations` (schema migration helper), `@clerk/nextjs` (Clerk Organizations features enabled).
-- **Config:** `convex/convex.config.ts` registers the migrations component. `convex/auth.config.ts` unchanged. Clerk's `convex` JWT template carries `orgId` and `orgSlug` claims. `CLERK_SECRET_KEY` is present in Convex env so the fan-out action and invitation management can call the Clerk Admin API. Env: `NEXT_PUBLIC_ROOT_DOMAIN` / `ROOT_DOMAIN` (dev: `lvh.me:3000`, prod: `bizfabric.ai`).
-- **Files:** `convex/convex.config.ts`, `convex/migrations.ts`, `convex/lib/orgAuth.ts`, `convex/lib/clerkApi.ts`, `convex/platform.ts` (superAdmin mutations + fan-out action), `convex/invitations.ts`, `convex/orgIntegrity.ts`, `src/app/[org]/layout.tsx`, `src/app/[org]/page.tsx` (and the rest of the protected tree under `[org]`).
-- **Schema additions:** `users.platformRole: v.optional(v.literal("superAdmin"))` plus `by_platformRole` index.
-- **Retired:** `convex/lib/auth.ts` no longer exists, and the legacy `users.role` field is absent from the schema — both confirmed retired.
+- **Config:** `convex/convex.config.ts` registers the migrations component. `convex/auth.config.ts` unchanged. Clerk's `convex` JWT template carries `orgId` and `orgSlug` claims. `CLERK_SECRET_KEY` is present in Convex env so the fan-out action, tenant provisioning, and invitation management can call the Clerk Admin API. The Clerk webhook must subscribe to `user.*`, `organizationMembership.*`, `organizationInvitation.revoked`, **and** `organization.created/updated/deleted`, with `CLERK_WEBHOOK_SIGNING_SECRET` set in Convex env. Invitation emails must be enabled and sign-up mode set to Public in Clerk.
+- **Env:** `NEXT_PUBLIC_ROOT_DOMAIN` / `ROOT_DOMAIN` (dev: `lvh.me:3000`, prod: `bizfabric.ai`); `PLATFORM_STAFF_EMAIL_DOMAINS` (comma-separated, default `bizgroup.ae`) — the domains whose verified emails may join every tenant (§3.7.6).
+- **Files (multi-tenancy core):** `convex/convex.config.ts`, `convex/migrations.ts`, `convex/lib/orgAuth.ts`, `convex/lib/clerkApi.ts`, `convex/lib/slugs.ts` (slug + reserved-subdomain rules), `convex/platform.ts` (superAdmin mutations, fan-out, domain-allowlist actions, `findUserByEmail`), `convex/invitations.ts`, `convex/orgIntegrity.ts`, `src/lib/subdomain.ts`, `src/proxy.ts`, `src/app/[org]/layout.tsx`, `src/app/[org]/page.tsx` (and the rest of the protected tree under `[org]`).
+- **Files (enrollment gate, §3.7.6):** `src/app/api/join-subdomain-organization/route.ts`, `src/app/join-organization/page.tsx`, `src/features/auth/join-subdomain-organization.tsx`.
+- **Files (tenant console, §3.7.7):** `convex/tenants.ts`, `src/app/tenants-console/{layout,page}.tsx`, `src/app/tenants-console/new/page.tsx`, `src/app/tenants-console/[tenantId]/page.tsx`, `src/app/tenants-console/team/page.tsx`, `src/features/tenants-console/{tenant-url,tenant-invitations,logo-file-button}.tsx`.
+- **Schema additions:** `users.platformRole: v.optional(v.literal("superAdmin"))` plus `by_platformRole` index; the `tenants` table (§3.2) with `by_clerkOrgId` and `by_slug` indexes; `tenants.allowedEmailDomains` in Clerk org public metadata backs the enrollment gate.
+- **Retired:** `convex/lib/auth.ts` no longer exists, and the legacy `users.role` field is absent from the schema — both confirmed retired. Clerk's `organizationSyncOptions` was removed from `src/proxy.ts` (§3.7.3).
 
 ### 3.8 Org Branding / Appearance
 

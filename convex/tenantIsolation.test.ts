@@ -981,6 +981,10 @@ async function seedConversation(
   });
 }
 
+function waitForNextTimestamp() {
+  return new Promise((resolve) => setTimeout(resolve, 2));
+}
+
 describe("conversations admin — cross-tenant scoping", () => {
   test("listAllForOrg returns only caller's org rows", async () => {
     const t = convexTest(schema, modules);
@@ -999,6 +1003,49 @@ describe("conversations admin — cross-tenant scoping", () => {
     expect(result.page[0].clerkOrgId).toBe(ORG_A);
     // Process-name join must only surface Org A's process name.
     expect(result.page[0].processName).toBe("Lead-Qualification-A");
+  });
+
+  test("listAllForOrg orders unfiltered rows by latest creation time first", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seedTwoOrgs(t);
+    const procA2 = await t.run(async (ctx) => {
+      return await ctx.db.insert("processes", {
+        departmentId: ids.deptA,
+        name: "Contracting-A",
+        sortOrder: 1,
+        clerkOrgId: ORG_A,
+      });
+    });
+
+    await seedConversation(t, ids.procA, ORG_A, {
+      contributorName: "older-conversation",
+    });
+    await waitForNextTimestamp();
+    await seedConversation(t, procA2, ORG_A, {
+      contributorName: "middle-conversation",
+    });
+    await waitForNextTimestamp();
+    await seedConversation(t, ids.procA, ORG_A, {
+      contributorName: "newer-conversation",
+    });
+
+    const result = await t
+      .withIdentity(identityForOrgA())
+      .query(api.conversations.listAllForOrg, {
+        paginationOpts: { numItems: 50, cursor: null },
+      });
+
+    expect(result.page.map((row) => row.contributorName)).toEqual([
+      "newer-conversation",
+      "middle-conversation",
+      "older-conversation",
+    ]);
+    expect(result.page[0]._creationTime).toBeGreaterThanOrEqual(
+      result.page[1]._creationTime,
+    );
+    expect(result.page[1]._creationTime).toBeGreaterThanOrEqual(
+      result.page[2]._creationTime,
+    );
   });
 
   test("listAllForOrg with cross-tenant processId returns empty page", async () => {

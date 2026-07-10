@@ -355,6 +355,7 @@ export default defineSchema({
     status: conversationStatusValidator,
     clerkOrgId: v.string(),
   })
+    .index("by_clerkOrgId", ["clerkOrgId"])
     .index("by_clerkOrgId_and_processId", ["clerkOrgId", "processId"])
     .index("by_clerkOrgId_and_processId_and_status", [
       "clerkOrgId",

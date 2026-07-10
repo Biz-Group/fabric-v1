@@ -165,7 +165,7 @@ export const listAllForOrg = query({
               )
           : ctx.db
               .query("conversations")
-              .withIndex("by_clerkOrgId_and_processId", (q) =>
+              .withIndex("by_clerkOrgId", (q) =>
                 q.eq("clerkOrgId", caller.orgId),
               );
 
