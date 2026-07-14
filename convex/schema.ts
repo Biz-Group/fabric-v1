@@ -339,6 +339,7 @@ export default defineSchema({
       v.union(
         v.literal("elevenlabs-convai"),
         v.literal("fabric-openrouter"),
+        v.literal("fabric-foundry"),
       ),
     ),
     transcript: v.optional(

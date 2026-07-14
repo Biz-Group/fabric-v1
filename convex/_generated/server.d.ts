@@ -22,6 +22,20 @@ import {
 import type { DataModel } from "./dataModel.js";
 
 /**
+ * Typesafe environment variables declared in `convex.config.ts`.
+ */
+type Env = {
+  readonly AI_PROVIDER: "openrouter" | "foundry" | undefined;
+  readonly FOUNDRY_API_KEY: string | undefined;
+  readonly FOUNDRY_CLAUDE_DEPLOYMENT: string | undefined;
+  readonly FOUNDRY_ENDPOINT: string | undefined;
+  readonly FOUNDRY_OPENAI_FALLBACK_DEPLOYMENT: string | undefined;
+  readonly FOUNDRY_SAFETY_DEPLOYMENT: string | undefined;
+  readonly FOUNDRY_SYNTHESIS_BACKEND: "claude" | "gpt5mini" | undefined;
+  readonly OPENROUTER_API_KEY: string | undefined;
+};
+
+/**
  * Define a query in this Convex app's public API.
  *
  * This function will be allowed to read your Convex database and will be accessible from the client.
@@ -94,6 +108,11 @@ export declare const internalAction: ActionBuilder<DataModel, "internal">;
  * @returns The wrapped function. Import this function from `convex/http.js` and route it to hook it up.
  */
 export declare const httpAction: HttpActionBuilder;
+
+/**
+ * Typesafe environment variables declared in `convex.config.ts`.
+ */
+export declare const env: Env;
 
 /**
  * A set of services for use within Convex query functions.

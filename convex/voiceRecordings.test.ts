@@ -304,7 +304,7 @@ describe("voice recording helpers", () => {
       },
     };
     const analysis = parseAnalysisResponse(
-      { choices: [{ message: { content: JSON.stringify(payload) } }] },
+      { text: JSON.stringify(payload), finishReason: "stop" },
       "Fallback",
     );
 
@@ -318,12 +318,8 @@ describe("voice recording helpers", () => {
     expect(() =>
       parseAnalysisResponse(
         {
-          choices: [
-            {
-              finish_reason: "length",
-              message: { content: '{"transcript_summary":"Contributor expl' },
-            },
-          ],
+          finishReason: "length",
+          text: '{"transcript_summary":"Contributor expl',
         },
         "Fallback",
       ),
@@ -334,9 +330,8 @@ describe("voice recording helpers", () => {
     expect(() =>
       parseAnalysisResponse(
         {
-          choices: [
-            { finish_reason: "stop", message: { content: "not json at all" } },
-          ],
+          finishReason: "stop",
+          text: "not json at all",
         },
         "Fallback",
       ),

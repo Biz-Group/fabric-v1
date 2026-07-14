@@ -3,6 +3,10 @@ import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { resolveOrgForAction } from "./lib/orgAuth";
+import {
+  generateAICompletion,
+  isAIConfigured,
+} from "./lib/aiProvider";
 
 // --- Shared Prompt Constants ---
 
@@ -94,8 +98,7 @@ export const generateDepartmentSummary = action({
       };
     }
 
-    const openrouterKey = process.env.OPENROUTER_API_KEY;
-    if (!openrouterKey) {
+    if (!isAIConfigured("synthesis")) {
       return {
         summary: null,
         message: "Summary generation is not configured (missing API key).",
@@ -106,40 +109,22 @@ export const generateDepartmentSummary = action({
       .map((s) => `[Process: ${s.processName}]\n${s.summary}`)
       .join("\n\n");
 
-    const response = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${openrouterKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "anthropic/claude-haiku-4.5",
-          messages: [
-            { role: "system", content: DEPARTMENT_SUMMARY_SYSTEM_PROMPT },
-            {
-              role: "user",
-              content: `Here are the process summaries for this department:\n\n${summaryBlock}`,
-            },
-          ],
-          max_tokens: 8192,
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("OpenRouter API error:", response.status, errorText);
+    let generated: string | null;
+    try {
+      const completion = await generateAICompletion({
+        capability: "synthesis",
+        operation: "department-summary",
+        system: DEPARTMENT_SUMMARY_SYSTEM_PROMPT,
+        user: `Here are the process summaries for this department:\n\n${summaryBlock}`,
+        maxTokens: 8192,
+      });
+      generated = completion.text;
+    } catch {
       return {
         summary: null,
         message: "Failed to generate summary. Please try again.",
       };
     }
-
-    const result = await response.json();
-    const generated: string | null =
-      result.choices?.[0]?.message?.content?.trim() ?? null;
 
     if (!generated) {
       return {
@@ -230,8 +215,7 @@ export const generateFunctionSummary = action({
       };
     }
 
-    const openrouterKey = process.env.OPENROUTER_API_KEY;
-    if (!openrouterKey) {
+    if (!isAIConfigured("synthesis")) {
       return {
         summary: null,
         message: "Summary generation is not configured (missing API key).",
@@ -242,40 +226,22 @@ export const generateFunctionSummary = action({
       .map((s) => `[Department: ${s.departmentName}]\n${s.summary}`)
       .join("\n\n");
 
-    const response = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${openrouterKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "anthropic/claude-haiku-4.5",
-          messages: [
-            { role: "system", content: FUNCTION_SUMMARY_SYSTEM_PROMPT },
-            {
-              role: "user",
-              content: `Here are the department summaries for this function:\n\n${summaryBlock}`,
-            },
-          ],
-          max_tokens: 8192,
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("OpenRouter API error:", response.status, errorText);
+    let summary: string | null;
+    try {
+      const completion = await generateAICompletion({
+        capability: "synthesis",
+        operation: "function-summary",
+        system: FUNCTION_SUMMARY_SYSTEM_PROMPT,
+        user: `Here are the department summaries for this function:\n\n${summaryBlock}`,
+        maxTokens: 8192,
+      });
+      summary = completion.text;
+    } catch {
       return {
         summary: null,
         message: "Failed to generate summary. Please try again.",
       };
     }
-
-    const result = await response.json();
-    const summary: string | null =
-      result.choices?.[0]?.message?.content?.trim() ?? null;
 
     if (!summary) {
       return {

@@ -1,12 +1,10 @@
 import { describe, expect, test } from "vitest";
 import {
-  buildFlowGenerationRequestBody,
-  extractFlowResponsePayload,
-  getFlowFinishReason,
-  isTokenLimitFinishReason,
+  buildFlowGenerationAIRequest,
   normalizeFlowResponse,
   parseFlowResponsePayload,
 } from "./processFlows";
+import { isTokenLimitFinishReason } from "./lib/aiProvider";
 
 const sampleFlowPayload = {
   nodes: [
@@ -60,64 +58,26 @@ const sampleFlowPayload = {
 };
 
 describe("process flow generation helpers", () => {
-  test("builds a forced structured OpenRouter tool request", () => {
-    const body = buildFlowGenerationRequestBody("Conversation data");
+  test("builds a provider-neutral forced structured tool request", () => {
+    const request = buildFlowGenerationAIRequest("Conversation data");
 
-    expect(body.model).toBe("anthropic/claude-haiku-4.5");
-    expect(body.temperature).toBe(0);
-    expect(body.max_tokens).toBe(32768);
-    expect(body.stream).toBe(false);
-    expect(body.tools[0].function.name).toBe("return_process_flow");
-    expect(body.tool_choice.function.name).toBe("return_process_flow");
-    expect(body.tools[0].function.parameters.required).toEqual([
+    expect(request.capability).toBe("synthesis");
+    expect(request.operation).toBe("process-flow-generation");
+    expect(request.user).toBe("Conversation data");
+    expect(request.temperature).toBe(0);
+    expect(request.maxTokens).toBe(32768);
+    expect(request.tool.name).toBe("return_process_flow");
+    expect(request.tool.inputSchema.required).toEqual([
       "nodes",
       "edges",
       "insights",
     ]);
   });
 
-  test("extracts forced tool-call arguments before assistant content", () => {
-    const argsJson = JSON.stringify(sampleFlowPayload);
-
-    const payload = extractFlowResponsePayload({
-      choices: [
-        {
-          message: {
-            content: "This should not be parsed.",
-            tool_calls: [
-              {
-                function: {
-                  name: "return_process_flow",
-                  arguments: argsJson,
-                },
-              },
-            ],
-          },
-        },
-      ],
-    });
-
-    expect(payload).toBe(argsJson);
-  });
-
-  test("detects token-limit finish reasons before parsing", () => {
-    expect(
-      isTokenLimitFinishReason(
-        getFlowFinishReason({ choices: [{ finish_reason: "length" }] }),
-      ),
-    ).toBe(true);
-    expect(
-      isTokenLimitFinishReason(
-        getFlowFinishReason({
-          choices: [{ native_finish_reason: "max_tokens" }],
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      isTokenLimitFinishReason(
-        getFlowFinishReason({ choices: [{ finish_reason: "stop" }] }),
-      ),
-    ).toBe(false);
+  test("detects provider token-limit finish reasons before parsing", () => {
+    expect(isTokenLimitFinishReason("length")).toBe(true);
+    expect(isTokenLimitFinishReason("max_tokens")).toBe(true);
+    expect(isTokenLimitFinishReason("stop")).toBe(false);
   });
 
   test("parses fenced and prose-wrapped JSON content as a fallback", () => {

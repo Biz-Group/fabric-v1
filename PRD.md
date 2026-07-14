@@ -4,10 +4,10 @@
 
 ---
 
-**Version:** 1.0 (Multi-Tenant — Subdomain-Native)
+**Version:** 1.1 (Multi-Tenant — Microsoft Foundry)
 **Author:** Saish / Biz Group
-**Date:** April 2026
-**Status:** Draft
+**Date:** July 2026
+**Status:** Draft — Foundry development cutover complete; production cutover staged
 
 ---
 
@@ -27,6 +27,7 @@ A single-page app that mirrors the way an organization is structured — Functio
 **Phase 1.1 (current capture enhancement):** Support direct voice recordings and pre-existing audio file uploads with ElevenLabs Scribe diarization and a required speaker-labeling review before transcript analysis, process summaries, or process-flow generation run.
 **Phase 1.5 (current):** Visualize — automatically convert captured conversations into interactive process flow diagrams that surface bottlenecks, tribal knowledge risks, automation opportunities, and handoff points.
 **Phase 1.6 (current):** Analyze & report — a dedicated Insights view derives handoffs, tool usage, bottlenecks, automation candidates, tribal-knowledge risk, and decision branches from the generated process flow, and a client-side PDF export turns any process into a shareable report (summary, flow diagram, step-by-step detail, insights).
+**Phase 1.7 (current platform upgrade):** Move Fabric-owned LLM inference from OpenRouter to Microsoft Foundry while retaining Claude Haiku 4.5 for synthesis, replacing the description-safety model with GPT-5 nano, and keeping GPT-5 mini deployed as an evaluated fallback/successor candidate. Development is cut over; the separate production Foundry environment is provisioned and smoke-tested but remains on OpenRouter until the production golden set and explicit cutover approval are complete.
 **Phase 2 (future):** Query, search, and retrieval — so new joiners and cross-functional teams can ask questions and get answers sourced from the captured knowledge.
 
 ---
@@ -105,7 +106,7 @@ When a user selects a process, they see:
 5. The agent conducts a semi-structured interview — asking follow-up questions, clarifying steps, probing for edge cases and exceptions.
 6. The user ends the conversation when they're done.
 7. Post-call, the frontend triggers a Convex action that polls the ElevenLabs Conversations API until the transcript and analysis are ready, then stores everything in the database.
-8. The Convex action calls Claude Haiku 4.5 (via OpenRouter) for incremental summary generation — passing the existing rolling summary plus the new conversation's full transcript — and updates the process-level structured summary.
+8. The Convex action calls the Fabric AI adapter, which routes synthesis to the `fabric-claude-haiku-4-5` Claude Haiku 4.5 deployment in Microsoft Foundry after environment cutover, for incremental summary generation — passing the existing rolling summary plus the new conversation's full transcript — and updates the process-level structured summary.
 9. Convex's built-in reactivity pushes the update to the UI — the new conversation appears in the log automatically.
 
 **Direct Voice Record flow:**
@@ -114,14 +115,14 @@ When a user selects a process, they see:
 2. The frontend uploads the audio blob to Convex Storage.
 3. Convex sends the stored audio to ElevenLabs Scribe with diarization enabled.
 4. The conversation pauses at `needs_speaker_labels`; the contributor names each diarized speaker and may link them to org members.
-5. After labels are submitted, Fabric runs OpenRouter analysis on the labeled transcript, stores the conversation summary and structured extraction, then updates the process-level rolling summary and flow staleness state.
+5. After labels are submitted, Fabric runs Foundry-hosted Claude analysis on the labeled transcript, stores the conversation summary and structured extraction, then updates the process-level rolling summary and flow staleness state.
 
 **Audio File Upload flow:**
 
 1. User selects "Upload Audio" in the same modal. No microphone access is requested.
 2. The user picks an audio file from disk through a native file picker (`accept="audio/*"`). The frontend validates the MIME prefix and a 100 MB size cap, and best-effort probes the duration via a hidden `<audio>` element.
 3. The frontend uploads the file to Convex Storage and calls the same `processVoiceRecording` action with `source: "upload"`, which stamps the conversation with `inputMode: "audioUpload"` and rejects non-audio MIME types server-side.
-4. From this point the pipeline is identical to Voice Record: Scribe diarization → `needs_speaker_labels` → contributor labels speakers → OpenRouter analysis → process summary refresh.
+4. From this point the pipeline is identical to Voice Record: Scribe diarization → `needs_speaker_labels` → contributor labels speakers → Foundry analysis → process summary refresh.
 
 **Modal entry & consent:**
 The recording modal opens to a single combined step that confirms the contributor's name and surfaces the recording/content notices inline. Submitting that step requests the microphone (Voice Record / AI Interview) or opens the file picker (Audio Upload).
@@ -167,9 +168,11 @@ Users with the `admin` role get a separate, full-screen console at `/[org]/admin
 | Audio file upload capture | Native HTML file picker (`accept="audio/*"`, 100 MB cap) + Convex Storage upload |
 | UI Components | ElevenLabs UI registry (Orb, Conversation, ConversationBar, Message, Transcript Viewer, Audio Player, Scrub Bar, Waveform, Voice Button) — built on shadcn/ui |
 | Backend / BaaS | **Convex** (document database, server functions, built-in reactivity) |
-| Conversation Summaries | ElevenLabs Conversation Analysis for AI interviews; Fabric/OpenRouter analysis for Voice Record and Audio File Upload after speaker labeling |
-| Process-level Summaries | Claude Haiku 4.5 via OpenRouter API (OpenAI-compatible) — structured analyst briefs with thematic sections and citations |
-| Process Flow Diagrams | React Flow (`@xyflow/react`) with dagre auto-layout (`@dagrejs/dagre`) — AI-generated from conversation data via Claude Haiku 4.5 |
+| AI Inference Platform | **Microsoft Foundry** for Fabric-owned LLM calls, accessed server-side from Convex through a shared provider adapter; OpenRouter is retained only as a temporary production rollback path during migration |
+| Conversation Summaries | ElevenLabs Conversation Analysis for AI interviews; Fabric/Foundry Claude analysis for Voice Record and Audio File Upload after speaker labeling |
+| Process-level Summaries | Claude Haiku 4.5 version `2` via the Foundry deployment `fabric-claude-haiku-4-5` — structured analyst briefs with thematic sections and citations |
+| Description Safety | GPT-5 nano version `2025-08-07` via the Foundry deployment `fabric-description-safety`, using strict structured tool output |
+| Process Flow Diagrams | React Flow (`@xyflow/react`) with dagre auto-layout (`@dagrejs/dagre`) — AI-generated from conversation data via the Foundry Claude deployment |
 | Post-call data | ElevenLabs Conversations API for AI interviews; ElevenLabs Scribe diarized transcription for Voice Record and Audio File Upload |
 | Audio playback | Org-scoped Convex HTTP proxy; AI interviews stream from ElevenLabs; Voice Record and Audio File Upload stream from Convex Storage |
 | PDF Export | `@react-pdf/renderer`, dynamically imported client-side so it never ships in the main bundle — reuses the Insights tab's derivation logic |
@@ -452,6 +455,7 @@ export default defineSchema({
     analysisProvider: v.optional(v.union(
       v.literal("elevenlabs-convai"),
       v.literal("fabric-openrouter"),
+      v.literal("fabric-foundry"),
     )),
     transcript: v.optional(v.array(v.object({  // Voice Record/Upload include speakerId/speakerName
       role: v.string(),
@@ -465,8 +469,8 @@ export default defineSchema({
       displayName: v.string(),
       userId: v.optional(v.id("users")),
     }))),
-    summary: v.optional(v.string()),         // ElevenLabs for AI interviews; Fabric/OpenRouter for Voice Record and Audio File Upload
-    analysis: v.optional(v.any()),           // opaque ElevenLabs/OpenRouter payload
+    summary: v.optional(v.string()),         // ElevenLabs for AI interviews; Fabric AI adapter for Voice Record/Upload
+    analysis: v.optional(v.any()),           // opaque ElevenLabs/Fabric analysis payload
     durationSeconds: v.optional(v.number()),
     status: v.union(
       v.literal("processing"), v.literal("needs_speaker_labels"),
@@ -538,7 +542,7 @@ values) — see the new "Org Branding / Appearance" subsection below.
 
 - **Document database** — schema-validated tables with typed fields, references via `v.id()`, and flexible `v.any()` for transcript/analysis storage
 - **Hierarchy integrity guards** — department/process create and move mutations must verify the target parent exists before writing. Delete mutations are non-cascading and must refuse to remove parents that still have child records. If legacy orphaned records are found, they are rewired non-destructively into recovery parents rather than deleting child processes, conversations, or process flows.
-- **Server functions** — `actions` for external API calls (ElevenLabs, OpenRouter), `mutations` for database writes, `queries` for reads, `httpAction` for HTTP endpoints (audio proxy, Clerk webhook)
+- **Server functions** — `actions` for external API calls (ElevenLabs, Microsoft Foundry, and temporary OpenRouter rollback), `mutations` for database writes, `queries` for reads, `httpAction` for HTTP endpoints (audio proxy, Clerk webhook)
 - **Built-in reactivity** — all `useQuery` hooks auto-update when data changes. No manual subscriptions needed — the UI updates live when a new conversation is inserted or its status changes
 - **Auth** — Clerk (hosted auth with prebuilt UI) + Convex JWT validation, auth gates on all queries, user profiles with onboarding on first login (Phase 5)
 
@@ -679,7 +683,7 @@ In addition to AI interview sessions, Fabric supports two contributor-driven cap
 5. The conversation transitions to `status: "needs_speaker_labels"` and **stops before analysis**.
 6. The contributor reviews diarized speaker samples, assigns display names, and can optionally link each speaker to an org member.
 7. `submitSpeakerLabels` patches `speakerName` onto transcript segments, transitions the conversation back to `processing`, and schedules analysis.
-8. `analyzeVoiceRecordingInternal` runs Fabric's OpenRouter analysis prompt on the labeled transcript, stores `summary` + structured `analysis`, marks the conversation `done`, and only then schedules `regenerateProcessSummary`.
+8. `analyzeVoiceRecordingInternal` runs Fabric's synthesis prompt through the shared AI adapter (Foundry Claude after cutover) on the labeled transcript, stores `summary` + structured `analysis`, marks the conversation `done`, and only then schedules `regenerateProcessSummary`.
 
 **Abandonment cleanup:**
 If a contributor closes the modal after the audio has reached storage but before they approve speaker labels, the frontend calls `voiceRecordings.abandonVoiceRecording`. The mutation deletes the storage object and the conversation row when `status !== "done"`, ensuring we don't retain half-processed audio. The check is gated to the row owner or an org admin and to `voiceRecord` / `audioUpload` rows, so AI interview records (which Fabric does not own the bytes for) are never touched.
@@ -690,8 +694,8 @@ If a contributor closes the modal after the audio has reached storage but before
 - Duplicate display names are allowed so users can correct over-split diarization by labeling two Scribe speakers as the same person.
 
 **Failure handling — admin retry and truncation detection:**
-- If transcription or analysis fails, the conversation is marked `status: "failed"` and appears in Admin → Conversations with a Retry action (`voiceRecordings.retryAudioProcessing`, admin-only). Retry is stage-aware: if a transcript already exists, only the OpenRouter analysis step re-runs; if transcription itself failed, the pipeline re-runs from the original audio retained in Convex Storage.
-- The OpenRouter analysis call uses a larger token budget (`max_tokens: 16384`, vs. `8192` for rolling summaries) to reduce truncation, and explicitly inspects the response's finish reason: a token-limit cutoff raises a clear "recording may be too long to analyze in a single pass" error instead of surfacing an opaque JSON-parse failure.
+- If transcription or analysis fails, the conversation is marked `status: "failed"` and appears in Admin → Conversations with a Retry action (`voiceRecordings.retryAudioProcessing`, admin-only). Retry is stage-aware: if a transcript already exists, only the Fabric AI analysis step re-runs; if transcription itself failed, the pipeline re-runs from the original audio retained in Convex Storage.
+- The Fabric AI analysis request uses a larger token budget (`max_tokens: 16384`, vs. `8192` for rolling summaries) to reduce truncation, and explicitly inspects the response's finish reason: a token-limit cutoff raises a clear "recording may be too long to analyze in a single pass" error instead of surfacing an opaque JSON-parse failure.
 
 #### 3.3.5 Audio Playback — Streamed from ElevenLabs
 
@@ -737,11 +741,41 @@ ElevenLabs provides built-in, LLM-powered post-call analysis with two capabiliti
 - `frequency` (string, e.g., "weekly", "monthly")
 - `edge_cases` (list of strings)
 
-These results are returned in the `analysis` field of the conversation details API and in the post-call webhook payload. The analysis object also includes a **transcript summary** — a narrative summary of the conversation generated by ElevenLabs' LLM. **For AI interviews, ElevenLabs handles all conversation-level summarization natively.** Fabric simply stores the summary and structured data as-is. For Voice Record and Audio File Upload, Fabric uses ElevenLabs Scribe only for diarized transcription, then runs its own OpenRouter analysis after speaker labels are confirmed.
+These results are returned in the `analysis` field of the conversation details API and in the post-call webhook payload. The analysis object also includes a **transcript summary** — a narrative summary of the conversation generated by ElevenLabs' LLM. **For AI interviews, ElevenLabs handles all conversation-level summarization natively.** Fabric simply stores the summary and structured data as-is. For Voice Record and Audio File Upload, Fabric uses ElevenLabs Scribe only for diarized transcription, then runs its own Foundry-hosted analysis after speaker labels are confirmed.
 
-### 3.4 Summarization Pipeline
+### 3.4 AI Inference Platform & Summarization Pipeline
 
-**Model:** Claude Haiku 4.5 via OpenRouter (`anthropic/claude-haiku-4.5`, `max_tokens: 8192` for rolling/department/function summaries)
+All Fabric-owned LLM requests go through `convex/lib/aiProvider.ts`, a capability-based adapter that isolates provider protocol differences from the product workflows. The adapter supports Foundry-hosted Claude, Foundry-hosted Azure OpenAI, and OpenRouter during the rollback window. Call sites select a capability (`synthesis` or `descriptionSafety`) rather than constructing provider URLs or choosing provider-specific model identifiers.
+
+**Approved model assignments:**
+
+| Capability | Foundry deployment | Model | Requirement |
+|---|---|---|---|
+| Process, department, function, process-flow, and labeled-voice synthesis | `fabric-claude-haiku-4-5` | Claude Haiku 4.5, version `2` | Preserve the existing synthesis model and prompt behavior through migration |
+| Description safety | `fabric-description-safety` | GPT-5 nano, version `2025-08-07` | Replace the OpenRouter-hosted Gemma classifier with strict structured tool output |
+| Evaluated fallback / Claude successor candidate | `fabric-gpt5-mini-fallback` | GPT-5 mini, version `2025-08-07` | Warm deployment only; do not switch synthesis to it without golden-set quality approval |
+
+**Environment topology and rollout status (July 2026):**
+
+| Environment | Foundry project | Region / routing | Capacity (Claude / nano / mini) | Current provider state |
+|---|---|---|---:|---|
+| Development | `fabric-foundry-dev-se` | Sweden Central / Global Standard | `1 / 10 / 10` | `AI_PROVIDER=foundry`; direct model smoke tests and application validation complete |
+| Production | `fabric-foundry-prod-se` | Sweden Central / Global Standard | `50 / 50 / 10` | Account, separate API key, deployments, Convex settings, and direct smoke tests complete; `AI_PROVIDER=openrouter` intentionally remains until golden-set validation and explicit cutover approval |
+
+Development and production use separate Foundry accounts and API keys in the same Azure subscription. This isolates credentials, monitoring, and deployment lifecycle, but quota remains shared at the subscription/region/model level. Global Standard is pay-per-token and may route inference outside Sweden Central; it does **not** provide strict Sweden-only or EU data-zone processing. This routing choice is approved for the current consulting workload and must be revisited if client or regulatory data-residency requirements change.
+
+**Provider behavior and operational requirements:**
+
+- Foundry credentials and provider selection are server-only Convex environment variables. Foundry keys must not be stored in `.env.local`, exposed to the browser, or committed to source control.
+- The adapter applies bounded retries for transient failures and normalizes text, structured tool output, finish reason, token usage, deployment, provider, latency, and request ID across provider protocols.
+- Telemetry must never log prompt or response content. It may log operation, provider, model/deployment, latency, finish reason, token counts, request ID, attempt count, and error classification.
+- Voice rows created after cutover store `analysisProvider: "fabric-foundry"`. Existing `fabric-openrouter` rows remain valid; no data backfill is required.
+- Production rollback is a server-side configuration change to `AI_PROVIDER=openrouter` while the OpenRouter key remains present. `FOUNDRY_SYNTHESIS_BACKEND=gpt5mini` is a model change, not an outage rollback, and requires separate quality approval.
+- Model versions are changed through blue/green deployment names; active deployments are never version-updated in place.
+
+The full provisioning, smoke-test, cutover, rollback, cost, and lifecycle procedure is maintained in [the Foundry migration runbook](docs/foundry-migration-runbook.md).
+
+**Primary synthesis model:** Claude Haiku 4.5 version `2` via Microsoft Foundry (`fabric-claude-haiku-4-5`, `max_tokens: 8192` for rolling/department/function summaries)
 
 **Design principles:**
 - **Structured analyst briefs, not flat prose.** Every summary uses thematic sections with cited evidence — making claims traceable back to the person or process that produced them.
@@ -755,9 +789,9 @@ For AI interviews, the `analysis` object returned by the Conversations API (and 
 
 For AI interviews, Fabric stores `analysis.transcript_summary` in `conversations.summary` and the structured `analysis.data_collection` results in `conversations.analysis`.
 
-For Voice Record and Audio File Upload, Fabric first transcribes with ElevenLabs Scribe diarization, pauses for speaker labels, then sends the labeled transcript to Claude Haiku 4.5 via OpenRouter to generate the conversation-level `summary` and process-flow-compatible `analysis.data_collection`. This is the only current path where Fabric performs a conversation-level LLM call.
+For Voice Record and Audio File Upload, Fabric first transcribes with ElevenLabs Scribe diarization, pauses for speaker labels, then sends the labeled transcript to Claude Haiku 4.5 through the Fabric AI adapter to generate the conversation-level `summary` and process-flow-compatible `analysis.data_collection`. This is the only current path where Fabric performs a conversation-level LLM call.
 
-**Process-level rolling summary — Claude Haiku 4.5 via OpenRouter (incremental, auto-regenerated):**
+**Process-level rolling summary — Claude Haiku 4.5 via Microsoft Foundry (incremental, auto-regenerated):**
 
 After each completed conversation is stored with analysis-ready transcript data, a Convex action generates or updates the process rolling summary using an **incremental approach**:
 
@@ -789,7 +823,7 @@ Unique insights only one contributor mentioned that seem important
 enough to preserve.
 ```
 
-**Department-level summary — Claude Haiku 4.5 via OpenRouter (persistent, on-demand with staleness):**
+**Department-level summary — Claude Haiku 4.5 via Microsoft Foundry (persistent, on-demand with staleness):**
 Department summaries are generated on-demand and **persisted** to the `departments` table with a `summary`, `summaryUpdatedAt` (epoch ms), and `summaryStale` (boolean) field. Generation synthesizes all child process `rollingSummary` values through Claude Haiku 4.5 with a department-focused prompt.
 
 **Department-level output format:**
@@ -819,7 +853,7 @@ at the department level.
 - **Force refresh**: A `forceRefresh` flag can bypass the staleness check to regenerate regardless.
 - **UI**: Shows a "Last refreshed: X ago" timestamp and a stale indicator ("New data available") when invalidated.
 
-**Function-level summary — Claude Haiku 4.5 via OpenRouter (persistent, on-demand with staleness + cascade):**
+**Function-level summary — Claude Haiku 4.5 via Microsoft Foundry (persistent, on-demand with staleness + cascade):**
 Function summaries follow the same persistent + staleness pattern as department summaries, but are built from **department summaries** (not raw process summaries) to maintain proper hierarchical abstraction.
 
 **Function-level output format:**
@@ -852,7 +886,7 @@ function level.
 Function Summary (built from Department Summaries)
   └── Department Summary (built from Process Rolling Summaries)
       └── Process Rolling Summary (built incrementally: prev summary + new transcript)
-          └── Conversation Summary (ElevenLabs for AI interviews; Fabric/OpenRouter for Voice Record and Audio File Upload after speaker labels)
+          └── Conversation Summary (ElevenLabs for AI interviews; Fabric/Foundry for Voice Record and Audio File Upload after speaker labels)
               └── Full Transcript (stored, passed to process summary generation)
 ```
 
@@ -881,7 +915,7 @@ New department added/removed → Function summary marked stale
 
 Every Function/Department/Process **description** (a free-text field contributors and admins can set when creating or editing an item) is screened before it's persisted, because descriptions are later injected into the voice-agent interview prompt — an unscreened description would be a prompt-injection vector directly into the interview agent.
 
-- **Model:** `google/gemma-4-26b-a4b-it` via OpenRouter, `max_tokens: 1000`.
+- **Model:** GPT-5 nano version `2025-08-07` via Microsoft Foundry (`fabric-description-safety`, `max_tokens: 1000`). This intentionally replaces the former OpenRouter-hosted `google/gemma-4-26b-a4b-it` classifier rather than attempting to self-host the exact Gemma model.
 - **Classification:** each description is checked for `descriptionSafetyRisk` — `none`, `prompt_injection`, `agent_instruction`, `policy_override`, `sensitive_data_request`, `malicious_or_abusive`, or `irrelevant` — and an overall `descriptionSafetyStatus` of `safe` or `blocked`.
 - **Storage:** the result (`descriptionSafetyStatus`, `descriptionSafetyRisk`, `descriptionSafetyReason`, `descriptionSafetyModel`, `descriptionSafetyPromptVersion`, `descriptionSafetyCheckedAt`) is stored alongside the description on the `departments`/`processes` row. Blocked descriptions are not shown to the voice agent.
 - **Where it runs:** the `create`/`update` actions in `convex/departments.ts` and `convex/processes.ts` run the classification synchronously before writing the description, so the safety verdict is always available by the time the row is readable.
@@ -906,10 +940,10 @@ Every Function/Department/Process **description** (a free-text field contributor
 |---|---|
 | `postCall.fetchConversation` | Called by the frontend after `onDisconnect` for AI interviews. Polls the ElevenLabs Conversations API until `status: done`, inserts the conversation, schedules `regenerateProcessSummary`. |
 | `postCall.getAudioPlaybackToken` | Mints an HMAC-signed, short-lived URL for the `/audio/...` HTTP route (see below). |
-| `postCall.regenerateProcessSummary` | Incremental or full-rebuild rolling-summary generation via OpenRouter/Claude Haiku 4.5. |
+| `postCall.regenerateProcessSummary` | Incremental or full-rebuild rolling-summary generation through the Fabric AI adapter and the Foundry Claude deployment after cutover. |
 | `voiceRecordings.generateUploadUrl` / `processVoiceRecording` / `processVoiceRecordingInternal` | Convex Storage upload URL → inserts a `processing` conversation → ElevenLabs Scribe diarized transcription → `needs_speaker_labels`. |
 | `voiceRecordings.submitSpeakerLabels` | Contributor labels diarized speakers; schedules `analyzeVoiceRecordingInternal`. |
-| `voiceRecordings.analyzeVoiceRecordingInternal` | OpenRouter structured analysis of the labeled transcript; marks the conversation `done`; schedules `regenerateProcessSummary`. |
+| `voiceRecordings.analyzeVoiceRecordingInternal` | Foundry Claude structured analysis of the labeled transcript through the shared adapter; marks the conversation `done`; schedules `regenerateProcessSummary`. |
 | `voiceRecordings.retryAudioProcessing` | Admin-only. Retries a `failed` Voice Record / Audio Upload conversation from whichever stage actually failed (§3.3.4a). |
 | `voiceRecordings.abandonVoiceRecording` | Deletes the Storage object + conversation row for an unfinished, contributor-owned recording. |
 | `conversations.listByProcess/listCompactByProcess/processIdsNeedingAttention` | Org-member reads for the Conversations tab. |
@@ -921,7 +955,7 @@ Every Function/Department/Process **description** (a free-text field contributor
 | Function | Purpose |
 |---|---|
 | `getProcessFlow` | Real-time read of a process's generated flow. |
-| `generateProcessFlow` / `generateFlowInternal` | Auth-gated entry point sets status to `generating`; the internal action builds an OpenRouter/Claude Haiku 4.5 request from the rolling summary + conversation analysis data, parses/normalizes nodes and edges, and saves the result. |
+| `generateProcessFlow` / `generateFlowInternal` | Auth-gated entry point sets status to `generating`; the internal action builds a Foundry Claude request through the shared adapter from the rolling summary + conversation analysis data, parses/normalizes nodes and edges, and saves the result. |
 | `markFlowStale` / `deleteForProcess` | Internal — staleness propagation and flow cleanup on process/conversation deletion. |
 
 **Summaries (`summaries.ts`, `summariesHelpers.ts`):**
@@ -986,6 +1020,16 @@ Every Function/Department/Process **description** (a free-text field contributor
 | `cleanup.removeTestData` | Deletes seed/test conversations for an org. |
 | `seed.seed` | Idempotently seeds a demo Function→Department→Process tree with sample conversations for an org. |
 
+**AI provider and Foundry tooling:**
+
+| File / command | Purpose |
+|---|---|
+| `convex/lib/aiProvider.ts` | Shared capability-based provider adapter for Foundry Claude, Foundry Azure OpenAI, and temporary OpenRouter rollback; normalizes retries, structured output, telemetry, token usage, request IDs, and errors. |
+| `infra/foundry` | Reproducible `azd` infrastructure for separate Sweden Central development and production Foundry accounts/projects. |
+| `scripts/deploy-foundry-models.ps1` | Idempotently previews or deploys the approved model versions, Global Standard SKU, and per-environment capacities after checking quota. |
+| `npm run foundry:smoke` | Sends direct smoke requests to Claude synthesis, GPT-5 nano safety, and GPT-5 mini fallback deployments before application cutover. |
+| `AI_PROVIDER` | Convex server-side rollout switch: `foundry` for the active Foundry path, `openrouter` only during staged production rollout and rollback. |
+
 **Background work — no recurring jobs:** there is no `convex/crons.ts`. Every asynchronous step (transcription → speaker-label wait → analysis → summary regeneration → flow generation) is a one-shot `ctx.scheduler.runAfter(0, ...)` fan-out triggered by the preceding step, used specifically to escape Convex's single-transaction time/read limits for long-running LLM/HTTP calls.
 
 **Built-in reactivity (no manual subscriptions needed):**
@@ -1008,7 +1052,7 @@ const process = useQuery(api.processes.get, { processId: selectedProcessId });
 3. Frontend calls `fetchConversation` Convex action with `conversationId`
 4. Convex action polls `GET /v1/convai/conversations/{id}` until status = `done`
 5. Convex action extracts transcript, summary (from `analysis`), and data collection results → inserts into `conversations` table via `ctx.runMutation` (no Claude call needed — ElevenLabs provides the summary)
-6. Convex action calls `regenerateProcessSummary` → Claude Haiku 4.5 (via OpenRouter) incrementally updates the structured process summary (existing summary + new transcript) → updates `processes.rollingSummary`
+6. Convex action calls `regenerateProcessSummary` → the Fabric AI adapter invokes the Foundry Claude deployment after cutover → incrementally updates the structured process summary (existing summary + new transcript) → updates `processes.rollingSummary`
 7. Convex reactivity auto-updates the frontend → UI refreshes with summary, transcript, and audio player (no manual subscriptions needed)
 8. Audio playback: when user clicks play, the Audio Player component calls the org-scoped audio HTTP action → proxies the ElevenLabs Audio API → streams MP3 to the browser (no stored files for AI interviews, no additional credits)
 
@@ -1020,7 +1064,7 @@ const process = useQuery(api.processes.get, { processId: selectedProcessId });
 4. Fabric stores the diarized transcript with `speakerId`s and default `speakerLabels`, then sets `status: "needs_speaker_labels"`.
 5. The UI prompts a contributor to name each speaker and optionally link each speaker to an org member.
 6. `submitSpeakerLabels` patches `speakerName`s onto transcript segments and sets status back to `processing`.
-7. `analyzeVoiceRecordingInternal` analyzes the labeled transcript through OpenRouter, saves the conversation summary and structured analysis, sets status to `done`, and schedules `regenerateProcessSummary`.
+7. `analyzeVoiceRecordingInternal` analyzes the labeled transcript through the Fabric AI adapter (Foundry Claude after cutover), saves the conversation summary and structured analysis, sets status to `done`, and schedules `regenerateProcessSummary`.
 8. The process summary and process flow only see labeled speaker names, never raw `speaker_0` / `speaker_1` identifiers.
 
 ### 3.6 Authentication & User Access
@@ -1446,14 +1490,15 @@ Alternatively, the entire modal can use the **Conversation Bar** component, whic
 - **Speaker labeling before analysis** — Voice Record and Audio File Upload pause at `needs_speaker_labels`; contributors assign names and optionally link speakers to org members before conversation summary, process summary, or process-flow extraction runs.
 - **Abandonment cleanup** — closing the modal before speaker labels are approved deletes both the Convex Storage audio object and the conversation row so half-processed inputs aren't retained. The server only permits the row owner or an org admin to abandon unfinished `voiceRecord` / `audioUpload` rows.
 - **Post-call loading state** — ShimmeringText "Processing your conversation..." while AI interview analysis or direct-recording transcription completes, transitioning to post-call review or speaker-labeling review
-- Process-level rolling summaries via Claude Haiku through OpenRouter, plus Voice Record / Audio File Upload conversation-level analysis after speaker labels are confirmed
+- Process-level rolling summaries via Claude Haiku through Microsoft Foundry, plus Voice Record / Audio File Upload conversation-level analysis after speaker labels are confirmed
 - ElevenLabs Conversation Analysis (Success Evaluation + Data Collection) configured on platform for AI interviews
 - Conversation log per process (contributor name, date, summary, transcript, structured analysis)
 - **Audio playback** — AI interviews stream from ElevenLabs through the org-scoped Convex audio proxy; Voice Record and Audio File Upload audio stream from the retained Convex Storage blob through the same signed proxy.
 - **Process Summary Box** — prominent, always-visible summary card per process synthesizing all completed conversations
 - **Empty states** — friendly prompts when a process has no conversations, a department has no processes, etc.
 - Process-level rolling summary (auto-regenerated after each completed conversation)
-- **Persistent department and function summaries** — stored in the database with staleness tracking (`summaryStale` flag) and "Last refreshed" timestamps (`summaryUpdatedAt`). Generated on-demand via Claude Haiku (OpenRouter), with token efficiency guards that skip LLM calls when no new data exists. Function summaries built from department summaries (proper hierarchy) with cascade generation for missing departments.
+- **Persistent department and function summaries** — stored in the database with staleness tracking (`summaryStale` flag) and "Last refreshed" timestamps (`summaryUpdatedAt`). Generated on-demand via the Foundry Claude deployment, with token efficiency guards that skip LLM calls when no new data exists. Function summaries built from department summaries (proper hierarchy) with cascade generation for missing departments.
+- **Microsoft Foundry inference platform** — all Fabric-owned LLM call sites route through the shared provider adapter; development uses the separate `fabric-foundry-dev-se` environment, and production uses the separately keyed `fabric-foundry-prod-se` environment after the staged cutover. OpenRouter remains only as a temporary production rollback path during the soak period (§3.4).
 - Convex built-in reactivity for live UI updates
 - **Error handling for disconnects** — graceful UI for `onDisconnect` with reason `"error"`, with retry prompt
 - **Admin retry for failed recordings** — Voice Record / Audio File Upload conversations that fail transcription or analysis can be retried by an admin from Admin → Conversations, resuming from the failed stage (§2.3, §3.3.4a)
@@ -1499,6 +1544,11 @@ Alternatively, the entire modal can use the **Conversation Bar** component, whic
 13. Hierarchy deletion is role-aware and non-cascading: viewers see a permission blocker, contributors/admins cannot delete parents with child records, and a process with conversations cannot be deleted until an admin removes those conversations.
 14. Admin conversation deletion keeps derived data consistent: deleting a completed conversation force-refreshes or clears the process summary as appropriate, marks or deletes the process flow, and updates parent summary staleness; deleting non-completed rows does not trigger summary regeneration.
 15. Each Clerk organization is accessed via its own subdomain (`{slug}.bizfabric.ai` in prod, `{slug}.lvh.me:3000` in dev). A user signed into Org A cannot read or write Org B's data — every Convex function enforces row-level `clerkOrgId` scoping, and a wrong-subdomain visit surfaces the no-access workspace screen instead of the app. The only in-app org switch UI is the nav-bar `<OrganizationSwitcher />`, shown only to users with more than one org membership. The ElevenLabs audio proxy is org-scoped and returns 404 on any cross-org request.
+16. Every Fabric-owned LLM workflow uses the shared AI adapter and can run on Microsoft Foundry without changing its product-level prompt, output contract, or call site. Synthesis uses Claude Haiku 4.5, description safety uses GPT-5 nano, and GPT-5 mini is not activated for synthesis without a golden-set quality decision.
+17. Development and production Foundry environments use separate accounts and keys. Secrets exist only in their respective Convex deployments; no Foundry key is exposed in the frontend, `.env.local`, logs, or source control.
+18. Before production cutover, all three production deployments pass direct smoke tests and the prepared application golden set passes for safe/blocked descriptions, incremental/full process summaries, department/function summaries, labeled voice analysis, and process-flow generation. The provider can be rolled back by changing `AI_PROVIDER` while the rollback key is retained.
+19. AI telemetry records provider, model/deployment, latency, finish reason, token usage, request ID, and retry/error classification without logging prompt or response content.
+20. Existing records with `analysisProvider: "fabric-openrouter"` remain readable after cutover, while newly analyzed Voice Record / Audio Upload rows persist `analysisProvider: "fabric-foundry"`; no data backfill is required.
 
 ---
 
@@ -1517,6 +1567,22 @@ Two people could record simultaneously for the same process. The ElevenLabs agen
 **ElevenLabs API key security:**
 The `agentId` can be public (it's passed to the frontend SDK), but the `xi-api-key` needed by `fetchConversation` and `getAudio` to call the ElevenLabs API must never be exposed client-side.
 **Mitigation:** Store the API key exclusively in Convex environment variables (set via `npx convex env set`). The frontend never calls the ElevenLabs API directly — it always goes through Convex server functions (for both data retrieval and audio streaming).
+
+**Foundry Global Standard data routing:**
+The Foundry accounts and model deployments are created in Sweden Central, but the approved Global Standard SKU can process inference in other Azure regions. Resource location is therefore not a guarantee of Sweden-only or strict EU data-zone processing.
+**Mitigation:** Treat global routing as an explicit consulting-workload assumption. Before onboarding a client with contractual or regulatory residency requirements, complete a data-residency review and move eligible OpenAI deployments to an approved Data Zone SKU; do not claim Sweden-only inference while Global Standard is active. Claude Haiku 4.5 availability must be reassessed independently because its supported SKUs may differ.
+
+**Foundry capacity and shared quota:**
+Global Standard capacity governs deployment throughput rather than model quality. Development and production have different deployment capacities, but because both accounts are in the same subscription, region, and model families, they draw from shared quota pools.
+**Mitigation:** Monitor throttling and quota headroom by model, keep the idempotent deployment script's quota preflight, and request quota increases before raising production capacity. Use a separate subscription only if hard quota isolation becomes necessary.
+
+**Model retirement and behavioral drift:**
+Pinned model versions improve repeatability but have platform retirement dates, and a replacement model can alter summary quality, tool output, or safety classifications.
+**Mitigation:** Begin the GPT-5 mini synthesis evaluation by **2026-09-20**; move off Claude Haiku 4.5 version `2` before **2026-11-19**; review the safety model by **2026-12-08** and move off GPT-5 nano `2025-08-07` before **2027-02-06**. Use blue/green deployments and the prepared golden set for every version change.
+
+**Production provider cutover:**
+The production Foundry resources, model deployments, separate key, Convex settings, and direct smoke tests are complete, but application traffic still uses OpenRouter. A provider switch can expose protocol or output differences that direct endpoint smoke tests do not cover.
+**Mitigation:** Deploy the provider-adapter code with `AI_PROVIDER=openrouter`, run the production golden set, explicitly approve the switch to `foundry`, monitor a seven-day soak, and keep one-setting rollback available throughout. Remove the production OpenRouter key only after the soak succeeds.
 
 ### 8.2 UX Considerations
 
@@ -1551,13 +1617,16 @@ Even for an internal POC, employees are being recorded (or uploading recordings 
 The org hierarchy needs to be realistic for the POC to land well. Create a Convex seed script as part of the build with 3-4 functions, 2-3 departments each, and 2-4 processes per department. Pre-populate 1-2 sample conversations with mock summaries so the UI doesn't look empty on first load.
 
 **Cascade summary generation limits:**
-When generating a function-level summary, if child departments are missing summaries, the action auto-generates them first. A function with many departments (10+) could hit OpenRouter rate limits or Convex's 10-minute action timeout during cascade generation. For POC, sequential generation is acceptable. For production, fan out via `ctx.scheduler.runAfter` per department and poll for completion.
+When generating a function-level summary, if child departments are missing summaries, the action auto-generates them first. A function with many departments (10+) could hit Foundry throughput limits or Convex's 10-minute action timeout during cascade generation. For POC, sequential generation is acceptable. For production, fan out via `ctx.scheduler.runAfter` per department and poll for completion.
 
 **Summary staleness and token efficiency:**
 Department and function summaries are persistent and include a `summaryStale` flag. When no new recordings or structural changes have occurred, the generate action returns the existing summary without an LLM call — avoiding unnecessary token spend. The `forceRefresh` flag allows manual override when the user wants to regenerate regardless. First-time UX: all existing departments and functions will show "No summary yet" since `summary` starts `undefined` on existing docs — this is expected behavior for the new feature rollout.
 
 **Incremental process summaries and token cost:**
 Process-level summaries use an incremental approach: the first conversation's full transcript produces the initial structured summary; each subsequent conversation sends only the *existing rolling summary + new transcript*. This keeps per-call token cost roughly constant regardless of conversation count, but means the summary is a lossy compression — early conversations are represented only through the rolling summary, not their raw transcripts. A `forceRefresh` flag triggers a full regeneration from all transcripts when needed (at higher token cost). The structured output format (markdown with sections and citations) requires `max_tokens: 8192` to accommodate the thematic sections.
+
+**Foundry migration cost baseline:**
+Global Standard is pay-per-token; configured capacity does not create an always-on compute charge. At the migration decision snapshot, Claude Haiku 4.5 is priced at the same displayed token rate on Foundry as OpenRouter, but avoiding OpenRouter's 5.5% credit-purchase fee makes Foundry about **5.2% lower in effective cash cost**. At a representative safety workload of 10 million input tokens plus 1 million output tokens, Foundry GPT-5 nano is approximately **$0.90** versus **$0.981** for the former OpenRouter Gemma path (about **8.3% lower**). GPT-5 mini incurs token charges only when invoked. Revalidate prices during budget reviews; the detailed comparison and source links live in [the Foundry migration runbook](docs/foundry-migration-runbook.md#cost-comparison).
 
 **Summary rendering:**
 All summaries (process, department, function) are stored as markdown and must be rendered as such in the frontend. The summary display components need to support markdown headers, bold, and inline citations.
@@ -1578,6 +1647,8 @@ The ElevenLabs SDK requires microphone access. Browsers will prompt for permissi
 ## 11. Implementation Task List — Summary Enhancement (v0.8)
 
 **Goal:** Replace flat prose summaries with structured analyst briefs featuring thematic sections, contributor citations, and contradiction surfacing. Switch to incremental generation for token efficiency. Upgrade model to Haiku 4.5.
+
+> **Historical implementation note:** The OpenRouter-style model identifiers below record the completed v0.8 work as it was implemented at the time. The current provider architecture and deployment identifiers are defined in §3.4 and supersede them operationally; see §14 for migration status.
 
 ### Backend (Convex)
 
@@ -1742,6 +1813,61 @@ The ElevenLabs SDK requires microphone access. Browsers will prompt for permissi
 
 - [x] **Task 8: Deletion-flow regression coverage**
   - Covered hierarchy delete eligibility, blocked process deletion with conversations, process-flow cleanup, admin conversation deletion summary/flow effects, recording abandonment ownership, and tenant-scoped admin removal behavior.
+
+---
+
+## 14. Implementation Task List — Microsoft Foundry Migration (v1.1)
+
+**Goal:** Move every Fabric-owned LLM request from OpenRouter to Microsoft Foundry without regressing synthesis quality, safety output contracts, tenant isolation, or rollback capability. Retain Claude Haiku 4.5 for synthesis, use GPT-5 nano for description safety, and keep GPT-5 mini available only as an evaluated fallback/successor candidate.
+
+### Application & Data Compatibility
+
+- [x] **Task 1: Add the shared AI provider adapter**
+  - Centralize Foundry Claude, Foundry Azure OpenAI, and temporary OpenRouter rollback handling in `convex/lib/aiProvider.ts`.
+  - Normalize retries, timeouts, tool output, finish reasons, token usage, request IDs, provider/deployment metadata, and safe telemetry.
+
+- [x] **Task 2: Migrate all Fabric-owned AI call sites**
+  - Route process, department, function, process-flow, labeled-voice, and description-safety requests through the adapter.
+  - Keep product-level prompts and output contracts provider-independent.
+
+- [x] **Task 3: Preserve analysis provenance**
+  - Add `fabric-foundry` to the `analysisProvider` schema while retaining `fabric-openrouter` for historical rows and rollback-created rows.
+  - Require no backfill of existing conversations.
+
+### Foundry Infrastructure
+
+- [x] **Task 4: Provision and validate development**
+  - Use the Sweden Central `fabric-foundry-dev-se` project with a development-only API key and Global Standard deployments at capacities `1 / 10 / 10` (Claude / GPT-5 nano / GPT-5 mini).
+  - Configure the Convex development deployment with `AI_PROVIDER=foundry` and verify application behavior.
+
+- [x] **Task 5: Provision and smoke-test production infrastructure**
+  - Use the separate Sweden Central `fabric-foundry-prod-se` project/account and production-only API key in the same Azure subscription.
+  - Deploy Global Standard capacities `50 / 50 / 10` and pass direct smoke tests against all three production deployments.
+  - Store Foundry settings in the production Convex deployment while intentionally leaving `AI_PROVIDER=openrouter` until application-level approval.
+
+- [x] **Task 6: Make provisioning reproducible**
+  - Keep `infra/foundry`, `scripts/deploy-foundry-models.ps1`, and `scripts/foundry-smoke.mjs` as the source-controlled provisioning, quota-preflight, idempotency, and smoke-test path.
+
+### Production Cutover & Lifecycle
+
+- [ ] **Task 7: Deploy the provider-adapter release to production with OpenRouter active**
+  - Confirm the released adapter preserves current behavior before changing the provider flag.
+
+- [ ] **Task 8: Run the prepared production golden set and approve cutover**
+  - Validate safe and blocked descriptions, incremental and full process summaries, department/function summaries, labeled voice analysis, and process-flow generation.
+  - Confirm output quality and required metadata before setting production `AI_PROVIDER=foundry`.
+
+- [ ] **Task 9: Complete the rollback window**
+  - Monitor production for seven days with OpenRouter retained as a one-setting rollback path.
+  - Remove the production `OPENROUTER_API_KEY` only after the soak succeeds; remove rollback code in a later cleanup change.
+
+- [ ] **Task 10: Execute the model-lifecycle plan**
+  - Begin GPT-5 mini synthesis evaluation by 2026-09-20.
+  - Replace Claude Haiku 4.5 version `2` before 2026-11-19.
+  - Review the safety model by 2026-12-08 and replace GPT-5 nano `2025-08-07` before 2027-02-06.
+  - Use blue/green deployment names and the golden set for every replacement.
+
+See [docs/foundry-migration-runbook.md](docs/foundry-migration-runbook.md) for commands, secret handling, rollback, detailed cost comparison, and source links.
 
 ---
 

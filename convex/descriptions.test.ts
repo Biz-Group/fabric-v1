@@ -88,23 +88,30 @@ async function seedOrg(
   });
 }
 
-function openRouterResponse(content: unknown, status = 200) {
+function foundryResponse(content: unknown, status = 200) {
   return new Response(JSON.stringify(content), {
     status,
     headers: { "content-type": "application/json" },
   });
 }
 
-function stubOpenRouterSafetyTool(argsJson: string, status = 200) {
-  const fetchMock = vi.fn(async () =>
-    openRouterResponse(
+function stubFoundrySafetyTool(argsJson: string, status = 200) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    void input;
+    void init;
+    return foundryResponse(
       {
+        id: "chatcmpl-safety-test",
         choices: [
           {
+            index: 0,
+            finish_reason: "tool_calls",
             message: {
+              role: "assistant",
               content: null,
               tool_calls: [
                 {
+                  id: "call_safety_test",
                   type: "function",
                   function: {
                     name: "classify_description_safety",
@@ -115,24 +122,31 @@ function stubOpenRouterSafetyTool(argsJson: string, status = 200) {
             },
           },
         ],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
       },
       status,
-    ),
-  );
+    );
+  });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
 
-function stubOpenRouterSafetyWithoutToolCall() {
-  const fetchMock = vi.fn(async () =>
-    openRouterResponse({
+function stubFoundrySafetyWithoutToolCall() {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    void input;
+    void init;
+    return foundryResponse({
+      id: "chatcmpl-safety-test",
       choices: [
         {
-          message: { content: "No tool call" },
+          index: 0,
+          finish_reason: "stop",
+          message: { role: "assistant", content: "No tool call" },
         },
       ],
-    }),
-  );
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    });
+  });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -168,11 +182,17 @@ function getConvexErrorData(err: unknown): Record<string, unknown> | null {
 
 describe("hierarchy descriptions safety gate", () => {
   beforeEach(() => {
-    process.env.OPENROUTER_API_KEY = "sk-openrouter-test";
+    process.env.AI_PROVIDER = "foundry";
+    process.env.FOUNDRY_ENDPOINT = "https://fabric-test.services.ai.azure.com";
+    process.env.FOUNDRY_API_KEY = "foundry-test-key";
+    process.env.FOUNDRY_SAFETY_DEPLOYMENT = "fabric-description-safety";
   });
 
   afterEach(() => {
-    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.AI_PROVIDER;
+    delete process.env.FOUNDRY_ENDPOINT;
+    delete process.env.FOUNDRY_API_KEY;
+    delete process.env.FOUNDRY_SAFETY_DEPLOYMENT;
     vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
@@ -180,7 +200,7 @@ describe("hierarchy descriptions safety gate", () => {
   test("creates a department with normalized safe description metadata", async () => {
     const t = convexTest(schema, modules);
     const ids = await seedOrg(t);
-    const fetchMock = stubOpenRouterSafetyTool(allowJson());
+    const fetchMock = stubFoundrySafetyTool(allowJson());
 
     const departmentId = await t
       .withIdentity(identityForOrgA())
@@ -203,16 +223,18 @@ describe("hierarchy descriptions safety gate", () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
-    expect(body.model).toBe(DESCRIPTION_SAFETY_MODEL);
-    expect(body.max_tokens).toBe(1000);
+    expect(body.model).toBe("fabric-description-safety");
+    expect(body.max_completion_tokens).toBe(1000);
+    expect(body.reasoning_effort).toBe("minimal");
     expect(body.tools[0].function.name).toBe("classify_description_safety");
+    expect(body.tools[0].function.strict).toBe(true);
     expect(body.tool_choice.function.name).toBe("classify_description_safety");
   });
 
   test("accepts tool-call arguments from the safety model", async () => {
     const t = convexTest(schema, modules);
     const ids = await seedOrg(t);
-    stubOpenRouterSafetyTool(allowJson());
+    stubFoundrySafetyTool(allowJson());
 
     await t.withIdentity(identityForOrgA()).action(api.processes.update, {
       processId: ids.processId,
@@ -230,7 +252,7 @@ describe("hierarchy descriptions safety gate", () => {
   test("fails closed on malformed tool arguments", async () => {
     const t = convexTest(schema, modules);
     const ids = await seedOrg(t);
-    const fetchMock = stubOpenRouterSafetyTool("ALLOW");
+    const fetchMock = stubFoundrySafetyTool("ALLOW");
 
     await expect(
       t.withIdentity(identityForOrgA()).action(api.processes.update, {
@@ -238,7 +260,7 @@ describe("hierarchy descriptions safety gate", () => {
         name: "Validated Process",
         description: "Monthly close process context.",
       }),
-    ).rejects.toThrow(/invalid JSON/);
+    ).rejects.toThrow(/unavailable/);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -246,7 +268,7 @@ describe("hierarchy descriptions safety gate", () => {
   test("updates a process description and clears it with a blank value", async () => {
     const t = convexTest(schema, modules);
     const ids = await seedOrg(t);
-    stubOpenRouterSafetyTool(allowJson());
+    stubFoundrySafetyTool(allowJson());
 
     await t.withIdentity(identityForOrgA()).action(api.processes.update, {
       processId: ids.processId,
@@ -276,7 +298,7 @@ describe("hierarchy descriptions safety gate", () => {
   test("rejects over-limit and hidden-character descriptions before model call", async () => {
     const t = convexTest(schema, modules);
     const ids = await seedOrg(t);
-    const fetchMock = stubOpenRouterSafetyTool(allowJson());
+    const fetchMock = stubFoundrySafetyTool(allowJson());
 
     await expect(
       t.withIdentity(identityForOrgA()).action(api.departments.update, {
@@ -300,7 +322,7 @@ describe("hierarchy descriptions safety gate", () => {
   test("blocks unsafe descriptions and does not create the process", async () => {
     const t = convexTest(schema, modules);
     const ids = await seedOrg(t);
-    stubOpenRouterSafetyTool(blockJson());
+    stubFoundrySafetyTool(blockJson());
 
     let blockedError: unknown;
     try {
@@ -337,20 +359,20 @@ describe("hierarchy descriptions safety gate", () => {
     expect(processes.map((p) => p.name)).not.toContain("Unsafe");
   });
 
-  test("fails closed on invalid model output and OpenRouter failures", async () => {
+  test("fails closed on invalid model output and Foundry failures", async () => {
     const t = convexTest(schema, modules);
     const ids = await seedOrg(t);
 
-    stubOpenRouterSafetyTool("not-json");
+    stubFoundrySafetyTool("not-json");
     await expect(
       t.withIdentity(identityForOrgA()).action(api.processes.update, {
         processId: ids.processId,
         name: "Process",
         description: "Safe-looking context.",
       }),
-    ).rejects.toThrow(/invalid JSON/);
+    ).rejects.toThrow(/unavailable/);
 
-    stubOpenRouterSafetyTool(JSON.stringify({ decision: "allow" }));
+    stubFoundrySafetyTool(JSON.stringify({ decision: "allow" }));
     await expect(
       t.withIdentity(identityForOrgA()).action(api.processes.update, {
         processId: ids.processId,
@@ -359,7 +381,7 @@ describe("hierarchy descriptions safety gate", () => {
       }),
     ).rejects.toThrow(/invalid risk/);
 
-    stubOpenRouterSafetyWithoutToolCall();
+    stubFoundrySafetyWithoutToolCall();
     await expect(
       t.withIdentity(identityForOrgA()).action(api.processes.update, {
         processId: ids.processId,
@@ -368,7 +390,7 @@ describe("hierarchy descriptions safety gate", () => {
       }),
     ).rejects.toThrow(/invalid response/);
 
-    stubOpenRouterSafetyTool(allowJson(), 503);
+    stubFoundrySafetyTool(allowJson(), 503);
     await expect(
       t.withIdentity(identityForOrgA()).action(api.processes.update, {
         processId: ids.processId,
@@ -396,7 +418,7 @@ describe("hierarchy descriptions safety gate", () => {
     const t = convexTest(schema, modules);
     await seedOrg(t, ORG_A);
     const orgB = await seedOrg(t, ORG_B);
-    const fetchMock = stubOpenRouterSafetyTool(allowJson());
+    const fetchMock = stubFoundrySafetyTool(allowJson());
 
     await expect(
       t.withIdentity(identityForOrgA()).action(api.processes.create, {

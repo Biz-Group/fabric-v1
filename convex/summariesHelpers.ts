@@ -6,6 +6,10 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Doc } from "./_generated/dataModel";
+import {
+  generateAICompletion,
+  isAIConfigured,
+} from "./lib/aiProvider";
 
 // ---------------------------------------------------------------------------
 // Staleness propagation — internal mutations, always called from an org-scoped
@@ -205,8 +209,7 @@ export const generateDepartmentSummaryInternal = internalAction({
       return { summary: null, message: "No process summaries available." };
     }
 
-    const openrouterKey = process.env.OPENROUTER_API_KEY;
-    if (!openrouterKey) {
+    if (!isAIConfigured("synthesis")) {
       return { summary: null, message: "Missing API key." };
     }
 
@@ -214,35 +217,19 @@ export const generateDepartmentSummaryInternal = internalAction({
       .map((s) => `[Process: ${s.processName}]\n${s.summary}`)
       .join("\n\n");
 
-    const response = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${openrouterKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "anthropic/claude-haiku-4.5",
-          messages: [
-            { role: "system", content: DEPARTMENT_SUMMARY_SYSTEM_PROMPT },
-            {
-              role: "user",
-              content: `Here are the process summaries for this department:\n\n${summaryBlock}`,
-            },
-          ],
-          max_tokens: 8192,
-        }),
-      },
-    );
-
-    if (!response.ok) {
+    let generated: string | null;
+    try {
+      const completion = await generateAICompletion({
+        capability: "synthesis",
+        operation: "department-summary-cascade",
+        system: DEPARTMENT_SUMMARY_SYSTEM_PROMPT,
+        user: `Here are the process summaries for this department:\n\n${summaryBlock}`,
+        maxTokens: 8192,
+      });
+      generated = completion.text;
+    } catch {
       return { summary: null, message: "Failed to generate summary." };
     }
-
-    const result = await response.json();
-    const generated: string | null =
-      result.choices?.[0]?.message?.content?.trim() ?? null;
     if (!generated) {
       return { summary: null, message: "Failed to generate summary." };
     }

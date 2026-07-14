@@ -15,9 +15,11 @@ import {
   resolveOrgForAction,
 } from "./lib/orgAuth";
 import {
-  getFlowFinishReason as getOpenRouterFinishReason,
+  generateAICompletion,
+  getPersistedAIProvider,
+  isAIConfigured,
   isTokenLimitFinishReason,
-} from "./processFlows";
+} from "./lib/aiProvider";
 
 type TranscriptMessage = {
   role: string;
@@ -313,6 +315,7 @@ async function transcribeWithScribe(
   form.append("tag_audio_events", "true");
   form.append("timestamps_granularity", "word");
   form.append("diarize", "true");
+  form.append("no_verbatim", "true");
 
   const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
     method: "POST",
@@ -334,27 +337,25 @@ async function transcribeWithScribe(
 const VOICE_ANALYSIS_MAX_TOKENS = 16384;
 
 /**
- * Turns a raw OpenRouter chat-completion result into an AnalysisPayload.
+ * Turns a normalized AI completion into an AnalysisPayload.
  * Detects token-limit truncation explicitly — a truncated payload would
  * otherwise blow up in JSON.parse and surface as an opaque failure — and
  * distinguishes it from genuinely malformed JSON.
  */
 export function parseAnalysisResponse(
-  result: unknown,
+  result: { text: string | null; finishReason: string | null },
   fallbackSummary: string,
 ): AnalysisPayload {
-  const finishReason = getOpenRouterFinishReason(result);
+  const finishReason = result.finishReason;
   if (isTokenLimitFinishReason(finishReason)) {
     throw new Error(
       `Voice recording analysis hit the AI response token limit (finish_reason: ${finishReason}). The recording may be too long to analyze in a single pass.`,
     );
   }
 
-  const content = (
-    result as { choices?: Array<{ message?: { content?: unknown } }> }
-  ).choices?.[0]?.message?.content;
+  const content = result.text;
   if (typeof content !== "string" || !content.trim()) {
-    throw new Error("OpenRouter returned an empty analysis response");
+    throw new Error("AI returned an empty analysis response");
   }
 
   let parsed: unknown;
@@ -373,34 +374,25 @@ export function parseAnalysisResponse(
 
 async function analyzeTranscript(
   transcript: TranscriptMessage[],
-  openrouterKey: string,
-): Promise<AnalysisPayload> {
+): Promise<{
+  analysis: AnalysisPayload;
+  analysisProvider: "fabric-openrouter" | "fabric-foundry";
+}> {
   const fallbackSummary = fallbackSummaryFromTranscript(transcript);
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${openrouterKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "anthropic/claude-haiku-4.5",
-      messages: [
-        { role: "system", content: VOICE_RECORDING_ANALYSIS_PROMPT },
-        {
-          role: "user",
-          content: `Transcript:\n\n${transcriptText(transcript)}`,
-        },
-      ],
-      max_tokens: VOICE_ANALYSIS_MAX_TOKENS,
-    }),
+  const completion = await generateAICompletion({
+    capability: "synthesis",
+    operation: "voice-recording-analysis",
+    system: VOICE_RECORDING_ANALYSIS_PROMPT,
+    user: `Transcript:\n\n${transcriptText(transcript)}`,
+    maxTokens: VOICE_ANALYSIS_MAX_TOKENS,
   });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`OpenRouter API error ${response.status}: ${body}`);
-  }
-
-  return parseAnalysisResponse(await response.json(), fallbackSummary);
+  return {
+    analysis: parseAnalysisResponse(completion, fallbackSummary),
+    analysisProvider:
+      completion.provider === "openrouter"
+        ? "fabric-openrouter"
+        : "fabric-foundry",
+  };
 }
 
 export const generateUploadUrl = mutation({
@@ -451,7 +443,7 @@ export const processVoiceRecording = action({
         audioStorageId: args.storageId,
         audioMimeType: args.mimeType,
         transcriptionProvider: "elevenlabs-scribe",
-        analysisProvider: "fabric-openrouter",
+        analysisProvider: getPersistedAIProvider(),
         durationSeconds: args.durationSeconds,
         status: "processing",
       },
@@ -481,6 +473,10 @@ export const finishVoiceRecording = internalMutation({
     transcript: v.array(transcriptMessageValidator),
     summary: v.string(),
     analysis: v.any(),
+    analysisProvider: v.union(
+      v.literal("fabric-openrouter"),
+      v.literal("fabric-foundry"),
+    ),
     durationSeconds: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -492,6 +488,7 @@ export const finishVoiceRecording = internalMutation({
       transcript: args.transcript,
       summary: args.summary,
       analysis: args.analysis,
+      analysisProvider: args.analysisProvider,
       durationSeconds: args.durationSeconds,
       status: "done",
     });
@@ -812,9 +809,8 @@ export const analyzeVoiceRecordingInternal = internalAction({
   },
   handler: async (ctx, args) => {
     try {
-      const openrouterKey = process.env.OPENROUTER_API_KEY;
-      if (!openrouterKey) {
-        throw new Error("OPENROUTER_API_KEY is not configured");
+      if (!isAIConfigured("synthesis")) {
+        throw new Error("AI synthesis is not configured");
       }
 
       const recording: VoiceRecordingForAnalysis | null = await ctx.runQuery(
@@ -828,9 +824,8 @@ export const analyzeVoiceRecordingInternal = internalAction({
         throw new Error("Voice recording is not ready for analysis");
       }
 
-      const analysis = await analyzeTranscript(
+      const { analysis, analysisProvider } = await analyzeTranscript(
         recording.transcript,
-        openrouterKey,
       );
 
       await ctx.runMutation(internal.voiceRecordings.finishVoiceRecording, {
@@ -839,6 +834,7 @@ export const analyzeVoiceRecordingInternal = internalAction({
         transcript: recording.transcript,
         summary: analysis.transcript_summary,
         analysis,
+        analysisProvider,
         durationSeconds: recording.durationSeconds,
       });
 

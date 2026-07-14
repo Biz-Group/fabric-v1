@@ -11,6 +11,12 @@ import {
   requireOrgMember,
   resolveOrgForAction,
 } from "./lib/orgAuth";
+import {
+  generateAICompletion,
+  isAIConfigured,
+  isTokenLimitFinishReason,
+  type AICompletion,
+} from "./lib/aiProvider";
 
 // ---------------------------------------------------------------------------
 // System prompt for process flow extraction
@@ -72,7 +78,7 @@ Return ONLY a valid JSON object with this exact shape (no markdown fences, no ex
       "category": "start" | "end" | "action" | "decision" | "handoff" | "wait",
       "actors": ["string"],
       "tools": ["string"],
-      "estimatedDuration": "string or omit",
+      "estimatedDuration": "string or null",
       "painPoints": ["string"],
       "automationPotential": "none" | "low" | "medium" | "high",
       "confidence": "high" | "medium" | "low",
@@ -88,12 +94,12 @@ Return ONLY a valid JSON object with this exact shape (no markdown fences, no ex
       "source": "string",
       "target": "string",
       "type": "sequential" | "conditional" | "parallel" | "fallback",
-      "label": "string or omit",
+      "label": "string or null",
       "isHappyPath": boolean
     }
   ],
   "insights": {
-    "totalEstimatedDuration": "string or omit",
+    "totalEstimatedDuration": "string or null",
     "criticalPath": ["node-id-1", "node-id-2"],
     "handoffCount": number,
     "toolCount": number,
@@ -153,17 +159,6 @@ type NormalizedFlowInsights = {
   topBottlenecks: string[];
 };
 
-type OpenRouterFlowMessage = {
-  content?: unknown;
-  tool_calls?: Array<{ function?: { name?: unknown; arguments?: unknown } }>;
-};
-
-type OpenRouterFlowChoice = {
-  finish_reason?: unknown;
-  native_finish_reason?: unknown;
-  message?: OpenRouterFlowMessage;
-};
-
 const FLOW_RESPONSE_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -183,7 +178,7 @@ const FLOW_RESPONSE_SCHEMA = {
           },
           actors: { type: "array", items: { type: "string" } },
           tools: { type: "array", items: { type: "string" } },
-          estimatedDuration: { type: "string" },
+          estimatedDuration: { type: ["string", "null"] },
           painPoints: { type: "array", items: { type: "string" } },
           automationPotential: {
             type: "string",
@@ -205,6 +200,7 @@ const FLOW_RESPONSE_SCHEMA = {
           "category",
           "actors",
           "tools",
+          "estimatedDuration",
           "painPoints",
           "automationPotential",
           "confidence",
@@ -228,17 +224,17 @@ const FLOW_RESPONSE_SCHEMA = {
             type: "string",
             enum: ["sequential", "conditional", "parallel", "fallback"],
           },
-          label: { type: "string" },
+          label: { type: ["string", "null"] },
           isHappyPath: { type: "boolean" },
         },
-        required: ["id", "source", "target", "type", "isHappyPath"],
+        required: ["id", "source", "target", "type", "label", "isHappyPath"],
       },
     },
     insights: {
       type: "object",
       additionalProperties: false,
       properties: {
-        totalEstimatedDuration: { type: "string" },
+        totalEstimatedDuration: { type: ["string", "null"] },
         criticalPath: { type: "array", items: { type: "string" } },
         handoffCount: { type: "number" },
         toolCount: { type: "number" },
@@ -246,6 +242,7 @@ const FLOW_RESPONSE_SCHEMA = {
         topBottlenecks: { type: "array", items: { type: "string" } },
       },
       required: [
+        "totalEstimatedDuration",
         "criticalPath",
         "handoffCount",
         "toolCount",
@@ -257,30 +254,19 @@ const FLOW_RESPONSE_SCHEMA = {
   required: ["nodes", "edges", "insights"],
 } as const;
 
-export function buildFlowGenerationRequestBody(userContent: string) {
+export function buildFlowGenerationAIRequest(userContent: string) {
   return {
-    model: "anthropic/claude-haiku-4.5",
-    messages: [
-      { role: "system", content: FLOW_EXTRACTION_SYSTEM_PROMPT },
-      { role: "user", content: userContent },
-    ],
+    capability: "synthesis" as const,
+    operation: "process-flow-generation",
+    system: FLOW_EXTRACTION_SYSTEM_PROMPT,
+    user: userContent,
     temperature: 0,
-    max_tokens: FLOW_GENERATION_MAX_TOKENS,
-    stream: false,
-    tools: [
-      {
-        type: "function",
-        function: {
-          name: FLOW_TOOL_NAME,
-          description:
-            "Return the merged process flow diagram for the supplied process conversations.",
-          parameters: FLOW_RESPONSE_SCHEMA,
-        },
-      },
-    ],
-    tool_choice: {
-      type: "function",
-      function: { name: FLOW_TOOL_NAME },
+    maxTokens: FLOW_GENERATION_MAX_TOKENS,
+    tool: {
+      name: FLOW_TOOL_NAME,
+      description:
+        "Return the merged process flow diagram for the supplied process conversations.",
+      inputSchema: FLOW_RESPONSE_SCHEMA,
     },
   };
 }
@@ -380,39 +366,6 @@ export function parseFlowResponsePayload(payload: unknown): ParsedFlowResponse {
   }
 
   return parsed as ParsedFlowResponse;
-}
-
-export function extractFlowResponsePayload(result: unknown): unknown | null {
-  const message = (
-    result as { choices?: OpenRouterFlowChoice[] }
-  ).choices?.[0]?.message;
-
-  const toolCall = message?.tool_calls?.find(
-    (call) => call.function?.name === FLOW_TOOL_NAME,
-  );
-
-  if (toolCall?.function?.arguments !== undefined) {
-    return toolCall.function.arguments;
-  }
-
-  return message?.content ?? null;
-}
-
-export function getFlowFinishReason(result: unknown): string | null {
-  const choice = (result as { choices?: OpenRouterFlowChoice[] }).choices?.[0];
-  const reason = choice?.finish_reason ?? choice?.native_finish_reason;
-  return typeof reason === "string" && reason.trim() ? reason : null;
-}
-
-export function isTokenLimitFinishReason(reason: string | null): boolean {
-  if (!reason) return false;
-  const normalized = reason.toLowerCase();
-  return (
-    normalized === "length" ||
-    normalized === "max_tokens" ||
-    normalized.includes("max_token") ||
-    normalized.includes("token_limit")
-  );
 }
 
 export function normalizeFlowResponse(parsed: ParsedFlowResponse): {
@@ -834,9 +787,8 @@ export const getProcessFlow = query({
 export const generateFlowInternal = internalAction({
   args: { processId: v.id("processes"), clerkOrgId: v.string() },
   handler: async (ctx, args) => {
-    const openrouterKey = process.env.OPENROUTER_API_KEY;
-    if (!openrouterKey) {
-      console.error("OPENROUTER_API_KEY is not configured — skipping flow generation");
+    if (!isAIConfigured("synthesis")) {
+      console.error("AI synthesis is not configured — skipping flow generation");
       await ctx.runMutation(internal.processFlows.saveProcessFlow, {
         processId: args.processId,
         clerkOrgId: args.clerkOrgId,
@@ -881,36 +833,15 @@ export const generateFlowInternal = internalAction({
       userContent += `Conversation Data:\n\n${conversationBlocks}`;
     }
 
-    let result: unknown;
+    let completion: AICompletion;
     try {
-      const response = await fetch(
-        "https://openrouter.ai/api/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${openrouterKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(buildFlowGenerationRequestBody(userContent)),
-        },
+      completion = await generateAICompletion(
+        buildFlowGenerationAIRequest(userContent),
       );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("OpenRouter API error:", response.status, errorText);
-        await ctx.runMutation(internal.processFlows.saveProcessFlow, {
-          processId: args.processId,
-          clerkOrgId: args.clerkOrgId,
-          status: "failed",
-          conversationCount: data.conversations.length,
-          errorMessage: "Failed to generate process flow. Please try again.",
-        });
-        return;
-      }
-
-      result = await response.json();
     } catch (error) {
-      console.error("OpenRouter request failed:", error);
+      console.error("AI process flow request failed", {
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      });
       await ctx.runMutation(internal.processFlows.saveProcessFlow, {
         processId: args.processId,
         clerkOrgId: args.clerkOrgId,
@@ -921,8 +852,8 @@ export const generateFlowInternal = internalAction({
       return;
     }
 
-    const finishReason = getFlowFinishReason(result);
-    const payload = extractFlowResponsePayload(result);
+    const finishReason = completion.finishReason;
+    const payload = completion.toolInput ?? completion.text;
 
     if (isTokenLimitFinishReason(finishReason)) {
       console.error("Process flow generation hit the AI response token limit:", {

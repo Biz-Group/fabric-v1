@@ -13,6 +13,10 @@ import {
   requireOrgMember,
   resolveOrgForAction,
 } from "./lib/orgAuth";
+import {
+  generateAICompletion,
+  isAIConfigured,
+} from "./lib/aiProvider";
 
 // Normalize ElevenLabs transcript to the shape our UI expects:
 // ElevenLabs returns { role: "agent"|"user", message: string, time_in_call_secs: number }
@@ -81,6 +85,7 @@ export const insertConversation = internalMutation({
       v.union(
         v.literal("elevenlabs-convai"),
         v.literal("fabric-openrouter"),
+        v.literal("fabric-foundry"),
       ),
     ),
     transcript: v.optional(
@@ -825,9 +830,8 @@ export const regenerateProcessSummary = internalAction({
     forceRefresh: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const openrouterKey = process.env.OPENROUTER_API_KEY;
-    if (!openrouterKey) {
-      console.error("OPENROUTER_API_KEY is not configured — skipping summary regeneration");
+    if (!isAIConfigured("synthesis")) {
+      console.error("AI synthesis is not configured — skipping summary regeneration");
       return;
     }
 
@@ -858,36 +862,14 @@ export const regenerateProcessSummary = internalAction({
         )
         .join("\n\n---\n\n");
 
-      const response = await fetch(
-        "https://openrouter.ai/api/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${openrouterKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "anthropic/claude-haiku-4.5",
-            messages: [
-              { role: "system", content: PROCESS_SUMMARY_SYSTEM_PROMPT_FULL_REBUILD },
-              {
-                role: "user",
-                content: `Here are the full transcripts of all ${allConversations.length} conversations for this process:\n\n${transcriptBlock}`,
-              },
-            ],
-            max_tokens: 8192,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("OpenRouter API error:", response.status, errorText);
-        throw new Error(`OpenRouter API error: ${response.status}`);
-      }
-
-      const result = await response.json();
-      const rollingSummary = result.choices?.[0]?.message?.content?.trim() ?? null;
+      const completion = await generateAICompletion({
+        capability: "synthesis",
+        operation: "process-summary-full-rebuild",
+        system: PROCESS_SUMMARY_SYSTEM_PROMPT_FULL_REBUILD,
+        user: `Here are the full transcripts of all ${allConversations.length} conversations for this process:\n\n${transcriptBlock}`,
+        maxTokens: 8192,
+      });
+      const rollingSummary = completion.text;
       if (rollingSummary) {
         await ctx.runMutation(internal.postCall.updateRollingSummary, {
           processId: args.processId,
@@ -961,33 +943,14 @@ export const regenerateProcessSummary = internalAction({
       userContent = `Here is the existing process summary:\n\n${existingSummary}\n\n---\n\nA new conversation has been recorded. Integrate the information from this transcript into the existing summary, updating all sections as needed:\n\n${latestTranscript}`;
     }
 
-    const response = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${openrouterKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "anthropic/claude-haiku-4.5",
-          messages: [
-            { role: "system", content: PROCESS_SUMMARY_SYSTEM_PROMPT },
-            { role: "user", content: userContent },
-          ],
-          max_tokens: 8192,
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("OpenRouter API error:", response.status, errorText);
-      throw new Error(`OpenRouter API error: ${response.status}`);
-    }
-
-    const result = await response.json();
-    const rollingSummary = result.choices?.[0]?.message?.content?.trim() ?? null;
+    const completion = await generateAICompletion({
+      capability: "synthesis",
+      operation: "process-summary-incremental",
+      system: PROCESS_SUMMARY_SYSTEM_PROMPT,
+      user: userContent,
+      maxTokens: 8192,
+    });
+    const rollingSummary = completion.text;
 
     if (rollingSummary) {
       await ctx.runMutation(internal.postCall.updateRollingSummary, {

@@ -105,7 +105,6 @@ async function buildDescriptionUpdate(
 
   const decision = await classifyDescriptionSafety(
     normalized.value,
-    process.env.OPENROUTER_API_KEY,
   );
   return { kind: "set", ...buildSafeDescriptionFields(normalized.value, decision) };
 }

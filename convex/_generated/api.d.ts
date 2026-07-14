@@ -16,6 +16,7 @@ import type * as functions from "../functions.js";
 import type * as hierarchy from "../hierarchy.js";
 import type * as http from "../http.js";
 import type * as invitations from "../invitations.js";
+import type * as lib_aiProvider from "../lib/aiProvider.js";
 import type * as lib_clerkApi from "../lib/clerkApi.js";
 import type * as lib_orgAuth from "../lib/orgAuth.js";
 import type * as lib_slugs from "../lib/slugs.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   hierarchy: typeof hierarchy;
   http: typeof http;
   invitations: typeof invitations;
+  "lib/aiProvider": typeof lib_aiProvider;
   "lib/clerkApi": typeof lib_clerkApi;
   "lib/orgAuth": typeof lib_orgAuth;
   "lib/slugs": typeof lib_slugs;

@@ -532,6 +532,7 @@ export const prodImport_insertAll = internalMutation({
         analysisProvider: c.analysisProvider as
           | "elevenlabs-convai"
           | "fabric-openrouter"
+          | "fabric-foundry"
           | undefined,
         transcript: c.transcript as
           | Array<{
