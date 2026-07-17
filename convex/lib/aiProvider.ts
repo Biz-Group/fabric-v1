@@ -37,6 +37,7 @@ export type AIRequest = {
   maxTokens: number;
   temperature?: number;
   timeoutMs?: number;
+  maxRetries?: number;
   tool?: AITool;
 };
 
@@ -322,7 +323,7 @@ async function callFoundryClaude(
   const client = new AnthropicFoundry({
     apiKey: backend.apiKey,
     baseURL: `${backend.endpoint}/anthropic`,
-    maxRetries: DEFAULT_MAX_RETRIES,
+    maxRetries: request.maxRetries ?? DEFAULT_MAX_RETRIES,
     timeout: request.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   });
 
@@ -374,7 +375,7 @@ async function callFoundryOpenAI(
   const client = new OpenAI({
     apiKey: backend.apiKey,
     baseURL: `${backend.endpoint}/openai/v1/`,
-    maxRetries: DEFAULT_MAX_RETRIES,
+    maxRetries: request.maxRetries ?? DEFAULT_MAX_RETRIES,
     timeout: request.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   });
 
@@ -459,8 +460,9 @@ async function fetchOpenRouter(
   body: Record<string, unknown>,
 ): Promise<Response> {
   let lastError: unknown;
+  const maxRetries = request.maxRetries ?? DEFAULT_MAX_RETRIES;
 
-  for (let attempt = 0; attempt <= DEFAULT_MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const controller = new AbortController();
     const timeoutId = setTimeout(
       () => controller.abort(),
@@ -483,13 +485,13 @@ async function fetchOpenRouter(
         `OpenRouter request failed with status ${response.status}.`,
         { provider: backend.provider, status: response.status },
       );
-      if (attempt < DEFAULT_MAX_RETRIES) {
+      if (attempt < maxRetries) {
         await response.body?.cancel();
         await wait(retryDelayMs(response, attempt));
       }
     } catch (error) {
       lastError = error;
-      if (attempt < DEFAULT_MAX_RETRIES) {
+      if (attempt < maxRetries) {
         await wait(Math.min(250 * 2 ** attempt, 4_000));
       }
     } finally {

@@ -247,4 +247,32 @@ describe("AI provider adapter", () => {
     });
     expect(getPersistedAIProvider()).toBe("fabric-openrouter");
   });
+
+  test("honors a per-request maxRetries override (no retry on 429)", async () => {
+    process.env.AI_PROVIDER = "openrouter";
+    process.env.OPENROUTER_API_KEY = "openrouter-test-key";
+
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "rate limited" }), {
+          status: 429,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      generateAICompletion({
+        capability: "synthesis",
+        operation: "adapter-test-no-retry",
+        system: "System prompt",
+        user: "User prompt",
+        maxTokens: 100,
+        maxRetries: 0,
+      }),
+    ).rejects.toThrow();
+
+    // Default would attempt 3 times; the override must make it exactly one.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

@@ -262,6 +262,11 @@ export function buildFlowGenerationAIRequest(userContent: string) {
     user: userContent,
     temperature: 0,
     maxTokens: FLOW_GENERATION_MAX_TOKENS,
+    // Long, non-streaming completion. Give it a single generous attempt that
+    // still stays under the 10-minute Convex action ceiling:
+    // (1 + maxRetries) * timeoutMs + query/mutation overhead < 600_000.
+    timeoutMs: 450_000,
+    maxRetries: 0,
     tool: {
       name: FLOW_TOOL_NAME,
       description:
