@@ -21,7 +21,10 @@ import {
   isConversationEvidenceV2Current,
   normalizeProcessSummaryEvidenceV2,
 } from "./lib/conversationEvidenceV2";
-import { hashTranscript } from "./lib/transcriptHash";
+import {
+  hashTranscript,
+  processSummaryInputCacheKey,
+} from "./lib/transcriptHash";
 import { isSummaryV2EnabledForOrg } from "./lib/summaryV2Feature";
 import { generateSummaryInputForConversation } from "./postCall";
 import {
@@ -305,7 +308,8 @@ export const getProcessPreparationPage = internalQuery({
         if (args.phase === "legacy") {
           return (
             !conversation.processSummaryInput ||
-            conversation.processSummaryInputHash !== transcriptHash
+            conversation.processSummaryInputHash !==
+              processSummaryInputCacheKey(conversation.transcript ?? null)
           );
         }
         if (

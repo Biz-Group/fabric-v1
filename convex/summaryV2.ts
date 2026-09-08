@@ -10,7 +10,9 @@ export const SUMMARY_V2_PROMPT_VERSIONS = {
   // budget, so any conversation with real content truncated and produced no
   // evidence at all. Re-extraction is required, and wanted: every v1 row that
   // truncated has nothing stored.
-  conversationEvidence: "summary-v2-conversation-evidence-v2",
+  // v3 serializes contributor-controlled fields as untrusted JSON evidence and
+  // adds an explicit system-level instruction boundary against prompt injection.
+  conversationEvidence: "summary-v2-conversation-evidence-v3",
   // v2 replaced the ordered stage timeline with non-sequential scope and
   // participant findings. Process Flow owns step order; two independently
   // generated sequences over the same transcripts always disagreed.

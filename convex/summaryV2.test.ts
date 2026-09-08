@@ -105,7 +105,9 @@ describe("Summary V2 contracts and normalizers", () => {
       // v2: the output budget is stated in the prompt and the caps were cut to
       // fit it. Bumped because every v1 extraction of a substantial interview
       // truncated and stored nothing.
-      conversationEvidence: "summary-v2-conversation-evidence-v2",
+      // v3: contributor-controlled input is isolated as untrusted JSON and the
+      // system prompt explicitly rejects instructions embedded in evidence.
+      conversationEvidence: "summary-v2-conversation-evidence-v3",
       // v2: the ordered stage timeline became non-sequential scope findings.
       // v3: the brief emphasizes its load-bearing facts with `**bold**`.
       processOverview: "summary-v2-process-overview-v3",

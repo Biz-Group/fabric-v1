@@ -27,6 +27,10 @@ import {
 } from "./lib/aiUsageMeter";
 import { normalizeSummaryTitle } from "./lib/conversationTitle";
 import { startConversationPipelines } from "./lib/conversationPipelines";
+import {
+  serializeUntrustedEvidence,
+  withUntrustedEvidenceBoundary,
+} from "./lib/aiPromptSafety";
 import type { ResolvedAttribution } from "./postCall";
 
 type TranscriptMessage = {
@@ -98,7 +102,7 @@ const speakerLabelValidator = v.object({
   userId: v.optional(v.id("users")),
 });
 
-const VOICE_RECORDING_ANALYSIS_PROMPT = `You are analyzing a diarized voice recording about one business process. The transcript lines are prefixed with confirmed speaker names.
+const VOICE_RECORDING_ANALYSIS_PROMPT = withUntrustedEvidenceBoundary(`You are analyzing a diarized voice recording about one business process. The transcript messages include confirmed speaker names when available.
 
 Return ONLY a valid JSON object with this exact shape:
 {
@@ -127,7 +131,7 @@ Rules:
 - Preserve named speakers as actors when the transcript makes their role in the process clear.
 - process_steps, step_connections, and step_issues must be strings containing valid JSON arrays.
 - Use stable kebab-case ids for steps so downstream process-flow generation can merge them.
-- If the transcript is vague, keep fields sparse and mark booleans false where appropriate.`;
+- If the transcript is vague, keep fields sparse and mark booleans false where appropriate.`);
 
 function appendToken(current: string, token: string): string {
   if (!current) return token;
@@ -404,7 +408,7 @@ async function analyzeTranscript(
     capability: "synthesis",
     operation: "voice-recording-analysis",
     system: VOICE_RECORDING_ANALYSIS_PROMPT,
-    user: `Transcript:\n\n${transcriptText(transcript)}`,
+    user: serializeUntrustedEvidence({ transcript }),
     maxTokens: VOICE_ANALYSIS_MAX_TOKENS,
   });
   return {

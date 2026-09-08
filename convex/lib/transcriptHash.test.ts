@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { hashTranscript } from "./transcriptHash";
+import {
+  hashTranscript,
+  PROCESS_SUMMARY_INPUT_PROMPT_VERSION,
+  processSummaryInputCacheKey,
+} from "./transcriptHash";
 
 const transcript = [
   { role: "user", content: "First we log the ticket", speakerName: "Alice" },
@@ -38,5 +42,11 @@ describe("hashTranscript", () => {
     expect(hashTranscript(null)).toBe("empty");
     expect(hashTranscript(undefined)).toBe("empty");
     expect(hashTranscript([])).toBe("empty");
+  });
+
+  test("versions cached summary input independently from transcript content", () => {
+    expect(processSummaryInputCacheKey(transcript)).toBe(
+      `${PROCESS_SUMMARY_INPUT_PROMPT_VERSION}:${hashTranscript(transcript)}`,
+    );
   });
 });

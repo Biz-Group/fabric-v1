@@ -5,6 +5,10 @@ import {
   SUMMARY_V2_PROMPT_VERSIONS,
   type ProcessSummaryEvidenceV2,
 } from "../summaryV2";
+import {
+  serializeUntrustedEvidence,
+  withUntrustedEvidenceBoundary,
+} from "./aiPromptSafety";
 
 export const CONVERSATION_EVIDENCE_V2_OPERATION =
   "conversation-summary-evidence-v2";
@@ -31,7 +35,7 @@ export type ConversationEvidenceNormalizationMetadata = {
  * economical answer in words. Without this, faithful extraction reads the caps
  * as an invitation and writes until it is cut off.
  */
-const CONVERSATION_EVIDENCE_V2_SYSTEM_PROMPT = `You extract one contributor's account of a business process into structured evidence for later synthesis.
+const CONVERSATION_EVIDENCE_V2_SYSTEM_PROMPT = withUntrustedEvidenceBoundary(`You extract one contributor's account of a business process into structured evidence for later synthesis.
 
 Faithfulness rules:
 - Report only what this contributor said. Do not add standard practice or inferred steps.
@@ -45,7 +49,7 @@ Output budget — the schema limits are ceilings for unusually rich interviews, 
 - Merge related actions into one step instead of splitting every sentence. Most accounts need well under ${SUMMARY_V2_CAPS.conversationSteps} steps.
 - Keep each step body to one or two sentences of what happened, typically under 200 characters. Do not restate the title or quote the transcript.
 - List only distinct items in each array — names and short phrases, not sentences. Most arrays hold a handful of items; empty arrays are valid when evidence is absent.
-- Nothing is scored on length. A complete, compact answer is the requirement; a cut-off answer is discarded entirely.`;
+- Nothing is scored on length. A complete, compact answer is the requirement; a cut-off answer is discarded entirely.`);
 
 /**
  * Appended on the one retry after a truncated first attempt. The transcript
@@ -187,10 +191,14 @@ export function buildConversationEvidenceV2Request(args: {
     system: args.concise
       ? `${CONVERSATION_EVIDENCE_V2_SYSTEM_PROMPT}${CONVERSATION_EVIDENCE_V2_CONCISE_SUFFIX}`
       : CONVERSATION_EVIDENCE_V2_SYSTEM_PROMPT,
-    user: `Source key: ${sourceKey}\nContributor: ${args.contributorName}\n\nTranscript:\n${formatConversationEvidenceTranscript(
-      args.transcript,
-      args.contributorName,
-    )}`,
+    user: serializeUntrustedEvidence({
+      sourceKey,
+      contributorName: args.contributorName,
+      transcript: formatConversationEvidenceTranscript(
+        args.transcript,
+        args.contributorName,
+      ),
+    }),
     maxTokens: budget.maxTokens,
     timeoutMs: budget.timeoutMs,
     // The retry spends no transport retries of its own. Both attempts share one

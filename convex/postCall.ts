@@ -37,7 +37,14 @@ import {
   AUDIO_PLAYBACK_TOKEN_TTL_MS,
   signAudioPlaybackToken,
 } from "./lib/audioPlaybackToken";
-import { hashTranscript } from "./lib/transcriptHash";
+import {
+  hashTranscript,
+  processSummaryInputCacheKey,
+} from "./lib/transcriptHash";
+import {
+  serializeUntrustedEvidence,
+  withUntrustedEvidenceBoundary,
+} from "./lib/aiPromptSafety";
 
 // Normalize ElevenLabs transcript to the shape our UI expects:
 // ElevenLabs returns { role: "agent"|"user", message: string, time_in_call_secs: number }
@@ -1028,7 +1035,7 @@ export const updateConversationAnalysis = internalMutation({
 
 const PROCESS_SUMMARY_MAX_TOKENS = 8192;
 
-const PROCESS_SUMMARY_SYSTEM_PROMPT = `You are an analyst synthesizing employee accounts of a single business process into a structured brief. Your output must use the following markdown format exactly:
+const PROCESS_SUMMARY_SYSTEM_PROMPT = withUntrustedEvidenceBoundary(`You are an analyst synthesizing employee accounts of a single business process into a structured brief. The user-message JSON contains an existingSummary field and one conversation. If existingSummary is null, create the initial brief. Otherwise, integrate the conversation into that brief. Your output must use the following markdown format exactly:
 
 ## Overview
 2-3 sentence executive summary of the process.
@@ -1050,7 +1057,7 @@ Rules:
 - Write in clear, concise prose within each section.
 - If this is the first conversation, the Consensus and Tensions & Gaps sections can note that only one perspective exists so far.
 - When integrating new information into an existing summary, preserve existing citations and add new ones. Update sections as needed — move items from Notable Details to Consensus if a new contributor confirms them, or add new tensions if accounts conflict.
-- Output ONLY the markdown sections above, nothing else.`;
+- Output ONLY the markdown sections above, nothing else.`);
 
 // The reduce output is a fixed five-section brief, so it does not grow with
 // the number of conversations the way the old concatenate-everything rebuild
@@ -1059,7 +1066,7 @@ Rules:
 const PROCESS_SUMMARY_REDUCE_MAX_TOKENS = 4096;
 const PROCESS_SUMMARY_REDUCE_TIMEOUT_MS = 150_000;
 
-const PROCESS_SUMMARY_REDUCE_SYSTEM_PROMPT = `You are an analyst merging structured records of individual employee accounts of a single business process into one brief. Each record was extracted from one contributor's interview and reports only what that contributor said. Your job is the cross-contributor work none of them could do: find agreement, find conflict, find gaps. Your output must use the following markdown format exactly:
+const PROCESS_SUMMARY_REDUCE_SYSTEM_PROMPT = withUntrustedEvidenceBoundary(`You are an analyst merging structured records of individual employee accounts of a single business process into one brief. Each record was extracted from one contributor's interview and reports only what that contributor said. Your job is the cross-contributor work none of them could do: find agreement, find conflict, find gaps. Your output must use the following markdown format exactly:
 
 ## Overview
 2-3 sentence executive summary of the process.
@@ -1082,7 +1089,7 @@ Rules:
 - A point belongs in Consensus only if more than one record supports it. One record saying it is Notable Details.
 - Treat each record's "Uncertainties" as evidence for Tensions & Gaps, not as fact.
 - Do not add steps, actors, or tools that appear in no record. A gap is a finding; filling it is an error.
-- Output ONLY the markdown sections above, nothing else.`;
+- Output ONLY the markdown sections above, nothing else.`);
 
 /**
  * Every path that lands a new rolling summary does the same three things:
@@ -1121,7 +1128,7 @@ async function saveRollingSummary(
   }
 }
 
-function formatTranscript(
+function transcriptEvidence(
   transcript: Array<{
     role: string;
     content: string;
@@ -1129,15 +1136,23 @@ function formatTranscript(
   }> | null,
   contributorName: string,
   conversationNumber: number,
-): string {
-  if (!transcript || !Array.isArray(transcript) || transcript.length === 0) {
-    return `[Conversation ${conversationNumber} — ${contributorName}]\n(No transcript available)`;
-  }
-  const lines = transcript.map(
-    (msg: { role: string; content: string; speakerName?: string }) =>
-      `${msg.speakerName ?? (msg.role === "user" ? contributorName : "Agent")}: ${msg.content}`,
-  );
-  return `[Conversation ${conversationNumber} — ${contributorName}]\n${lines.join("\n")}`;
+): {
+  conversationNumber: number;
+  contributorName: string;
+  transcript: Array<{ role: string; speakerName: string; content: string }>;
+} {
+  return {
+    conversationNumber,
+    contributorName,
+    transcript:
+      transcript?.map((message) => ({
+        role: message.role,
+        speakerName:
+          message.speakerName ??
+          (message.role === "user" ? contributorName : "Agent"),
+        content: message.content,
+      })) ?? [],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1152,7 +1167,7 @@ function formatTranscript(
 const CONVERSATION_MAP_MAX_TOKENS = 1024;
 const CONVERSATION_MAP_TIMEOUT_MS = 120_000;
 
-const CONVERSATION_MAP_SYSTEM_PROMPT = `You are extracting ONE employee's account of a business process into a compact structured record. This record will later be merged with other employees' records to build a single process brief, so it must be faithful to this account alone — never generalize, never invent steps to fill gaps, never smooth over uncertainty.
+const CONVERSATION_MAP_SYSTEM_PROMPT = withUntrustedEvidenceBoundary(`You are extracting ONE employee's account of a business process into a compact structured record. This record will later be merged with other employees' records to build a single process brief, so it must be faithful to this account alone — never generalize, never invent steps to fill gaps, never smooth over uncertainty.
 
 Your output must use the following markdown format exactly:
 
@@ -1176,7 +1191,7 @@ Rules:
 - Be terse. This is an intermediate record, not prose for a reader.
 - Keep every section even when it is empty — write "None stated." rather than dropping it.
 - Do not compare this account to anyone else's; you cannot see them.
-- Output ONLY the markdown sections above, nothing else.`;
+- Output ONLY the markdown sections above, nothing else.`);
 
 export const getConversationForSummaryInput = internalQuery({
   args: {
@@ -1209,7 +1224,8 @@ export const saveConversationSummaryInput = internalMutation({
     }
     if (
       conv.status !== "done" ||
-      hashTranscript(conv.transcript ?? null) !== args.processSummaryInputHash
+      processSummaryInputCacheKey(conv.transcript ?? null) !==
+        args.processSummaryInputHash
     ) {
       return { saved: false as const };
     }
@@ -1238,8 +1254,8 @@ export async function generateSummaryInputForConversation(
   );
   if (!conv || conv.status !== "done") return;
 
-  const transcriptHash = hashTranscript(conv.transcript);
-  if (conv.processSummaryInputHash === transcriptHash) return;
+  const cacheKey = processSummaryInputCacheKey(conv.transcript);
+  if (conv.processSummaryInputHash === cacheKey) return;
 
   const completion = await meteredCompletion(
     ctx,
@@ -1254,7 +1270,9 @@ export async function generateSummaryInputForConversation(
       capability: "synthesis",
       operation: "conversation-summary-input",
       system: CONVERSATION_MAP_SYSTEM_PROMPT,
-      user: formatTranscript(conv.transcript, conv.contributorName, 1),
+      user: serializeUntrustedEvidence(
+        transcriptEvidence(conv.transcript, conv.contributorName, 1),
+      ),
       maxTokens: CONVERSATION_MAP_MAX_TOKENS,
       timeoutMs: CONVERSATION_MAP_TIMEOUT_MS,
     },
@@ -1272,7 +1290,7 @@ export async function generateSummaryInputForConversation(
     conversationId,
     clerkOrgId,
     processSummaryInput,
-    processSummaryInputHash: transcriptHash,
+    processSummaryInputHash: cacheKey,
   });
 }
 
@@ -1377,10 +1395,10 @@ export const getProcessSummaryInputs = internalQuery({
     const missingIds: Array<Id<"conversations">> = [];
 
     rows.forEach((row, index) => {
-      const transcriptHash = hashTranscript(row.transcript ?? null);
+      const cacheKey = processSummaryInputCacheKey(row.transcript ?? null);
       if (
         row.processSummaryInput &&
-        row.processSummaryInputHash === transcriptHash
+        row.processSummaryInputHash === cacheKey
       ) {
         ready.push({
           conversationNumber: index + 1,
@@ -1563,13 +1581,6 @@ export const regenerateProcessSummary = internalAction({
           );
         }
 
-        const recordBlock = ready
-          .map(
-            (r) =>
-              `[Conversation ${r.conversationNumber} — ${r.contributorName}]\n${r.input}`,
-          )
-          .join("\n\n---\n\n");
-
         const completion = await meteredCompletion(
           ctx,
           {
@@ -1581,7 +1592,13 @@ export const regenerateProcessSummary = internalAction({
             capability: "synthesis",
             operation: "process-summary-reduce",
             system: PROCESS_SUMMARY_REDUCE_SYSTEM_PROMPT,
-            user: `Here are the structured records for the ${ready.length} conversations recorded for this process:\n\n${recordBlock}`,
+            user: serializeUntrustedEvidence({
+              records: ready.map((record) => ({
+                conversationNumber: record.conversationNumber,
+                contributorName: record.contributorName,
+                record: record.input,
+              })),
+            }),
             maxTokens: PROCESS_SUMMARY_REDUCE_MAX_TOKENS,
             timeoutMs: PROCESS_SUMMARY_REDUCE_TIMEOUT_MS,
           },
@@ -1627,7 +1644,7 @@ export const regenerateProcessSummary = internalAction({
       );
       if (conversationCount === 0) return;
 
-      const latestTranscript = formatTranscript(
+      const latestTranscript = transcriptEvidence(
         latestConversation.transcript as Array<{
           role: string;
           content: string;
@@ -1637,13 +1654,11 @@ export const regenerateProcessSummary = internalAction({
         conversationCount,
       );
 
-      let userContent: string;
-
-      if (!existingSummary || conversationCount === 1) {
-        userContent = `This is the first conversation recorded for this process. Generate the initial structured summary from this transcript:\n\n${latestTranscript}`;
-      } else {
-        userContent = `Here is the existing process summary:\n\n${existingSummary}\n\n---\n\nA new conversation has been recorded. Integrate the information from this transcript into the existing summary, updating all sections as needed:\n\n${latestTranscript}`;
-      }
+      const userContent = serializeUntrustedEvidence({
+        existingSummary:
+          !existingSummary || conversationCount === 1 ? null : existingSummary,
+        conversation: latestTranscript,
+      });
 
       const completion = await meteredCompletion(
         ctx,

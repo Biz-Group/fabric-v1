@@ -518,8 +518,9 @@ export default defineSchema({
     // summary's reduce pass. Deliberately NOT the vendor `summary` above:
     // that one is ElevenLabs', its depth and shape can change without notice,
     // and it is display-only. `processSummaryInputHash` fingerprints the
-    // transcript this was derived from, so a re-transcribed conversation
-    // regenerates it and an unchanged one never pays for it twice.
+    // transcript and prompt version this was derived from, so a re-transcribed
+    // conversation or hardened prompt regenerates it while unchanged input
+    // never pays for it twice.
     processSummaryInput: v.optional(v.string()),
     processSummaryInputHash: v.optional(v.string()),
     processSummaryEvidenceV2: v.optional(processSummaryEvidenceV2Validator),

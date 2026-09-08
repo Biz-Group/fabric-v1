@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { MutationCtx } from "./_generated/server";
-import { hashTranscript } from "./lib/transcriptHash";
+import { processSummaryInputCacheKey } from "./lib/transcriptHash";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -146,7 +146,7 @@ describe("bounded process-summary reads", () => {
         conversation(id, {
           contributorName: "Mapped",
           processSummaryInput: "## Steps\n1. Does the thing",
-          processSummaryInputHash: hashTranscript([
+          processSummaryInputHash: processSummaryInputCacheKey([
             { role: "user", content: "Hello" },
           ]),
         }),
