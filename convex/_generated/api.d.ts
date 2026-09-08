@@ -20,6 +20,7 @@ import type * as hierarchySummaryV2 from "../hierarchySummaryV2.js";
 import type * as http from "../http.js";
 import type * as invitations from "../invitations.js";
 import type * as lib_aiPricing from "../lib/aiPricing.js";
+import type * as lib_aiPromptSafety from "../lib/aiPromptSafety.js";
 import type * as lib_aiProvider from "../lib/aiProvider.js";
 import type * as lib_aiUsageMeter from "../lib/aiUsageMeter.js";
 import type * as lib_aiUsageRollup from "../lib/aiUsageRollup.js";
@@ -81,6 +82,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   invitations: typeof invitations;
   "lib/aiPricing": typeof lib_aiPricing;
+  "lib/aiPromptSafety": typeof lib_aiPromptSafety;
   "lib/aiProvider": typeof lib_aiProvider;
   "lib/aiUsageMeter": typeof lib_aiUsageMeter;
   "lib/aiUsageRollup": typeof lib_aiUsageRollup;
