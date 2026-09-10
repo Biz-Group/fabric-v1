@@ -731,7 +731,8 @@ export function RecordingModal({
       setStep("processing");
       setSpeakerLabelsSubmitted(false);
 
-      const uploadUrl = await generateVoiceRecordingUploadUrl({ processId });
+      const { uploadUrl, uploadToken } =
+        await generateVoiceRecordingUploadUrl({ processId });
       const upload = await fetch(uploadUrl, {
         method: "POST",
         headers: { "Content-Type": mimeType },
@@ -747,6 +748,7 @@ export function RecordingModal({
       const result = await processVoiceRecording({
         processId,
         storageId,
+        uploadToken,
         durationSeconds: voiceRecordSeconds || undefined,
         mimeType,
         source: mode === "audioUpload" ? "upload" : "record",

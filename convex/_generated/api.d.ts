@@ -25,6 +25,7 @@ import type * as lib_aiProvider from "../lib/aiProvider.js";
 import type * as lib_aiUsageMeter from "../lib/aiUsageMeter.js";
 import type * as lib_aiUsageRollup from "../lib/aiUsageRollup.js";
 import type * as lib_audioPlaybackToken from "../lib/audioPlaybackToken.js";
+import type * as lib_audioUpload from "../lib/audioUpload.js";
 import type * as lib_clerkApi from "../lib/clerkApi.js";
 import type * as lib_contributorAttribution from "../lib/contributorAttribution.js";
 import type * as lib_conversationAnalysis from "../lib/conversationAnalysis.js";
@@ -87,6 +88,7 @@ declare const fullApi: ApiFromModules<{
   "lib/aiUsageMeter": typeof lib_aiUsageMeter;
   "lib/aiUsageRollup": typeof lib_aiUsageRollup;
   "lib/audioPlaybackToken": typeof lib_audioPlaybackToken;
+  "lib/audioUpload": typeof lib_audioUpload;
   "lib/clerkApi": typeof lib_clerkApi;
   "lib/contributorAttribution": typeof lib_contributorAttribution;
   "lib/conversationAnalysis": typeof lib_conversationAnalysis;

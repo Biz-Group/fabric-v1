@@ -8,6 +8,7 @@ import {
   normalizeScribeTranscript,
   parseAnalysisResponse,
 } from "./voiceRecordings";
+import { MAX_USER_UPLOAD_BYTES_PER_WINDOW } from "./lib/audioUpload";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -153,6 +154,48 @@ async function seedOrgAMember(
       createdAt: Date.now(),
     });
     return id;
+  });
+}
+
+async function seedVoiceUploadFixture(t: ReturnType<typeof convexTest>) {
+  return await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", {
+      tokenIdentifier: `${ISSUER}|user_a`,
+      name: "Alice",
+      email: "alice@example.test",
+      profileComplete: true,
+    });
+    await ctx.db.insert("memberships", {
+      tokenIdentifier: `${ISSUER}|user_a`,
+      userId,
+      clerkOrgId: ORG_A,
+      role: "contributor",
+      createdAt: Date.now(),
+    });
+    const functionId = await ctx.db.insert("functions", {
+      name: "Ops",
+      sortOrder: 0,
+      clerkOrgId: ORG_A,
+    });
+    const departmentId = await ctx.db.insert("departments", {
+      functionId,
+      name: "Payroll",
+      sortOrder: 0,
+      clerkOrgId: ORG_A,
+    });
+    const processId = await ctx.db.insert("processes", {
+      departmentId,
+      name: "Monthly payroll",
+      sortOrder: 0,
+      clerkOrgId: ORG_A,
+    });
+    return { processId, userId };
+  });
+}
+
+function validWebmBlob(): Blob {
+  return new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x01])], {
+    type: "audio/webm",
   });
 }
 
@@ -344,6 +387,187 @@ describe("voice recording helpers", () => {
         "Fallback",
       ),
     ).toThrow(/unparseable JSON/i);
+  });
+});
+
+describe("voice recording upload admission", () => {
+  test("persists authoritative metadata and schedules only validated audio", async () => {
+    const t = convexTest(schema, modules);
+    const { processId } = await seedVoiceUploadFixture(t);
+    const storageId = await t.run(async (ctx) =>
+      ctx.storage.store(validWebmBlob()),
+    );
+    const metadata = await t.run(async (ctx) =>
+      ctx.db.system.get("_storage", storageId),
+    );
+    expect(metadata).toMatchObject({ size: 5 });
+    const caller = t.withIdentity(identityForOrgA());
+    const { uploadToken } = await caller.mutation(
+      api.voiceRecordings.generateUploadUrl,
+      { processId },
+    );
+
+    const result = await caller.action(
+      api.voiceRecordings.processVoiceRecording,
+      {
+        processId,
+        storageId,
+        uploadToken,
+        durationSeconds: 90,
+        mimeType: "audio/webm;codecs=opus",
+        source: "record",
+      },
+    );
+
+    expect(result.status).toBe("processing");
+    const stored = await t.run(async (ctx) => ctx.db.get(result.conversationId));
+    expect(stored).toMatchObject({
+      audioStorageId: storageId,
+      audioMimeType: "audio/webm",
+      audioSizeBytes: 5,
+      durationSeconds: 90,
+      status: "processing",
+    });
+  });
+
+  test("deletes a granted object with a forged audio label", async () => {
+    const t = convexTest(schema, modules);
+    const { processId } = await seedVoiceUploadFixture(t);
+    const storageId = await t.run(async (ctx) =>
+      ctx.storage.store(new Blob(["not audio"], { type: "audio/mpeg" })),
+    );
+    const caller = t.withIdentity(identityForOrgA());
+    const { uploadToken } = await caller.mutation(
+      api.voiceRecordings.generateUploadUrl,
+      { processId },
+    );
+
+    await expect(
+      caller.action(api.voiceRecordings.processVoiceRecording, {
+        processId,
+        storageId,
+        uploadToken,
+        mimeType: "audio/mpeg",
+        source: "upload",
+      }),
+    ).rejects.toThrow(/supported audio format/);
+
+    const state = await t.run(async (ctx) => ({
+      storage: await ctx.db.system.get("_storage", storageId),
+      conversations: await ctx.db.query("conversations").take(1),
+      grants: await ctx.db.query("voiceUploadGrants").take(1),
+    }));
+    expect(state.storage).toBeNull();
+    expect(state.conversations).toHaveLength(0);
+    expect(state.grants).toHaveLength(0);
+  });
+
+  test("makes upload grants single-use and storage IDs non-replayable", async () => {
+    const t = convexTest(schema, modules);
+    const { processId } = await seedVoiceUploadFixture(t);
+    const storageId = await t.run(async (ctx) =>
+      ctx.storage.store(validWebmBlob()),
+    );
+    const caller = t.withIdentity(identityForOrgA());
+    const firstGrant = await caller.mutation(
+      api.voiceRecordings.generateUploadUrl,
+      { processId },
+    );
+
+    await caller.action(api.voiceRecordings.processVoiceRecording, {
+      processId,
+      storageId,
+      uploadToken: firstGrant.uploadToken,
+      mimeType: "audio/webm",
+      source: "upload",
+    });
+    await expect(
+      caller.action(api.voiceRecordings.processVoiceRecording, {
+        processId,
+        storageId,
+        uploadToken: firstGrant.uploadToken,
+        mimeType: "audio/webm",
+        source: "upload",
+      }),
+    ).rejects.toThrow(/invalid or expired/);
+
+    const secondGrant = await caller.mutation(
+      api.voiceRecordings.generateUploadUrl,
+      { processId },
+    );
+    await expect(
+      caller.action(api.voiceRecordings.processVoiceRecording, {
+        processId,
+        storageId,
+        uploadToken: secondGrant.uploadToken,
+        mimeType: "audio/webm",
+        source: "upload",
+      }),
+    ).rejects.toThrow(/already been submitted/);
+
+    const state = await t.run(async (ctx) => ({
+      storage: await ctx.db.system.get("_storage", storageId),
+      conversations: await ctx.db.query("conversations").take(2),
+    }));
+    expect(state.storage).not.toBeNull();
+    expect(state.conversations).toHaveLength(1);
+  });
+
+  test("enforces the per-user upload URL rate limit", async () => {
+    const t = convexTest(schema, modules);
+    const { processId } = await seedVoiceUploadFixture(t);
+    const caller = t.withIdentity(identityForOrgA());
+
+    for (let index = 0; index < 10; index += 1) {
+      await caller.mutation(api.voiceRecordings.generateUploadUrl, {
+        processId,
+      });
+    }
+    await expect(
+      caller.mutation(api.voiceRecordings.generateUploadUrl, { processId }),
+    ).rejects.toThrow(/rate limit/);
+  });
+
+  test("deletes valid audio rejected by the per-user byte quota", async () => {
+    const t = convexTest(schema, modules);
+    const { processId, userId } = await seedVoiceUploadFixture(t);
+    const storageId = await t.run(async (ctx) =>
+      ctx.storage.store(validWebmBlob()),
+    );
+    const caller = t.withIdentity(identityForOrgA());
+    const { uploadToken } = await caller.mutation(
+      api.voiceRecordings.generateUploadUrl,
+      { processId },
+    );
+    await t.run(async (ctx) => {
+      const row = await ctx.db
+        .query("voiceUploadRateLimits")
+        .withIndex("by_key", (q) =>
+          q.eq("key", `voice-upload:user:${ORG_A}:${userId}`),
+        )
+        .unique();
+      expect(row).not.toBeNull();
+      await ctx.db.patch(row!._id, {
+        admittedBytes: MAX_USER_UPLOAD_BYTES_PER_WINDOW,
+      });
+    });
+
+    await expect(
+      caller.action(api.voiceRecordings.processVoiceRecording, {
+        processId,
+        storageId,
+        uploadToken,
+        mimeType: "audio/webm",
+        source: "upload",
+      }),
+    ).rejects.toThrow(/quota/);
+
+    const state = await t.run(async (ctx) => ({
+      storage: await ctx.db.system.get("_storage", storageId),
+      conversations: await ctx.db.query("conversations").take(1),
+    }));
+    expect(state.storage).toBeNull();
+    expect(state.conversations).toHaveLength(0);
   });
 });
 

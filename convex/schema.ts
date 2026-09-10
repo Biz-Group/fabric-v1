@@ -496,6 +496,9 @@ export default defineSchema({
     ),
     audioStorageId: v.optional(v.id("_storage")),
     audioMimeType: v.optional(v.string()),
+    // Authoritative size read from Convex storage at admission time. The
+    // browser-provided File.size is never used for security or quota checks.
+    audioSizeBytes: v.optional(v.number()),
     transcriptionProvider: v.optional(
       v.union(v.literal("elevenlabs-convai"), v.literal("elevenlabs-scribe")),
     ),
@@ -550,7 +553,39 @@ export default defineSchema({
     .index("by_clerkOrgId_and_elevenlabsConversationId", [
       "clerkOrgId",
       "elevenlabsConversationId",
+    ])
+    .index("by_audioStorageId", ["audioStorageId"]),
+
+  // One active upload grant per user/process. A grant proves the caller went
+  // through the authenticated URL-issuance path and makes blob admission
+  // single-use; it is deleted whether admission succeeds or is rejected.
+  voiceUploadGrants: defineTable({
+    token: v.string(),
+    processId: v.id("processes"),
+    clerkOrgId: v.string(),
+    userId: v.id("users"),
+    expiresAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_clerkOrgId_and_userId_and_processId", [
+      "clerkOrgId",
+      "userId",
+      "processId",
     ]),
+
+  // Fixed-window counters bound both unclaimed upload URLs and admitted audio
+  // work. Keys are stable, so this stays at one row per user plus one per org
+  // instead of accumulating a document for every time window.
+  voiceUploadRateLimits: defineTable({
+    key: v.string(),
+    clerkOrgId: v.string(),
+    scope: v.union(v.literal("user"), v.literal("organization")),
+    windowStartedAt: v.number(),
+    uploadUrlsIssued: v.number(),
+    admittedUploads: v.number(),
+    admittedBytes: v.number(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
 
   // Process flow diagrams — one per process, generated from conversation data
   processFlows: defineTable({

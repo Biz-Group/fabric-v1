@@ -6,9 +6,10 @@ import {
   internalQuery,
   mutation,
   type ActionCtx,
+  type MutationCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
 import {
   assertOrgOwns,
   requireOrgAdmin,
@@ -16,7 +17,6 @@ import {
   resolveOrgForAction,
 } from "./lib/orgAuth";
 import {
-  getPersistedAIProvider,
   isAIConfigured,
   isTokenLimitFinishReason,
 } from "./lib/aiProvider";
@@ -31,6 +31,22 @@ import {
   serializeUntrustedEvidence,
   withUntrustedEvidenceBoundary,
 } from "./lib/aiPromptSafety";
+import {
+  MAX_AUDIO_DURATION_SECONDS,
+  MAX_ORG_UPLOAD_BYTES_PER_WINDOW,
+  MAX_ORG_UPLOADS_PER_WINDOW,
+  MAX_USER_UPLOAD_BYTES_PER_WINDOW,
+  MAX_USER_UPLOADS_PER_WINDOW,
+  ORG_UPLOAD_WINDOW_MS,
+  USER_UPLOAD_WINDOW_MS,
+  VOICE_UPLOAD_GRANT_TTL_MS,
+  audioFileExtension,
+  audioUploadRejectionMessage,
+  fixedWindowStart,
+  inspectAudioUpload,
+  normalizeAudioMimeType,
+  validateAudioUploadMetadata,
+} from "./lib/audioUpload";
 import type { ResolvedAttribution } from "./postCall";
 
 type TranscriptMessage = {
@@ -87,6 +103,29 @@ type VoiceRecordingForAnalysis = {
   transcript: TranscriptMessage[];
   durationSeconds?: number;
 };
+
+type VoiceUploadRateLimitState = {
+  row: Doc<"voiceUploadRateLimits"> | null;
+  key: string;
+  clerkOrgId: string;
+  scope: "user" | "organization";
+  windowStartedAt: number;
+  uploadUrlsIssued: number;
+  admittedUploads: number;
+  admittedBytes: number;
+};
+
+type VoiceUploadAdmission =
+  | { ok: true; conversationId: Id<"conversations"> }
+  | {
+      ok: false;
+      reason:
+        | "invalid_grant"
+        | "invalid_upload"
+        | "duplicate_upload"
+        | "user_quota"
+        | "organization_quota";
+    };
 
 const transcriptMessageValidator = v.object({
   role: v.string(),
@@ -331,7 +370,7 @@ async function transcribeWithScribe(
   mimeType: string,
 ): Promise<ScribeResponse> {
   const form = new FormData();
-  const extension = mimeType.includes("mp4") ? "mp4" : "webm";
+  const extension = audioFileExtension(mimeType);
   form.append("file", audio, `voice-recording.${extension}`);
   form.append("model_id", "scribe_v2");
   form.append("language_code", "en");
@@ -417,13 +456,361 @@ async function analyzeTranscript(
   };
 }
 
+function voiceUploadRateLimitKey(
+  scope: "user" | "organization",
+  clerkOrgId: string,
+  userId?: Id<"users">,
+): string {
+  return scope === "user"
+    ? `voice-upload:user:${clerkOrgId}:${userId}`
+    : `voice-upload:organization:${clerkOrgId}`;
+}
+
+async function readVoiceUploadRateLimit(
+  ctx: MutationCtx,
+  args: {
+    scope: "user" | "organization";
+    clerkOrgId: string;
+    userId?: Id<"users">;
+    now: number;
+    windowMs: number;
+  },
+): Promise<VoiceUploadRateLimitState> {
+  const key = voiceUploadRateLimitKey(
+    args.scope,
+    args.clerkOrgId,
+    args.userId,
+  );
+  const row = await ctx.db
+    .query("voiceUploadRateLimits")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .unique();
+  const windowStartedAt = fixedWindowStart(args.now, args.windowMs);
+  const inCurrentWindow = row?.windowStartedAt === windowStartedAt;
+  return {
+    row,
+    key,
+    clerkOrgId: args.clerkOrgId,
+    scope: args.scope,
+    windowStartedAt,
+    uploadUrlsIssued: inCurrentWindow ? row.uploadUrlsIssued : 0,
+    admittedUploads: inCurrentWindow ? row.admittedUploads : 0,
+    admittedBytes: inCurrentWindow ? row.admittedBytes : 0,
+  };
+}
+
+async function writeVoiceUploadRateLimit(
+  ctx: MutationCtx,
+  state: VoiceUploadRateLimitState,
+  values: {
+    uploadUrlsIssued: number;
+    admittedUploads: number;
+    admittedBytes: number;
+    now: number;
+  },
+): Promise<void> {
+  const fields = {
+    windowStartedAt: state.windowStartedAt,
+    uploadUrlsIssued: values.uploadUrlsIssued,
+    admittedUploads: values.admittedUploads,
+    admittedBytes: values.admittedBytes,
+    updatedAt: values.now,
+  };
+  if (state.row) {
+    await ctx.db.patch(state.row._id, fields);
+    return;
+  }
+  await ctx.db.insert("voiceUploadRateLimits", {
+    key: state.key,
+    clerkOrgId: state.clerkOrgId,
+    scope: state.scope,
+    ...fields,
+  });
+}
+
+async function deleteUnattachedAudio(
+  ctx: MutationCtx,
+  storageId: Id<"_storage">,
+): Promise<boolean> {
+  const existing = await ctx.db
+    .query("conversations")
+    .withIndex("by_audioStorageId", (q) => q.eq("audioStorageId", storageId))
+    .first();
+  if (existing) return false;
+  const metadata = await ctx.db.system.get("_storage", storageId);
+  if (!metadata) return false;
+  await ctx.storage.delete(storageId);
+  return true;
+}
+
 export const generateUploadUrl = mutation({
   args: { processId: v.id("processes") },
   handler: async (ctx, args) => {
     const caller = await requireOrgContributor(ctx);
     const process = await ctx.db.get(args.processId);
     assertOrgOwns(caller, process);
-    return await ctx.storage.generateUploadUrl();
+
+    const now = Date.now();
+    const userLimit = await readVoiceUploadRateLimit(ctx, {
+      scope: "user",
+      clerkOrgId: caller.orgId,
+      userId: caller.userId,
+      now,
+      windowMs: USER_UPLOAD_WINDOW_MS,
+    });
+    const orgLimit = await readVoiceUploadRateLimit(ctx, {
+      scope: "organization",
+      clerkOrgId: caller.orgId,
+      now,
+      windowMs: ORG_UPLOAD_WINDOW_MS,
+    });
+    if (userLimit.uploadUrlsIssued >= MAX_USER_UPLOADS_PER_WINDOW) {
+      throw new Error("Audio upload rate limit reached. Try again later.");
+    }
+    if (orgLimit.uploadUrlsIssued >= MAX_ORG_UPLOADS_PER_WINDOW) {
+      throw new Error(
+        "Organization audio upload limit reached. Try again later.",
+      );
+    }
+
+    await writeVoiceUploadRateLimit(ctx, userLimit, {
+      uploadUrlsIssued: userLimit.uploadUrlsIssued + 1,
+      admittedUploads: userLimit.admittedUploads,
+      admittedBytes: userLimit.admittedBytes,
+      now,
+    });
+    await writeVoiceUploadRateLimit(ctx, orgLimit, {
+      uploadUrlsIssued: orgLimit.uploadUrlsIssued + 1,
+      admittedUploads: orgLimit.admittedUploads,
+      admittedBytes: orgLimit.admittedBytes,
+      now,
+    });
+
+    const token = crypto.randomUUID();
+    const existingGrant = await ctx.db
+      .query("voiceUploadGrants")
+      .withIndex("by_clerkOrgId_and_userId_and_processId", (q) =>
+        q
+          .eq("clerkOrgId", caller.orgId)
+          .eq("userId", caller.userId)
+          .eq("processId", args.processId),
+      )
+      .unique();
+    const grant = {
+      token,
+      processId: args.processId,
+      clerkOrgId: caller.orgId,
+      userId: caller.userId,
+      expiresAt: now + VOICE_UPLOAD_GRANT_TTL_MS,
+    };
+    if (existingGrant) {
+      await ctx.db.patch(existingGrant._id, grant);
+    } else {
+      await ctx.db.insert("voiceUploadGrants", grant);
+    }
+
+    return {
+      uploadUrl: await ctx.storage.generateUploadUrl(),
+      uploadToken: token,
+    };
+  },
+});
+
+export const hasValidVoiceUploadGrant = internalQuery({
+  args: {
+    token: v.string(),
+    processId: v.id("processes"),
+    clerkOrgId: v.string(),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const grant = await ctx.db
+      .query("voiceUploadGrants")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .unique();
+    return Boolean(
+      grant &&
+        grant.processId === args.processId &&
+        grant.clerkOrgId === args.clerkOrgId &&
+        grant.userId === args.userId &&
+        grant.expiresAt > Date.now(),
+    );
+  },
+});
+
+export const rejectVoiceUpload = internalMutation({
+  args: {
+    token: v.string(),
+    processId: v.id("processes"),
+    clerkOrgId: v.string(),
+    userId: v.id("users"),
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    const grant = await ctx.db
+      .query("voiceUploadGrants")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .unique();
+    if (
+      !grant ||
+      grant.processId !== args.processId ||
+      grant.clerkOrgId !== args.clerkOrgId ||
+      grant.userId !== args.userId
+    ) {
+      return false;
+    }
+
+    await ctx.db.delete(grant._id);
+    return await deleteUnattachedAudio(ctx, args.storageId);
+  },
+});
+
+export const admitVoiceRecording = internalMutation({
+  args: {
+    token: v.string(),
+    processId: v.id("processes"),
+    clerkOrgId: v.string(),
+    storageId: v.id("_storage"),
+    audioSizeBytes: v.number(),
+    durationSeconds: v.optional(v.number()),
+    mimeType: v.string(),
+    source: v.union(v.literal("record"), v.literal("upload")),
+    contributorName: v.string(),
+    userId: v.id("users"),
+    subjectUserId: v.optional(v.id("users")),
+    submittedByName: v.optional(v.string()),
+    consentAttestedAt: v.optional(v.number()),
+    analysisProvider: v.literal("fabric-foundry"),
+  },
+  handler: async (ctx, args): Promise<VoiceUploadAdmission> => {
+    const grant = await ctx.db
+      .query("voiceUploadGrants")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .unique();
+    if (
+      !grant ||
+      grant.processId !== args.processId ||
+      grant.clerkOrgId !== args.clerkOrgId ||
+      grant.userId !== args.userId ||
+      grant.expiresAt <= Date.now()
+    ) {
+      return { ok: false, reason: "invalid_grant" };
+    }
+
+    const process = await ctx.db.get(args.processId);
+    if (!process || process.clerkOrgId !== args.clerkOrgId) {
+      return { ok: false, reason: "invalid_grant" };
+    }
+
+    const duplicate = await ctx.db
+      .query("conversations")
+      .withIndex("by_audioStorageId", (q) =>
+        q.eq("audioStorageId", args.storageId),
+      )
+      .first();
+    if (duplicate) {
+      await ctx.db.delete(grant._id);
+      return { ok: false, reason: "duplicate_upload" };
+    }
+
+    const metadata = await ctx.db.system.get("_storage", args.storageId);
+    const metadataValidation = metadata
+      ? validateAudioUploadMetadata({
+          sizeBytes: metadata.size,
+          // Convex production uploads retain Content-Type. convex-test's
+          // ctx.storage.store currently omits it from the system table, so the
+          // already-inspected canonical type is the test-runtime fallback.
+          storedMimeType: metadata.contentType ?? args.mimeType,
+          claimedMimeType: args.mimeType,
+          durationSeconds: args.durationSeconds,
+        })
+      : null;
+    if (
+      !metadataValidation?.ok ||
+      metadataValidation.sizeBytes !== args.audioSizeBytes ||
+      metadataValidation.mimeType !== args.mimeType
+    ) {
+      await ctx.db.delete(grant._id);
+      await deleteUnattachedAudio(ctx, args.storageId);
+      return { ok: false, reason: "invalid_upload" };
+    }
+
+    const now = Date.now();
+    const userLimit = await readVoiceUploadRateLimit(ctx, {
+      scope: "user",
+      clerkOrgId: args.clerkOrgId,
+      userId: args.userId,
+      now,
+      windowMs: USER_UPLOAD_WINDOW_MS,
+    });
+    const orgLimit = await readVoiceUploadRateLimit(ctx, {
+      scope: "organization",
+      clerkOrgId: args.clerkOrgId,
+      now,
+      windowMs: ORG_UPLOAD_WINDOW_MS,
+    });
+    const exceedsUserQuota =
+      userLimit.admittedUploads >= MAX_USER_UPLOADS_PER_WINDOW ||
+      userLimit.admittedBytes + args.audioSizeBytes >
+        MAX_USER_UPLOAD_BYTES_PER_WINDOW;
+    const exceedsOrgQuota =
+      orgLimit.admittedUploads >= MAX_ORG_UPLOADS_PER_WINDOW ||
+      orgLimit.admittedBytes + args.audioSizeBytes >
+        MAX_ORG_UPLOAD_BYTES_PER_WINDOW;
+    if (exceedsUserQuota || exceedsOrgQuota) {
+      await ctx.db.delete(grant._id);
+      await deleteUnattachedAudio(ctx, args.storageId);
+      return {
+        ok: false,
+        reason: exceedsUserQuota ? "user_quota" : "organization_quota",
+      };
+    }
+
+    await writeVoiceUploadRateLimit(ctx, userLimit, {
+      uploadUrlsIssued: userLimit.uploadUrlsIssued,
+      admittedUploads: userLimit.admittedUploads + 1,
+      admittedBytes: userLimit.admittedBytes + args.audioSizeBytes,
+      now,
+    });
+    await writeVoiceUploadRateLimit(ctx, orgLimit, {
+      uploadUrlsIssued: orgLimit.uploadUrlsIssued,
+      admittedUploads: orgLimit.admittedUploads + 1,
+      admittedBytes: orgLimit.admittedBytes + args.audioSizeBytes,
+      now,
+    });
+    await ctx.db.delete(grant._id);
+
+    const conversationId = await ctx.db.insert("conversations", {
+      processId: args.processId,
+      clerkOrgId: args.clerkOrgId,
+      contributorName: args.contributorName,
+      userId: args.userId,
+      subjectUserId: args.subjectUserId,
+      submittedByName: args.submittedByName,
+      consentAttestedAt: args.consentAttestedAt,
+      inputMode: args.source === "upload" ? "audioUpload" : "voiceRecord",
+      audioStorageId: args.storageId,
+      audioMimeType: args.mimeType,
+      audioSizeBytes: args.audioSizeBytes,
+      transcriptionProvider: "elevenlabs-scribe",
+      analysisProvider: args.analysisProvider,
+      durationSeconds: args.durationSeconds,
+      status: "processing",
+    });
+
+    await ctx.scheduler.runAfter(
+      0,
+      internal.voiceRecordings.processVoiceRecordingInternal,
+      {
+        conversationId,
+        processId: args.processId,
+        clerkOrgId: args.clerkOrgId,
+        storageId: args.storageId,
+        durationSeconds: args.durationSeconds,
+        mimeType: args.mimeType,
+      },
+    );
+    return { ok: true, conversationId };
   },
 });
 
@@ -431,6 +818,7 @@ export const processVoiceRecording = action({
   args: {
     processId: v.id("processes"),
     storageId: v.id("_storage"),
+    uploadToken: v.string(),
     durationSeconds: v.optional(v.number()),
     mimeType: v.string(),
     source: v.optional(v.union(v.literal("record"), v.literal("upload"))),
@@ -439,12 +827,14 @@ export const processVoiceRecording = action({
     subjectUserId: v.optional(v.id("users")),
     consentAttested: v.optional(v.boolean()),
   },
-  handler: async (ctx, args) => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    status: "processing";
+    conversationId: Id<"conversations">;
+  }> => {
     const isUpload = args.source === "upload";
-    if (isUpload && !args.mimeType.startsWith("audio/")) {
-      throw new Error("Only audio file uploads are supported");
-    }
-
     const { orgId } = await resolveOrgForAction(ctx);
     await ctx.runQuery(internal.processFlows.assertProcessInOrg, {
       processId: args.processId,
@@ -462,40 +852,84 @@ export const processVoiceRecording = action({
         consentAttested: args.consentAttested,
       },
     );
-    const conversationId: Id<"conversations"> = await ctx.runMutation(
-      internal.postCall.insertConversation,
+
+    const hasGrant: boolean = await ctx.runQuery(
+      internal.voiceRecordings.hasValidVoiceUploadGrant,
       {
         processId: args.processId,
         clerkOrgId: orgId,
+        token: args.uploadToken,
+        userId: attribution.userId,
+      },
+    );
+    if (!hasGrant) {
+      throw new Error("Audio upload authorization is invalid or expired.");
+    }
+
+    const audio = await ctx.storage.get(args.storageId);
+    if (!audio) {
+      await ctx.runMutation(internal.voiceRecordings.rejectVoiceUpload, {
+        token: args.uploadToken,
+        processId: args.processId,
+        clerkOrgId: orgId,
+        userId: attribution.userId,
+        storageId: args.storageId,
+      });
+      throw new Error("The uploaded audio file could not be found.");
+    }
+
+    const inspection = await inspectAudioUpload(
+      audio,
+      args.mimeType,
+      args.durationSeconds,
+    );
+    if (!inspection.ok) {
+      await ctx.runMutation(internal.voiceRecordings.rejectVoiceUpload, {
+        token: args.uploadToken,
+        processId: args.processId,
+        clerkOrgId: orgId,
+        userId: attribution.userId,
+        storageId: args.storageId,
+      });
+      throw new Error(audioUploadRejectionMessage(inspection.reason));
+    }
+
+    const admission: VoiceUploadAdmission = await ctx.runMutation(
+      internal.voiceRecordings.admitVoiceRecording,
+      {
+        token: args.uploadToken,
+        processId: args.processId,
+        clerkOrgId: orgId,
+        storageId: args.storageId,
+        audioSizeBytes: inspection.sizeBytes,
+        durationSeconds: args.durationSeconds,
+        mimeType: inspection.mimeType,
+        source: isUpload ? "upload" : "record",
         contributorName: attribution.contributorName,
         userId: attribution.userId,
         subjectUserId: attribution.subjectUserId,
         submittedByName: attribution.submittedByName,
         consentAttestedAt: attribution.submittedByName ? Date.now() : undefined,
-        inputMode: isUpload ? "audioUpload" : "voiceRecord",
-        audioStorageId: args.storageId,
-        audioMimeType: args.mimeType,
-        transcriptionProvider: "elevenlabs-scribe",
-        analysisProvider: getPersistedAIProvider(),
-        durationSeconds: args.durationSeconds,
-        status: "processing",
+        analysisProvider: "fabric-foundry",
       },
     );
+    if (!admission.ok) {
+      if (
+        admission.reason === "user_quota" ||
+        admission.reason === "organization_quota"
+      ) {
+        throw new Error("Audio upload quota reached. Try again later.");
+      }
+      if (admission.reason === "duplicate_upload") {
+        throw new Error("This audio file has already been submitted.");
+      }
+      throw new Error("The audio upload could not be accepted.");
+    }
 
-    await ctx.scheduler.runAfter(
-      0,
-      internal.voiceRecordings.processVoiceRecordingInternal,
-      {
-        conversationId,
-        processId: args.processId,
-        clerkOrgId: orgId,
-        storageId: args.storageId,
-        durationSeconds: args.durationSeconds,
-        mimeType: args.mimeType,
-      },
-    );
-
-    return { status: "processing" as const, conversationId };
+    return {
+      status: "processing" as const,
+      conversationId: admission.conversationId,
+    };
   },
 });
 
@@ -800,6 +1234,14 @@ export const processVoiceRecordingInternal = internalAction({
       if (!audio) {
         throw new Error(`Storage object ${args.storageId} not found`);
       }
+      const inspection = await inspectAudioUpload(
+        audio,
+        normalizeAudioMimeType(args.mimeType),
+        args.durationSeconds,
+      );
+      if (!inspection.ok) {
+        throw new Error(audioUploadRejectionMessage(inspection.reason));
+      }
 
       const transcriptionStartedAt = Date.now();
       let scribeResult: ScribeResponse;
@@ -807,7 +1249,7 @@ export const processVoiceRecordingInternal = internalAction({
         scribeResult = await transcribeWithScribe(
           audio,
           elevenLabsKey,
-          args.mimeType,
+          inspection.mimeType,
         );
       } catch (transcriptionError) {
         // Recorded even on failure: ElevenLabs may well have processed audio
@@ -864,6 +1306,12 @@ export const processVoiceRecordingInternal = internalAction({
 
       if (transcript.length === 0) {
         throw new Error("Scribe returned an empty transcript");
+      }
+      if (
+        inferredDuration !== undefined &&
+        inferredDuration > MAX_AUDIO_DURATION_SECONDS
+      ) {
+        throw new Error("Recording exceeds the four-hour duration limit");
       }
 
       const speakerLabels = defaultSpeakerLabels(transcript);
