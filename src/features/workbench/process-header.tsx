@@ -281,7 +281,7 @@ function CaptureActions({
         onClick={onRecordVoice}
       >
         <Mic className="size-4" aria-hidden="true" />
-        <span className="truncate">Record a quick note</span>
+        <span className="truncate">Record a voice note</span>
       </Button>
       <Button
         type="button"

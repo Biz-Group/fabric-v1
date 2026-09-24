@@ -29,7 +29,7 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
       {
         title: "Direct capture actions",
         description:
-          "Start an AI interview, record a quick note, or upload files directly from the process header.",
+          "Start an AI interview, record a voice note, or upload files directly from the process header.",
       },
     ],
     enhancements: [
