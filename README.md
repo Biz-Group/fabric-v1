@@ -34,9 +34,9 @@ variables rather than client-side.
 
 ## Documentation
 
-- [PRD.md](PRD.md): product requirements
-- [PLATFORM_ARCHITECTURE.md](PLATFORM_ARCHITECTURE.md): architecture and security overview
-- [ELEVENLABS_SETUP.md](ELEVENLABS_SETUP.md): ElevenLabs agent setup
-- [docs/foundry-migration-runbook.md](docs/foundry-migration-runbook.md): Foundry deployments
-- [docs/](docs/): design plans, runbooks, and rollout notes
-- [AGENTS.md](AGENTS.md): notes for coding agents (Next.js 16 and Convex guidelines)
+The product requirements, architecture overview, runbooks and design plans are
+internal and live in a local `docs/` folder that is not committed. Code comments
+that cite `docs/...` refer to those files.
+
+[AGENTS.md](AGENTS.md) has notes for coding agents (Next.js 16 and Convex
+guidelines).

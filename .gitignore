@@ -40,24 +40,20 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-todo.txt
+
+# editor and agent tooling
 /.vscode
 .codex
-BRANDING_KIT.md
-dump.json
 /.agents
 /.claude
 CLAUDE.md
 AGENTS.md
-docs/process-flow-generation-v2-plan.md
-/v1
-/.agents
-/.claude
-/docs/*
-!/docs/process-flow-visualization-ui-ux-plan.md
-!/docs/process-flow-visualization-ui-ux-task-list.md
+
+# internal docs — kept locally, never committed
 /docs
-PRD.md
-PLATFORM_ARCHITECTURE.md
-ELEVENLABS_SETUP.md
-TASK_LIST.md
+
+# local notes and data
+todo.txt
+BRANDING_KIT.md
+# written by scripts/migrate-dev-to-prod.mjs; contains real tenant data
+dump.json

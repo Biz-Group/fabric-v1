@@ -1002,8 +1002,8 @@ Goal: complete the transition in an organized way with clear verification and fa
 - [ ] Re-read [fabric-ui-ux-redesign-brief.md](fabric-ui-ux-redesign-brief.md) and confirm every settled decision is implemented or intentionally deferred.
 - [ ] Re-run the mock coverage checklist from the brief.
 - [ ] Update product docs if behavior changes:
-  - [ ] `PRD.md` if the old Miller-column description needs revision.
-  - [ ] `PLATFORM_ARCHITECTURE.md` only if architecture changes.
+  - [ ] `docs/prd.md` if the old Miller-column description needs revision.
+  - [ ] `docs/platform-architecture.md` only if architecture changes.
   - [ ] This task list with completed items.
 - [ ] Add implementation notes:
   - [ ] Components added.

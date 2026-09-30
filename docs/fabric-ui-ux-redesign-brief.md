@@ -3,7 +3,7 @@
 Status: Draft for review  
 Owner: Saish / Biz Group  
 Created: 2026-06-04  
-Related: `PRD.md`, `PLATFORM_ARCHITECTURE.md`, current `MillerColumns` UI
+Related: `docs/prd.md`, `docs/platform-architecture.md`, current `MillerColumns` UI
 
 ## 1. Executive Summary
 
