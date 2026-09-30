@@ -3,8 +3,6 @@ import {
   TENANTS_CONSOLE_SUBDOMAIN,
 } from "../../convex/lib/slugs";
 
-export { TENANTS_CONSOLE_SUBDOMAIN };
-
 function getHostname(host: string | null | undefined): string | null {
   if (!host) return null;
 
@@ -21,7 +19,7 @@ function getHostname(host: string | null | undefined): string | null {
   return hostname.replace(/\.$/, "");
 }
 
-export function isValidTenantSubdomain(subdomain: string): boolean {
+function isValidTenantSubdomain(subdomain: string): boolean {
   return isValidTenantSlug(subdomain);
 }
 

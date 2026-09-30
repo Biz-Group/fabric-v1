@@ -38,7 +38,7 @@ async function getSubdomainOrganization(): Promise<
   }
 }
 
-export function FabricHero({ className, organization }: FabricHeroProps) {
+function FabricHero({ className, organization }: FabricHeroProps) {
   return (
     <div
       className={cn(

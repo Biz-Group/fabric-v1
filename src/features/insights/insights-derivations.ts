@@ -34,14 +34,14 @@ export type HeavyArea = {
 };
 
 /** Sort weight for automation potential (higher = better candidate). */
-export const AUTOMATION_RANK: Record<AutomationPotential, number> = {
+const AUTOMATION_RANK: Record<AutomationPotential, number> = {
   high: 3,
   medium: 2,
   low: 1,
   none: 0,
 };
 
-export function normalizeText(value: string) {
+function normalizeText(value: string) {
   return value.trim().toLocaleLowerCase();
 }
 
@@ -105,7 +105,7 @@ export function describedNodes<T extends { id: string; detailStatus?: string }>(
   return nodes.filter(isNodeDescribed);
 }
 
-export function actorsChanged(source: FlowNode, target: FlowNode) {
+function actorsChanged(source: FlowNode, target: FlowNode) {
   const sourceActors = uniqueStrings(source.actors).map(normalizeText);
   const targetActors = uniqueStrings(target.actors).map(normalizeText);
   if (sourceActors.length === 0 || targetActors.length === 0) return false;

@@ -384,7 +384,7 @@ failures.
   (`summaries.ts:262-280` → scheduled internal action) — a failure is invisible
   to the user. Add a `summaryStatus` (or `lastSummaryError`) field on
   `processes`, set it from `regenerateProcessSummary`, surface it in
-  `process-summary-panel.tsx`.
+  `src/features/overview/process-overview.tsx`.
 - **Usage metrics:** in `logSuccess`/`logFailure`, also write one row per AI
   call to a small `aiCallLog` table (operation, provider, model, tokens in/out,
   finishReason, status, latency, orgId). Cheap, queryable, and the basis for

@@ -2,7 +2,7 @@ import dagre from "@dagrejs/dagre";
 
 export const FLOW_NODE_WIDTH = 280;
 export const FLOW_NODE_HEIGHT = 120;
-export const FLOW_DECISION_NODE_HEIGHT = 100;
+const FLOW_DECISION_NODE_HEIGHT = 100;
 
 const LANE_GAP = 24;
 const LANE_LABEL_SIZE = 40;

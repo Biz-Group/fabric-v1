@@ -5,17 +5,14 @@ import {
   internalQuery,
   mutation,
   query,
-  type ActionCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import {
-  buildSafeDescriptionFields,
-  classifyDescriptionSafety,
-  DescriptionSafetyRisk,
-  normalizeDescriptionInput,
+  applyDescriptionUpdate,
+  buildDescriptionUpdate,
+  descriptionUpdateValidator,
 } from "./descriptionSafety";
-import type { UsageAttribution } from "./lib/aiUsageMeter";
 import {
   assertOrgOwns,
   requireOrgContributor,
@@ -24,98 +21,6 @@ import {
 } from "./lib/orgAuth";
 import { toLightweightSummaryListRow } from "./summaryV2";
 import { withSummaryV2ReadGate } from "./lib/summaryV2Feature";
-
-type DescriptionUpdate =
-  | { kind: "unchanged" }
-  | { kind: "clear" }
-  | {
-      kind: "set";
-      description: string;
-      descriptionSafetyStatus: "safe";
-      descriptionSafetyCheckedAt: number;
-      descriptionSafetyModel: string;
-      descriptionSafetyPromptVersion: string;
-      descriptionSafetyRisk: DescriptionSafetyRisk;
-      descriptionSafetyReason: string;
-    };
-
-const descriptionUpdateValidator = v.union(
-  v.object({ kind: v.literal("unchanged") }),
-  v.object({ kind: v.literal("clear") }),
-  v.object({
-    kind: v.literal("set"),
-    description: v.string(),
-    descriptionSafetyStatus: v.literal("safe"),
-    descriptionSafetyCheckedAt: v.number(),
-    descriptionSafetyModel: v.string(),
-    descriptionSafetyPromptVersion: v.string(),
-    descriptionSafetyRisk: v.union(
-      v.literal("none"),
-      v.literal("prompt_injection"),
-      v.literal("agent_instruction"),
-      v.literal("policy_override"),
-      v.literal("sensitive_data_request"),
-      v.literal("malicious_or_abusive"),
-      v.literal("irrelevant"),
-    ),
-    descriptionSafetyReason: v.string(),
-  }),
-);
-
-function applyDescriptionUpdate(
-  patch: Record<string, unknown>,
-  descriptionUpdate: DescriptionUpdate,
-) {
-  if (descriptionUpdate.kind === "unchanged") return;
-  if (descriptionUpdate.kind === "clear") {
-    patch.description = undefined;
-    patch.descriptionSafetyStatus = undefined;
-    patch.descriptionSafetyCheckedAt = undefined;
-    patch.descriptionSafetyModel = undefined;
-    patch.descriptionSafetyPromptVersion = undefined;
-    patch.descriptionSafetyRisk = undefined;
-    patch.descriptionSafetyReason = undefined;
-    return;
-  }
-
-  patch.description = descriptionUpdate.description;
-  patch.descriptionSafetyStatus = descriptionUpdate.descriptionSafetyStatus;
-  patch.descriptionSafetyCheckedAt = descriptionUpdate.descriptionSafetyCheckedAt;
-  patch.descriptionSafetyModel = descriptionUpdate.descriptionSafetyModel;
-  patch.descriptionSafetyPromptVersion =
-    descriptionUpdate.descriptionSafetyPromptVersion;
-  patch.descriptionSafetyRisk = descriptionUpdate.descriptionSafetyRisk;
-  patch.descriptionSafetyReason = descriptionUpdate.descriptionSafetyReason;
-}
-
-async function buildDescriptionUpdate(
-  ctx: ActionCtx,
-  attribution: UsageAttribution,
-  description: string | undefined,
-  current: Pick<
-    Doc<"departments">,
-    "description" | "descriptionSafetyStatus"
-  > | null,
-): Promise<DescriptionUpdate> {
-  if (description === undefined) return { kind: "unchanged" };
-
-  const normalized = normalizeDescriptionInput(description);
-  if (normalized.kind === "empty") return { kind: "clear" };
-
-  if (
-    current?.description === normalized.value &&
-    current.descriptionSafetyStatus === "safe"
-  ) {
-    return { kind: "unchanged" };
-  }
-
-  const decision = await classifyDescriptionSafety(
-    ctx,
-    attribution,
-    normalized.value,
-  );
-  return { kind: "set", ...buildSafeDescriptionFields(normalized.value, decision) };
-}
 
 export const listByFunction = query({
   args: { functionId: v.id("functions") },
@@ -418,24 +323,6 @@ export const updateInternal = internalMutation({
         { departmentId: args.departmentId },
       );
     }
-  },
-});
-
-export const childCount = query({
-  args: { departmentId: v.id("departments") },
-  handler: async (ctx, args) => {
-    const caller = await requireOrgMember(ctx);
-    const parent = await ctx.db.get(args.departmentId);
-    assertOrgOwns(caller, parent);
-    const children = await ctx.db
-      .query("processes")
-      .withIndex("by_clerkOrgId_and_departmentId", (q) =>
-        q
-          .eq("clerkOrgId", caller.orgId)
-          .eq("departmentId", args.departmentId),
-      )
-      .take(1000);
-    return children.length;
   },
 });
 

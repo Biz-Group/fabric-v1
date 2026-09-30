@@ -23,6 +23,7 @@ import {
 import {
   clerkFetch,
   clerkUserIdFromTokenIdentifier,
+  normalizeEmail,
 } from "./lib/clerkApi";
 import {
   allowedDomainsFromMetadata,
@@ -112,10 +113,6 @@ function displayNameFromParts(
 ): string | null {
   const fullName = `${firstName ?? ""} ${lastName ?? ""}`.trim();
   return fullName || fallback?.trim() || null;
-}
-
-function normalizeEmail(email?: string | null): string {
-  return (email ?? "").trim().toLowerCase();
 }
 
 function cleanEmail(email?: string | null): string | null {

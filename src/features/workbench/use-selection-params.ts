@@ -5,7 +5,7 @@ import type { Id } from "../../../convex/_generated/dataModel";
 // The committed selection is mirrored into the `/[org]` query string so the
 // view is refresh-safe, shareable, and traversable with the Back button.
 
-export const PARAM = {
+const PARAM = {
   fn: "fn",
   dept: "dept",
   proc: "proc",

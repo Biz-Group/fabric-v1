@@ -102,22 +102,6 @@ export const update = mutation({
   },
 });
 
-export const childCount = query({
-  args: { functionId: v.id("functions") },
-  handler: async (ctx, args) => {
-    const caller = await requireOrgMember(ctx);
-    const parent = await ctx.db.get(args.functionId);
-    assertOrgOwns(caller, parent);
-    const children = await ctx.db
-      .query("departments")
-      .withIndex("by_clerkOrgId_and_functionId", (q) =>
-        q.eq("clerkOrgId", caller.orgId).eq("functionId", args.functionId),
-      )
-      .take(1000);
-    return children.length;
-  },
-});
-
 export const deleteEligibility = query({
   args: { functionId: v.id("functions") },
   handler: async (ctx, args) => {

@@ -8,7 +8,10 @@ import {
   internalQuery,
   QueryCtx,
 } from "./_generated/server";
-import { clerkUserIdFromTokenIdentifier } from "./lib/clerkApi";
+import {
+  clerkUserIdFromTokenIdentifier,
+  normalizeEmail,
+} from "./lib/clerkApi";
 
 export const migrations = new Migrations<DataModel>(components.migrations);
 
@@ -133,10 +136,6 @@ export const verifyOrgBackfill = internalQuery({
 //
 // Run with:
 //   npx convex run migrations:run '{"fn":"migrations:backfillMembershipDirectory"}'
-
-function normalizeEmail(email?: string | null): string {
-  return (email ?? "").trim().toLowerCase();
-}
 
 function membershipSearchText(args: {
   name: string;

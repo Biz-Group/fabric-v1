@@ -24,7 +24,7 @@ import type { BreakdownRow } from "./usage-breakdown-table";
 export type DeploymentFilter = "prod" | "dev" | "all";
 export type RangeKey = "7d" | "30d" | "60d" | "90d" | "custom";
 
-export const RANGE_DAYS: Record<Exclude<RangeKey, "custom">, number> = {
+const RANGE_DAYS: Record<Exclude<RangeKey, "custom">, number> = {
   "7d": 7,
   "30d": 30,
   "60d": 60,

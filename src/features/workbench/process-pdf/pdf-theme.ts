@@ -90,7 +90,7 @@ export const OVERVIEW_STATE_TONES: Record<OverviewState, CategoryTone> = {
 };
 
 // Page geometry (A4). Margins leave room for the fixed footer.
-export const PAGE = {
+const PAGE = {
   marginX: 40,
   marginTop: 40,
   marginBottom: 54,

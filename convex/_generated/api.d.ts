@@ -42,6 +42,7 @@ import type * as lib_processOverviewV2 from "../lib/processOverviewV2.js";
 import type * as lib_slugs from "../lib/slugs.js";
 import type * as lib_summaryEvaluation from "../lib/summaryEvaluation.js";
 import type * as lib_summaryV2Feature from "../lib/summaryV2Feature.js";
+import type * as lib_textNormalization from "../lib/textNormalization.js";
 import type * as lib_transcriptHash from "../lib/transcriptHash.js";
 import type * as migrations from "../migrations.js";
 import type * as orgIntegrity from "../orgIntegrity.js";
@@ -105,6 +106,7 @@ declare const fullApi: ApiFromModules<{
   "lib/slugs": typeof lib_slugs;
   "lib/summaryEvaluation": typeof lib_summaryEvaluation;
   "lib/summaryV2Feature": typeof lib_summaryV2Feature;
+  "lib/textNormalization": typeof lib_textNormalization;
   "lib/transcriptHash": typeof lib_transcriptHash;
   migrations: typeof migrations;
   orgIntegrity: typeof orgIntegrity;

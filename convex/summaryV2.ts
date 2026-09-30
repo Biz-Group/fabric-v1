@@ -1,4 +1,10 @@
 import { type Infer, v } from "convex/values";
+import {
+  asRecord,
+  normalizeBlockText,
+  normalizeInlineText,
+  normalizedSemanticText,
+} from "./lib/textNormalization";
 
 /**
  * Immutable prompt identifiers. Bump the relevant identifier whenever its
@@ -607,32 +613,6 @@ export type SummaryNormalizationContext = {
   provenance: SummaryProvenance;
 };
 
-type UnknownRecord = Record<string, unknown>;
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as UnknownRecord)
-    : null;
-}
-
-function normalizeInlineText(value: unknown, maxChars: number): string | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.replace(/\s+/g, " ").trim();
-  if (!normalized) return null;
-  return normalized.slice(0, maxChars).trim();
-}
-
-function normalizeBlockText(value: unknown, maxChars: number): string | null {
-  if (typeof value !== "string") return null;
-  const normalized = value
-    .replace(/\r\n?/g, "\n")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-  if (!normalized) return null;
-  return normalized.slice(0, maxChars).trim();
-}
-
 /** Plain-text field: emphasis the prompt forbade here is dropped, not shown. */
 function normalizePlainInlineText(
   value: unknown,
@@ -696,16 +676,6 @@ function normalizeEmphasis(value: string): string {
   const orphan = withoutEmptySpans.lastIndexOf("**");
   return tidySpacing(
     `${withoutEmptySpans.slice(0, orphan)}${withoutEmptySpans.slice(orphan + 2)}`,
-  );
-}
-
-function normalizedSemanticText(value: string): string {
-  return (
-    value
-      .normalize("NFKC")
-      .toLocaleLowerCase()
-      .match(/[\p{L}\p{N}]+/gu)
-      ?.join(" ") ?? ""
   );
 }
 

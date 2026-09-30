@@ -12,7 +12,11 @@ import {
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { requireSuperAdmin } from "./lib/orgAuth";
-import { clerkFetch } from "./lib/clerkApi";
+import {
+  clerkFetch,
+  clerkUserIdFromTokenIdentifier,
+  normalizeEmail,
+} from "./lib/clerkApi";
 
 // ---------------------------------------------------------------------------
 // Platform-role management (super-admin layer)
@@ -28,19 +32,6 @@ import { clerkFetch } from "./lib/clerkApi";
 // them real Clerk members of every org and writes matching Fabric memberships
 // rows. No per-request bypass anywhere in the auth path.
 // ---------------------------------------------------------------------------
-
-/** Parse the Clerk user id out of `https://<issuer>|user_xxx`. */
-function clerkUserIdFromTokenIdentifier(tokenIdentifier: string): string {
-  const idx = tokenIdentifier.lastIndexOf("|");
-  if (idx === -1) {
-    throw new Error(`Unexpected tokenIdentifier format: ${tokenIdentifier}`);
-  }
-  return tokenIdentifier.substring(idx + 1);
-}
-
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
 
 function memberSearchText(parts: Array<string | undefined>): string {
   return parts.filter(Boolean).join(" ").toLowerCase();

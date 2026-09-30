@@ -9,13 +9,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { useQuery } from "convex/react";
-import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -33,17 +28,12 @@ import {
 } from "@/components/ui/audio-player";
 import { AudioScrubber } from "@/components/ui/waveform";
 import {
-  Bot,
-  MessageSquare,
   Mic,
   ChevronRight,
-  User,
   Loader2,
   AlertCircle,
-  Check,
   ArrowDown,
   Download,
-  Upload,
 } from "lucide-react";
 import {
   Tooltip,
@@ -70,22 +60,6 @@ function formatDate(timestamp: number): string {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(timestamp));
-}
-
-function formatRelativeDate(timestamp: number): string {
-  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-  const months = Math.floor(days / 30);
-  const years = Math.floor(days / 365);
-
-  if (seconds < 60) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 30) return `${days}d ago`;
-  if (days < 365) return `${months}mo ago`;
-  return `${years}y ago`;
 }
 
 // --- localStorage Hooks ---
@@ -162,30 +136,6 @@ interface TranscriptMessage {
   time_in_call_secs: number;
   speakerId?: string;
   speakerName?: string;
-}
-
-type ConversationInputMode = Doc<"conversations">["inputMode"];
-
-function getConversationTypeLabel(inputMode: ConversationInputMode) {
-  if (inputMode === "voiceRecord") return "Voice Recording";
-  if (inputMode === "audioUpload") return "Audio Upload";
-  return "AI Interview";
-}
-
-function ConversationTypeBadge({
-  inputMode,
-}: {
-  inputMode: ConversationInputMode;
-}) {
-  const isAgent = (inputMode ?? "agent") === "agent";
-  const Icon = inputMode === "audioUpload" ? Upload : isAgent ? Bot : Mic;
-
-  return (
-    <Badge variant="secondary" className="gap-1.5">
-      <Icon />
-      {getConversationTypeLabel(inputMode)}
-    </Badge>
-  );
 }
 
 function transcriptSpeakerName(
@@ -1024,163 +974,6 @@ function StickyMiniPlayer() {
   );
 }
 
-// --- Conversation Entry ---
-
-function ConversationEntry({
-  conversation,
-  canLabelSpeakers,
-}: {
-  conversation: Doc<"conversations">;
-  canLabelSpeakers: boolean;
-}) {
-  const isProcessing = conversation.status === "processing";
-  const isAwaitingSpeakerLabels =
-    conversation.status === "needs_speaker_labels";
-  const isFailed = conversation.status === "failed";
-  const audioUrl = useConversationAudioUrl(
-    conversation.clerkOrgId,
-    conversation._id,
-  );
-  const transcript = conversation.transcript as
-    | TranscriptMessage[]
-    | undefined;
-  const [listened, markListened] = useListenedState(String(conversation._id));
-  const activeCardCtx = useContext(ActiveCardContext);
-  const canExportPdf = Boolean(conversation.summary || transcript?.length);
-
-  return (
-    <Card
-      ref={(el) =>
-        activeCardCtx?.registerRef(String(conversation._id), el)
-      }
-      className={cn(
-        "transition-shadow hover:shadow-md",
-        isFailed && "border-destructive/30 opacity-60"
-      )}
-    >
-      <CardContent className="space-y-3">
-        {/* Header: contributor name + date */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-org-accent-subtle">
-              <User className="h-3.5 w-3.5 text-org-accent" />
-            </div>
-            <span className="min-w-0 truncate text-sm font-medium">
-              {conversation.contributorName}
-            </span>
-            {/* Present only when an admin filed this on the contributor's
-                behalf. The card is headed by the contributor's name, so leaving
-                this out would present it as their own submission. */}
-            {conversation.submittedByName && (
-              <span className="min-w-0 truncate text-xs text-muted-foreground">
-                submitted by {conversation.submittedByName}
-              </span>
-            )}
-            <ConversationTypeBadge inputMode={conversation.inputMode} />
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-            {listened && (
-              <Check className="h-3 w-3 text-green-500" aria-label="Listened" />
-            )}
-            <Tooltip>
-              <TooltipTrigger
-                render={<span />}
-                className="cursor-default rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {formatRelativeDate(conversation._creationTime)}
-              </TooltipTrigger>
-              <TooltipContent>{formatDate(conversation._creationTime)}</TooltipContent>
-            </Tooltip>
-            {canExportPdf && (
-              <Tooltip>
-                <TooltipTrigger
-                  type="button"
-                  onClick={() => downloadConversationPdf(conversation, transcript)}
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label="Export conversation PDF"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                </TooltipTrigger>
-                <TooltipContent>Export PDF</TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-        </div>
-
-        {/* Status: processing */}
-        {isProcessing && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Processing conversation...
-          </div>
-        )}
-
-        {isAwaitingSpeakerLabels && (
-          <div className="flex items-center gap-2 text-xs text-amber-600">
-            <Mic className="h-3 w-3" />
-            Speaker labels needed
-          </div>
-        )}
-
-        {/* Status: failed */}
-        {isFailed && (
-          <div className="flex items-center gap-2 text-xs text-destructive">
-            <AlertCircle className="h-3 w-3" />
-            Processing failed
-          </div>
-        )}
-
-        {/* AI-generated summary — collapsible, default collapsed */}
-        {conversation.summary && (
-          <Collapsible>
-            <CollapsibleTrigger className="group flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
-              <ChevronRight className="h-3 w-3 transition-transform group-data-[panel-open]:rotate-90" />
-              Summary
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <p className="mt-2 pl-[18px] text-sm leading-relaxed text-muted-foreground">
-                {conversation.summary}
-              </p>
-            </CollapsibleContent>
-          </Collapsible>
-        )}
-
-        {isAwaitingSpeakerLabels && canLabelSpeakers && (
-          <SpeakerLabelReview conversation={conversation} />
-        )}
-
-        {isAwaitingSpeakerLabels && !canLabelSpeakers && (
-          <p className="text-sm text-muted-foreground">
-            Waiting for a contributor to name speakers before analysis runs.
-          </p>
-        )}
-
-        {/* Audio Player — play/pause + scrub bar + duration */}
-        {conversation.status === "done" && (
-          <ConversationAudioControls
-            conversationId={conversation._id}
-            audioUrl={audioUrl}
-            durationSeconds={conversation.durationSeconds ?? undefined}
-            transcript={transcript}
-            contributorName={conversation.contributorName}
-            onListened={markListened}
-          />
-        )}
-
-        {/* Full transcript — synced to audio playback */}
-        {transcript && transcript.length > 0 && (
-          <SyncedTranscript
-            conversationId={conversation._id}
-            transcript={transcript}
-            contributorName={conversation.contributorName}
-            audioUrl={audioUrl}
-          />
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 export function FocusedConversationPlayback({
   conversation,
   canLabelSpeakers,
@@ -1344,103 +1137,5 @@ export function FocusedConversationPlayback({
         </ActiveCardContext.Provider>
       </TooltipProvider>
     </AudioPlayerProvider>
-  );
-}
-
-// --- Player Wrapper (provides card ref context + mini-player) ---
-
-export function ConversationListWithPlayer({
-  conversations,
-  canLabelSpeakers,
-}: {
-  conversations: Doc<"conversations">[];
-  canLabelSpeakers: boolean;
-}) {
-  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-
-  const registerRef = useCallback(
-    (id: string, el: HTMLDivElement | null) => {
-      if (el) cardRefs.current.set(id, el);
-      else cardRefs.current.delete(id);
-    },
-    []
-  );
-
-  const ctxValue = useMemo(
-    () => ({ registerRef, cardRefs }),
-    [registerRef]
-  );
-
-  return (
-    <AudioPlayerProvider>
-      <TooltipProvider>
-        <ActiveCardContext.Provider value={ctxValue}>
-          <KeyboardShortcuts />
-          <div className="mt-3 space-y-3">
-            {conversations.map((conv) => (
-              <ConversationEntry
-                key={conv._id}
-                conversation={conv}
-                canLabelSpeakers={canLabelSpeakers}
-              />
-            ))}
-          </div>
-          <StickyMiniPlayer />
-        </ActiveCardContext.Provider>
-      </TooltipProvider>
-    </AudioPlayerProvider>
-  );
-}
-
-// --- Main Component ---
-
-export function ConversationLog({
-  processId,
-}: {
-  processId: Id<"processes">;
-}) {
-  const conversations = useQuery(api.conversations.listByProcess, {
-    processId,
-  });
-  const membership = useQuery(api.users.getMyMembership);
-  const canLabelSpeakers =
-    membership?.role === "admin" || membership?.role === "contributor";
-
-  return (
-    <div>
-      <div className="flex items-center gap-2 pb-3">
-        <MessageSquare className="h-4 w-4 text-muted-foreground" />
-        <h3 className="text-sm font-semibold">Conversations</h3>
-        {conversations && conversations.length > 0 && (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {conversations.length}
-          </span>
-        )}
-      </div>
-      <Separator />
-
-      {conversations === undefined ? (
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-      ) : conversations.length === 0 ? (
-        <Card className="mt-3">
-          <CardContent className="flex flex-col items-center gap-3 py-8">
-            <div className="rounded-xl bg-muted/60 p-3">
-              <Mic className="h-6 w-6 text-muted-foreground/70" />
-            </div>
-            <p className="max-w-[260px] text-center text-sm text-muted-foreground">
-              No conversations yet — be the first to record how this process
-              works.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <ConversationListWithPlayer
-          conversations={conversations}
-          canLabelSpeakers={canLabelSpeakers}
-        />
-      )}
-    </div>
   );
 }

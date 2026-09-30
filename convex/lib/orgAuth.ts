@@ -179,14 +179,3 @@ export async function requireSuperAdmin(
   }
   return user;
 }
-
-/** Action-safe variant. */
-export async function requireSuperAdminForAction(
-  ctx: ActionCtx,
-): Promise<{ tokenIdentifier: string }> {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Not authenticated");
-  // Actions can't read ctx.db directly — the caller should invoke an internal
-  // query that uses requireSuperAdmin if it needs the full user doc.
-  return { tokenIdentifier: identity.tokenIdentifier };
-}

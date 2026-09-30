@@ -54,6 +54,26 @@ export type SafeDescriptionFields = {
   descriptionSafetyReason: string;
 };
 
+export type DescriptionUpdate =
+  | { kind: "unchanged" }
+  | { kind: "clear" }
+  | ({ kind: "set" } & SafeDescriptionFields);
+
+export const descriptionUpdateValidator = v.union(
+  v.object({ kind: v.literal("unchanged") }),
+  v.object({ kind: v.literal("clear") }),
+  v.object({
+    kind: v.literal("set"),
+    description: v.string(),
+    descriptionSafetyStatus: v.literal("safe"),
+    descriptionSafetyCheckedAt: v.number(),
+    descriptionSafetyModel: v.string(),
+    descriptionSafetyPromptVersion: v.string(),
+    descriptionSafetyRisk: descriptionSafetyRiskValidator,
+    descriptionSafetyReason: v.string(),
+  }),
+);
+
 export type NormalizedDescription =
   | { kind: "empty" }
   | { kind: "text"; value: string };
@@ -252,4 +272,67 @@ export function buildSafeDescriptionFields(
     descriptionSafetyRisk: decision.risk,
     descriptionSafetyReason: decision.reason,
   };
+}
+
+/**
+ * Turns a requested description edit into the fields to store. An unchanged,
+ * already-safe description skips the safety check.
+ */
+export async function buildDescriptionUpdate(
+  ctx: ActionCtx,
+  attribution: UsageAttribution,
+  description: string | undefined,
+  current: {
+    description?: string;
+    descriptionSafetyStatus?: "safe" | "blocked";
+  } | null,
+): Promise<DescriptionUpdate> {
+  if (description === undefined) return { kind: "unchanged" };
+
+  const normalized = normalizeDescriptionInput(description);
+  if (normalized.kind === "empty") return { kind: "clear" };
+
+  if (
+    current?.description === normalized.value &&
+    current.descriptionSafetyStatus === "safe"
+  ) {
+    return { kind: "unchanged" };
+  }
+
+  const decision = await classifyDescriptionSafety(
+    ctx,
+    attribution,
+    normalized.value,
+  );
+  return {
+    kind: "set",
+    ...buildSafeDescriptionFields(normalized.value, decision),
+  };
+}
+
+export function applyDescriptionUpdate(
+  patch: Record<string, unknown>,
+  descriptionUpdate: DescriptionUpdate,
+) {
+  if (descriptionUpdate.kind === "unchanged") return;
+  if (descriptionUpdate.kind === "clear") {
+    patch.description = undefined;
+    patch.descriptionSafetyStatus = undefined;
+    patch.descriptionSafetyCheckedAt = undefined;
+    patch.descriptionSafetyModel = undefined;
+    patch.descriptionSafetyPromptVersion = undefined;
+    patch.descriptionSafetyRisk = undefined;
+    patch.descriptionSafetyReason = undefined;
+    return;
+  }
+
+  patch.description = descriptionUpdate.description;
+  patch.descriptionSafetyStatus = descriptionUpdate.descriptionSafetyStatus;
+  patch.descriptionSafetyCheckedAt =
+    descriptionUpdate.descriptionSafetyCheckedAt;
+  patch.descriptionSafetyModel = descriptionUpdate.descriptionSafetyModel;
+  patch.descriptionSafetyPromptVersion =
+    descriptionUpdate.descriptionSafetyPromptVersion;
+  patch.descriptionSafetyRisk = descriptionUpdate.descriptionSafetyRisk;
+  patch.descriptionSafetyReason = descriptionUpdate.descriptionSafetyReason;
 }

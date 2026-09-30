@@ -9,6 +9,12 @@ import {
   serializeUntrustedEvidence,
   withUntrustedEvidenceBoundary,
 } from "./aiPromptSafety";
+import {
+  asRecord,
+  normalizeBlockText,
+  normalizeInlineText,
+  normalizedSemanticText,
+} from "./textNormalization";
 
 export const CONVERSATION_EVIDENCE_V2_OPERATION =
   "conversation-summary-evidence-v2";
@@ -224,40 +230,6 @@ export function isConversationEvidenceV2Current(
   return (
     evidence?.transcriptHash === transcriptHash &&
     evidence.promptVersion === SUMMARY_V2_PROMPT_VERSIONS.conversationEvidence
-  );
-}
-
-type UnknownRecord = Record<string, unknown>;
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as UnknownRecord)
-    : null;
-}
-
-function normalizeInlineText(value: unknown, maxChars: number): string | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.replace(/\s+/g, " ").trim();
-  return normalized ? normalized.slice(0, maxChars).trim() : null;
-}
-
-function normalizeBlockText(value: unknown, maxChars: number): string | null {
-  if (typeof value !== "string") return null;
-  const normalized = value
-    .replace(/\r\n?/g, "\n")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-  return normalized ? normalized.slice(0, maxChars).trim() : null;
-}
-
-function normalizedSemanticText(value: string): string {
-  return (
-    value
-      .normalize("NFKC")
-      .toLocaleLowerCase()
-      .match(/[\p{L}\p{N}]+/gu)
-      ?.join(" ") ?? ""
   );
 }
 

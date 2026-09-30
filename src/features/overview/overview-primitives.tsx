@@ -393,7 +393,7 @@ export function OverviewLead({
   );
 }
 
-export function EvidenceStrength({
+function EvidenceStrength({
   level,
   supportCount,
 }: {

@@ -77,3 +77,8 @@ export function clerkUserIdFromTokenIdentifier(
   }
   return last;
 }
+
+/** Lower-cased, trimmed email used for `emailLower` lookups. */
+export function normalizeEmail(email?: string | null): string {
+  return (email ?? "").trim().toLowerCase();
+}

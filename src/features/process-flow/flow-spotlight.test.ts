@@ -18,8 +18,9 @@ function createFlow(): ProcessFlow {
       sources: [],
       isBottleneck: false,
       isTribalKnowledge: false,
-      risks: [],
+      riskIndicators: [],
       detailStatus: "ready" as const,
+      detailErrorMessage: undefined,
     },
     {
       id: "review",
@@ -35,8 +36,9 @@ function createFlow(): ProcessFlow {
       sources: [],
       isBottleneck: true,
       isTribalKnowledge: false,
-      risks: [],
+      riskIndicators: [],
       detailStatus: "ready" as const,
+      detailErrorMessage: undefined,
     },
     {
       id: "archive",
@@ -52,8 +54,9 @@ function createFlow(): ProcessFlow {
       sources: [],
       isBottleneck: false,
       isTribalKnowledge: false,
-      risks: [],
+      riskIndicators: [],
       detailStatus: "ready" as const,
+      detailErrorMessage: undefined,
     },
   ];
   const edges = [
@@ -79,6 +82,7 @@ function createFlow(): ProcessFlow {
     processId: "process-id" as ProcessFlow["processId"],
     clerkOrgId: "org-id",
     status: "ready",
+    detailsStatus: "ready",
     stale: false,
     generatedAt: 1,
     conversationCount: 1,

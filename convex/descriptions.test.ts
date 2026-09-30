@@ -11,6 +11,14 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
+// Deriving `Harness` from a helper keeps the schema in the type — bare
+// `ReturnType<typeof convexTest>` erases it and leaves `ctx.db` typed against
+// the system tables only.
+function harness() {
+  return convexTest(schema, modules);
+}
+type Harness = ReturnType<typeof harness>;
+
 const ORG_A = "org_A_descriptions";
 const ORG_B = "org_B_descriptions";
 const ISSUER = "https://test.clerk";
@@ -34,7 +42,7 @@ function identityForOrgA() {
 }
 
 async function seedOrg(
-  t: ReturnType<typeof convexTest>,
+  t: Harness,
   orgId: string = ORG_A,
 ): Promise<SeededOrg> {
   return await t.run(async (ctx) => {
@@ -198,7 +206,7 @@ describe("hierarchy descriptions safety gate", () => {
   });
 
   test("creates a department with normalized safe description metadata", async () => {
-    const t = convexTest(schema, modules);
+    const t = harness();
     const ids = await seedOrg(t);
     const fetchMock = stubFoundrySafetyTool(allowJson());
 
@@ -232,7 +240,7 @@ describe("hierarchy descriptions safety gate", () => {
   });
 
   test("accepts tool-call arguments from the safety model", async () => {
-    const t = convexTest(schema, modules);
+    const t = harness();
     const ids = await seedOrg(t);
     stubFoundrySafetyTool(allowJson());
 
@@ -250,7 +258,7 @@ describe("hierarchy descriptions safety gate", () => {
   });
 
   test("fails closed on malformed tool arguments", async () => {
-    const t = convexTest(schema, modules);
+    const t = harness();
     const ids = await seedOrg(t);
     const fetchMock = stubFoundrySafetyTool("ALLOW");
 
@@ -266,7 +274,7 @@ describe("hierarchy descriptions safety gate", () => {
   });
 
   test("updates a process description and clears it with a blank value", async () => {
-    const t = convexTest(schema, modules);
+    const t = harness();
     const ids = await seedOrg(t);
     stubFoundrySafetyTool(allowJson());
 
@@ -296,7 +304,7 @@ describe("hierarchy descriptions safety gate", () => {
   });
 
   test("rejects over-limit and hidden-character descriptions before model call", async () => {
-    const t = convexTest(schema, modules);
+    const t = harness();
     const ids = await seedOrg(t);
     const fetchMock = stubFoundrySafetyTool(allowJson());
 
@@ -320,7 +328,7 @@ describe("hierarchy descriptions safety gate", () => {
   });
 
   test("blocks unsafe descriptions and does not create the process", async () => {
-    const t = convexTest(schema, modules);
+    const t = harness();
     const ids = await seedOrg(t);
     stubFoundrySafetyTool(blockJson());
 
@@ -360,7 +368,7 @@ describe("hierarchy descriptions safety gate", () => {
   });
 
   test("fails closed on invalid model output and Foundry failures", async () => {
-    const t = convexTest(schema, modules);
+    const t = harness();
     const ids = await seedOrg(t);
 
     stubFoundrySafetyTool("not-json");
@@ -415,7 +423,7 @@ describe("hierarchy descriptions safety gate", () => {
   });
 
   test("rejects cross-tenant description writes before safety fetch", async () => {
-    const t = convexTest(schema, modules);
+    const t = harness();
     await seedOrg(t, ORG_A);
     const orgB = await seedOrg(t, ORG_B);
     const fetchMock = stubFoundrySafetyTool(allowJson());
