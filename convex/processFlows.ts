@@ -238,6 +238,7 @@ function formatConversationData(
     }
     if (dc.dependencies) parts.push(`Dependencies: ${dc.dependencies}`);
     if (dc.frequency) parts.push(`Frequency: ${dc.frequency}`);
+    if (dc.volume) parts.push(`Volume: ${dc.volume}`);
     if (dc.edge_cases) parts.push(`Edge Cases: ${dc.edge_cases}`);
     if (dc.compliance_or_approvals)
       parts.push(`Approvals: ${dc.compliance_or_approvals}`);
@@ -268,6 +269,7 @@ function formatConversationData(
     parts.push(`Dependencies: ${deps}`);
   }
   if (dc.frequency) parts.push(`Frequency: ${dc.frequency}`);
+  if (dc.volume) parts.push(`Volume: ${dc.volume}`);
   if (dc.edge_cases) {
     const cases = Array.isArray(dc.edge_cases)
       ? dc.edge_cases.join("\n  - ")

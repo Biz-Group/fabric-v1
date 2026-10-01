@@ -81,6 +81,7 @@ type AnalysisPayload = {
     step_issues: string;
     dependencies: string;
     frequency: string;
+    volume: string;
     edge_cases: string;
     total_process_duration: string;
     compliance_or_approvals: string;
@@ -153,6 +154,7 @@ Return ONLY a valid JSON object with this exact shape:
     "step_issues": "JSON array string of issues: [{\\"step_id\\":\\"step-id\\",\\"pain_point\\":\\"issue or null\\",\\"is_bottleneck\\":false,\\"bottleneck_reason\\":\\"reason or null\\",\\"automation_potential\\":\\"none|low|medium|high|null\\",\\"workaround\\":\\"workaround or null\\"}]",
     "dependencies": "People, teams, or systems depended on. Empty string if not mentioned.",
     "frequency": "How often this process happens. Empty string if not mentioned.",
+    "volume": "Roughly how many times, cases or items the process handles, per run or per period (e.g. '40 requests a month', 'every employee, about 3,000, once a year'). Empty string if not mentioned.",
     "edge_cases": "Exceptions or failure modes. Empty string if not mentioned.",
     "total_process_duration": "End-to-end duration. Empty string if not mentioned.",
     "compliance_or_approvals": "Approval or compliance gates. Empty string if none mentioned."
@@ -165,7 +167,7 @@ Return ONLY a valid JSON object with this exact shape:
 }
 
 Rules:
-- Base the JSON only on the transcript. Do not invent tools, dependencies, speakers, or durations.
+- Base the JSON only on the transcript. Do not invent tools, dependencies, speakers, durations, or volumes. A rough estimate the speaker gives counts; a number you infer does not.
 - call_summary_title names the work discussed, with no trailing period and no speaker names. Use Title Case to match the interview titles it sits beside in the UI — e.g. "Monthly Payroll Close and Approvals". Never write a generic title like "Process Interview".
 - Preserve named speakers as actors when the transcript makes their role in the process clear.
 - process_steps, step_connections, and step_issues must be strings containing valid JSON arrays.
@@ -344,6 +346,7 @@ export function coerceAnalysisPayload(
       step_issues: jsonArrayString(dc.step_issues),
       dependencies: stringValue(dc.dependencies),
       frequency: stringValue(dc.frequency),
+      volume: stringValue(dc.volume),
       edge_cases: stringValue(dc.edge_cases),
       total_process_duration: stringValue(dc.total_process_duration),
       compliance_or_approvals: stringValue(dc.compliance_or_approvals),

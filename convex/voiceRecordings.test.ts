@@ -322,6 +322,7 @@ describe("voice recording helpers", () => {
           step_issues: [{ step_id: "pull-report", is_bottleneck: false }],
           dependencies: "HRIS export",
           frequency: "Monthly",
+          volume: "Around 40 requests a month",
         },
         success_evaluation: {
           described_specific_steps: true,
@@ -340,6 +341,7 @@ describe("voice recording helpers", () => {
     expect(JSON.parse(analysis.data_collection.step_connections)).toEqual([]);
     expect(JSON.parse(analysis.data_collection.step_issues)).toHaveLength(1);
     expect(analysis.data_collection.dependencies).toBe("HRIS export");
+    expect(analysis.data_collection.volume).toBe("Around 40 requests a month");
     expect(analysis.success_evaluation.identified_dependencies).toBe(true);
   });
 

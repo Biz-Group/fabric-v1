@@ -491,6 +491,11 @@ describe("staged flow generation, driven end to end", () => {
               rationale: "Stated explicitly.",
               value: "quarterly",
             },
+            volume: {
+              data_collection_id: "volume",
+              rationale: "Estimated by the contributor.",
+              value: "about 25 critical roles each cycle",
+            },
             compliance_or_approvals: {
               data_collection_id: "compliance_or_approvals",
               rationale: "Nothing stated.",
@@ -515,6 +520,7 @@ describe("staged flow generation, driven end to end", () => {
     const graphPrompt = sentPrompts.return_process_graph;
     expect(graphPrompt).toContain("identify-critical-roles");
     expect(graphPrompt).toContain("Frequency: quarterly");
+    expect(graphPrompt).toContain("Volume: about 25 critical roles each cycle");
     expect(graphPrompt).toContain("(structured)");
     // Both input modes contribute; the flat one still works.
     expect(graphPrompt).toContain("intake");
