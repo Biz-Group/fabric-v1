@@ -187,6 +187,9 @@ export default defineSchema({
     email: v.string(),
     emailLower: v.optional(v.string()),
     jobTitle: v.optional(v.string()),
+    // Deprecated: global free-text placement. No longer written; superseded by
+    // memberships.departmentId. Kept only until backfillMembershipPlacement has
+    // run in every deployment, then cleared and removed.
     function: v.optional(v.string()),
     department: v.optional(v.string()),
     hireDate: v.optional(v.string()),
@@ -229,6 +232,11 @@ export default defineSchema({
     profileComplete: v.optional(v.boolean()),
     platformRole: v.optional(v.literal("superAdmin")),
     searchText: v.optional(v.string()),
+    // The member's home department in THIS org. Stored as an id (never a
+    // name) so hierarchy renames need no cascade; the function is derived
+    // from department.functionId so department moves need none either.
+    departmentId: v.optional(v.id("departments")),
+    placementUpdatedAt: v.optional(v.number()),
   })
     .index("by_tokenIdentifier_and_clerkOrgId", [
       "tokenIdentifier",
@@ -237,6 +245,7 @@ export default defineSchema({
     .index("by_clerkOrgId", ["clerkOrgId"])
     .index("by_clerkOrgId_and_role", ["clerkOrgId", "role"])
     .index("by_clerkOrgId_and_emailLower", ["clerkOrgId", "emailLower"])
+    .index("by_clerkOrgId_and_departmentId", ["clerkOrgId", "departmentId"])
     .index("by_userId", ["userId"])
     .searchIndex("search_member", {
       searchField: "searchText",

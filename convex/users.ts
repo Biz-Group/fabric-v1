@@ -13,6 +13,7 @@ import {
 import { api, internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import {
+  assertOrgOwns,
   getActiveOrgClaims,
   requireAuth,
   requireOrgAdmin,
@@ -666,9 +667,15 @@ export const completeProfile = mutation({
   args: {
     name: v.string(),
     jobTitle: v.string(),
-    function: v.string(),
-    department: v.string(),
     hireDate: v.string(),
+    // Placement in the caller's active org. Optional so an org without a
+    // hierarchy yet can still onboard members.
+    departmentId: v.optional(v.id("departments")),
+    // Deprecated and ignored: accepted only so tabs still running the
+    // pre-placement client don't fail validation. Remove with the global
+    // users.function/department fields.
+    function: v.optional(v.string()),
+    department: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await requireAuth(ctx);
@@ -680,11 +687,12 @@ export const completeProfile = mutation({
       .unique();
     if (!user) throw new Error("User not found");
 
+    if (args.departmentId) {
+      await setCallerPlacement(ctx, args.departmentId);
+    }
     await ctx.db.patch(user._id, {
       name: validateProfileText(args.name, "Name"),
       jobTitle: validateProfileText(args.jobTitle, "Job title"),
-      function: validateProfileText(args.function, "Function"),
-      department: validateProfileText(args.department, "Department"),
       hireDate: validateProfileText(args.hireDate, "Hire date", 40),
       profileComplete: true,
     });
@@ -697,9 +705,10 @@ export const updateProfile = mutation({
   args: {
     name: v.optional(v.string()),
     jobTitle: v.optional(v.string()),
+    hireDate: v.optional(v.string()),
+    // Deprecated and ignored; placement is per-org via setMyPlacement.
     function: v.optional(v.string()),
     department: v.optional(v.string()),
-    hireDate: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await requireAuth(ctx);
@@ -714,13 +723,9 @@ export const updateProfile = mutation({
     const updates: Record<string, string> = {};
     const name = optionalProfileText(args.name, "Name");
     const jobTitle = optionalProfileText(args.jobTitle, "Job title");
-    const fn = optionalProfileText(args.function, "Function");
-    const department = optionalProfileText(args.department, "Department");
     const hireDate = optionalProfileText(args.hireDate, "Hire date", 40);
     if (name !== undefined) updates.name = name;
     if (jobTitle !== undefined) updates.jobTitle = jobTitle;
-    if (fn !== undefined) updates.function = fn;
-    if (department !== undefined) updates.department = department;
     if (hireDate !== undefined) updates.hireDate = hireDate;
 
     if (Object.keys(updates).length > 0) {
@@ -728,6 +733,133 @@ export const updateProfile = mutation({
       const updated = await ctx.db.get(user._id);
       if (updated) await syncMembershipProfilesForUser(ctx, updated);
     }
+  },
+});
+
+// --- Member placement ------------------------------------------------------
+//
+// A member's home department lives on their membership (one per org), never
+// on the global user row: one user can belong to several orgs, and each
+// tenant may only describe placement within its own hierarchy. Only the
+// department id is stored; names and the parent function are resolved on
+// read, so hierarchy renames and moves need no cascade.
+
+type MemberPlacement = {
+  departmentId: Id<"departments">;
+  departmentName: string;
+  functionId: Id<"functions">;
+  functionName: string;
+};
+
+const PLACEMENT_CLEAR_BATCH = 100;
+
+async function setCallerPlacement(
+  ctx: MutationCtx,
+  departmentId: Id<"departments">,
+) {
+  const caller = await requireOrgMember(ctx);
+  const department = await ctx.db.get(departmentId);
+  assertOrgOwns(caller, department);
+  await ctx.db.patch(caller.membershipId, {
+    departmentId,
+    placementUpdatedAt: Date.now(),
+  });
+}
+
+/** Per-request resolver that memoizes department + function lookups. A
+ * department that was deleted or does not belong to `clerkOrgId` reads as
+ * unset rather than leaking another tenant's hierarchy. */
+function placementResolver(ctx: QueryCtx, clerkOrgId: string) {
+  const cache = new Map<Id<"departments">, Promise<MemberPlacement | null>>();
+  const load = async (
+    departmentId: Id<"departments">,
+  ): Promise<MemberPlacement | null> => {
+    const department = await ctx.db.get(departmentId);
+    if (!department || department.clerkOrgId !== clerkOrgId) return null;
+    const fn = await ctx.db.get(department.functionId);
+    if (!fn || fn.clerkOrgId !== clerkOrgId) return null;
+    return {
+      departmentId,
+      departmentName: department.name,
+      functionId: fn._id,
+      functionName: fn.name,
+    };
+  };
+  return (departmentId: Id<"departments"> | undefined) => {
+    if (!departmentId) return Promise.resolve(null);
+    let pending = cache.get(departmentId);
+    if (!pending) {
+      pending = load(departmentId);
+      cache.set(departmentId, pending);
+    }
+    return pending;
+  };
+}
+
+/** Unsets placement on this org's memberships that point at a department
+ * being deleted. Bounded per transaction; continues itself when full. */
+export async function clearPlacementsForDepartment(
+  ctx: MutationCtx,
+  clerkOrgId: string,
+  departmentId: Id<"departments">,
+) {
+  const rows = await ctx.db
+    .query("memberships")
+    .withIndex("by_clerkOrgId_and_departmentId", (q) =>
+      q.eq("clerkOrgId", clerkOrgId).eq("departmentId", departmentId),
+    )
+    .take(PLACEMENT_CLEAR_BATCH);
+  const now = Date.now();
+  await Promise.all(
+    rows.map((m) =>
+      ctx.db.patch(m._id, { departmentId: undefined, placementUpdatedAt: now }),
+    ),
+  );
+  if (rows.length === PLACEMENT_CLEAR_BATCH) {
+    await ctx.scheduler.runAfter(0, internal.users.clearDepartmentPlacements, {
+      clerkOrgId,
+      departmentId,
+    });
+  }
+}
+
+export const clearDepartmentPlacements = internalMutation({
+  args: { clerkOrgId: v.string(), departmentId: v.id("departments") },
+  handler: async (ctx, args) => {
+    await clearPlacementsForDepartment(ctx, args.clerkOrgId, args.departmentId);
+  },
+});
+
+export const setMyPlacement = mutation({
+  args: { departmentId: v.id("departments") },
+  handler: async (ctx, args) => {
+    await setCallerPlacement(ctx, args.departmentId);
+  },
+});
+
+/** The caller's placement in their active org, plus whether the org has any
+ * departments to choose from (an org without a hierarchy never blocks
+ * onboarding on placement). Null when the caller has no active membership. */
+export const getMyPlacement = query({
+  args: {},
+  handler: async (ctx) => {
+    let caller;
+    try {
+      caller = await requireOrgMember(ctx);
+    } catch {
+      return null;
+    }
+    const membership = await ctx.db.get(caller.membershipId);
+    const placement = await placementResolver(ctx, caller.orgId)(
+      membership?.departmentId,
+    );
+    const anyDepartment = await ctx.db
+      .query("departments")
+      .withIndex("by_clerkOrgId_and_functionId", (q) =>
+        q.eq("clerkOrgId", caller.orgId),
+      )
+      .first();
+    return { placement, orgHasDepartments: anyDepartment !== null };
   },
 });
 
@@ -781,9 +913,19 @@ export const listOrgMembersPage = query({
               .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", caller.orgId))
               .paginate(args.paginationOpts);
 
+    const placementOf = placementResolver(ctx, caller.orgId);
     return {
       ...result,
-      page: await Promise.all(result.page.map((m) => memberRow(ctx, m))),
+      page: await Promise.all(
+        result.page.map(async (m) => {
+          const placement = await placementOf(m.departmentId);
+          return {
+            ...(await memberRow(ctx, m)),
+            departmentName: placement?.departmentName ?? null,
+            functionName: placement?.functionName ?? null,
+          };
+        }),
+      ),
     };
   },
 });

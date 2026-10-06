@@ -269,6 +269,7 @@ export default function AdminUsersPage() {
               <TableHead>Email</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Job Title</TableHead>
+              <TableHead>Department</TableHead>
               <TableHead>Platform</TableHead>
               <TableHead>Profile</TableHead>
               <TableHead>Joined Org</TableHead>
@@ -279,7 +280,7 @@ export default function AdminUsersPage() {
             {members.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={9}
                   className="h-24 text-center text-muted-foreground"
                 >
                   {search ? "No members match your search." : "No members yet."}
@@ -312,6 +313,18 @@ export default function AdminUsersPage() {
                     </TableCell>
                     <TableCell>
                       {m.jobTitle ?? (
+                        <span className="text-muted-foreground">--</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {m.departmentName ? (
+                        <>
+                          {m.departmentName}
+                          <span className="block text-xs text-muted-foreground">
+                            {m.functionName}
+                          </span>
+                        </>
+                      ) : (
                         <span className="text-muted-foreground">--</span>
                       )}
                     </TableCell>

@@ -89,10 +89,9 @@ export const update = mutation({
     const oldName = existing.name;
     await ctx.db.patch(args.functionId, { name: args.name });
 
-    // User profile fields are global and user-managed. A tenant-scoped
-    // hierarchy rename must not rewrite them: one user can belong to multiple
-    // organizations, and matching a free-form label does not establish that
-    // this function is the profile's intended reference.
+    // No member cascade: placement is stored as memberships.departmentId and
+    // the function name is resolved on read, so a rename is reflected
+    // automatically.
     if (oldName !== args.name) {
       await ctx.runMutation(
         internal.summariesHelpers.markFunctionSummaryStale,

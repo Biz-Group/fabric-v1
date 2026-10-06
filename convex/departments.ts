@@ -20,6 +20,7 @@ import {
   resolveOrgForAction,
 } from "./lib/orgAuth";
 import { toLightweightSummaryListRow } from "./summaryV2";
+import { clearPlacementsForDepartment } from "./users";
 import { withSummaryV2ReadGate } from "./lib/summaryV2Feature";
 
 export const listByFunction = query({
@@ -308,9 +309,9 @@ export const updateInternal = internalMutation({
     applyDescriptionUpdate(patch, args.descriptionUpdate);
     await ctx.db.patch(args.departmentId, patch);
 
-    // User profile fields are global and user-managed. Do not infer a profile
-    // relationship from a matching free-form label or rewrite it as a side
-    // effect of this tenant-scoped hierarchy change.
+    // No member cascade: placement is stored as memberships.departmentId and
+    // names/parent function are resolved on read, so renames and moves are
+    // reflected automatically.
 
     if (isMoving) {
       await ctx.runMutation(internal.summariesHelpers.markFunctionSummaryStale, {
@@ -398,6 +399,10 @@ export const remove = mutation({
       },
     );
     await ctx.db.delete(args.departmentId);
+    // Members placed here fall back to "unset" and are asked again on their
+    // next visit. Members are not children of a department, so they never
+    // block deletion the way processes do.
+    await clearPlacementsForDepartment(ctx, caller.orgId, args.departmentId);
     // Mark function summary as stale
     await ctx.runMutation(internal.summariesHelpers.markFunctionSummaryStale, {
       functionId,
