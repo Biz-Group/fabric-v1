@@ -671,11 +671,6 @@ export const completeProfile = mutation({
     // Placement in the caller's active org. Optional so an org without a
     // hierarchy yet can still onboard members.
     departmentId: v.optional(v.id("departments")),
-    // Deprecated and ignored: accepted only so tabs still running the
-    // pre-placement client don't fail validation. Remove with the global
-    // users.function/department fields.
-    function: v.optional(v.string()),
-    department: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await requireAuth(ctx);
@@ -706,9 +701,6 @@ export const updateProfile = mutation({
     name: v.optional(v.string()),
     jobTitle: v.optional(v.string()),
     hireDate: v.optional(v.string()),
-    // Deprecated and ignored; placement is per-org via setMyPlacement.
-    function: v.optional(v.string()),
-    department: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await requireAuth(ctx);

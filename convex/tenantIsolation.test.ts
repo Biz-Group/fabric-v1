@@ -260,50 +260,72 @@ describe("cross-tenant isolation", () => {
     expect(created!.clerkOrgId).toBe(ORG_A);
   });
 
-  test("function rename does not rewrite global profiles in either tenant", async () => {
+  // Regression for audit H-02: a hierarchy rename in org A once rewrote user
+  // profiles in org B. Placement now lives on memberships as an id, so a
+  // rename writes no user or membership rows and B's view is unaffected.
+  async function placeBothMembers(
+    t: ReturnType<typeof convexTest>,
+    ids: SeededIds,
+  ) {
+    await t.run(async (ctx) => {
+      const departmentFor = new Map<string, Id<"departments">>([
+        [ids.userAId, ids.deptA],
+        [ids.userBId, ids.deptB],
+      ]);
+      for (const membership of await ctx.db.query("memberships").collect()) {
+        const departmentId = departmentFor.get(membership.userId);
+        if (departmentId) await ctx.db.patch(membership._id, { departmentId });
+      }
+    });
+    return () =>
+      t.run(async (ctx) => ({
+        users: await ctx.db.query("users").collect(),
+        memberships: await ctx.db.query("memberships").collect(),
+      }));
+  }
+
+  test("function rename does not touch members in either tenant", async () => {
     const t = convexTest(schema, modules);
     const ids = await seedTwoOrgs(t);
-    await t.run(async (ctx) => {
-      await ctx.db.patch(ids.userAId, { function: "Sales-A" });
-      await ctx.db.patch(ids.userBId, { function: "Sales-A" });
-    });
+    const snapshot = await placeBothMembers(t, ids);
+    const before = await snapshot();
 
     await t.withIdentity(identityForOrgA()).mutation(api.functions.update, {
       functionId: ids.fnA,
       name: "Revenue-A",
     });
 
-    const result = await t.run(async (ctx) => ({
-      renamedFunction: await ctx.db.get(ids.fnA),
-      userA: await ctx.db.get(ids.userAId),
-      userB: await ctx.db.get(ids.userBId),
-    }));
-    expect(result.renamedFunction?.name).toBe("Revenue-A");
-    expect(result.userA?.function).toBe("Sales-A");
-    expect(result.userB?.function).toBe("Sales-A");
+    expect(await snapshot()).toEqual(before);
+    const inA = await t
+      .withIdentity(identityForOrgA())
+      .query(api.users.getMyPlacement);
+    const inB = await t
+      .withIdentity(identityForOrgB())
+      .query(api.users.getMyPlacement);
+    expect(inA?.placement?.functionName).toBe("Revenue-A");
+    expect(inB?.placement?.functionName).toBe("Sales-B");
   });
 
-  test("department rename does not rewrite global profiles in either tenant", async () => {
+  test("department rename does not touch members in either tenant", async () => {
     const t = convexTest(schema, modules);
     const ids = await seedTwoOrgs(t);
-    await t.run(async (ctx) => {
-      await ctx.db.patch(ids.userAId, { department: "Inside-Sales-A" });
-      await ctx.db.patch(ids.userBId, { department: "Inside-Sales-A" });
-    });
+    const snapshot = await placeBothMembers(t, ids);
+    const before = await snapshot();
 
     await t.withIdentity(identityForOrgA()).action(api.departments.update, {
       departmentId: ids.deptA,
       name: "Field-Sales-A",
     });
 
-    const result = await t.run(async (ctx) => ({
-      renamedDepartment: await ctx.db.get(ids.deptA),
-      userA: await ctx.db.get(ids.userAId),
-      userB: await ctx.db.get(ids.userBId),
-    }));
-    expect(result.renamedDepartment?.name).toBe("Field-Sales-A");
-    expect(result.userA?.department).toBe("Inside-Sales-A");
-    expect(result.userB?.department).toBe("Inside-Sales-A");
+    expect(await snapshot()).toEqual(before);
+    const inA = await t
+      .withIdentity(identityForOrgA())
+      .query(api.users.getMyPlacement);
+    const inB = await t
+      .withIdentity(identityForOrgB())
+      .query(api.users.getMyPlacement);
+    expect(inA?.placement?.departmentName).toBe("Field-Sales-A");
+    expect(inB?.placement?.departmentName).toBe("Inside-Sales-B");
   });
 
   test("audio URL is revoked immediately when its signed membership is removed", async () => {

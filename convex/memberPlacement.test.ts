@@ -3,7 +3,6 @@ import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import { backfillPlacementForMembership } from "./migrations";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -139,7 +138,7 @@ describe("member placement", () => {
     expect(inB?.departmentId).toBe(ids.deptB);
   });
 
-  test("completeProfile places the member and ignores legacy labels", async () => {
+  test("completeProfile places the member in the active org", async () => {
     const t = convexTest(schema, modules);
     const ids = await seed(t);
     await t.run((ctx) => ctx.db.patch(ids.aliceId, { profileComplete: false }));
@@ -149,8 +148,6 @@ describe("member placement", () => {
       jobTitle: "Account Executive",
       hireDate: "2024-01-15",
       departmentId: ids.deptA,
-      function: "Legacy Function",
-      department: "Legacy Department",
     });
 
     const [user, membership] = await t.run(async (ctx) => [
@@ -158,8 +155,6 @@ describe("member placement", () => {
       await ctx.db.get(ids.aliceInA),
     ]);
     expect(user?.profileComplete).toBe(true);
-    expect(user?.function).toBeUndefined();
-    expect(user?.department).toBeUndefined();
     expect(membership?.departmentId).toBe(ids.deptA);
   });
 
@@ -315,88 +310,5 @@ describe("member placement", () => {
       departmentName: "Inside Sales",
       functionName: "Sales",
     });
-  });
-});
-
-describe("backfillMembershipPlacement", () => {
-  async function backfill(
-    t: ReturnType<typeof convexTest>,
-    membershipId: Id<"memberships">,
-  ) {
-    return await t.run(async (ctx) => {
-      const membership = await ctx.db.get(membershipId);
-      return await backfillPlacementForMembership(ctx, membership!);
-    });
-  }
-
-  test("places a unique department-name match in the member's own org", async () => {
-    const t = convexTest(schema, modules);
-    const ids = await seed(t);
-    // The stored function label has drifted; only the department is matched.
-    await t.run((ctx) =>
-      ctx.db.patch(ids.aliceId, {
-        function: "Old Function Name",
-        department: "Inside Sales",
-      }),
-    );
-
-    expect(await backfill(t, ids.aliceInA)).toBe(true);
-    const membership = await t.run((ctx) => ctx.db.get(ids.aliceInA));
-    expect(membership?.departmentId).toBe(ids.deptA);
-
-    // Idempotent: a second pass is a no-op.
-    expect(await backfill(t, ids.aliceInA)).toBe(false);
-  });
-
-  test("skips members of more than one org", async () => {
-    const t = convexTest(schema, modules);
-    const ids = await seed(t);
-    const aliceInB = await addAliceToOrgB(t, ids.aliceId);
-    await t.run((ctx) =>
-      ctx.db.patch(ids.aliceId, { department: "Inside Sales" }),
-    );
-
-    expect(await backfill(t, ids.aliceInA)).toBe(false);
-    expect(await backfill(t, aliceInB)).toBe(false);
-  });
-
-  test("never matches a department that exists only in another org", async () => {
-    const t = convexTest(schema, modules);
-    const ids = await seed(t);
-    await t.run(async (ctx) => {
-      await ctx.db.patch(ids.aliceId, { department: "Only In B" });
-      await ctx.db.patch(ids.deptB, { name: "Only In B" });
-    });
-
-    expect(await backfill(t, ids.aliceInA)).toBe(false);
-  });
-
-  test("refuses an ambiguous name", async () => {
-    const t = convexTest(schema, modules);
-    const ids = await seed(t);
-    await t.run(async (ctx) => {
-      await ctx.db.patch(ids.aliceId, { department: "Inside Sales" });
-      await ctx.db.insert("departments", {
-        functionId: ids.fnA2,
-        name: "Inside Sales",
-        sortOrder: 0,
-        clerkOrgId: ORG_A,
-      });
-    });
-
-    expect(await backfill(t, ids.aliceInA)).toBe(false);
-  });
-
-  test("never overwrites an existing placement", async () => {
-    const t = convexTest(schema, modules);
-    const ids = await seed(t);
-    await t.run(async (ctx) => {
-      await ctx.db.patch(ids.aliceId, { department: "Inside Sales" });
-      await ctx.db.patch(ids.aliceInA, { departmentId: ids.emptyDeptA });
-    });
-
-    expect(await backfill(t, ids.aliceInA)).toBe(false);
-    const membership = await t.run((ctx) => ctx.db.get(ids.aliceInA));
-    expect(membership?.departmentId).toBe(ids.emptyDeptA);
   });
 });

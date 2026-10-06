@@ -187,11 +187,7 @@ export default defineSchema({
     email: v.string(),
     emailLower: v.optional(v.string()),
     jobTitle: v.optional(v.string()),
-    // Deprecated: global free-text placement. No longer written; superseded by
-    // memberships.departmentId. Kept only until backfillMembershipPlacement has
-    // run in every deployment, then cleared and removed.
-    function: v.optional(v.string()),
-    department: v.optional(v.string()),
+    // Placement in an org's hierarchy is per-org: memberships.departmentId.
     hireDate: v.optional(v.string()),
     profileComplete: v.boolean(),
     // Platform-level role, orthogonal to per-org roles. Only "superAdmin" today.
@@ -206,8 +202,6 @@ export default defineSchema({
     .index("by_clerkUserId", ["clerkUserId"])
     .index("by_email", ["email"])
     .index("by_emailLower", ["emailLower"])
-    .index("by_function", ["function"])
-    .index("by_department", ["department"])
     .index("by_platformRole", ["platformRole"]),
 
   // Per-(user, org) role assignments. Fabric owns roles — not Clerk — so a user

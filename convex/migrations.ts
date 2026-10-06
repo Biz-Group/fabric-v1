@@ -1,19 +1,17 @@
 import { Migrations } from "@convex-dev/migrations";
 import { v } from "convex/values";
 import { components, internal } from "./_generated/api";
-import { DataModel, Doc, Id } from "./_generated/dataModel";
+import { DataModel, Id } from "./_generated/dataModel";
 import {
   internalAction,
   internalMutation,
   internalQuery,
-  MutationCtx,
   QueryCtx,
 } from "./_generated/server";
 import {
   clerkUserIdFromTokenIdentifier,
   normalizeEmail,
 } from "./lib/clerkApi";
-import { isActiveMembership } from "./lib/orgAuth";
 
 export const migrations = new Migrations<DataModel>(components.migrations);
 
@@ -258,91 +256,6 @@ export const verifyProcessSummaryScope = internalQuery({
       if (!hasScopeFindings(process.summaryV2)) preScopeArtifacts++;
     }
     return { total, withArtifact, preScopeArtifacts };
-  },
-});
-
-// --- Member placement: global label → per-org department id -----------------
-//
-// Copies the legacy global `users.department` string onto
-// `memberships.departmentId`. Name matching is tolerable only because this is
-// a one-off that never leaves the membership's own org, refuses ambiguity, and
-// never overwrites a placement the member has already chosen:
-//
-//   - users in more than one org are skipped: their single label was typed
-//     while onboarding into an unknown org, so attributing it to any other
-//     tenant is exactly the cross-tenant inference this change removes;
-//   - the department must match exactly one department in the membership's
-//     org; the function is not matched (it is derived from the department,
-//     and stored function labels have drifted through renames and moves).
-//
-// Unmatched members are asked for their placement on their next visit.
-//
-//   npx convex run migrations:verifyMembershipPlacementBackfill
-//   npx convex run migrations:run '{"fn":"migrations:backfillMembershipPlacement"}'
-//   npx convex run migrations:verifyMembershipPlacementBackfill
-
-/** Per-row body of backfillMembershipPlacement, exported for tests. Returns
- * whether the membership was placed. */
-export async function backfillPlacementForMembership(
-  ctx: MutationCtx,
-  membership: Doc<"memberships">,
-): Promise<boolean> {
-  if (membership.departmentId || !isActiveMembership(membership)) return false;
-  const user = await ctx.db.get(membership.userId);
-  const label = user?.department?.trim();
-  if (!user || user.deletedAt !== undefined || !label) return false;
-
-  const userMemberships = await ctx.db
-    .query("memberships")
-    .withIndex("by_userId", (q) => q.eq("userId", user._id))
-    .take(50);
-  if (userMemberships.filter(isActiveMembership).length > 1) return false;
-
-  const matches: Id<"departments">[] = [];
-  for await (const department of ctx.db
-    .query("departments")
-    .withIndex("by_clerkOrgId_and_functionId", (q) =>
-      q.eq("clerkOrgId", membership.clerkOrgId),
-    )) {
-    if (department.name.trim() !== label) continue;
-    matches.push(department._id);
-    if (matches.length > 1) return false;
-  }
-  if (matches.length !== 1) return false;
-
-  await ctx.db.patch(membership._id, {
-    departmentId: matches[0],
-    placementUpdatedAt: Date.now(),
-  });
-  return true;
-}
-
-export const backfillMembershipPlacement = migrations.define({
-  table: "memberships",
-  migrateOne: async (ctx, membership) => {
-    await backfillPlacementForMembership(ctx, membership);
-  },
-});
-
-export const verifyMembershipPlacementBackfill = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    let active = 0;
-    let placed = 0;
-    let unplacedWithLegacyLabel = 0;
-    let unplacedWithoutLabel = 0;
-    for await (const membership of ctx.db.query("memberships")) {
-      if (!isActiveMembership(membership)) continue;
-      active++;
-      if (membership.departmentId) {
-        placed++;
-        continue;
-      }
-      const user = await ctx.db.get(membership.userId);
-      if (user?.department?.trim()) unplacedWithLegacyLabel++;
-      else unplacedWithoutLabel++;
-    }
-    return { active, placed, unplacedWithLegacyLabel, unplacedWithoutLabel };
   },
 });
 
