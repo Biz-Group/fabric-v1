@@ -57,3 +57,4 @@ todo.txt
 BRANDING_KIT.md
 # written by scripts/migrate-dev-to-prod.mjs; contains real tenant data
 dump.json
+/.next-stale

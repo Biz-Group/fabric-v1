@@ -32,6 +32,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ProductTourButton } from "@/features/shell/product-tour";
 import { UserMenu } from "@/features/shell/user-menu";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 import {
@@ -52,6 +53,8 @@ type WorkspaceAppShellProps = {
   onSearch?: () => void;
   title?: string;
   navSections?: WorkspaceNavSection[];
+  /** Extra controls rendered in the top bar, just before the user menu. */
+  headerActions?: ReactNode;
 };
 
 const SIDEBAR_COLLAPSED_KEY = "fabric:sidebar-collapsed";
@@ -357,10 +360,12 @@ function TopBar({
   onSearch,
   onOpenNav,
   title,
+  actions,
 }: {
   onSearch?: () => void;
   onOpenNav: () => void;
   title?: string;
+  actions?: ReactNode;
 }) {
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-background px-3 md:h-16 md:px-5">
@@ -390,6 +395,7 @@ function TopBar({
           </h1>
         )}
       </div>
+      {actions}
       <UserMenu compact />
     </header>
   );
@@ -401,6 +407,7 @@ export function WorkspaceAppShell({
   onSearch,
   title,
   navSections = [],
+  headerActions,
 }: WorkspaceAppShellProps) {
   const { organization } = useOrganization();
   const membership = useQuery(api.users.getMyMembership);
@@ -468,6 +475,7 @@ export function WorkspaceAppShell({
           onSearch={onSearch}
           onOpenNav={() => setMobileNavOpen(true)}
           title={title}
+          actions={headerActions}
         />
         <main
           className={cn(
@@ -486,5 +494,9 @@ export function ProcessAppShell({
   children,
   onSearch,
 }: ProcessAppShellProps) {
-  return <WorkspaceAppShell onSearch={onSearch}>{children}</WorkspaceAppShell>;
+  return (
+    <WorkspaceAppShell onSearch={onSearch} headerActions={<ProductTourButton />}>
+      {children}
+    </WorkspaceAppShell>
+  );
 }

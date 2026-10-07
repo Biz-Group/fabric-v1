@@ -1,0 +1,38 @@
+[
+  {
+    "id": "intro",
+    "text": "[warm] Hi, and welcome to Fabric! [excited] In the next two minutes, I'll show you how Fabric turns everyday conversations about your work... into clear, living process maps."
+  },
+  {
+    "id": "tree",
+    "text": "This is your workspace. On the left is the Process Tree: your organization, laid out as functions, departments, and the processes inside them. Click to expand any branch... [curious] or press Control K to jump straight to a process by name."
+  },
+  {
+    "id": "capture",
+    "text": "Every process has its own page, [confident] and this is where it all starts. Hit Start AI interview, and Fabric's voice agent will talk you through how the work really gets done: the steps, the tools, the handoffs. [casual] Prefer to go solo? Record a voice note, or upload a recording you already have."
+  },
+  {
+    "id": "conversations",
+    "text": "Every interview lands in the Conversations tab, with the audio, an AI summary, and a full transcript you can read and replay."
+  },
+  {
+    "id": "overview",
+    "text": "[impressed] Now here's where it gets interesting. Fabric reads across every conversation and writes a single overview of the process. It shows where people agree, [thoughtful] where their accounts differ... and which sources back up each point. The more people you interview, the sharper the picture gets."
+  },
+  {
+    "id": "flow",
+    "text": "Open Process Flow to see it all as a map: every step, decision, and handoff, built from what people actually said. Bottlenecks are flagged right on the steps, so you can spot the friction at a glance."
+  },
+  {
+    "id": "insights",
+    "text": "Insights rolls it all up into the numbers: steps, handoffs, tools, decisions, and pain points, each one traced back to the evidence."
+  },
+  {
+    "id": "automations",
+    "text": "[excited] And finally, Automations. Fabric recommends where workflows and AI agents could take work off people's plates... and writes a ready-to-paste brief for Copilot Studio."
+  },
+  {
+    "id": "outro",
+    "text": "[warm] So that's Fabric. Pick a process you know well, hit Start AI interview, and just talk. [cheerful] We'll take care of the rest!"
+  }
+]

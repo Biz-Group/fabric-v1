@@ -20,6 +20,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "convex/_generated/**",
     "next-env.d.ts",
+    // Standalone video tooling with its own dependencies.
+    "tools/demo-video/**",
   ]),
 ]);
 

@@ -1,0 +1,8 @@
+node_modules/
+# Signed-in browser profile (holds a live Clerk session)
+profile/
+# Real-name -> stand-in pairs used for masking
+mask-names.json
+# Generated: captures, voiceover, renders
+public/
+out/
