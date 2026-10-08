@@ -17,6 +17,45 @@ export type MonthlyReleaseNote = {
 
 export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
   {
+    id: "october-2026",
+    month: "October",
+    shortMonth: "Oct",
+    monthNumber: "10",
+    year: "2026",
+    headline: "Everyone in the right place",
+    summary:
+      "Members now choose their department in each workspace, newcomers can take a short guided tour, and process flows capture how much work a process handles.",
+    newFeatures: [
+      {
+        title: "Your department in each workspace",
+        description:
+          "Members choose their function and department separately in each workspace they belong to.",
+      },
+      {
+        title: "Departments in the members list",
+        description:
+          "Admins can see each member's department and function in the members table.",
+      },
+      {
+        title: "Two-minute product tour",
+        description:
+          "Watch a captioned walkthrough of Fabric from the workspace header.",
+      },
+    ],
+    enhancements: [
+      {
+        title: "Placements that keep up",
+        description:
+          "Renaming or moving a function or department updates everyone placed in it, without changing anyone's profile.",
+      },
+      {
+        title: "Process volume in flows",
+        description:
+          "When people mention how many requests or cases a process handles, voice notes and audio uploads now capture it for process flows.",
+      },
+    ],
+  },
+  {
     id: "september-2026",
     month: "September",
     shortMonth: "Sep",
@@ -24,7 +63,7 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
     year: "2026",
     headline: "Faster from capture to context",
     summary:
-      "Capture choices are visible at a glance, and process maps now open at the first step for a more natural reading flow.",
+      "Capture choices are visible at a glance, process maps now open at the first step, and audio, uploads, and AI processing gained tighter protections.",
     newFeatures: [
       {
         title: "Direct capture actions",
@@ -37,6 +76,26 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
         title: "Process maps start at the beginning",
         description:
           "Horizontal and vertical flows now open around their entry step instead of centering the full graph.",
+      },
+      {
+        title: "Shorter-lived audio links",
+        description:
+          "Playback links now expire within minutes and stop working as soon as someone leaves the workspace, without interrupting playback.",
+      },
+      {
+        title: "Safer audio uploads",
+        description:
+          "Uploaded files are checked to confirm they are real audio, with limits of 100 MB and four hours per file.",
+      },
+      {
+        title: "Stronger AI safeguards",
+        description:
+          "Fabric's AI now treats conversation content as evidence only, which lowers the chance of instructions inside it affecting summaries.",
+      },
+      {
+        title: "Verified interview imports",
+        description:
+          "AI interview recordings are checked against the interview they belong to before being imported.",
       },
     ],
   },
