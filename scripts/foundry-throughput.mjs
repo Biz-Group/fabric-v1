@@ -17,7 +17,7 @@
 // Usage (PowerShell), with the same env the smoke test uses:
 //   $env:FOUNDRY_ENDPOINT = "https://<account>.services.ai.azure.com"
 //   $env:FOUNDRY_API_KEY = "<key>"
-//   $env:FOUNDRY_CLAUDE_DEPLOYMENT = "fabric-claude-haiku-4-5"
+//   $env:FOUNDRY_CLAUDE_DEPLOYMENT = "fabric-claude-haiku-5-5"
 //   node scripts/foundry-throughput.mjs            # defaults: 4000 tokens, 3 runs, 1 concurrent
 //   node scripts/foundry-throughput.mjs 8000 5     # 8000 max tokens, 5 sequential runs
 //   node scripts/foundry-throughput.mjs 1500 1 4   # one wave of 4 CONCURRENT probes
@@ -46,14 +46,14 @@ const maxTokens = Number(process.argv[2] ?? 4000);
 const runs = Number(process.argv[3] ?? 3);
 const concurrency = Number(process.argv[4] ?? 1);
 
-// The largest single call the pipeline now makes: the graph pass, 6144 tokens in
+// The largest single call the pipeline now makes: the graph pass, 8000 tokens in
 // 210 s (see GRAPH_MAX_TOKENS / GRAPH_TIMEOUT_MS in convex/lib/flowStages.ts).
 //
 // These were 32768 / 450_000 while flow generation was one giant call. Both are
 // gone: no stage asks for anywhere near the cap now, which is the point. Keeping
 // the projection pointed at the *current* largest stage is what makes it useful —
 // if that stage stops fitting, the budgets need re-sizing.
-const FLOW_GENERATION_MAX_TOKENS = 6144;
+const FLOW_GENERATION_MAX_TOKENS = 8000;
 const FLOW_TIMEOUT_MS = 210_000;
 
 const anthropic = new AnthropicFoundry({
@@ -78,16 +78,17 @@ async function probe(label) {
   const stream = anthropic.messages.stream({
     model: claudeDeployment,
     max_tokens: maxTokens,
+    // Mirror the effort `callFoundryClaude` sends, so thinking costs the same
+    // here as in production.
+    output_config: { effort: "low" },
     system,
     messages: [{ role: "user", content: user }],
   });
 
   for await (const event of stream) {
-    if (
-      firstTokenAt === null &&
-      event.type === "content_block_delta" &&
-      event.delta?.type === "text_delta"
-    ) {
+    // Any delta counts, thinking included: thinking tokens are billed as output
+    // and count toward max_tokens, so they belong in the generation rate.
+    if (firstTokenAt === null && event.type === "content_block_delta") {
       firstTokenAt = Date.now();
     }
   }

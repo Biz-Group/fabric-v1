@@ -12,7 +12,7 @@ export type AIProvider = "foundry-claude" | "foundry-openai";
  */
 export type PersistedAIProvider = "fabric-openrouter" | "fabric-foundry";
 
-export const FOUNDRY_CLAUDE_MODEL = "foundry:claude-haiku-4-5@2";
+export const FOUNDRY_CLAUDE_MODEL = "foundry:claude-haiku-5-5@2";
 export const FOUNDRY_FALLBACK_MODEL = "foundry:gpt-5-mini@2025-08-07";
 export const FOUNDRY_SAFETY_MODEL = "foundry:gpt-5-nano@2025-08-07";
 
@@ -34,12 +34,15 @@ const DEFAULT_MAX_RETRIES = 2;
  *   npm run foundry:throughput -- 1500 1 4   # maxTokens, waves, concurrency
  */
 export const MEASURED_THROUGHPUT = {
-  measuredOn: "2026-07-17",
-  deployment: "fabric-claude-haiku-4-5",
+  // 11 probes of 1,500 tokens, 4 concurrent, effort `low`. Haiku 4.5 measured
+  // 65 tok/s / 4,000 ms TTFT on 2026-07-17; Haiku 5.5 generates ~3x faster but
+  // queued longer before its first token.
+  measuredOn: "2026-10-08",
+  deployment: "fabric-claude-haiku-5-5",
   /** Slowest post-first-token generation rate seen, under 4x concurrency. */
-  worstGenRateTokensPerSecond: 65,
+  worstGenRateTokensPerSecond: 190,
   /** Slowest time-to-first-token seen. */
-  worstTtftMs: 4_000,
+  worstTtftMs: 9_700,
 } as const;
 
 /**
@@ -109,7 +112,6 @@ export type AIRequest = {
   system: string;
   user: string;
   maxTokens: number;
-  temperature?: number;
   timeoutMs?: number;
   maxRetries?: number;
   tool?: AITool;
@@ -465,21 +467,38 @@ async function callFoundryClaude(
       ]
     : undefined;
 
-  const message = await client.messages.create({
+  // SDK 0.72 predates `output_config.effort`; the API accepts it on Haiku 5.5.
+  const params: Anthropic.MessageCreateParamsNonStreaming & {
+    output_config?: { effort: "low" | "medium" | "high" };
+  } = {
     model: backend.deployment,
     system: request.system,
     messages: [{ role: "user", content: request.user }],
     max_tokens: request.maxTokens,
-    ...(request.temperature === undefined
-      ? {}
-      : { temperature: request.temperature }),
+    // Haiku 5.5 thinks adaptively by default, at `medium`, and thinking tokens
+    // count toward `max_tokens` — which every budget here was sized without,
+    // because Haiku 4.5 ran with thinking off. `low` is the closest match; a
+    // forced tool call skips thinking regardless. No `temperature`: Haiku 5.5
+    // rejects any non-default sampling parameter with a 400.
+    output_config: { effort: "low" },
     ...(tools
       ? {
           tools,
           tool_choice: { type: "tool" as const, name: request.tool!.name },
         }
       : {}),
-  });
+  };
+  const message = await client.messages.create(params);
+
+  // A safety-classifier decline is a successful HTTP call with no usable
+  // content. Surface it as a failure so nothing downstream saves an empty
+  // result as if it were the answer.
+  if (message.stop_reason === "refusal") {
+    throw new AIRequestError("AI declined the request (stop_reason: refusal).", {
+      provider: backend.provider,
+      requestId: requestIdFrom(message),
+    });
+  }
 
   return {
     provider: backend.provider,

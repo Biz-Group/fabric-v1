@@ -90,7 +90,6 @@ describe("conversation evidence V2 contract", () => {
     const built = request();
     expect(built).toMatchObject({
       capability: "synthesis",
-      temperature: 0,
       maxTokens: SUMMARY_V2_AI_BUDGETS.conversationEvidence.maxTokens,
       timeoutMs: SUMMARY_V2_AI_BUDGETS.conversationEvidence.timeoutMs,
       maxRetries: SUMMARY_V2_AI_BUDGETS.conversationEvidence.maxRetries,
@@ -215,7 +214,6 @@ describe("conversation evidence tool transport", () => {
       TOOL_PAYLOAD,
     );
     expect(body).toMatchObject({
-      temperature: 0,
       tool_choice: { type: "tool", name: CONVERSATION_EVIDENCE_V2_TOOL_NAME },
       tools: [
         {

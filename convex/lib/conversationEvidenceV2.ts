@@ -213,7 +213,6 @@ export function buildConversationEvidenceV2Request(args: {
     // A provider that is failing transport-wise already consumed its retries on
     // the first attempt; the next refresh picks the conversation up again.
     maxRetries: args.concise ? 0 : budget.maxRetries,
-    temperature: 0,
     tool: {
       name: CONVERSATION_EVIDENCE_V2_TOOL_NAME,
       description:

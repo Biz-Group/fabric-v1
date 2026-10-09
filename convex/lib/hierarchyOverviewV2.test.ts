@@ -161,7 +161,6 @@ describe("Hierarchy Overview V2 contracts", () => {
         maxTokens: SUMMARY_V2_AI_BUDGETS.hierarchyFinalReduce.maxTokens,
         timeoutMs: SUMMARY_V2_AI_BUDGETS.hierarchyFinalReduce.timeoutMs,
         maxRetries: SUMMARY_V2_AI_BUDGETS.hierarchyFinalReduce.maxRetries,
-        temperature: 0,
         tool: { name: toolName },
       });
     }

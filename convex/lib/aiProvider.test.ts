@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  AIRequestError,
   AITruncationError,
   FOUNDRY_CLAUDE_MODEL,
   FOUNDRY_SAFETY_MODEL,
@@ -47,7 +48,7 @@ async function observeRequest(
 function useFoundry(): void {
   process.env.FOUNDRY_ENDPOINT = "https://fabric-test.services.ai.azure.com/";
   process.env.FOUNDRY_API_KEY = "foundry-test-key";
-  process.env.FOUNDRY_CLAUDE_DEPLOYMENT = "fabric-claude-haiku-4-5";
+  process.env.FOUNDRY_CLAUDE_DEPLOYMENT = "fabric-claude-haiku-5-5";
 }
 
 function foundryClaudeResponse(options?: { outputTokens?: number }): Response {
@@ -56,7 +57,7 @@ function foundryClaudeResponse(options?: { outputTokens?: number }): Response {
       id: "msg_test",
       type: "message",
       role: "assistant",
-      model: "fabric-claude-haiku-4-5",
+      model: "fabric-claude-haiku-5-5",
       content: [{ type: "text", text: "Summary" }],
       stop_reason: "end_turn",
       stop_sequence: null,
@@ -96,7 +97,7 @@ describe("AI provider adapter", () => {
     process.env.FOUNDRY_ENDPOINT =
       "https://fabric-test.services.ai.azure.com/";
     process.env.FOUNDRY_API_KEY = "foundry-test-key";
-    process.env.FOUNDRY_CLAUDE_DEPLOYMENT = "fabric-claude-haiku-4-5";
+    process.env.FOUNDRY_CLAUDE_DEPLOYMENT = "fabric-claude-haiku-5-5";
 
     let observed: ObservedRequest | undefined;
     vi.stubGlobal(
@@ -108,7 +109,7 @@ describe("AI provider adapter", () => {
             id: "msg_test",
             type: "message",
             role: "assistant",
-            model: "fabric-claude-haiku-4-5",
+            model: "fabric-claude-haiku-5-5",
             content: [{ type: "text", text: "Generated summary" }],
             stop_reason: "end_turn",
             stop_sequence: null,
@@ -138,14 +139,17 @@ describe("AI provider adapter", () => {
     );
     expect(observed?.headers.get("x-api-key")).toBe("foundry-test-key");
     expect(observed?.body).toMatchObject({
-      model: "fabric-claude-haiku-4-5",
+      model: "fabric-claude-haiku-5-5",
       system: "System prompt",
       max_tokens: 8192,
+      output_config: { effort: "low" },
     });
+    // Haiku 5.5 rejects any non-default sampling parameter with a 400.
+    expect(observed?.body).not.toHaveProperty("temperature");
     expect(completion).toMatchObject({
       provider: "foundry-claude",
       model: FOUNDRY_CLAUDE_MODEL,
-      deployment: "fabric-claude-haiku-4-5",
+      deployment: "fabric-claude-haiku-5-5",
       text: "Generated summary",
       toolInput: null,
       finishReason: "end_turn",
@@ -241,6 +245,39 @@ describe("AI provider adapter", () => {
     });
   });
 
+  test("fails a Claude safety refusal instead of returning empty content", async () => {
+    useFoundry();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              id: "msg_refused",
+              type: "message",
+              role: "assistant",
+              model: "fabric-claude-haiku-5-5",
+              content: [],
+              stop_reason: "refusal",
+              stop_sequence: null,
+              usage: { input_tokens: 8, output_tokens: 0 },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+
+    await expect(
+      generateAICompletion({
+        capability: "synthesis",
+        operation: "adapter-test-refusal",
+        system: "System prompt",
+        user: "User prompt",
+        maxTokens: 100,
+      }),
+    ).rejects.toThrow(AIRequestError);
+  });
+
   test("honors a per-request maxRetries override (no retry on 429)", async () => {
     useFoundry();
 
@@ -273,22 +310,22 @@ describe("AI provider adapter", () => {
     vi.stubGlobal("fetch", vi.fn(async () => foundryClaudeResponse()));
     const warn = vi.spyOn(console, "warn");
 
-    // 8,192 tokens needs ~256 s at the worst measured rate; this call gets the
-    // default 120 s, whose ceiling is 3,770.
+    // 16,384 tokens needs ~182 s at the worst measured rate; this call gets the
+    // default 120 s, whose ceiling is 10,478.
     await generateAICompletion({
       capability: "synthesis",
       operation: "adapter-test-over-budget",
       system: "System prompt",
       user: "User prompt",
-      maxTokens: 8192,
+      maxTokens: 16_384,
     });
 
     expect(warnPayload(warn, "AI request exceeds its time budget")).toMatchObject({
       operation: "adapter-test-over-budget",
-      maxTokens: 8192,
+      maxTokens: 16_384,
       timeoutMs: 120_000,
-      maxTokensAtThisTimeout: 3770,
-      minTimeoutMsForTheseTokens: 256_062,
+      maxTokensAtThisTimeout: 10_478,
+      minTimeoutMsForTheseTokens: 182_164,
     });
   });
 
@@ -375,9 +412,9 @@ describe("AI provider adapter", () => {
 
 describe("AI time budget (P1)", () => {
   test("derives the ceilings the v3 plan documents", () => {
-    expect(maxTokensForTimeout(210_000)).toBe(6695);
-    expect(maxTokensForTimeout(150_000)).toBe(4745);
-    expect(maxTokensForTimeout(120_000)).toBe(3770);
+    expect(maxTokensForTimeout(210_000)).toBe(19_028);
+    expect(maxTokensForTimeout(150_000)).toBe(13_328);
+    expect(maxTokensForTimeout(120_000)).toBe(10_478);
   });
 
   test("every planned flow-stage budget satisfies the rule", () => {
@@ -386,7 +423,7 @@ describe("AI time budget (P1)", () => {
     // refreshed and a stage stops fitting, this fails here rather than in
     // production. Add each stage's real request builder as step 4 lands it.
     const stageBudgets = [
-      { stage: "graph pass", maxTokens: 6_144, timeoutMs: 210_000 },
+      { stage: "graph pass", maxTokens: 8_000, timeoutMs: 210_000 },
       { stage: "detail batch", maxTokens: 4_096, timeoutMs: 150_000 },
     ];
 
@@ -399,12 +436,12 @@ describe("AI time budget (P1)", () => {
   });
 
   test("flags the call sites that are over budget today", () => {
-    // The 450 s flow-generation stopgap (retired in step 4) and the
-    // 8,192-token synthesis calls left on the default timeout (step 2).
-    // Asserting the detector sees them keeps the known debt visible.
-    expect(isWithinTimeBudget(32_768, 450_000)).toBe(false);
-    expect(isWithinTimeBudget(8_192, 120_000)).toBe(false);
+    // Voice-recording analysis asks for 16,384 tokens on the default 120 s
+    // timeout. Haiku 5.5's throughput brought the 8,192-token synthesis calls
+    // inside budget; this one is still over. Asserting the detector sees it
+    // keeps the known debt visible.
     expect(isWithinTimeBudget(16_384, 120_000)).toBe(false);
+    expect(isWithinTimeBudget(8_192, 120_000)).toBe(true);
   });
 
   test("round-trips against minTimeoutMsForMaxTokens", () => {

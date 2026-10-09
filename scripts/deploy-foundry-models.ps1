@@ -148,7 +148,7 @@ $catalog = az cognitiveservices model list `
   -o json | ConvertFrom-Json
 Assert-AzSuccess "Read model catalog"
 
-Assert-Model $catalog "Anthropic" "claude-haiku-4-5" "2" "GlobalStandard"
+Assert-Model $catalog "Anthropic" "claude-haiku-5-5" "2" "GlobalStandard"
 Assert-Model $catalog "OpenAI" "gpt-5-nano" "2025-08-07" "GlobalStandard"
 Assert-Model $catalog "OpenAI" "gpt-5-mini" "2025-08-07" "GlobalStandard"
 
@@ -164,15 +164,15 @@ $existingDeployments = az cognitiveservices account deployment list `
   -o json | ConvertFrom-Json
 Assert-AzSuccess "Read existing deployments"
 
-$claudeQuota = (Get-Quota $usage "AIServices.GlobalStandard.claude-haiku-4-5.Azure") +
-  (Get-ExistingCapacity $existingDeployments "fabric-claude-haiku-4-5")
+$claudeQuota = (Get-Quota $usage "AIServices.GlobalStandard.claude-haiku-5-5.Azure") +
+  (Get-ExistingCapacity $existingDeployments "fabric-claude-haiku-5-5")
 $nanoQuota = (Get-Quota $usage "OpenAI.GlobalStandard.gpt-5-nano") +
   (Get-ExistingCapacity $existingDeployments "fabric-description-safety")
 $miniQuota = (Get-Quota $usage "OpenAI.GlobalStandard.gpt-5-mini") +
   (Get-ExistingCapacity $existingDeployments "fabric-gpt5-mini-fallback")
 
 if ($claudeQuota -lt $ClaudeCapacity) {
-  throw "Less than $ClaudeCapacity capacity units of Claude Haiku 4.5 quota are available."
+  throw "Less than $ClaudeCapacity capacity units of Claude Haiku 5.5 quota are available."
 }
 if ($nanoQuota -lt $SafetyCapacity) {
   throw "Less than $SafetyCapacity capacity units of GPT-5 nano quota are available."
@@ -185,7 +185,7 @@ Write-Host "Validated deployment target:"
 Write-Host "  Subscription: $SubscriptionId"
 Write-Host "  Resource:     $ResourceGroup/$AccountName"
 Write-Host "  Region:       $Location"
-Write-Host "  Claude:       claude-haiku-4-5 v2 / GlobalStandard / capacity $ClaudeCapacity"
+Write-Host "  Claude:       claude-haiku-5-5 v2 / GlobalStandard / capacity $ClaudeCapacity"
 Write-Host "  Safety:       gpt-5-nano 2025-08-07 / GlobalStandard / capacity $SafetyCapacity"
 Write-Host "  Fallback:     gpt-5-mini 2025-08-07 / GlobalStandard / capacity $FallbackCapacity"
 Write-Host "  Industry:     $Industry"
@@ -206,10 +206,10 @@ if (-not $tenantInfo.countryCode -or -not $tenantInfo.displayName) {
   throw "Azure tenant country code or organization name is unavailable."
 }
 
-Set-Deployment "fabric-claude-haiku-4-5" @{
+Set-Deployment "fabric-claude-haiku-5-5" @{
   sku = @{ name = "GlobalStandard"; capacity = $ClaudeCapacity }
   properties = @{
-    model = @{ format = "Anthropic"; name = "claude-haiku-4-5"; version = "2" }
+    model = @{ format = "Anthropic"; name = "claude-haiku-5-5"; version = "2" }
     modelProviderData = @{
       industry = $Industry
       countryCode = $tenantInfo.countryCode

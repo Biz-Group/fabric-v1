@@ -166,7 +166,6 @@ function buildRequest(args: {
     maxTokens: args.budget.maxTokens,
     timeoutMs: args.budget.timeoutMs,
     maxRetries: args.budget.maxRetries,
-    temperature: 0,
     tool: tool(),
   };
 }

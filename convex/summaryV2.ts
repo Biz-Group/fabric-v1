@@ -166,7 +166,7 @@ export function hierarchyOverviewMaxOutputTokens(): number {
  * value: the caps are per-item ceilings, and no real rollup fills five
  * sections with five 700-character findings each. Unlike evidence extraction,
  * a truncated rollup is not retried into a tightened prompt — the retry reuses
- * the same prompt at temperature 0 — so the headroom here is the only thing
+ * the same prompt — so the headroom here is the only thing
  * standing between a wide contract and a deterministic failure.
  */
 export const HIERARCHY_OVERVIEW_CAP_BUDGET_RATIO = 2;

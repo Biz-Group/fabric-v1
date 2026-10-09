@@ -205,7 +205,6 @@ export function buildSafetyAIRequest(description: string) {
     operation: "description-safety",
     system: SAFETY_SYSTEM_PROMPT,
     user: `Classify this description:\n\n<description>\n${description}\n</description>`,
-    temperature: 0,
     maxTokens: DESCRIPTION_SAFETY_MAX_TOKENS,
     timeoutMs: DESCRIPTION_SAFETY_TIMEOUT_MS,
     tool: {
