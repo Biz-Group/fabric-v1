@@ -16,7 +16,7 @@
  */
 
 /** Bump on any rate change. Rows record the version they were priced at. */
-export const PRICE_VERSION = "2026-08-04";
+export const PRICE_VERSION = "2026-10-08";
 
 /**
  * Recorded instead of a version when no rate is known for a model. Such rows
@@ -49,6 +49,15 @@ export type TokenRate = {
    * full input rate and once at the cached rate.
    */
   readonly inputIncludesCached: boolean;
+  /**
+   * A higher tier that reprices the WHOLE request — output included — once
+   * its prompt exceeds `aboveInputTokens`. The prompt is every input token,
+   * cached or not, as Anthropic counts it for tiered pricing.
+   */
+  readonly longContext?: {
+    readonly aboveInputTokens: number;
+    readonly rate: Omit<TokenRate, "inputIncludesCached" | "longContext">;
+  };
 };
 
 /**
@@ -59,8 +68,23 @@ export type TokenRate = {
 export const TOKEN_RATES: Readonly<Record<string, TokenRate>> = {
   // Claude on Microsoft Foundry bills at Anthropic's standard first-party API
   // rates through the Microsoft Marketplace — NOT at partner rates the way
-  // Bedrock and Vertex do. Haiku 4.5: $1.00 / $5.00 per MTok, cache reads
-  // ~0.1x, cache writes 1.25x (5-minute TTL).
+  // Bedrock and Vertex do. Haiku 5.5: $0.10 / $0.50 per MTok for prompts up to
+  // 100k tokens and $0.50 / $2.50 above, cache reads 0.1x, cache writes 1.25x
+  // (5-minute TTL).
+  "foundry-claude:foundry:claude-haiku-5-5@2": {
+    input: 0.1,
+    output: 0.5,
+    cachedRead: 0.01,
+    cacheWrite: 0.125,
+    inputIncludesCached: false,
+    longContext: {
+      aboveInputTokens: 100_000,
+      rate: { input: 0.5, output: 2.5, cachedRead: 0.05, cacheWrite: 0.625 },
+    },
+  },
+
+  // Haiku 4.5 (retired here 2026-10-08): $1.00 / $5.00 per MTok. Kept so rows
+  // written before the switch still resolve.
   "foundry-claude:foundry:claude-haiku-4-5@2": {
     input: 1.0,
     output: 5.0,
@@ -194,12 +218,17 @@ export function priceTokenUsage(
   const uncachedInput = rate.inputIncludesCached
     ? Math.max(0, reportedInput - cachedRead)
     : reportedInput;
+  const promptTokens = uncachedInput + cachedRead + cacheWrite;
+  const tier =
+    rate.longContext && promptTokens > rate.longContext.aboveInputTokens
+      ? rate.longContext.rate
+      : rate;
 
   const costMicroUsd = Math.round(
-    uncachedInput * rate.input +
-      cachedRead * rate.cachedRead +
-      cacheWrite * rate.cacheWrite +
-      finite(usage.outputTokens) * rate.output,
+    uncachedInput * tier.input +
+      cachedRead * tier.cachedRead +
+      cacheWrite * tier.cacheWrite +
+      finite(usage.outputTokens) * tier.output,
   );
 
   return { costMicroUsd, priceVersion: PRICE_VERSION };

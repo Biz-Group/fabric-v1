@@ -14,7 +14,13 @@ import type { AIJsonSchema } from "./aiProvider";
  * docs/process-flow-generation-v3-plan.md. The assertions live in tests.
  */
 
-export const GRAPH_MAX_TOKENS = 6144;
+/**
+ * Raised from 6,144 for Haiku 5.5, whose tokenizer counts the same text as
+ * ~30% more tokens: the graph pass's p95 on Haiku 4.5 was 4,935 tokens, which
+ * becomes ~6,400 — over the old cap. Still far inside the 210 s budget at the
+ * Haiku 5.5 throughput in MEASURED_THROUGHPUT.
+ */
+export const GRAPH_MAX_TOKENS = 8_000;
 export const GRAPH_TIMEOUT_MS = 210_000;
 export const GRAPH_MAX_RETRIES = 1;
 
@@ -227,7 +233,6 @@ export function buildGraphAIRequest(userContent: string) {
     operation: "process-flow-graph",
     system: GRAPH_SYSTEM_PROMPT,
     user: userContent,
-    temperature: 0,
     maxTokens: GRAPH_MAX_TOKENS,
     timeoutMs: GRAPH_TIMEOUT_MS,
     maxRetries: GRAPH_MAX_RETRIES,
@@ -319,7 +324,6 @@ export function buildNodeDetailsAIRequest(userContent: string) {
     operation: "process-flow-node-details",
     system: NODE_DETAILS_SYSTEM_PROMPT,
     user: userContent,
-    temperature: 0,
     maxTokens: NODE_DETAILS_MAX_TOKENS,
     timeoutMs: NODE_DETAILS_TIMEOUT_MS,
     maxRetries: NODE_DETAILS_MAX_RETRIES,
@@ -414,7 +418,6 @@ export function buildFlowInsightsAIRequest(userContent: string) {
     operation: "process-flow-automation-opportunities",
     system: INSIGHTS_SYSTEM_PROMPT,
     user: userContent,
-    temperature: 0,
     maxTokens: INSIGHTS_MAX_TOKENS,
     timeoutMs: INSIGHTS_TIMEOUT_MS,
     maxRetries: INSIGHTS_MAX_RETRIES,

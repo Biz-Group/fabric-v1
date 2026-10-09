@@ -77,14 +77,12 @@ describe("process overview V2 contract", () => {
       directSources: [SOURCE],
     });
     expect(chunk).toMatchObject({
-      temperature: 0,
       maxTokens: SUMMARY_V2_AI_BUDGETS.chunkReduce.maxTokens,
       timeoutMs: SUMMARY_V2_AI_BUDGETS.chunkReduce.timeoutMs,
       maxRetries: SUMMARY_V2_AI_BUDGETS.chunkReduce.maxRetries,
       tool: { name: PROCESS_OVERVIEW_V2_TOOL_NAME },
     });
     expect(final).toMatchObject({
-      temperature: 0,
       maxTokens: SUMMARY_V2_AI_BUDGETS.finalReduce.maxTokens,
       timeoutMs: SUMMARY_V2_AI_BUDGETS.finalReduce.timeoutMs,
       maxRetries: SUMMARY_V2_AI_BUDGETS.finalReduce.maxRetries,

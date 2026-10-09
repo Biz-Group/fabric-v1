@@ -1027,7 +1027,7 @@ export const updateConversationAnalysis = internalMutation({
 
 // ---------------------------------------------------------------------------
 // Internal action: regenerateProcessSummary
-// Incrementally builds a structured process summary using Claude Haiku 4.5.
+// Incrementally builds a structured process summary using Claude Haiku 5.5.
 // First conversation: full transcript → initial structured summary.
 // Subsequent: existing rolling summary + new transcript → updated summary.
 // forceRefresh: rebuilds from ALL transcripts (higher token cost).
@@ -1164,7 +1164,9 @@ function transcriptEvidence(
 // foundation of anything; it stays display-only. These records are ours.
 // ---------------------------------------------------------------------------
 
-const CONVERSATION_MAP_MAX_TOKENS = 1024;
+// Was 1,024 on Haiku 4.5, whose p95 here was 848 tokens. Haiku 5.5's tokenizer
+// counts the same text as ~30% more tokens, which would put p95 over that cap.
+const CONVERSATION_MAP_MAX_TOKENS = 1_536;
 const CONVERSATION_MAP_TIMEOUT_MS = 120_000;
 
 const CONVERSATION_MAP_SYSTEM_PROMPT = withUntrustedEvidenceBoundary(`You are extracting ONE employee's account of a business process into a compact structured record. This record will later be merged with other employees' records to build a single process brief, so it must be faithful to this account alone — never generalize, never invent steps to fill gaps, never smooth over uncertainty.

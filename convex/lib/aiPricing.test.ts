@@ -10,6 +10,7 @@ import {
 
 const FOUNDRY_CLAUDE = "foundry-claude";
 const CLAUDE_MODEL = "foundry:claude-haiku-4-5@2";
+const HAIKU_5_5_MODEL = "foundry:claude-haiku-5-5@2";
 const FOUNDRY_OPENAI = "foundry-openai";
 const NANO_MODEL = "foundry:gpt-5-nano@2025-08-07";
 
@@ -40,6 +41,30 @@ describe("token pricing", () => {
         cacheWriteTokens: 2_000,
       }).costMicroUsd,
     ).toBe(1_000 * 1 + 5_000 * 0.1 + 2_000 * 1.25 + 100 * 5);
+  });
+
+  test("prices Haiku 5.5 at its short-context rate up to 100k prompt tokens", () => {
+    // $0.10 in / $0.50 out per MTok: exactly 100,000 in + 2,000 out
+    // = $0.01 + $0.001 = 11,000 micro-USD.
+    expect(
+      priceTokenUsage(FOUNDRY_CLAUDE, HAIKU_5_5_MODEL, {
+        inputTokens: 100_000,
+        outputTokens: 2_000,
+      }),
+    ).toEqual({ costMicroUsd: 11_000, priceVersion: PRICE_VERSION });
+  });
+
+  test("reprices the whole Haiku 5.5 call once the prompt passes 100k", () => {
+    // Cache reads count toward the threshold: 90,000 uncached + 20,000 cached
+    // is a 110k prompt, so input, cache reads AND output all move to the
+    // $0.50 / $0.05 / $2.50 tier.
+    expect(
+      priceTokenUsage(FOUNDRY_CLAUDE, HAIKU_5_5_MODEL, {
+        inputTokens: 90_000,
+        outputTokens: 1_000,
+        cachedReadTokens: 20_000,
+      }).costMicroUsd,
+    ).toBe(Math.round(90_000 * 0.5 + 20_000 * 0.05 + 1_000 * 2.5));
   });
 
   test("subtracts cached tokens from input on the OpenAI convention", () => {
