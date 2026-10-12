@@ -89,7 +89,6 @@ export function useWorkspaceRoutes() {
   return useMemo(
     () => ({
       appHref: withWorkspacePath("/"),
-      firmHref: withWorkspacePath("/firm"),
       releaseNotesHref: withWorkspacePath("/release-notes"),
       adminHref: withWorkspacePath("/admin"),
       adminUsersHref: withWorkspacePath("/admin/users"),

@@ -599,10 +599,6 @@ export const remove = mutation({
       processId: args.processId,
       clerkOrgId: caller.orgId,
     });
-    await ctx.scheduler.runAfter(0, internal.firmMap.deleteForEntity, {
-      entity: { kind: "process", processId: args.processId },
-      clerkOrgId: caller.orgId,
-    });
     await ctx.db.delete(args.processId);
 
     // Clean up department summary

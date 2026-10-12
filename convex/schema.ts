@@ -149,34 +149,6 @@ export const flowNodeDetailFields = {
   sources: v.array(v.string()),
 };
 
-/**
- * Who a Firm view link connects the source process to. Ids, never names, so a
- * hierarchy rename needs no cascade; an outside party has no row of its own and
- * is keyed by its normalized name (see lib/firmLinks.ts).
- */
-export const firmCounterpartyValidator = v.union(
-  v.object({ kind: v.literal("function"), functionId: v.id("functions") }),
-  v.object({
-    kind: v.literal("department"),
-    departmentId: v.id("departments"),
-  }),
-  v.object({ kind: v.literal("process"), processId: v.id("processes") }),
-  v.object({ kind: v.literal("external"), name: v.string() }),
-);
-
-export const firmLinkReviewValidator = v.union(
-  v.literal("proposed"),
-  v.literal("confirmed"),
-  v.literal("rejected"),
-);
-
-export const firmProfileStatusValidator = v.union(
-  v.literal("queued"),
-  v.literal("resolving"),
-  v.literal("ready"),
-  v.literal("failed"),
-);
-
 const roleValidator = v.union(
   v.literal("admin"),
   v.literal("contributor"),
@@ -497,10 +469,6 @@ export default defineSchema({
     summaryV2LastRunState: v.optional(summaryRunStateValidator),
     summaryV2LastError: v.optional(summaryRunErrorValidator),
     summaryV2LastCompletedAt: v.optional(v.number()),
-    // The named accountable owner, shown on the Firm view. A membership rather
-    // than a user because a person's standing is per org (same reasoning as
-    // memberships.departmentId); a removed membership reads as unowned.
-    ownerMembershipId: v.optional(v.id("memberships")),
     clerkOrgId: v.string(),
   }).index("by_clerkOrgId_and_departmentId", ["clerkOrgId", "departmentId"]),
 
@@ -754,65 +722,6 @@ export default defineSchema({
       "generationId",
       "status",
     ]),
-
-  // Firm view: one row per link where work crosses a process's boundary, read
-  // from that process's flow and interview evidence. A child table because
-  // links are rewritten as a set on every resolution and fanned out by
-  // counterparty for cascades. See docs/firm-view-plan.md.
-  firmLinks: defineTable({
-    clerkOrgId: v.string(),
-    // The process whose evidence this link came from. One endpoint is always
-    // this process; `direction` says which end.
-    sourceProcessId: v.id("processes"),
-    direction: v.union(v.literal("outbound"), v.literal("inbound")),
-    counterparty: firmCounterpartyValidator,
-    // "process:<id>" | "department:<id>" | "function:<id>" |
-    // "external:<normalized name>" — what the cascade index matches on.
-    counterpartyKey: v.string(),
-    kind: v.union(v.literal("handoff"), v.literal("dependency")),
-    label: v.string(),
-    nodeIds: v.array(v.string()),
-    evidence: v.array(v.string()),
-    contributors: v.array(v.string()),
-    confidence: confidenceValidator,
-    origin: v.union(v.literal("ai"), v.literal("admin")),
-    // Curation state. Resolution only ever replaces "proposed" AI rows, so an
-    // admin's confirm or reject survives every regeneration.
-    review: firmLinkReviewValidator,
-    resolutionId: v.optional(v.string()),
-    reviewedBy: v.optional(v.id("users")),
-    reviewedAt: v.optional(v.number()),
-    updatedAt: v.number(),
-  })
-    .index("by_clerkOrgId", ["clerkOrgId"])
-    .index("by_clerkOrgId_and_sourceProcessId", [
-      "clerkOrgId",
-      "sourceProcessId",
-    ])
-    .index("by_clerkOrgId_and_counterpartyKey", [
-      "clerkOrgId",
-      "counterpartyKey",
-    ]),
-
-  // Firm view per-process resolution state plus the derived "who does the
-  // work" roles. Precomputed so the map query never reads node-detail rows.
-  firmProcessProfiles: defineTable({
-    clerkOrgId: v.string(),
-    processId: v.id("processes"),
-    status: firmProfileStatusValidator,
-    // Ownership token, as processFlows.generationId: a superseded run's save
-    // is recognised and dropped.
-    resolutionId: v.string(),
-    // The flow generation this was resolved from — staleness check.
-    flowGenerationId: v.optional(v.string()),
-    roles: v.array(v.object({ name: v.string(), stepCount: v.number() })),
-    linkCount: v.number(),
-    errorMessage: v.optional(v.string()),
-    resolvedAt: v.optional(v.number()),
-    lastProgressAt: v.number(),
-  })
-    .index("by_clerkOrgId_and_processId", ["clerkOrgId", "processId"])
-    .index("by_status_and_lastProgressAt", ["status", "lastProgressAt"]),
 
   // Durable orchestration state for Summary V2. `entity` is a strict union, so
   // a run can carry only the ID matching its discriminator. `entityKey` is the

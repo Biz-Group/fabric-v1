@@ -49,7 +49,6 @@ import {
   flowNodeDetailFields,
 } from "./schema";
 import { flowSummarySourceSnapshotValidator } from "./summaryV2";
-import { enqueueFirmResolution } from "./firmMap";
 
 // ---------------------------------------------------------------------------
 // Response parsing shared by both generation stages.
@@ -1028,14 +1027,6 @@ export const finalizeNodeDetails = internalMutation({
           ? undefined
           : `${failed + unfinished} of ${rows.length} steps could not be described.`,
       lastProgressAt: Date.now(),
-    });
-
-    // The flow is final, so the Firm view can read this process's handoffs
-    // from it. Its own stage and its own failure state: a failed resolution
-    // never touches the flow.
-    await enqueueFirmResolution(ctx, {
-      clerkOrgId: args.clerkOrgId,
-      processId: flow.processId,
     });
   },
 });

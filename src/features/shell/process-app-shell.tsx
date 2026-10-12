@@ -12,7 +12,6 @@ import {
 import {
   Menu,
   Megaphone,
-  Network,
   PanelLeft,
   PanelLeftClose,
   Search,
@@ -33,7 +32,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { AlphaBadge } from "@/features/shell/alpha-badge";
 import { ProductTourButton } from "@/features/shell/product-tour";
 import { UserMenu } from "@/features/shell/user-menu";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
@@ -54,8 +52,6 @@ type WorkspaceAppShellProps = {
   mainClassName?: string;
   onSearch?: () => void;
   title?: string;
-  /** Rendered beside the title, e.g. an <AlphaBadge />. */
-  titleBadge?: ReactNode;
   navSections?: WorkspaceNavSection[];
   /** Extra controls rendered in the top bar, just before the user menu. */
   headerActions?: ReactNode;
@@ -70,8 +66,6 @@ export type WorkspaceNavItem = {
   label: string;
   active?: boolean;
   visible?: boolean;
-  /** Marks the item as an early preview with an "Alpha" tag. */
-  alpha?: boolean;
 };
 
 export type WorkspaceNavSection = {
@@ -233,9 +227,7 @@ function WorkspaceNav({
                   >
                     <Icon className="size-4 shrink-0" />
                   </TooltipTrigger>
-                  <TooltipContent side="right">
-                    {item.alpha ? `${item.label} (Alpha)` : item.label}
-                  </TooltipContent>
+                  <TooltipContent side="right">{item.label}</TooltipContent>
                 </Tooltip>
               );
             }
@@ -250,9 +242,6 @@ function WorkspaceNav({
               >
                 <Icon className="size-4 shrink-0" />
                 <span className="truncate">{item.label}</span>
-                {item.alpha && (
-                  <AlphaBadge side="right" className="ml-auto" />
-                )}
               </Link>
             );
           })}
@@ -371,13 +360,11 @@ function TopBar({
   onSearch,
   onOpenNav,
   title,
-  titleBadge,
   actions,
 }: {
   onSearch?: () => void;
   onOpenNav: () => void;
   title?: string;
-  titleBadge?: ReactNode;
   actions?: ReactNode;
 }) {
   return (
@@ -403,12 +390,9 @@ function TopBar({
         {onSearch ? (
           <SearchTrigger onSearch={onSearch} />
         ) : (
-          <div className="flex min-w-0 items-center gap-2">
-            <h1 className="truncate text-sm font-medium text-foreground">
-              {title}
-            </h1>
-            {titleBadge}
-          </div>
+          <h1 className="truncate text-sm font-medium text-foreground">
+            {title}
+          </h1>
         )}
       </div>
       {actions}
@@ -423,7 +407,6 @@ export function WorkspaceAppShell({
   onSearch,
   title,
   navSections = [],
-  titleBadge,
   headerActions,
 }: WorkspaceAppShellProps) {
   const { organization } = useOrganization();
@@ -452,13 +435,6 @@ export function WorkspaceAppShell({
           icon: Workflow,
           label: "Processes",
           active: routes.isActivePath("/", { exact: true }),
-        },
-        {
-          href: routes.firmHref,
-          icon: Network,
-          label: "Firm view",
-          active: routes.isActivePath("/firm"),
-          alpha: true,
         },
         {
           href: routes.releaseNotesHref,
@@ -499,7 +475,6 @@ export function WorkspaceAppShell({
           onSearch={onSearch}
           onOpenNav={() => setMobileNavOpen(true)}
           title={title}
-          titleBadge={titleBadge}
           actions={headerActions}
         />
         <main

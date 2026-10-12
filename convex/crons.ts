@@ -30,15 +30,6 @@ crons.interval(
   {},
 );
 
-// Firm view link resolution is one scheduled action per process; one killed
-// mid-call would otherwise show as "in progress" on the map forever.
-crons.interval(
-  "reap stuck firm link resolutions",
-  { minutes: 5 },
-  internal.firmMap.reapStuckFirmResolutions,
-  {},
-);
-
 // Ships dev-deployment AI usage rows to the prod sink so the platform console
 // can show one merged view. A no-op on the sink itself (USAGE_SINK_URL unset).
 // Deliberately not inline with the AI call: a cross-deployment request on the

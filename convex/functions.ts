@@ -167,10 +167,6 @@ export const remove = mutation({
         clerkOrgId: caller.orgId,
       },
     );
-    await ctx.scheduler.runAfter(0, internal.firmMap.deleteForEntity, {
-      entity: { kind: "function", functionId: args.functionId },
-      clerkOrgId: caller.orgId,
-    });
     await ctx.db.delete(args.functionId);
   },
 });
