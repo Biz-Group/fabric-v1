@@ -406,6 +406,21 @@ function errorRequestId(error: unknown): string | null {
   return requestIdFrom(error);
 }
 
+/**
+ * The provider's own explanation of a rejected request — for a 4xx it is the
+ * only thing that says *what* was wrong ("prompt is too long", a content-filter
+ * category, an invalid schema). Bounded, because it is log output; provider
+ * error bodies describe the request, they do not echo the prompt.
+ */
+const ERROR_MESSAGE_LOG_CHARS = 600;
+
+function errorMessage(error: unknown): string | undefined {
+  if (!(error instanceof Error) || !error.message) return undefined;
+  return error.message.length > ERROR_MESSAGE_LOG_CHARS
+    ? `${error.message.slice(0, ERROR_MESSAGE_LOG_CHARS)}…`
+    : error.message;
+}
+
 function logFailure(
   request: AIRequest,
   backend: ResolvedAIBackend,
@@ -421,6 +436,7 @@ function logFailure(
     status: errorStatus(error),
     requestId: errorRequestId(error),
     errorType: error instanceof Error ? error.name : "UnknownError",
+    message: errorMessage(error),
   });
 }
 

@@ -14,6 +14,7 @@ import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
 import type * as departments from "../departments.js";
 import type * as descriptionSafety from "../descriptionSafety.js";
+import type * as firmMap from "../firmMap.js";
 import type * as functions from "../functions.js";
 import type * as hierarchy from "../hierarchy.js";
 import type * as hierarchySummaryV2 from "../hierarchySummaryV2.js";
@@ -34,6 +35,7 @@ import type * as lib_conversationPipelines from "../lib/conversationPipelines.js
 import type * as lib_conversationTitle from "../lib/conversationTitle.js";
 import type * as lib_elevenLabsCharging from "../lib/elevenLabsCharging.js";
 import type * as lib_elevenLabsConversation from "../lib/elevenLabsConversation.js";
+import type * as lib_firmLinks from "../lib/firmLinks.js";
 import type * as lib_flowQuality from "../lib/flowQuality.js";
 import type * as lib_flowStages from "../lib/flowStages.js";
 import type * as lib_hierarchyOverviewV2 from "../lib/hierarchyOverviewV2.js";
@@ -78,6 +80,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   departments: typeof departments;
   descriptionSafety: typeof descriptionSafety;
+  firmMap: typeof firmMap;
   functions: typeof functions;
   hierarchy: typeof hierarchy;
   hierarchySummaryV2: typeof hierarchySummaryV2;
@@ -98,6 +101,7 @@ declare const fullApi: ApiFromModules<{
   "lib/conversationTitle": typeof lib_conversationTitle;
   "lib/elevenLabsCharging": typeof lib_elevenLabsCharging;
   "lib/elevenLabsConversation": typeof lib_elevenLabsConversation;
+  "lib/firmLinks": typeof lib_firmLinks;
   "lib/flowQuality": typeof lib_flowQuality;
   "lib/flowStages": typeof lib_flowStages;
   "lib/hierarchyOverviewV2": typeof lib_hierarchyOverviewV2;

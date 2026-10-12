@@ -398,6 +398,10 @@ export const remove = mutation({
         clerkOrgId: caller.orgId,
       },
     );
+    await ctx.scheduler.runAfter(0, internal.firmMap.deleteForEntity, {
+      entity: { kind: "department", departmentId: args.departmentId },
+      clerkOrgId: caller.orgId,
+    });
     await ctx.db.delete(args.departmentId);
     // Members placed here fall back to "unset" and are asked again on their
     // next visit. Members are not children of a department, so they never
