@@ -7,6 +7,7 @@ import {
   isElevenLabsConversationId,
 } from "./lib/elevenLabsConversation";
 import { verifyAudioPlaybackToken } from "./lib/audioPlaybackToken";
+import { parseByteRange, sliceByteStream } from "./lib/audioRange";
 
 function base64ToBytes(value: string): ArrayBuffer | null {
   try {
@@ -161,46 +162,61 @@ function withCors(
   return headers;
 }
 
-function audioResponse(
+const AUDIO_HEADERS = {
+  "Cache-Control": "private, no-store",
+  "Referrer-Policy": "no-referrer",
+};
+
+/** Error reply that still carries CORS headers, so the browser reports the
+ * real status instead of a misleading "blocked by CORS policy". */
+function audioError(req: Request, message: string, status: number): Response {
+  return new Response(message, {
+    status,
+    headers: withCors(req, { ...AUDIO_HEADERS }),
+  });
+}
+
+/**
+ * Serves audio honouring the request's `Range` header without ever holding the
+ * whole file: HTTP actions get 64 MiB of memory, and buffering a long
+ * interview (once, plus a copy for the range) ran out of it. A storage Blob is
+ * sliced lazily; an upstream stream is cut down to the range as it flows.
+ */
+function rangedAudioResponse(
   req: Request,
-  audioBytes: ArrayBuffer,
+  body: Blob | ReadableStream<Uint8Array>,
+  totalSize: number | null,
   contentType: string,
-) {
-  const totalSize = audioBytes.byteLength;
-  const rangeHeader = req.headers.get("Range");
-
-  if (rangeHeader) {
-    const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
-    if (match) {
-      const start = parseInt(match[1], 10);
-      const end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
-      const boundedEnd = Math.min(end, totalSize - 1);
-      const chunk = audioBytes.slice(start, boundedEnd + 1);
-
-      return new Response(chunk, {
-        status: 206,
-        headers: withCors(req, {
-          "Content-Type": contentType,
-          "Content-Length": chunk.byteLength.toString(),
-          "Content-Range": `bytes ${start}-${boundedEnd}/${totalSize}`,
-          "Accept-Ranges": "bytes",
-          "Cache-Control": "private, no-store",
-          "Referrer-Policy": "no-referrer",
-        }),
-      });
-    }
+): Response {
+  const headers: Record<string, string> = {
+    "Content-Type": contentType,
+    ...AUDIO_HEADERS,
+  };
+  if (totalSize === null) {
+    // Size unknown: ranges can't be honoured, so stream the whole file.
+    return new Response(body, { status: 200, headers: withCors(req, headers) });
   }
 
-  return new Response(audioBytes, {
-    status: 200,
-    headers: withCors(req, {
-      "Content-Type": contentType,
-      "Content-Length": totalSize.toString(),
-      "Accept-Ranges": "bytes",
-      "Cache-Control": "private, no-store",
-      "Referrer-Policy": "no-referrer",
-    }),
-  });
+  const range = parseByteRange(req.headers.get("Range"), totalSize);
+  if (range === "unsatisfiable") {
+    if (!(body instanceof Blob)) void body.cancel();
+    headers["Content-Range"] = `bytes */${totalSize}`;
+    return new Response(null, { status: 416, headers: withCors(req, headers) });
+  }
+
+  headers["Accept-Ranges"] = "bytes";
+  if (range === null) {
+    headers["Content-Length"] = String(totalSize);
+    return new Response(body, { status: 200, headers: withCors(req, headers) });
+  }
+
+  headers["Content-Length"] = String(range.end - range.start + 1);
+  headers["Content-Range"] = `bytes ${range.start}-${range.end}/${totalSize}`;
+  const partial =
+    body instanceof Blob
+      ? body.slice(range.start, range.end + 1)
+      : sliceByteStream(body, range);
+  return new Response(partial, { status: 206, headers: withCors(req, headers) });
 }
 
 // Audio endpoint: serves a Fabric conversation's replay audio. Agent
@@ -216,7 +232,7 @@ http.route({
     const suffix = url.pathname.replace(/^\/audio\//, "");
     const slashIdx = suffix.indexOf("/");
     if (slashIdx <= 0 || slashIdx === suffix.length - 1) {
-      return new Response("Missing org or conversation ID", { status: 400 });
+      return audioError(req, "Missing org or conversation ID", 400);
     }
     const clerkOrgId = suffix.substring(0, slashIdx);
     const conversationId = suffix.substring(slashIdx + 1) as Id<"conversations">;
@@ -233,12 +249,12 @@ http.route({
       !Number.isFinite(exp) ||
       exp < Date.now()
     ) {
-      return new Response("Not found", { status: 404 });
+      return audioError(req, "Not found", 404);
     }
     const membershipId = membershipIdParam as Id<"memberships">;
     const signingSecret = process.env.AUDIO_SIGNING_SECRET;
     if (!signingSecret) {
-      return new Response("Server configuration error", { status: 500 });
+      return audioError(req, "Server configuration error", 500);
     }
     const sigOk = await verifyAudioPlaybackToken(
       signingSecret,
@@ -251,7 +267,7 @@ http.route({
       sig,
     );
     if (!sigOk) {
-      return new Response("Not found", { status: 404 });
+      return audioError(req, "Not found", 404);
     }
 
     let source:
@@ -272,46 +288,95 @@ http.route({
         membershipId,
       });
     } catch {
-      return new Response("Not found", { status: 404 });
+      return audioError(req, "Not found", 404);
     }
 
     if (!source) {
-      return new Response("Not found", { status: 404 });
+      return audioError(req, "Not found", 404);
     }
 
     if (source.inputMode !== "agent") {
       const blob = await ctx.storage.get(source.audioStorageId);
-      if (!blob) return new Response("Audio not available", { status: 404 });
-      const audioBytes = await blob.arrayBuffer();
-      return audioResponse(
+      if (!blob) return audioError(req, "Audio not available", 404);
+      return rangedAudioResponse(
         req,
-        audioBytes,
+        blob,
+        blob.size,
         source.audioMimeType || blob.type || "audio/webm",
       );
     }
 
     const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
-      return new Response("Server configuration error", { status: 500 });
+      return audioError(req, "Server configuration error", 500);
     }
 
     if (!isElevenLabsConversationId(source.elevenlabsConversationId)) {
-      return new Response("Audio not available", { status: 404 });
+      return audioError(req, "Audio not available", 404);
     }
 
-    const elevenLabsUrl = buildElevenLabsConversationUrl(
-      source.elevenlabsConversationId,
-      "audio",
+    // Forward the browser's Range so ElevenLabs can serve just that part; if
+    // it ignores the header, `rangedAudioResponse` cuts the range out of the
+    // stream instead.
+    const rangeHeader = req.headers.get("Range");
+    const upstream = await fetch(
+      buildElevenLabsConversationUrl(source.elevenlabsConversationId, "audio"),
+      {
+        headers: {
+          "xi-api-key": apiKey,
+          ...(rangeHeader ? { Range: rangeHeader } : {}),
+        },
+      },
     );
-    const upstream = await fetch(elevenLabsUrl, {
-      headers: { "xi-api-key": apiKey },
-    });
-    if (!upstream.ok) {
-      return new Response("Audio not available", { status: upstream.status });
+    const upstreamType = upstream.headers.get("content-type") ?? "";
+    const contentType = upstreamType.startsWith("audio/")
+      ? upstreamType
+      : "audio/mpeg";
+
+    if (upstream.status === 206 && upstream.body) {
+      // ElevenLabs honoured the range itself: relay it as-is.
+      const headers: Record<string, string> = {
+        "Content-Type": contentType,
+        "Accept-Ranges": "bytes",
+        ...AUDIO_HEADERS,
+      };
+      const contentRange = upstream.headers.get("content-range");
+      const contentLength = upstream.headers.get("content-length");
+      if (contentRange) headers["Content-Range"] = contentRange;
+      if (contentLength) headers["Content-Length"] = contentLength;
+      return new Response(upstream.body, {
+        status: 206,
+        headers: withCors(req, headers),
+      });
+    }
+    if (upstream.status === 416) {
+      const contentRange = upstream.headers.get("content-range");
+      return new Response(null, {
+        status: 416,
+        headers: withCors(req, {
+          ...AUDIO_HEADERS,
+          ...(contentRange ? { "Content-Range": contentRange } : {}),
+        }),
+      });
+    }
+    if (!upstream.ok || !upstream.body) {
+      return audioError(
+        req,
+        "Audio not available",
+        upstream.status === 404 ? 404 : 502,
+      );
     }
 
-    const audioBytes = await upstream.arrayBuffer();
-    return audioResponse(req, audioBytes, "audio/mpeg");
+    // A compressed transfer's Content-Length isn't the audio's byte length.
+    const encoding = upstream.headers.get("content-encoding");
+    const length = Number(upstream.headers.get("content-length"));
+    const totalSize =
+      (!encoding || encoding === "identity") &&
+      Number.isFinite(length) &&
+      length > 0
+        ? length
+        : null;
+    return rangedAudioResponse(req, upstream.body, totalSize, contentType);
   }),
 });
 

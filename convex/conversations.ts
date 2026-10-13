@@ -16,6 +16,7 @@ import {
   requireOrgMember,
   resolveOrgForAction,
 } from "./lib/orgAuth";
+import { authError } from "./lib/authErrors";
 import { conversationTitle } from "./lib/conversationTitle";
 
 const DEFAULT_COMPACT_CONVERSATION_LIMIT = 50;
@@ -438,7 +439,7 @@ export const getFailedForRetry = internalQuery({
       !isActiveMembership(callerMembership) ||
       callerMembership.role !== "admin"
     ) {
-      throw new Error("Insufficient permissions");
+      throw authError("INSUFFICIENT_ROLE", "Insufficient permissions");
     }
 
     const conv = await ctx.db.get(args.conversationId);

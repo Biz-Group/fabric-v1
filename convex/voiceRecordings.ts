@@ -18,6 +18,7 @@ import {
   requireOrgContributor,
   resolveOrgForAction,
 } from "./lib/orgAuth";
+import { authError } from "./lib/authErrors";
 import {
   isAIConfigured,
   isTokenLimitFinishReason,
@@ -1260,7 +1261,7 @@ export const abandonVoiceRecording = mutation({
     if (!conv) return;
     assertOrgOwns(caller, conv);
     if (caller.role !== "admin" && conv.userId !== caller.userId) {
-      throw new Error("Insufficient permissions");
+      throw authError("INSUFFICIENT_ROLE", "Insufficient permissions");
     }
     if (conv.status === "done") return;
     const mode = conv.inputMode ?? "agent";

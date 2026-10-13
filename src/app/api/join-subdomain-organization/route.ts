@@ -1,4 +1,8 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import {
+  auth,
+  clerkClient,
+  type Organization,
+} from "@clerk/nextjs/server";
 import { fetchQuery } from "convex/nextjs";
 import { NextResponse, type NextRequest } from "next/server";
 import { getTenantSubdomain } from "@/lib/subdomain";
@@ -141,36 +145,30 @@ function logBlockedJoin(details: {
 // The Fabric app role still comes from Convex (`membershipIntents` when an
 // admin invited them, `contributor` otherwise); Clerk membership only grants
 // entry to the workspace shell.
-export async function POST(req: NextRequest) {
-  if (!isSameOriginPost(req)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
 
-  const slug = getTenantSubdomain(req.headers.get("host"), ROOT_DOMAIN);
-  if (!slug) {
-    return NextResponse.json(
-      { error: "A workspace subdomain is required." },
-      { status: 400 },
-    );
-  }
+type JoinDecision =
+  | { kind: "member"; organization: Organization }
+  | { kind: "eligible"; organization: Organization }
+  | { kind: "refused"; status: number; reason: string; error: string };
 
-  const { userId, getToken } = await auth({
-    treatPendingAsSignedOut: false,
-  });
-  if (!userId) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
+type Caller = Awaited<ReturnType<typeof auth>> & { userId: string };
 
-  const client = await clerkClient();
-  let organization;
+/** Applies the enrollment policy without changing anything. */
+async function decideJoin(
+  client: Awaited<ReturnType<typeof clerkClient>>,
+  slug: string,
+  { userId, getToken }: Caller,
+): Promise<JoinDecision> {
+  let organization: Organization;
   try {
     organization = await client.organizations.getOrganization({ slug });
   } catch {
-    logBlockedJoin({ slug, userId, reason: "organization_not_found" });
-    return NextResponse.json(
-      { error: "Workspace not found for this subdomain." },
-      { status: 404 },
-    );
+    return {
+      kind: "refused",
+      status: 404,
+      reason: "organization_not_found",
+      error: "Workspace not found for this subdomain.",
+    };
   }
 
   const targetMembership =
@@ -179,86 +177,153 @@ export async function POST(req: NextRequest) {
       userId: [userId],
       limit: 1,
     });
+  if (targetMembership.data.length > 0) return { kind: "member", organization };
 
-  if (targetMembership.data.length === 0) {
-    const user = await client.users.getUser(userId);
-    if (user.banned || user.locked) {
-      logBlockedJoin({ slug, userId, reason: "banned_or_locked" });
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const user = await client.users.getUser(userId);
+  if (user.banned || user.locked) {
+    return {
+      kind: "refused",
+      status: 403,
+      reason: "banned_or_locked",
+      error: "Your account can't join this workspace. Contact a workspace admin.",
+    };
+  }
+
+  const verifiedEmails = getVerifiedEmails(user);
+  if (verifiedEmails.length === 0) {
+    return {
+      kind: "refused",
+      status: 403,
+      reason: "no_verified_email",
+      error: "Verify your email before joining this workspace.",
+    };
+  }
+
+  const allowedDomains = new Set(allowedDomainsFromOrg(organization));
+  const domainAllowed = verifiedEmails.some((email) => {
+    const domain = emailDomain(email);
+    return domain !== null && allowedDomains.has(domain);
+  });
+
+  if (!domainAllowed) {
+    const invited = await hasPendingInvitationFor(
+      client,
+      organization.id,
+      verifiedEmails,
+    );
+    if (!invited) {
+      return {
+        kind: "refused",
+        status: 403,
+        reason: "email_domain_not_allowed",
+        error:
+          "This workspace is limited to approved email domains. Sign up with your work email, or ask a workspace admin to invite you.",
+      };
     }
+  }
 
-    const verifiedEmails = getVerifiedEmails(user);
-    if (verifiedEmails.length === 0) {
-      logBlockedJoin({ slug, userId, reason: "no_verified_email" });
-      return NextResponse.json(
-        { error: "Verify your email before joining this workspace." },
-        { status: 403 },
-      );
-    }
-
-    const allowedDomains = new Set(allowedDomainsFromOrg(organization));
-    const domainAllowed = verifiedEmails.some((email) => {
-      const domain = emailDomain(email);
-      return domain !== null && allowedDomains.has(domain);
-    });
-
-    if (!domainAllowed) {
-      const invited = await hasPendingInvitationFor(
-        client,
-        organization.id,
-        verifiedEmails,
-      );
-      if (!invited) {
-        logBlockedJoin({ slug, userId, reason: "email_domain_not_allowed" });
-        return NextResponse.json(
-          {
-            error:
-              "This workspace is limited to approved email domains. Sign up with your work email, or ask a workspace admin to invite you.",
-          },
-          { status: 403 },
-        );
-      }
-    }
-
-    // A member an admin removed stays out until re-invited, even though their
-    // email domain still matches. Convex enforces that on its own (`store`
-    // and the membership webhook refuse a removed member), so this check is
-    // for a clear answer and to avoid spending a Clerk seat. If the status
-    // can't be read, fall through and let Convex decide.
-    let blocked = false;
-    try {
-      const token = await getToken({ template: "convex" });
-      if (token) {
-        ({ blocked } = await fetchQuery(
-          api.users.getMyJoinStatus,
-          { clerkOrgId: organization.id },
-          { token },
-        ));
-      } else {
-        console.warn(
-          `[join-subdomain-organization] no Convex token: ${JSON.stringify({ slug, userId })}`,
-        );
-      }
-    } catch (error) {
+  // A member an admin removed stays out until re-invited, even though their
+  // email domain still matches. Convex enforces that on its own (`store`
+  // and the membership webhook refuse a removed member), so this check is
+  // for a clear answer and to avoid spending a Clerk seat. If the status
+  // can't be read, fall through and let Convex decide.
+  let blocked = false;
+  try {
+    const token = await getToken({ template: "convex" });
+    if (token) {
+      ({ blocked } = await fetchQuery(
+        api.users.getMyJoinStatus,
+        { clerkOrgId: organization.id },
+        { token },
+      ));
+    } else {
       console.warn(
-        `[join-subdomain-organization] join status unavailable: ${JSON.stringify({
-          slug,
-          userId,
-          errorType: error instanceof Error ? error.name : "UnknownError",
-        })}`,
+        `[join-subdomain-organization] no Convex token: ${JSON.stringify({ slug, userId })}`,
       );
     }
-    if (blocked) {
-      logBlockedJoin({ slug, userId, reason: "removed_by_admin" });
-      return NextResponse.json(
-        {
-          error:
-            "Your access to this workspace was removed. Ask a workspace admin to invite you again.",
-        },
-        { status: 403 },
-      );
-    }
+  } catch (error) {
+    console.warn(
+      `[join-subdomain-organization] join status unavailable: ${JSON.stringify({
+        slug,
+        userId,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      })}`,
+    );
+  }
+  if (blocked) {
+    return {
+      kind: "refused",
+      status: 403,
+      reason: "removed_by_admin",
+      error:
+        "Your access to this workspace was removed. Ask a workspace admin to invite you again.",
+    };
+  }
 
+  return { kind: "eligible", organization };
+}
+
+async function resolveCaller(
+  req: NextRequest,
+): Promise<{ slug: string; caller: Caller } | NextResponse> {
+  const slug = getTenantSubdomain(req.headers.get("host"), ROOT_DOMAIN);
+  if (!slug) {
+    return NextResponse.json(
+      { error: "A workspace subdomain is required." },
+      { status: 400 },
+    );
+  }
+
+  const session = await auth({ treatPendingAsSignedOut: false });
+  if (!session.userId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+  return { slug, caller: session as Caller };
+}
+
+/**
+ * Pre-check for the "Join this workspace" button: whether joining would
+ * succeed, and if not, the reason to show instead. Changes nothing.
+ */
+export async function GET(req: NextRequest) {
+  const resolved = await resolveCaller(req);
+  if (resolved instanceof NextResponse) return resolved;
+
+  const decision = await decideJoin(
+    await clerkClient(),
+    resolved.slug,
+    resolved.caller,
+  );
+  return NextResponse.json(
+    decision.kind === "refused"
+      ? { eligible: false, error: decision.error }
+      : { eligible: true },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
+}
+
+export async function POST(req: NextRequest) {
+  if (!isSameOriginPost(req)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const resolved = await resolveCaller(req);
+  if (resolved instanceof NextResponse) return resolved;
+  const { slug, caller } = resolved;
+  const { userId } = caller;
+
+  const client = await clerkClient();
+  const decision = await decideJoin(client, slug, caller);
+  if (decision.kind === "refused") {
+    logBlockedJoin({ slug, userId, reason: decision.reason });
+    return NextResponse.json(
+      { error: decision.error },
+      { status: decision.status },
+    );
+  }
+
+  const { organization } = decision;
+  if (decision.kind === "eligible") {
     try {
       await client.organizations.createOrganizationMembership({
         organizationId: organization.id,

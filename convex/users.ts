@@ -22,6 +22,7 @@ import {
   requireOrgMember,
   resolveOrgForAction,
 } from "./lib/orgAuth";
+import { authError } from "./lib/authErrors";
 import {
   clerkFetch,
   clerkUserIdFromTokenIdentifier,
@@ -1231,7 +1232,7 @@ export const beginMemberRemoval = internalMutation({
       !isActiveMembership(callerMembership) ||
       callerMembership.role !== "admin"
     ) {
-      throw new Error("Insufficient permissions");
+      throw authError("INSUFFICIENT_ROLE", "Insufficient permissions");
     }
 
     const target = await ctx.db.get(args.membershipId);

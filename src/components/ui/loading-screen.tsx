@@ -13,6 +13,7 @@ function LoadingScreen({
   message = "Loading...",
   fullScreen = true,
   showSpinner = true,
+  children,
   ...props
 }: LoadingScreenProps) {
   return (
@@ -33,6 +34,7 @@ function LoadingScreen({
         />
       )}
       <p className="text-sm text-muted-foreground">{message}</p>
+      {children}
     </div>
   )
 }

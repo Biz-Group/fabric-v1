@@ -1,10 +1,15 @@
 "use client";
 
-import { useAuth, useClerk } from "@clerk/nextjs";
+import { useAuth, useClerk, useUser } from "@clerk/nextjs";
 import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../../convex/_generated/api";
+import { getTenantSubdomain } from "@/lib/subdomain";
+import { offerPasskeyAfterSignIn } from "./passkey-offer";
+import { clearReturnPath, readReturnPath, signInUrlFor } from "./return-path";
+
+const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "";
 
 type JoinResponse = {
   organizationId: string;
@@ -40,6 +45,7 @@ export function JoinSubdomainOrganization() {
   const { isLoaded, orgId, userId } = useAuth({
     treatPendingAsSignedOut: false,
   });
+  const { isLoaded: userLoaded, user } = useUser();
   const syncFabricProfile = useAction(api.users.syncCurrentUserFromClerk);
   const storeUser = useMutation(api.users.store);
   const { isAuthenticated: convexAuthenticated } = useConvexAuth();
@@ -52,17 +58,46 @@ export function JoinSubdomainOrganization() {
     string | null
   >(null);
 
+  // Leaves for the page the user originally asked for, or the workspace home.
+  const finish = useCallback(() => {
+    const destination = readReturnPath();
+    clearReturnPath();
+    offerPasskeyAfterSignIn();
+    router.replace(destination);
+    router.refresh();
+  }, [router]);
+
   useEffect(() => {
-    if (!isLoaded || hasStarted.current) return;
+    if (!isLoaded || !userLoaded || hasStarted.current) return;
 
     if (!userId) {
-      router.replace("/sign-in");
+      router.replace(signInUrlFor(readReturnPath()));
       return;
     }
 
     hasStarted.current = true;
 
+    // Most sign-ins are by people who already belong to this workspace.
+    // Activating it is all they need: the workspace provisions their Fabric
+    // profile from the session on arrival. So skip the join API's Clerk
+    // lookups and the profile sync. A stale or incomplete membership list only
+    // costs the full path below, which handles existing members too.
+    const slug = getTenantSubdomain(window.location.host, ROOT_DOMAIN);
+    const existingOrgId = user?.organizationMemberships.find(
+      (membership) => membership.organization.slug === slug,
+    )?.organization.id;
+
     async function joinOrganization() {
+      if (existingOrgId) {
+        // A pending session must be activated before leaving: the proxy
+        // treats it as signed out and would bounce straight back here.
+        if (orgId !== existingOrgId) {
+          await setActive({ organization: existingOrgId });
+        }
+        finish();
+        return;
+      }
+
       const response = await fetch("/api/join-subdomain-organization", {
         method: "POST",
         cache: "no-store",
@@ -84,7 +119,17 @@ export function JoinSubdomainOrganization() {
           : "We could not join this workspace. Please try again.",
       );
     });
-  }, [isLoaded, router, setActive, userId, retryKey]);
+  }, [
+    isLoaded,
+    userLoaded,
+    user,
+    orgId,
+    finish,
+    router,
+    setActive,
+    userId,
+    retryKey,
+  ]);
 
   // Clerk switches `orgId` before Convex has a token carrying that org, so
   // wait until Convex itself reports the target org. Calling Convex earlier
@@ -125,8 +170,7 @@ export function JoinSubdomainOrganization() {
         await storeUser();
       }
 
-      router.replace("/");
-      router.refresh();
+      finish();
     }
 
     void syncProfile().catch((syncError: unknown) => {
@@ -141,7 +185,7 @@ export function JoinSubdomainOrganization() {
     isLoaded,
     orgId,
     convexOrgReady,
-    router,
+    finish,
     storeUser,
     syncFabricProfile,
     targetOrganizationId,

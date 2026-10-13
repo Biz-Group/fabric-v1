@@ -1,12 +1,13 @@
 import { v } from "convex/values";
 import { mutation, query, QueryCtx, MutationCtx } from "./_generated/server";
 import { getActiveOrgClaims, requireAuth, requireOrgAdmin } from "./lib/orgAuth";
+import { authError } from "./lib/authErrors";
 import { buildOrgThemeTokens, clampRgb } from "./themeColors";
 
 async function requireActiveOrgId(ctx: QueryCtx | MutationCtx): Promise<string> {
   const identity = await requireAuth(ctx);
   const { orgId } = getActiveOrgClaims(identity);
-  if (!orgId) throw new Error("No active organization");
+  if (!orgId) throw authError("NO_ACTIVE_ORG", "No active organization");
   return orgId;
 }
 

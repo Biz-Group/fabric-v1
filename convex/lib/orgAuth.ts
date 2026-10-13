@@ -1,5 +1,6 @@
 import { QueryCtx, MutationCtx, ActionCtx } from "../_generated/server";
 import { Doc, Id } from "../_generated/dataModel";
+import { authError } from "./authErrors";
 
 // Per-org role hierarchy: admin > contributor > viewer.
 export type Role = "admin" | "contributor" | "viewer";
@@ -23,7 +24,7 @@ export async function requireAuth(
   ctx: QueryCtx | MutationCtx | ActionCtx,
 ) {
   const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Not authenticated");
+  if (!identity) throw authError("NOT_AUTHENTICATED", "Not authenticated");
   return identity;
 }
 
@@ -72,10 +73,10 @@ export async function requireOrgMember(
   ctx: QueryCtx | MutationCtx,
 ): Promise<OrgContext> {
   const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Not authenticated");
+  if (!identity) throw authError("NOT_AUTHENTICATED", "Not authenticated");
 
   const { orgId, orgSlug } = getActiveOrgClaims(identity);
-  if (!orgId) throw new Error("No active organization");
+  if (!orgId) throw authError("NO_ACTIVE_ORG", "No active organization");
 
   const user = await ctx.db
     .query("users")
@@ -83,8 +84,9 @@ export async function requireOrgMember(
       q.eq("tokenIdentifier", identity.tokenIdentifier),
     )
     .unique();
-  if (!user || user.deletedAt !== undefined) {
-    throw new Error("User record not found");
+  if (!user) throw authError("NOT_MEMBER", "User record not found");
+  if (user.deletedAt !== undefined) {
+    throw authError("REMOVED", "User record not found");
   }
 
   const membership = await ctx.db
@@ -94,7 +96,11 @@ export async function requireOrgMember(
     )
     .unique();
   if (!isActiveMembership(membership)) {
-    throw new Error("Not a member of this organization");
+    // A tombstoned row means an admin is removing this member right now.
+    throw authError(
+      membership ? "REMOVED" : "NOT_MEMBER",
+      "Not a member of this organization",
+    );
   }
 
   return {
@@ -115,7 +121,7 @@ export async function requireOrgRole(
 ): Promise<OrgContext> {
   const org = await requireOrgMember(ctx);
   if (RANK[org.role] < RANK[minimum]) {
-    throw new Error("Insufficient permissions");
+    throw authError("INSUFFICIENT_ROLE", "Insufficient permissions");
   }
   return org;
 }
@@ -146,9 +152,9 @@ export async function resolveOrgForAction(
   ctx: ActionCtx,
 ): Promise<{ orgId: string; orgSlug: string | null; tokenIdentifier: string }> {
   const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Not authenticated");
+  if (!identity) throw authError("NOT_AUTHENTICATED", "Not authenticated");
   const { orgId, orgSlug } = getActiveOrgClaims(identity);
-  if (!orgId) throw new Error("No active organization");
+  if (!orgId) throw authError("NO_ACTIVE_ORG", "No active organization");
   return { orgId, orgSlug, tokenIdentifier: identity.tokenIdentifier };
 }
 
@@ -167,7 +173,7 @@ export async function requireSuperAdmin(
   ctx: QueryCtx | MutationCtx,
 ): Promise<Doc<"users">> {
   const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Not authenticated");
+  if (!identity) throw authError("NOT_AUTHENTICATED", "Not authenticated");
 
   const user = await ctx.db
     .query("users")
@@ -176,10 +182,10 @@ export async function requireSuperAdmin(
     )
     .unique();
   if (!user || user.deletedAt !== undefined) {
-    throw new Error("User record not found");
+    throw authError("NOT_MEMBER", "User record not found");
   }
   if (user.platformRole !== "superAdmin") {
-    throw new Error("Platform super-admin required");
+    throw authError("INSUFFICIENT_ROLE", "Platform super-admin required");
   }
   return user;
 }

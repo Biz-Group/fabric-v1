@@ -1,5 +1,6 @@
 import { SignUp } from "@clerk/nextjs";
 import { AuthShell, clerkAuthAppearance } from "@/features/auth/auth-shell";
+import { RememberReturnPath } from "@/features/auth/remember-return-path";
 
 export default function SignUpPage() {
   return (
@@ -7,6 +8,7 @@ export default function SignUpPage() {
       title="Create your account"
       description="Join your Fabric workspace and start capturing how work gets done."
     >
+      <RememberReturnPath />
       <SignUp
         appearance={clerkAuthAppearance}
         routing="path"

@@ -10,6 +10,7 @@ import {
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { isActiveMembership, resolveOrgForAction } from "./lib/orgAuth";
+import { authError } from "./lib/authErrors";
 import {
   assertClerkId,
   clerkFetch,
@@ -35,7 +36,7 @@ export const assertAdminFor = internalQuery({
       )
       .unique();
     if (!isActiveMembership(membership) || membership.role !== "admin") {
-      throw new Error("Insufficient permissions");
+      throw authError("INSUFFICIENT_ROLE", "Insufficient permissions");
     }
     return { membershipId: membership._id, userId: membership.userId };
   },

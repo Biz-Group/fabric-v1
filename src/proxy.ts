@@ -10,10 +10,12 @@ const isJoinOrganizationPath = createRouteMatcher([
   "/api/join-subdomain-organization",
 ]);
 // `isPublicPath` is what middleware lets through without an auth.protect.
-// On the apex, only the marketing landing. On a subdomain, only auth pages and
-// the signup org-join handoff are public — tenant `/` stays the workspace
-// entrypoint and redirects signed-out users to `/sign-in`.
-const isApexPublicPath = createRouteMatcher(["/"]);
+// On the apex, only the marketing landing and its link-preview image (every
+// page's og:image resolves to the apex via `metadataBase`, and crawlers have
+// no session). On a subdomain, only auth pages and the signup org-join
+// handoff are public — tenant `/` stays the workspace entrypoint and
+// redirects signed-out users to `/sign-in`.
+const isApexPublicPath = createRouteMatcher(["/", "/opengraph-image(.*)"]);
 const isSubdomainPublicPath = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",

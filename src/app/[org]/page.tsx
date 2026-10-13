@@ -1,7 +1,7 @@
 "use client";
 
-import { useQuery, useMutation } from "convex/react";
-import { Suspense, useEffect } from "react";
+import { useQuery } from "convex/react";
+import { Suspense } from "react";
 import { api } from "../../../convex/_generated/api";
 import { ProcessWorkbench } from "@/features/workbench/process-workbench";
 import { ProfileOnboarding } from "@/features/profile/profile-onboarding";
@@ -10,16 +10,13 @@ import { LoadingScreen } from "@/components/ui/loading-screen";
 export default function OrgHomePage() {
   const user = useQuery(api.users.getMe);
   const placement = useQuery(api.users.getMyPlacement);
-  const storeUser = useMutation(api.users.store);
-
-  useEffect(() => {
-    void storeUser();
-  }, [storeUser]);
 
   if (user === undefined || placement === undefined) {
     return <LoadingScreen message="Loading your workspace..." />;
   }
 
+  // The workspace layout provisions the user before mounting this page, so
+  // null only lasts until that write reaches this query.
   if (user === null) {
     return <LoadingScreen message="Setting up your workspace..." />;
   }

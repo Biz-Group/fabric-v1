@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import schema from "./schema";
+import { authErrorCode } from "./lib/authErrors";
 import { SUMMARY_V2_PROMPT_VERSIONS } from "./summaryV2";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -384,6 +385,161 @@ describe("cross-tenant isolation", () => {
 
     const afterRemoval = await t.fetch(audioPath);
     expect(afterRemoval.status).toBe(404);
+  });
+
+  describe("audio is streamed with byte ranges, never buffered whole", () => {
+    const ORIGIN = "https://org-a.bizfabric.ai";
+
+    beforeEach(() => {
+      process.env.AUDIO_SIGNING_SECRET =
+        "test-audio-signing-secret-with-sufficient-entropy";
+      process.env.ELEVENLABS_API_KEY = "el_test_key";
+      process.env.ROOT_DOMAIN = "bizfabric.ai";
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      delete process.env.ROOT_DOMAIN;
+    });
+
+    async function audioPathFor(
+      t: ReturnType<typeof convexTest>,
+      fields: Record<string, unknown>,
+    ) {
+      const ids = await seedTwoOrgs(t);
+      const conversationId = await t.run(async (ctx) =>
+        ctx.db.insert("conversations", {
+          processId: ids.procA,
+          clerkOrgId: ORG_A,
+          contributorName: "Alice",
+          status: "done",
+          ...fields,
+        }),
+      );
+      const token = await t
+        .withIdentity(identityForOrgA())
+        .action(api.postCall.getAudioPlaybackToken, { conversationId });
+      const params = new URLSearchParams({
+        exp: String(token!.exp),
+        mid: token!.membershipId,
+        sig: token!.sig,
+      });
+      return `/audio/${ORG_A}/${conversationId}?${params.toString()}`;
+    }
+
+    test("a stored recording serves the requested range", async () => {
+      const t = convexTest(schema, modules);
+      const audioStorageId = await t.run(async (ctx) =>
+        ctx.storage.store(new Blob(["0123456789"], { type: "audio/webm" })),
+      );
+      const path = await audioPathFor(t, {
+        inputMode: "voiceRecord",
+        audioStorageId,
+        audioMimeType: "audio/webm",
+      });
+
+      const partial = await t.fetch(path, { headers: { Range: "bytes=2-5" } });
+      expect(partial.status).toBe(206);
+      expect(partial.headers.get("content-range")).toBe("bytes 2-5/10");
+      expect(await partial.text()).toBe("2345");
+
+      const outOfRange = await t.fetch(path, { headers: { Range: "bytes=50-" } });
+      expect(outOfRange.status).toBe(416);
+      expect(outOfRange.headers.get("content-range")).toBe("bytes */10");
+    });
+
+    test("a long ElevenLabs interview streams a range out of a 40 MB file", async () => {
+      const t = convexTest(schema, modules);
+      const path = await audioPathFor(t, {
+        inputMode: "agent",
+        elevenlabsConversationId: "conv_long_interview",
+      });
+
+      // ~40 MB of MP3 that ignores Range, delivered in 1 MB chunks. The old
+      // route held all of it (plus a copy) in a 64 MiB action and crashed.
+      const totalSize = 40 * 1024 * 1024;
+      const chunkSize = 1024 * 1024;
+      let chunksRead = 0;
+      const upstreamRequests: Array<Record<string, string>> = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init?: RequestInit) => {
+          upstreamRequests.push((init?.headers ?? {}) as Record<string, string>);
+          let sent = 0;
+          const body = new ReadableStream<Uint8Array>({
+            pull(controller) {
+              if (sent >= totalSize) return controller.close();
+              const chunk = new Uint8Array(chunkSize);
+              chunk.fill((sent / chunkSize) % 251);
+              sent += chunkSize;
+              chunksRead += 1;
+              controller.enqueue(chunk);
+            },
+          });
+          return new Response(body, {
+            status: 200,
+            headers: {
+              "content-type": "audio/mpeg",
+              "content-length": String(totalSize),
+            },
+          });
+        }),
+      );
+
+      const start = 3 * chunkSize + 10;
+      const response = await t.fetch(path, {
+        headers: { Range: `bytes=${start}-${start + 99}`, Origin: ORIGIN },
+      });
+
+      expect(upstreamRequests[0].Range).toBe(`bytes=${start}-${start + 99}`);
+      expect(response.status).toBe(206);
+      expect(response.headers.get("content-range")).toBe(
+        `bytes ${start}-${start + 99}/${totalSize}`,
+      );
+      expect(response.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      expect(bytes).toHaveLength(100);
+      expect(bytes.every((b) => b === 3)).toBe(true);
+      // Stopped reading upstream once the range was served.
+      expect(chunksRead).toBeLessThan(10);
+    });
+
+    test("ElevenLabs' own partial response is relayed unchanged", async () => {
+      const t = convexTest(schema, modules);
+      const path = await audioPathFor(t, {
+        inputMode: "agent",
+        elevenlabsConversationId: "conv_ranged",
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response("abc", {
+              status: 206,
+              headers: {
+                "content-type": "audio/mpeg",
+                "content-range": "bytes 0-2/900",
+                "content-length": "3",
+              },
+            }),
+        ),
+      );
+
+      const response = await t.fetch(path, { headers: { Range: "bytes=0-2" } });
+      expect(response.status).toBe(206);
+      expect(response.headers.get("content-range")).toBe("bytes 0-2/900");
+      expect(await response.text()).toBe("abc");
+    });
+
+    test("errors carry CORS headers so the browser shows the real status", async () => {
+      const t = convexTest(schema, modules);
+      const response = await t.fetch(
+        `/audio/${ORG_A}/missing?exp=1&mid=x&sig=y`,
+        { headers: { Origin: ORIGIN } },
+      );
+      expect(response.status).toBe(404);
+      expect(response.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    });
   });
 
   test("identity with orgId but no membership throws", async () => {
@@ -2323,5 +2479,102 @@ describe("conversations admin — cross-tenant scoping", () => {
         .withIdentity(identityForOrgA())
         .action(api.conversations.retryFetch, { conversationId: failed }),
     ).rejects.toThrow(/Insufficient permissions/);
+  });
+});
+
+describe("auth failures carry a code the client can act on", () => {
+  async function codeOf(call: Promise<unknown>) {
+    try {
+      await call;
+    } catch (error) {
+      return authErrorCode(error);
+    }
+    throw new Error("Expected the call to fail");
+  }
+
+  async function seedDave(
+    t: ReturnType<typeof convexTest>,
+    membership: { role: "viewer" | "admin"; status: "active" | "removed" },
+    user: { deletedAt?: number } = {},
+  ) {
+    await t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        tokenIdentifier: `${ISSUER}|user_d`,
+        name: "Dave",
+        email: "dave@a.test",
+        profileComplete: true,
+        ...user,
+      });
+      await ctx.db.insert("memberships", {
+        tokenIdentifier: `${ISSUER}|user_d`,
+        userId,
+        clerkOrgId: ORG_A,
+        role: membership.role,
+        createdAt: Date.now(),
+        status: membership.status,
+      });
+    });
+  }
+
+  const dave = {
+    tokenIdentifier: `${ISSUER}|user_d`,
+    subject: "user_d",
+    issuer: ISSUER,
+    orgId: ORG_A,
+    orgSlug: "org-a",
+  };
+
+  test("no identity → NOT_AUTHENTICATED", async () => {
+    const t = convexTest(schema, modules);
+    expect(await codeOf(t.query(api.functions.list, {}))).toBe(
+      "NOT_AUTHENTICATED",
+    );
+  });
+
+  test("no org claim → NO_ACTIVE_ORG", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoOrgs(t);
+    const { orgId: _orgId, orgSlug: _orgSlug, ...noOrg } = identityForOrgA();
+    expect(
+      await codeOf(t.withIdentity(noOrg).query(api.functions.list, {})),
+    ).toBe("NO_ACTIVE_ORG");
+  });
+
+  test("another org's member → NOT_MEMBER", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoOrgs(t);
+    expect(
+      await codeOf(
+        t
+          .withIdentity({ ...identityForOrgB(), orgId: ORG_A, orgSlug: "org-a" })
+          .query(api.functions.list, {}),
+      ),
+    ).toBe("NOT_MEMBER");
+  });
+
+  test("a membership being removed → REMOVED", async () => {
+    const t = convexTest(schema, modules);
+    await seedDave(t, { role: "admin", status: "removed" });
+    expect(
+      await codeOf(t.withIdentity(dave).query(api.functions.list, {})),
+    ).toBe("REMOVED");
+  });
+
+  test("a deleted account → REMOVED", async () => {
+    const t = convexTest(schema, modules);
+    await seedDave(t, { role: "admin", status: "active" }, { deletedAt: 1 });
+    expect(
+      await codeOf(t.withIdentity(dave).query(api.functions.list, {})),
+    ).toBe("REMOVED");
+  });
+
+  test("a viewer writing → INSUFFICIENT_ROLE", async () => {
+    const t = convexTest(schema, modules);
+    await seedDave(t, { role: "viewer", status: "active" });
+    expect(
+      await codeOf(
+        t.withIdentity(dave).mutation(api.functions.create, { name: "Ops" }),
+      ),
+    ).toBe("INSUFFICIENT_ROLE");
   });
 });

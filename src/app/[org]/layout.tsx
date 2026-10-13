@@ -7,15 +7,19 @@ import {
   useOrganizationList,
   useUser,
 } from "@clerk/nextjs";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { api } from "../../../convex/_generated/api";
+import { PasskeyOffer } from "@/features/auth/passkey-offer";
 import { OrgThemeProvider } from "@/features/theming/org-theme-provider";
 import { ThemeToaster } from "@/features/theming/theme-toaster";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "";
+
+// After this long on a loading screen, offer a way out instead of spinning on.
+const STALLED_AFTER_MS = 20_000;
 
 function buildSubdomainUrl(slug: string): string {
   if (typeof window === "undefined") return "";
@@ -24,6 +28,8 @@ function buildSubdomainUrl(slug: string): string {
   const host = port ? `${rootHostname}:${port}` : rootHostname;
   return `${protocol}//${slug}.${host}/`;
 }
+
+type WorkspaceLink = { id: string; name: string; slug: string };
 
 export default function OrgLayout({ children }: { children: React.ReactNode }) {
   const params = useParams<{ org: string }>();
@@ -43,12 +49,24 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
     hasNextPage: hasMoreMemberships,
     isFetching: fetchingMemberships,
     fetchNext: fetchNextMemberships,
+    revalidate: revalidateMemberships,
   } = userMemberships;
   const activeOrg = useQuery(api.users.getActiveOrg);
   const matchingMembership = userMemberships.data?.find(
     (m) => m.organization.slug === slugFromUrl,
   );
   const targetOrgId = matchingMembership?.organization.id;
+  // The org this tab last had open. Set once the workspace mounts.
+  const [settledOrgId, setSettledOrgId] = useState<string | null>(null);
+  // The Clerk session, and with it the Convex token's org claim, is shared by
+  // every tab. Another tab opening a different workspace moves it there. A
+  // tab that was already settled here waits for the user to choose rather
+  // than taking it back, which would just move the other tab, and so on.
+  const switchedElsewhere =
+    !!targetOrgId &&
+    settledOrgId === targetOrgId &&
+    !!organization &&
+    organization.id !== targetOrgId;
 
   // Clerk paginates userMemberships (default page size). Platform staff are
   // fanned out to every tenant, so a user can have more memberships than one
@@ -66,13 +84,19 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!orgListLoaded || !orgLoaded || !userLoaded || !setActive) return;
     if (!isSignedIn || !slugFromUrl) return;
-    if (!targetOrgId) return;
+    if (!targetOrgId || switchedElsewhere) return;
 
     const clerkOrgReady = organization?.id === targetOrgId;
     const convexOrgReady = activeOrg?.orgId === targetOrgId;
     if (clerkOrgReady && convexOrgReady) return;
 
-    void setActive({ organization: targetOrgId });
+    void setActive({ organization: targetOrgId }).catch((error: unknown) => {
+      // Usually the membership was just removed and the cached list still
+      // has it. Refetching drops it, which moves on to the access screen
+      // instead of "Activating your workspace…" forever.
+      console.warn("Could not activate this workspace", error);
+      void revalidateMemberships?.();
+    });
   }, [
     orgListLoaded,
     orgLoaded,
@@ -83,6 +107,8 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
     organization?.id,
     activeOrg?.orgId,
     setActive,
+    revalidateMemberships,
+    switchedElsewhere,
   ]);
 
   // The proxy's auth.protect() redirects signed-out requests, but a session
@@ -94,7 +120,7 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
   }, [userLoaded, isSignedIn, redirectToSignIn]);
 
   if (authLoading || !userLoaded || !orgLoaded || !orgListLoaded) {
-    return <LoadingScreen message="Loading workspace..." />;
+    return <StallableLoading message="Loading workspace..." />;
   }
 
   if (!isSignedIn) {
@@ -107,7 +133,7 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
   // retries on its own.
   if (!isAuthenticated) {
     return (
-      <LoadingScreen
+      <StallableLoading
         message={
           hasActiveSession
             ? "Reconnecting to your workspace..."
@@ -123,48 +149,42 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
     !matchingMembership &&
     (userMemberships.hasNextPage || userMemberships.isFetching)
   ) {
-    return <LoadingScreen message="Loading workspace..." />;
+    return <StallableLoading message="Loading workspace..." />;
   }
 
-  // User is signed in but isn't a member of this subdomain's org yet.
-  // Enrollment is open: offer to join this workspace directly (same API the
-  // sign-up/sign-in handoff uses), and list the subdomains they already have
-  // access to. The Clerk session cookie is scoped to the apex, so those links
-  // work without a fresh login.
   if (!matchingMembership) {
-    const orgs = userMemberships.data ?? [];
+    const otherWorkspaces = (userMemberships.data ?? []).flatMap((m) =>
+      m.organization.slug
+        ? [
+            {
+              id: m.organization.id,
+              name: m.organization.name,
+              slug: m.organization.slug,
+            },
+          ]
+        : [],
+    );
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-5 p-6 text-center">
-        <h2 className="text-xl font-semibold">
-          You&apos;re not in this workspace yet
-        </h2>
+      <NotInWorkspace slug={slugFromUrl} otherWorkspaces={otherWorkspaces} />
+    );
+  }
+
+  if (switchedElsewhere) {
+    return (
+      <AccessScreen title="This workspace was switched in another tab">
         <p className="max-w-md text-sm text-muted-foreground">
-          Your account isn&apos;t a member of {slugFromUrl}. You can join it
-          now, or switch to a workspace you already belong to.
+          You opened {organization?.name ?? "another workspace"} in another
+          tab. Fabric works in one workspace at a time in a browser, so{" "}
+          {matchingMembership.organization.name} is paused here.
         </p>
-        <JoinWorkspaceButton />
-        {orgs.length > 0 && (
-          <div className="mt-2 flex flex-col items-center gap-2">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              Workspaces you can access
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              {orgs
-                .filter((m) => !!m.organization.slug)
-                .map((m) => (
-                  <a
-                    key={m.organization.id}
-                    href={buildSubdomainUrl(m.organization.slug!)}
-                    className="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted"
-                  >
-                    {m.organization.name}
-                  </a>
-                ))}
-            </div>
-          </div>
-        )}
-        <SignOutLink />
-      </div>
+        <button
+          type="button"
+          onClick={() => void setActive?.({ organization: targetOrgId })}
+          className="h-11 rounded-xl bg-foreground px-5 text-sm font-medium text-background hover:bg-foreground/90"
+        >
+          Continue in {matchingMembership.organization.name}
+        </button>
+      </AccessScreen>
     );
   }
 
@@ -172,14 +192,244 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
   // carries the target org. This prevents first-render queries from throwing
   // "No active organization" while Clerk finishes activating the session.
   if (organization?.id !== targetOrgId || activeOrg?.orgId !== targetOrgId) {
-    return <LoadingScreen message="Activating your workspace..." />;
+    return <StallableLoading message="Activating your workspace..." />;
   }
 
   return (
     <OrgThemeProvider>
-      {children}
+      <WorkspaceAccess
+        key={matchingMembership.organization.id}
+        clerkOrgId={matchingMembership.organization.id}
+        onSettled={setSettledOrgId}
+      >
+        {children}
+      </WorkspaceAccess>
       <ThemeToaster />
     </OrgThemeProvider>
+  );
+}
+
+/**
+ * Provisions the caller's Fabric membership for the active org on every
+ * workspace load, whatever page the visit starts on (a deep link included),
+ * and only mounts the workspace once that membership exists. Existing members
+ * don't wait for the refresh: their membership already resolves.
+ */
+function WorkspaceAccess({
+  clerkOrgId,
+  onSettled,
+  children,
+}: {
+  clerkOrgId: string;
+  onSettled: (clerkOrgId: string) => void;
+  children: ReactNode;
+}) {
+  const membership = useQuery(api.users.getMyMembership);
+  const joinStatus = useQuery(
+    api.users.getMyJoinStatus,
+    membership === null ? { clerkOrgId } : "skip",
+  );
+  const storeUser = useMutation(api.users.store);
+  const [attempt, setAttempt] = useState(0);
+  const [outcome, setOutcome] = useState<{
+    attempt: number;
+    ok: boolean;
+  } | null>(null);
+  const setup =
+    outcome?.attempt === attempt ? (outcome.ok ? "done" : "failed") : "running";
+
+  useEffect(() => {
+    let cancelled = false;
+    storeUser().then(
+      () => {
+        if (!cancelled) setOutcome({ attempt, ok: true });
+      },
+      (error: unknown) => {
+        console.error("Failed to set up workspace membership", error);
+        if (!cancelled) setOutcome({ attempt, ok: false });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [storeUser, attempt]);
+
+  const hasMembership = !!membership;
+  useEffect(() => {
+    if (hasMembership) onSettled(clerkOrgId);
+  }, [hasMembership, onSettled, clerkOrgId]);
+
+  if (membership) {
+    return (
+      <>
+        {children}
+        <PasskeyOffer />
+      </>
+    );
+  }
+
+  if (membership === undefined) {
+    return <StallableLoading message="Loading your workspace..." />;
+  }
+
+  if (joinStatus?.blocked) {
+    return (
+      <AccessScreen title="Your access to this workspace was removed">
+        <p className="max-w-md text-sm text-muted-foreground">
+          A workspace admin removed you from this workspace. If you still need
+          access, ask them to invite you again.
+        </p>
+        <SignOutLink />
+      </AccessScreen>
+    );
+  }
+
+  // `store` resolves only after Convex queries reflect it, so a finished
+  // setup that still shows no membership is a real failure, not a race.
+  if (setup === "failed" || (setup === "done" && joinStatus !== undefined)) {
+    return (
+      <AccessScreen title="We couldn't set up your access to this workspace">
+        <p className="max-w-md text-sm text-muted-foreground">
+          This is usually temporary. Try again in a moment, and if it keeps
+          happening, contact your workspace admin.
+        </p>
+        <button
+          type="button"
+          onClick={() => setAttempt((n) => n + 1)}
+          className="h-11 rounded-xl bg-foreground px-5 text-sm font-medium text-background hover:bg-foreground/90"
+        >
+          Try again
+        </button>
+        <SignOutLink />
+      </AccessScreen>
+    );
+  }
+
+  return <StallableLoading message="Setting up your workspace..." />;
+}
+
+type Eligibility = { eligible: true } | { eligible: false; error: string };
+
+/**
+ * Signed in, but not a member of this subdomain's org. Asks the join API
+ * first whether joining would work, so people who can't join see why
+ * instead of a button that fails.
+ */
+function NotInWorkspace({
+  slug,
+  otherWorkspaces,
+}: {
+  slug: string;
+  otherWorkspaces: WorkspaceLink[];
+}) {
+  const [eligibility, setEligibility] = useState<Eligibility | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/join-subdomain-organization", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return (await response.json()) as Eligibility;
+      })
+      // If the check itself fails, offer the button: joining gives the real
+      // answer either way.
+      .catch((): Eligibility => ({ eligible: true }))
+      .then((result) => {
+        if (!cancelled) setEligibility(result);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const refused = eligibility?.eligible === false ? eligibility : null;
+
+  return (
+    <AccessScreen
+      title={
+        refused
+          ? "You don't have access to this workspace"
+          : "You're not in this workspace yet"
+      }
+    >
+      <p className="max-w-md text-sm text-muted-foreground">
+        {refused
+          ? refused.error
+          : eligibility
+            ? `Your account isn't a member of ${slug} yet. You can join it now, or switch to a workspace you already belong to.`
+            : `Checking whether your account can join ${slug}...`}
+      </p>
+      {eligibility?.eligible && <JoinWorkspaceButton />}
+      {otherWorkspaces.length > 0 && (
+        <div className="mt-2 flex flex-col items-center gap-2">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            Workspaces you can access
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {otherWorkspaces.map((workspace) => (
+              <a
+                key={workspace.id}
+                href={buildSubdomainUrl(workspace.slug)}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted"
+              >
+                {workspace.name}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+      <SignOutLink />
+    </AccessScreen>
+  );
+}
+
+function AccessScreen({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-5 p-6 text-center">
+      <h2 className="text-xl font-semibold">{title}</h2>
+      {children}
+    </div>
+  );
+}
+
+function useStalled(afterMs: number): boolean {
+  const [stalled, setStalled] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setStalled(true), afterMs);
+    return () => window.clearTimeout(timer);
+  }, [afterMs]);
+  return stalled;
+}
+
+/** A loading screen that offers Reload and Sign out once it has gone on too
+ * long, so a stuck state is never a dead end. */
+function StallableLoading({ message }: { message: string }) {
+  const stalled = useStalled(STALLED_AFTER_MS);
+  return (
+    <LoadingScreen
+      message={
+        stalled ? `${message} This is taking longer than usual.` : message
+      }
+    >
+      {stalled && (
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="h-9 rounded-lg border border-border bg-background px-3 text-sm font-medium hover:bg-muted"
+          >
+            Reload
+          </button>
+          <SignOutLink />
+        </div>
+      )}
+    </LoadingScreen>
   );
 }
 
