@@ -297,7 +297,7 @@ function DomainsCard({ tenant }: { tenant: TenantView }) {
         <CardTitle>Allowed email domains</CardTitle>
         <CardDescription>
           Verified emails on these domains can self-join at the workspace
-          subdomain. Biz Group staff always have access.
+          subdomain. Platform super-admins are added automatically.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -317,7 +317,7 @@ function DomainsCard({ tenant }: { tenant: TenantView }) {
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Empty list = invite-only (plus Biz Group staff).
+            Empty list = invite-only.
           </p>
         )}
         <Button onClick={handleSave} disabled={saving || !dirty}>

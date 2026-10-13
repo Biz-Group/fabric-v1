@@ -1131,7 +1131,7 @@ describe("invitations — admin gating and org scoping", () => {
 
     const { calls } = stubClerkFetch([
       {
-        id: "inv_1",
+        id: "orginv_1",
         email_address: "x@a.test",
         role: "org:member",
         status: "revoked",
@@ -1142,13 +1142,36 @@ describe("invitations — admin gating and org scoping", () => {
 
     await t
       .withIdentity(identityForOrgA())
-      .action(api.invitations.revoke, { invitationId: "inv_1" });
+      .action(api.invitations.revoke, { invitationId: "orginv_1" });
 
     expect(calls[0].url).toContain(
-      `/organizations/${ORG_A}/invitations/inv_1/revoke`,
+      `/organizations/${ORG_A}/invitations/orginv_1/revoke`,
     );
     expect(calls[0].url).not.toContain(ORG_B);
   });
+
+  test.each([
+    "../../../users/user_victim/ban?x=",
+    "../../../sessions/sess_victim",
+    `../../${ORG_B}/invitations/orginv_1`,
+    "orginv_1/../../../users/user_victim/ban",
+    "%2e%2e%2forginv_1",
+    "inv_1",
+  ])(
+    "revoke: malformed invitation id %j is rejected before any Clerk call",
+    async (invitationId) => {
+      const t = convexTest(schema, modules);
+      await seedTwoOrgs(t);
+      const { calls } = stubClerkFetch([]);
+
+      await expect(
+        t
+          .withIdentity(identityForOrgA())
+          .action(api.invitations.revoke, { invitationId }),
+      ).rejects.toThrow(/Invalid Clerk orginv id/);
+      expect(calls).toHaveLength(0);
+    },
+  );
 
   test("revoke: rejects cross-tenant Clerk response", async () => {
     const t = convexTest(schema, modules);
@@ -1156,7 +1179,7 @@ describe("invitations — admin gating and org scoping", () => {
 
     stubClerkFetch([
       {
-        id: "inv_1",
+        id: "orginv_1",
         email_address: "x@a.test",
         role: "org:member",
         status: "revoked",
@@ -1168,7 +1191,7 @@ describe("invitations — admin gating and org scoping", () => {
     await expect(
       t
         .withIdentity(identityForOrgA())
-        .action(api.invitations.revoke, { invitationId: "inv_1" }),
+        .action(api.invitations.revoke, { invitationId: "orginv_1" }),
     ).rejects.toThrow(/different organization/);
   });
 });
@@ -1286,7 +1309,7 @@ describe("removeMemberFromOrg — admin gating + Clerk coordination", () => {
     expect(row).toBeNull();
   });
 
-  test("Clerk failure preserves Fabric membership", async () => {
+  test("Clerk failure preserves Fabric membership and lifts the block", async () => {
     const t = convexTest(schema, modules);
     await seedTwoOrgs(t);
     const targetId = await addOrgAMember(t, "user_c", "contributor");
@@ -1298,8 +1321,19 @@ describe("removeMemberFromOrg — admin gating + Clerk coordination", () => {
       }),
     ).rejects.toThrow(/500/);
 
-    const row = await t.run(async (ctx) => ctx.db.get(targetId));
-    expect(row).not.toBeNull();
+    const stored = await t.run(async (ctx) => ({
+      row: await ctx.db.get(targetId),
+      blocks: await ctx.db
+        .query("membershipIntents")
+        .withIndex("by_clerkOrgId_and_status", (q) =>
+          q.eq("clerkOrgId", ORG_A).eq("status", "blocked"),
+        )
+        .collect(),
+    }));
+    expect(stored.row).not.toBeNull();
+    expect(stored.row?.status).toBe("active");
+    expect(stored.row?.removedAt).toBeUndefined();
+    expect(stored.blocks).toHaveLength(0);
   });
 
   test("Clerk 404 still removes stale Fabric membership", async () => {
@@ -1315,6 +1349,294 @@ describe("removeMemberFromOrg — admin gating + Clerk coordination", () => {
     const row = await t.run(async (ctx) => ctx.db.get(targetId));
     expect(row).toBeNull();
   });
+});
+
+describe("member removal is durable", () => {
+  // Schema-bound so helpers can query by index name.
+  const newSchemaTest = () => convexTest(schema, modules);
+
+  beforeEach(() => {
+    process.env.CLERK_SECRET_KEY = "sk_test_abc";
+    process.env.CLERK_JWT_ISSUER_DOMAIN = ISSUER;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  // Carol's still-valid Clerk token, which keeps the ORG_A claim for up to the
+  // JWT template lifetime after Clerk has dropped her membership.
+  function carolIdentity() {
+    return {
+      tokenIdentifier: `${ISSUER}|user_c`,
+      subject: "user_c",
+      issuer: ISSUER,
+      name: "Carol",
+      email: "carol@a.test",
+      orgId: ORG_A,
+      orgSlug: "org-a",
+    };
+  }
+
+  async function seedCarol(
+    t: ReturnType<typeof convexTest>,
+    role: "admin" | "contributor" | "viewer",
+  ) {
+    return await t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        tokenIdentifier: `${ISSUER}|user_c`,
+        clerkUserId: "user_c",
+        name: "Carol",
+        email: "carol@a.test",
+        emailLower: "carol@a.test",
+        profileComplete: true,
+      });
+      const membershipId = await ctx.db.insert("memberships", {
+        tokenIdentifier: `${ISSUER}|user_c`,
+        userId,
+        clerkOrgId: ORG_A,
+        role,
+        createdAt: Date.now(),
+        status: "active",
+        email: "carol@a.test",
+        emailLower: "carol@a.test",
+      });
+      return { userId, membershipId };
+    });
+  }
+
+  async function carolMembership(t: ReturnType<typeof newSchemaTest>) {
+    return await t.run(async (ctx) =>
+      ctx.db
+        .query("memberships")
+        .withIndex("by_tokenIdentifier_and_clerkOrgId", (q) =>
+          q.eq("tokenIdentifier", `${ISSUER}|user_c`).eq("clerkOrgId", ORG_A),
+        )
+        .unique(),
+    );
+  }
+
+  async function removeCarol(
+    t: ReturnType<typeof convexTest>,
+    membershipId: Id<"memberships">,
+  ) {
+    stubClerkFetchStatus(200, {});
+    await t
+      .withIdentity(identityForOrgA())
+      .action(api.users.removeMemberFromOrg, { membershipId });
+  }
+
+  test("store with a still-valid token does not recreate the membership", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoOrgs(t);
+    const { membershipId } = await seedCarol(t, "admin");
+    await removeCarol(t, membershipId);
+
+    await t.withIdentity(carolIdentity()).mutation(api.users.store, {});
+
+    expect(await carolMembership(t)).toBeNull();
+    expect(
+      await t.withIdentity(carolIdentity()).query(api.users.getMyMembership, {}),
+    ).toBeNull();
+    await expect(
+      t.withIdentity(carolIdentity()).query(api.functions.list, {}),
+    ).rejects.toThrow(/Not a member/);
+  });
+
+  test("a membership webhook after a domain rejoin is refused", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoOrgs(t);
+    const { membershipId } = await seedCarol(t, "contributor");
+    await removeCarol(t, membershipId);
+
+    await t.mutation(internal.users.handleClerkWebhook, {
+      eventId: "evt_rejoin",
+      eventType: "organizationMembership.created",
+      data: {
+        organization: { id: ORG_A },
+        public_user_data: {
+          user_id: "user_c",
+          first_name: "Carol",
+          identifier: "carol@a.test",
+        },
+        role: "org:member",
+      },
+    });
+
+    expect(await carolMembership(t)).toBeNull();
+    const status = await t
+      .withIdentity({ ...carolIdentity(), orgId: undefined })
+      .query(api.users.getMyJoinStatus, { clerkOrgId: ORG_A });
+    expect(status.blocked).toBe(true);
+  });
+
+  test("a tombstoned member cannot act while Clerk removal is in flight", async () => {
+    const t = convexTest(schema, modules);
+    const { userAId } = await seedTwoOrgs(t);
+    const { membershipId } = await seedCarol(t, "admin");
+
+    // Alice starts removing Carol (Clerk call not yet made)…
+    await t.mutation(internal.users.beginMemberRemoval, {
+      membershipId,
+      orgId: ORG_A,
+      callerTokenIdentifier: `${ISSUER}|user_a`,
+    });
+    const aliceMembership = await t.run(async (ctx) =>
+      ctx.db
+        .query("memberships")
+        .withIndex("by_userId", (q) => q.eq("userId", userAId))
+        .unique(),
+    );
+
+    // …so Carol can no longer read tenant data or remove Alice in return.
+    await expect(
+      t.withIdentity(carolIdentity()).query(api.functions.list, {}),
+    ).rejects.toThrow(/Not a member/);
+    const { calls } = stubClerkFetch([]);
+    await expect(
+      t.withIdentity(carolIdentity()).action(api.users.removeMemberFromOrg, {
+        membershipId: aliceMembership!._id,
+      }),
+    ).rejects.toThrow(/Insufficient permissions/);
+    expect(calls).toHaveLength(0);
+  });
+
+  test("an admin re-invite lifts the block and applies the invited role", async () => {
+    const t = convexTest(schema, modules);
+    const { userAId } = await seedTwoOrgs(t);
+    const { membershipId } = await seedCarol(t, "admin");
+    await removeCarol(t, membershipId);
+
+    await t.mutation(internal.users.createMembershipIntent, {
+      clerkOrgId: ORG_A,
+      email: "carol@a.test",
+      requestedRole: "viewer",
+      source: "adminInvite",
+      invitedBy: userAId,
+    });
+    await t.withIdentity(carolIdentity()).mutation(api.users.store, {});
+
+    const membership = await carolMembership(t);
+    expect(membership?.role).toBe("viewer");
+    expect(membership?.source).toBe("adminInvite");
+    const status = await t
+      .withIdentity(carolIdentity())
+      .query(api.users.getMyJoinStatus, { clerkOrgId: ORG_A });
+    expect(status.blocked).toBe(false);
+  });
+
+  test("an accepted invite does not restore a former role", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoOrgs(t);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("membershipIntents", {
+        clerkOrgId: ORG_A,
+        email: "carol@a.test",
+        emailLower: "carol@a.test",
+        requestedRole: "admin",
+        source: "adminInvite",
+        status: "accepted",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    });
+
+    // Carol left on her own (no admin removal, so no block) and rejoins by
+    // email domain: she gets the walk-up default, not her old admin role.
+    await t.withIdentity(carolIdentity()).mutation(api.users.store, {});
+
+    const membership = await carolMembership(t);
+    expect(membership?.role).toBe("contributor");
+    expect(membership?.source).toBe("selfSignup");
+  });
+
+  test("a deleted Clerk user stays deleted and is not re-provisioned", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoOrgs(t);
+    const { userId } = await seedCarol(t, "contributor");
+
+    await t.mutation(internal.users.handleClerkWebhook, {
+      eventId: "evt_user_deleted",
+      eventType: "user.deleted",
+      data: { id: "user_c" },
+    });
+    // A late `user.updated` and a still-valid token must not undo it.
+    await t.mutation(internal.users.handleClerkWebhook, {
+      eventId: "evt_user_updated_late",
+      eventType: "user.updated",
+      data: { id: "user_c", first_name: "Carol" },
+    });
+    await t.withIdentity(carolIdentity()).mutation(api.users.store, {});
+
+    const user = await t.run(async (ctx) => ctx.db.get(userId));
+    expect(user?.deletedAt).toBeDefined();
+    expect(await carolMembership(t)).toBeNull();
+    const status = await t
+      .withIdentity(carolIdentity())
+      .query(api.users.getMyJoinStatus, { clerkOrgId: ORG_A });
+    expect(status.blocked).toBe(true);
+  });
+});
+
+test("auditEnrollmentExposure flags test addresses and staff self-joins only", async () => {
+  const t = convexTest(schema, modules);
+  const { userAId } = await seedTwoOrgs(t);
+  await t.run(async (ctx) => {
+    const base = {
+      userId: userAId,
+      clerkOrgId: ORG_B,
+      role: "contributor" as const,
+      createdAt: 1,
+    };
+    await ctx.db.insert("tenants", {
+      clerkOrgId: ORG_B,
+      name: "Org B",
+      slug: "org-b",
+      allowedEmailDomains: [],
+      status: "active",
+      source: "console",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await ctx.db.insert("memberships", {
+      ...base,
+      tokenIdentifier: `${ISSUER}|user_t`,
+      emailLower: "x+clerk_test@b.test",
+      source: "selfSignup",
+    });
+    await ctx.db.insert("memberships", {
+      ...base,
+      tokenIdentifier: `${ISSUER}|user_s`,
+      emailLower: "intern@bizgroup.ae",
+      source: "selfSignup",
+    });
+    await ctx.db.insert("memberships", {
+      ...base,
+      tokenIdentifier: `${ISSUER}|user_sa`,
+      emailLower: "boss@bizgroup.ae",
+      source: "superAdminFanOut",
+      platformRole: "superAdmin",
+    });
+    await ctx.db.insert("memberships", {
+      ...base,
+      tokenIdentifier: `${ISSUER}|user_i`,
+      emailLower: "invited@bizgroup.ae",
+      source: "adminInvite",
+    });
+  });
+
+  const findings = await t.query(internal.platform.auditEnrollmentExposure, {});
+
+  expect(
+    findings.map((f) => ({ reason: f.reason, email: f.email, slug: f.tenantSlug })),
+  ).toEqual(
+    expect.arrayContaining([
+      { reason: "clerkTestEmail", email: "x+clerk_test@b.test", slug: "org-b" },
+      { reason: "staffDomainSelfJoin", email: "intern@bizgroup.ae", slug: "org-b" },
+    ]),
+  );
+  expect(findings).toHaveLength(2);
 });
 
 // ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@ import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import {
   assertOrgOwns,
+  isActiveMembership,
   requireOrgAdmin,
   requireOrgContributor,
   resolveOrgForAction,
@@ -1080,7 +1081,11 @@ export const submitSpeakerLabels = mutation({
           .query("memberships")
           .withIndex("by_userId", (q) => q.eq("userId", label.userId!))
           .take(100);
-        if (!memberships.some((m) => m.clerkOrgId === caller.orgId)) {
+        if (
+          !memberships.some(
+            (m) => m.clerkOrgId === caller.orgId && isActiveMembership(m),
+          )
+        ) {
           throw new Error("Selected member is not in this organization");
         }
       }

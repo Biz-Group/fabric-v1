@@ -1,17 +1,22 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import { fetchQuery } from "convex/nextjs";
 import { NextResponse, type NextRequest } from "next/server";
 import { getTenantSubdomain } from "@/lib/subdomain";
+import { api } from "../../../../convex/_generated/api";
 
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "";
 
-// Platform staff (Biz Group) may join every tenant workspace by default.
-// Comma-separated env override; defaults to the Biz Group corporate domain.
-const PLATFORM_STAFF_EMAIL_DOMAINS = (
-  process.env.PLATFORM_STAFF_EMAIL_DOMAINS ?? "bizgroup.ae"
-)
-  .split(",")
-  .map((domain) => domain.trim().toLowerCase().replace(/^@/, ""))
-  .filter(Boolean);
+// Clerk test-mode addresses (`name+clerk_test@domain`) "verify" with a fixed
+// code and no mailbox. On a live instance they must never satisfy the domain
+// gate, even if test mode is left switched on in the Clerk dashboard.
+const IS_LIVE_CLERK_INSTANCE = (process.env.CLERK_SECRET_KEY ?? "")
+  .trim()
+  .startsWith("sk_live_");
+
+function isClerkTestEmail(email: string): boolean {
+  const localPart = email.slice(0, email.lastIndexOf("@"));
+  return localPart.includes("+clerk_test");
+}
 
 type ClerkApiError = {
   errors?: Array<{ code?: string }>;
@@ -53,7 +58,8 @@ function getVerifiedEmails(user: {
 }): string[] {
   return user.emailAddresses
     .filter((email) => email.verification?.status === "verified")
-    .map((email) => email.emailAddress.toLowerCase());
+    .map((email) => email.emailAddress.toLowerCase())
+    .filter((email) => !(IS_LIVE_CLERK_INSTANCE && isClerkTestEmail(email)));
 }
 
 function emailDomain(email: string): string | null {
@@ -65,8 +71,8 @@ function emailDomain(email: string): string | null {
 /** Per-tenant enrollment domains, managed in Clerk org public metadata as
  * `allowedEmailDomains: string[]` (set at tenant creation in the Clerk
  * dashboard, or via `platform:setOrgAllowedEmailDomains`). Missing/malformed
- * metadata yields [] — i.e. the tenant is closed to everyone except platform
- * staff and invited users. */
+ * metadata yields [] — i.e. the tenant is closed to everyone except invited
+ * users. */
 function allowedDomainsFromOrg(organization: {
   publicMetadata?: Record<string, unknown> | null;
 }): string[] {
@@ -130,12 +136,14 @@ function logBlockedJoin(details: {
 // Enrollment policy: DOMAIN-GATED. A signed-in account may join the tenant
 // org resolved from the subdomain when any of its *verified* email domains is
 //   1. in the tenant's `allowedEmailDomains` (Clerk org public metadata), or
-//   2. a platform-staff domain (PLATFORM_STAFF_EMAIL_DOMAINS, Biz Group), or
-//   3. — failing both — the org has a pending Clerk invitation for one of the
+//   2. — failing that — the org has a pending Clerk invitation for one of the
 //      caller's verified emails (escape hatch for out-of-domain externals).
+// There is deliberately no platform-staff domain shortcut: Biz Group staff
+// reach client tenants only through the super-admin fan-out
+// (`platform.fanOutSuperAdminMemberships`), never by email domain.
 // The Fabric app role still comes from Convex (`membershipIntents` when an
-// admin invited them, `viewer` otherwise); Clerk membership only grants entry
-// to the workspace shell.
+// admin invited them, `contributor` otherwise); Clerk membership only grants
+// entry to the workspace shell.
 export async function POST(req: NextRequest) {
   if (!isSameOriginPost(req)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -149,7 +157,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { userId } = await auth({
+  const { userId, getToken } = await auth({
     treatPendingAsSignedOut: false,
   });
   if (!userId) {
@@ -191,10 +199,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const allowedDomains = new Set([
-      ...PLATFORM_STAFF_EMAIL_DOMAINS,
-      ...allowedDomainsFromOrg(organization),
-    ]);
+    const allowedDomains = new Set(allowedDomainsFromOrg(organization));
     const domainAllowed = verifiedEmails.some((email) => {
       const domain = emailDomain(email);
       return domain !== null && allowedDomains.has(domain);
@@ -216,6 +221,45 @@ export async function POST(req: NextRequest) {
           { status: 403 },
         );
       }
+    }
+
+    // A member an admin removed stays out until re-invited, even though their
+    // email domain still matches. Convex enforces that on its own (`store`
+    // and the membership webhook refuse a removed member), so this check is
+    // for a clear answer and to avoid spending a Clerk seat. If the status
+    // can't be read, fall through and let Convex decide.
+    let blocked = false;
+    try {
+      const token = await getToken({ template: "convex" });
+      if (token) {
+        ({ blocked } = await fetchQuery(
+          api.users.getMyJoinStatus,
+          { clerkOrgId: organization.id },
+          { token },
+        ));
+      } else {
+        console.warn(
+          `[join-subdomain-organization] no Convex token: ${JSON.stringify({ slug, userId })}`,
+        );
+      }
+    } catch (error) {
+      console.warn(
+        `[join-subdomain-organization] join status unavailable: ${JSON.stringify({
+          slug,
+          userId,
+          errorType: error instanceof Error ? error.name : "UnknownError",
+        })}`,
+      );
+    }
+    if (blocked) {
+      logBlockedJoin({ slug, userId, reason: "removed_by_admin" });
+      return NextResponse.json(
+        {
+          error:
+            "Your access to this workspace was removed. Ask a workspace admin to invite you again.",
+        },
+        { status: 403 },
+      );
     }
 
     try {

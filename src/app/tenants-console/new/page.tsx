@@ -241,8 +241,8 @@ export default function NewTenantPage() {
           <CardTitle>Enrollment</CardTitle>
           <CardDescription>
             People with a verified email on these domains can join the
-            workspace by signing up at its subdomain. Biz Group staff always
-            have access; anyone else needs an invitation.
+            workspace by signing up at its subdomain. Platform super-admins
+            are added automatically; anyone else needs an invitation.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">

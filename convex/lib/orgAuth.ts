@@ -83,7 +83,9 @@ export async function requireOrgMember(
       q.eq("tokenIdentifier", identity.tokenIdentifier),
     )
     .unique();
-  if (!user) throw new Error("User record not found");
+  if (!user || user.deletedAt !== undefined) {
+    throw new Error("User record not found");
+  }
 
   const membership = await ctx.db
     .query("memberships")
@@ -173,7 +175,9 @@ export async function requireSuperAdmin(
       q.eq("tokenIdentifier", identity.tokenIdentifier),
     )
     .unique();
-  if (!user) throw new Error("User record not found");
+  if (!user || user.deletedAt !== undefined) {
+    throw new Error("User record not found");
+  }
   if (user.platformRole !== "superAdmin") {
     throw new Error("Platform super-admin required");
   }

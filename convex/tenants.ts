@@ -13,7 +13,11 @@ import {
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { requireSuperAdmin } from "./lib/orgAuth";
-import { clerkFetch, clerkUserIdFromTokenIdentifier } from "./lib/clerkApi";
+import {
+  assertClerkId,
+  clerkFetch,
+  clerkUserIdFromTokenIdentifier,
+} from "./lib/clerkApi";
 import { isValidTenantSlug } from "./lib/slugs";
 import {
   fanOutImpl,
@@ -886,9 +890,10 @@ export const revokeTenantInvitation = action({
       { tenantId: args.tenantId },
     );
     if (!tenant) throw new Error("Tenant not found");
+    const invitationId = assertClerkId(args.invitationId, "orginv");
 
     const result = (await clerkFetch(
-      `/organizations/${tenant.clerkOrgId}/invitations/${args.invitationId}/revoke`,
+      `/organizations/${tenant.clerkOrgId}/invitations/${invitationId}/revoke`,
       {
         method: "POST",
         body: {
@@ -904,7 +909,7 @@ export const revokeTenantInvitation = action({
 
     await ctx.runMutation(internal.users.markInvitationRevoked, {
       clerkOrgId: tenant.clerkOrgId,
-      clerkInvitationId: args.invitationId,
+      clerkInvitationId: invitationId,
     });
   },
 });

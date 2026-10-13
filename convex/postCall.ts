@@ -146,7 +146,11 @@ export const resolveContributorAttribution = internalQuery({
         .query("memberships")
         .withIndex("by_userId", (q) => q.eq("userId", args.subjectUserId!))
         .take(100);
-      if (!memberships.some((m) => m.clerkOrgId === caller.orgId)) {
+      if (
+        !memberships.some(
+          (m) => m.clerkOrgId === caller.orgId && isActiveMembership(m),
+        )
+      ) {
         throw new Error("Selected member is not in this organization");
       }
       subjectUserId = subject._id;

@@ -10,11 +10,12 @@ import {
   QueryCtx,
   query,
 } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import {
   assertOrgOwns,
   getActiveOrgClaims,
+  isActiveMembership,
   requireAuth,
   requireOrgAdmin,
   requireOrgContributor,
@@ -282,6 +283,9 @@ function roleDelta(role: Role, amount: number) {
   };
 }
 
+// Only a *pending* invite assigns a role. An accepted intent has already been
+// consumed by the membership it created; reusing it would hand a removed
+// member their old role (even admin) back on their next sign-in.
 async function findInviteIntentForMembership(
   ctx: MutationCtx,
   clerkOrgId: string,
@@ -298,11 +302,83 @@ async function findInviteIntentForMembership(
     intents
       .filter(
         (intent) =>
-          intent.source === "adminInvite" &&
-          (intent.status === "pending" || intent.status === "accepted"),
+          intent.source === "adminInvite" && intent.status === "pending",
       )
       .sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null
   );
+}
+
+// ---- Removal blocks -------------------------------------------------------
+//
+// When an admin removes a member, a `membershipIntents` row with status
+// "blocked" records that decision for (org, identity). Automatic provisioning
+// — `store`, `syncCurrentUserFromClerk`, the membership webhook, and the
+// subdomain join route — refuses to (re)create a membership while a block
+// exists. Only an explicit admin re-invite (`createMembershipIntent` with
+// source "adminInvite") or the super-admin fan-out lifts it.
+
+async function findRemovalBlocks(
+  ctx: QueryCtx | MutationCtx,
+  clerkOrgId: string,
+  tokenIdentifier: string,
+  emailLower: string,
+): Promise<Doc<"membershipIntents">[]> {
+  const blocks = await ctx.db
+    .query("membershipIntents")
+    .withIndex("by_clerkOrgId_and_status", (q) =>
+      q.eq("clerkOrgId", clerkOrgId).eq("status", "blocked"),
+    )
+    .take(500);
+  return blocks.filter(
+    (block) =>
+      block.acceptedTokenIdentifier === tokenIdentifier ||
+      (emailLower !== "" && block.emailLower === emailLower),
+  );
+}
+
+export async function isBlockedFromOrg(
+  ctx: QueryCtx | MutationCtx,
+  clerkOrgId: string,
+  tokenIdentifier: string,
+  emailLower: string,
+): Promise<boolean> {
+  const blocks = await findRemovalBlocks(
+    ctx,
+    clerkOrgId,
+    tokenIdentifier,
+    emailLower,
+  );
+  return blocks.length > 0;
+}
+
+/** An admin re-invite lifts blocks matched by the invited email, or held by an
+ * account whose current email is the invited one. */
+async function liftRemovalBlocksForEmail(
+  ctx: MutationCtx,
+  clerkOrgId: string,
+  emailLower: string,
+) {
+  if (!emailLower) return;
+  const users = await ctx.db
+    .query("users")
+    .withIndex("by_emailLower", (q) => q.eq("emailLower", emailLower))
+    .take(20);
+  const tokens = new Set(users.map((user) => user.tokenIdentifier));
+  const blocks = await ctx.db
+    .query("membershipIntents")
+    .withIndex("by_clerkOrgId_and_status", (q) =>
+      q.eq("clerkOrgId", clerkOrgId).eq("status", "blocked"),
+    )
+    .take(500);
+  for (const block of blocks) {
+    const matches =
+      block.emailLower === emailLower ||
+      (block.acceptedTokenIdentifier !== undefined &&
+        tokens.has(block.acceptedTokenIdentifier));
+    if (matches) {
+      await ctx.db.patch(block._id, { status: "revoked", updatedAt: Date.now() });
+    }
+  }
 }
 
 async function syncMembershipProfilesForUser(
@@ -350,6 +426,11 @@ async function upsertUserAndMembership(
   let user: Doc<"users">;
 
   if (existing) {
+    // Clerk never reuses user ids, so a request for a deleted user can only
+    // come from a still-valid old token or a late `user.updated` webhook.
+    // Neither may undelete the account or re-provision its memberships.
+    if (existing.deletedAt !== undefined) return existing._id;
+
     const updates: Partial<Doc<"users">> = {};
     if (email && existing.email !== email) updates.email = email;
     if (emailLower && existing.emailLower !== emailLower) {
@@ -359,7 +440,6 @@ async function upsertUserAndMembership(
     if (clerkUserId && existing.clerkUserId !== clerkUserId) {
       updates.clerkUserId = clerkUserId;
     }
-    if (existing.deletedAt !== undefined) updates.deletedAt = undefined;
     if (Object.keys(updates).length > 0) {
       await ctx.db.patch(existing._id, updates);
       user = { ...existing, ...updates };
@@ -396,6 +476,9 @@ async function upsertUserAndMembership(
 
   const display = memberDisplayFromUser(user);
   if (existingMembership) {
+    // A membership an admin is removing stays removed: automatic provisioning
+    // never reactivates it (see `beginMemberRemoval`).
+    if (!isActiveMembership(existingMembership)) return user._id;
     await ctx.db.patch(existingMembership._id, {
       clerkUserId: display.clerkUserId,
       name: display.name,
@@ -406,8 +489,21 @@ async function upsertUserAndMembership(
       platformRole: display.platformRole,
       searchText: display.searchText,
       status: "active",
-      removedAt: undefined,
       updatedAt: Date.now(),
+    });
+    return user._id;
+  }
+
+  if (
+    !args.requestedRole &&
+    (await isBlockedFromOrg(ctx, orgId, args.tokenIdentifier, display.emailLower))
+  ) {
+    await writeAudit(ctx, {
+      clerkOrgId: orgId,
+      targetUserId: user._id,
+      targetEmailLower: display.emailLower,
+      action: "blockedJoin",
+      detail: `Refused ${args.source ?? "selfSignup"} membership: removed by an admin`,
     });
     return user._id;
   }
@@ -1041,8 +1137,10 @@ async function hasOtherAdmin(
     .withIndex("by_clerkOrgId_and_role", (q) =>
       q.eq("clerkOrgId", clerkOrgId).eq("role", "admin"),
     )
-    .take(2);
-  return admins.some((m) => m._id !== excludedMembershipId);
+    .take(20);
+  return admins.some(
+    (m) => m._id !== excludedMembershipId && isActiveMembership(m),
+  );
 }
 
 export const setMembershipRole = mutation({
@@ -1090,36 +1188,16 @@ export const setMembershipRole = mutation({
   },
 });
 
-export const removeMembership = mutation({
-  args: { membershipId: v.id("memberships") },
-  handler: async (ctx, args) => {
-    const caller = await requireOrgAdmin(ctx);
-    const target = await ctx.db.get(args.membershipId);
-    if (!target || target.clerkOrgId !== caller.orgId) {
-      throw new Error("Membership not found");
-    }
-    if (target.userId === caller.userId) {
-      throw new Error("Cannot remove your own membership.");
-    }
-    if (target.role === "admin") {
-      const otherAdmin = await hasOtherAdmin(ctx, caller.orgId, target._id);
-      if (!otherAdmin) {
-        throw new Error("Cannot remove the last admin from this org.");
-      }
-    }
-    await ctx.db.delete(args.membershipId);
-    await patchStatsIfPresent(ctx, caller.orgId, roleDelta(target.role, -1));
-    await writeAudit(ctx, {
-      clerkOrgId: caller.orgId,
-      actorUserId: caller.userId,
-      targetUserId: target.userId,
-      membershipId: target._id,
-      action: "memberRemoved",
-    });
-  },
-});
-
-export const getMembershipForRemoval = internalQuery({
+/**
+ * Step 1 of an admin removal, run before Clerk is touched. In one transaction
+ * it re-checks that the caller is an active admin and the target removable,
+ * tombstones the target's membership (cutting access at once, even while
+ * their Clerk token is still valid), and records a removal block so no
+ * automatic path — `store`, the membership webhook, or a domain rejoin — can
+ * re-provision them. Tombstoning inside the transaction also makes two admins
+ * removing each other conflict instead of leaving the org with no admin.
+ */
+export const beginMemberRemoval = internalMutation({
   args: {
     membershipId: v.id("memberships"),
     orgId: v.string(),
@@ -1134,7 +1212,10 @@ export const getMembershipForRemoval = internalQuery({
           .eq("clerkOrgId", args.orgId),
       )
       .unique();
-    if (!callerMembership || callerMembership.role !== "admin") {
+    if (
+      !isActiveMembership(callerMembership) ||
+      callerMembership.role !== "admin"
+    ) {
       throw new Error("Insufficient permissions");
     }
 
@@ -1152,10 +1233,86 @@ export const getMembershipForRemoval = internalQuery({
       }
     }
 
-    return {
-      targetTokenIdentifier: target.tokenIdentifier,
+    const now = Date.now();
+    await ctx.db.patch(target._id, {
+      status: "removed",
+      removedAt: now,
+      updatedAt: now,
+    });
+
+    const user = await ctx.db.get(target.userId);
+    const email = target.email ?? user?.email ?? "";
+    const blockId = await ctx.db.insert("membershipIntents", {
+      clerkOrgId: args.orgId,
+      email,
+      emailLower: target.emailLower ?? normalizeEmail(email),
+      // Records the role held at removal; a blocked intent never grants it.
+      requestedRole: target.role,
+      source: "adminInvite",
+      status: "blocked",
+      invitedBy: callerMembership.userId,
+      acceptedUserId: target.userId,
+      acceptedTokenIdentifier: target.tokenIdentifier,
+      clerkUserId:
+        target.clerkUserId ??
+        clerkUserIdFromTokenIdentifier(target.tokenIdentifier),
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return { blockId, targetTokenIdentifier: target.tokenIdentifier };
+  },
+});
+
+/** Undo `beginMemberRemoval` when Clerk refuses the removal, so the member
+ * keeps the access Clerk still grants them. */
+export const abortMemberRemoval = internalMutation({
+  args: {
+    membershipId: v.id("memberships"),
+    blockId: v.id("membershipIntents"),
+  },
+  handler: async (ctx, args) => {
+    const block = await ctx.db.get(args.blockId);
+    if (block?.status === "blocked") await ctx.db.delete(block._id);
+    const membership = await ctx.db.get(args.membershipId);
+    if (membership?.status === "removed") {
+      await ctx.db.patch(membership._id, {
+        status: "active",
+        removedAt: undefined,
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
+
+/** Final step once Clerk has dropped the membership. The Clerk
+ * `organizationMembership.deleted` webhook may already have deleted the row
+ * (and adjusted stats); then there is nothing left to do. */
+export const completeMemberRemoval = internalMutation({
+  args: {
+    membershipId: v.id("memberships"),
+    orgId: v.string(),
+    callerTokenIdentifier: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const target = await ctx.db.get(args.membershipId);
+    if (!target || target.clerkOrgId !== args.orgId) return;
+
+    const actor = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", args.callerTokenIdentifier),
+      )
+      .unique();
+    await ctx.db.delete(target._id);
+    await patchStatsIfPresent(ctx, args.orgId, roleDelta(target.role, -1));
+    await writeAudit(ctx, {
+      clerkOrgId: args.orgId,
+      actorUserId: actor?._id,
       targetUserId: target.userId,
-    };
+      membershipId: target._id,
+      action: "memberRemoved",
+    });
   },
 });
 
@@ -1163,28 +1320,75 @@ export const removeMemberFromOrg = action({
   args: { membershipId: v.id("memberships") },
   handler: async (ctx, args): Promise<void> => {
     const { orgId, tokenIdentifier } = await resolveOrgForAction(ctx);
-    const { targetTokenIdentifier } = await ctx.runQuery(
-      internal.users.getMembershipForRemoval,
-      {
-        membershipId: args.membershipId,
-        orgId,
-        callerTokenIdentifier: tokenIdentifier,
-      },
-    );
+    const removal: {
+      blockId: Id<"membershipIntents">;
+      targetTokenIdentifier: string;
+    } = await ctx.runMutation(internal.users.beginMemberRemoval, {
+      membershipId: args.membershipId,
+      orgId,
+      callerTokenIdentifier: tokenIdentifier,
+    });
 
-    const clerkUserId = clerkUserIdFromTokenIdentifier(targetTokenIdentifier);
+    const clerkUserId = clerkUserIdFromTokenIdentifier(
+      removal.targetTokenIdentifier,
+    );
     try {
       await clerkFetch(`/organizations/${orgId}/memberships/${clerkUserId}`, {
         method: "DELETE",
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes("404")) throw err;
+      if (!msg.includes("404")) {
+        await ctx.runMutation(internal.users.abortMemberRemoval, {
+          membershipId: args.membershipId,
+          blockId: removal.blockId,
+        });
+        throw err;
+      }
     }
 
-    await ctx.runMutation(api.users.removeMembership, {
+    await ctx.runMutation(internal.users.completeMemberRemoval, {
       membershipId: args.membershipId,
+      orgId,
+      callerTokenIdentifier: tokenIdentifier,
     });
+  },
+});
+
+/** Asked by the subdomain join route, with the caller's own token, before it
+ * adds them to a Clerk org: a member an admin removed must not walk straight
+ * back in because their email domain still matches. Reveals only the
+ * caller's own status for the given org. */
+export const getMyJoinStatus = query({
+  args: { clerkOrgId: v.string() },
+  handler: async (ctx, args) => {
+    const identity = await requireAuth(ctx);
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier),
+      )
+      .unique();
+    if (user && user.deletedAt !== undefined) return { blocked: true };
+
+    const membership = await ctx.db
+      .query("memberships")
+      .withIndex("by_tokenIdentifier_and_clerkOrgId", (q) =>
+        q
+          .eq("tokenIdentifier", identity.tokenIdentifier)
+          .eq("clerkOrgId", args.clerkOrgId),
+      )
+      .unique();
+    if (membership && !isActiveMembership(membership)) return { blocked: true };
+
+    const emailLower = user?.emailLower ?? normalizeEmail(identity.email);
+    const blocked = await isBlockedFromOrg(
+      ctx,
+      args.clerkOrgId,
+      identity.tokenIdentifier,
+      emailLower,
+    );
+    return { blocked };
   },
 });
 
@@ -1218,6 +1422,10 @@ export const createMembershipIntent = internalMutation({
   handler: async (ctx, args) => {
     const email = validateProfileText(args.email, "Email", 320);
     const emailLower = normalizeEmail(email);
+    if (args.source === "adminInvite") {
+      // An explicit invite is how an admin reverses an earlier removal.
+      await liftRemovalBlocksForEmail(ctx, args.clerkOrgId, emailLower);
+    }
     const existing = await ctx.db
       .query("membershipIntents")
       .withIndex("by_clerkOrgId_and_emailLower", (q) =>

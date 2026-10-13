@@ -11,6 +11,7 @@ import { api, internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import {
   assertOrgOwns,
+  isActiveMembership,
   requireOrgAdmin,
   requireOrgMember,
   resolveOrgForAction,
@@ -433,7 +434,10 @@ export const getFailedForRetry = internalQuery({
           .eq("clerkOrgId", args.orgId),
       )
       .unique();
-    if (!callerMembership || callerMembership.role !== "admin") {
+    if (
+      !isActiveMembership(callerMembership) ||
+      callerMembership.role !== "admin"
+    ) {
       throw new Error("Insufficient permissions");
     }
 

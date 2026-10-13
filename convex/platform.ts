@@ -13,6 +13,7 @@ import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { requireSuperAdmin } from "./lib/orgAuth";
 import {
+  assertClerkId,
   clerkFetch,
   clerkUserIdFromTokenIdentifier,
   normalizeEmail,
@@ -263,6 +264,63 @@ export const listSuperAdmins = query({
   },
 });
 
+/**
+ * Read-only incident audit for the enrollment holes closed on 2026-10-13
+ * (Clerk test mode left on in prod + the `bizgroup.ae` staff-domain
+ * shortcut). Lists memberships that either use a Clerk test address
+ * (`+clerk_test`) or belong to a non-super-admin `@bizgroup.ae` account that
+ * joined a tenant by itself rather than through an invite or fan-out. Nothing
+ * is changed; decide removals per row.
+ *
+ *   npx convex run --prod platform:auditEnrollmentExposure
+ */
+export const auditEnrollmentExposure = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const tenantSlugs = new Map<string, string>();
+    const findings: Array<{
+      reason: "clerkTestEmail" | "staffDomainSelfJoin";
+      tenantSlug: string | null;
+      clerkOrgId: string;
+      email: string;
+      role: string;
+      source: string;
+      createdAt: number;
+      membershipId: Id<"memberships">;
+    }> = [];
+
+    for await (const m of ctx.db.query("memberships")) {
+      const email = (m.emailLower ?? m.email ?? "").toLowerCase();
+      const source = m.source ?? "legacy";
+      const isTestEmail = email.slice(0, email.lastIndexOf("@")).includes("+clerk_test");
+      const isStaffSelfJoin =
+        email.endsWith("@bizgroup.ae") &&
+        m.platformRole !== "superAdmin" &&
+        (source === "selfSignup" || source === "webhook");
+      if (!isTestEmail && !isStaffSelfJoin) continue;
+
+      if (!tenantSlugs.has(m.clerkOrgId)) {
+        const tenant = await ctx.db
+          .query("tenants")
+          .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", m.clerkOrgId))
+          .unique();
+        tenantSlugs.set(m.clerkOrgId, tenant?.slug ?? "");
+      }
+      findings.push({
+        reason: isTestEmail ? "clerkTestEmail" : "staffDomainSelfJoin",
+        tenantSlug: tenantSlugs.get(m.clerkOrgId) || null,
+        clerkOrgId: m.clerkOrgId,
+        email,
+        role: m.role,
+        source,
+        createdAt: m.createdAt,
+        membershipId: m._id,
+      });
+    }
+    return findings;
+  },
+});
+
 /** Internal: list super-admins for the fan-out action. */
 export const getSuperAdminsInternal = internalQuery({
   args: {},
@@ -460,6 +518,7 @@ export async function fanOutImpl(
   clerkOrgId: string,
   invitedBy: Id<"users"> | undefined,
 ): Promise<FanOutResult> {
+  assertClerkId(clerkOrgId, "org");
   const clerkSecret = process.env.CLERK_SECRET_KEY;
   if (!clerkSecret) {
     throw new Error("CLERK_SECRET_KEY is not set in Convex env");
@@ -576,9 +635,9 @@ export const fanOutSuperAdminMembershipsInternal = internalAction({
 //
 // Each tenant's subdomain sign-up is gated by email domain: a user may join
 // `<slug>.<root>` only when a verified email of theirs matches the tenant's
-// `allowedEmailDomains` (stored in Clerk org public metadata), a platform
-// staff domain, or a pending invitation. These actions are how the allowed
-// list is managed until a tenant-management console exists.
+// `allowedEmailDomains` (stored in Clerk org public metadata) or a pending
+// invitation. Platform staff are added by the super-admin fan-out, not by
+// email domain. These actions manage the allowed list.
 
 const EMAIL_DOMAIN_PATTERN =
   /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
@@ -604,6 +663,7 @@ export async function setAllowedEmailDomainsImpl(
   clerkOrgId: string,
   domains: string[],
 ): Promise<SetAllowedDomainsResult> {
+  assertClerkId(clerkOrgId, "org");
   const allowedEmailDomains = normalizeEmailDomains(domains);
   // Clerk merges public_metadata keys, so this replaces only
   // `allowedEmailDomains` and leaves other metadata untouched.
@@ -616,8 +676,8 @@ export async function setAllowedEmailDomainsImpl(
 
 /**
  * UI-facing action. Super-admin-gated via JWT. Replaces the tenant's allowed
- * email domain list (pass the full list each time; [] closes the tenant to
- * everyone except platform staff and invited users).
+ * email domain list (pass the full list each time; [] makes the tenant
+ * invite-only).
  */
 export const setOrgAllowedEmailDomains = action({
   args: { clerkOrgId: v.string(), domains: v.array(v.string()) },

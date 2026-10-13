@@ -7,8 +7,9 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { resolveOrgForAction } from "./lib/orgAuth";
+import { isActiveMembership, resolveOrgForAction } from "./lib/orgAuth";
 import {
+  assertClerkId,
   clerkFetch,
   clerkUserIdFromTokenIdentifier,
 } from "./lib/clerkApi";
@@ -30,7 +31,7 @@ export const assertAdminFor = internalQuery({
           .eq("clerkOrgId", args.orgId),
       )
       .unique();
-    if (!membership || membership.role !== "admin") {
+    if (!isActiveMembership(membership) || membership.role !== "admin") {
       throw new Error("Insufficient permissions");
     }
     return { membershipId: membership._id, userId: membership.userId };
@@ -466,10 +467,11 @@ export const revoke = action({
   handler: async (ctx, args) => {
     const { orgId, tokenIdentifier } = await resolveOrgForAction(ctx);
     await requireAdminForAction(ctx, orgId, tokenIdentifier);
+    const invitationId = assertClerkId(args.invitationId, "orginv");
 
     const requestingUserId = clerkUserIdFromTokenIdentifier(tokenIdentifier);
     const result = (await clerkFetch(
-      `/organizations/${orgId}/invitations/${args.invitationId}/revoke`,
+      `/organizations/${orgId}/invitations/${invitationId}/revoke`,
       {
         method: "POST",
         body: { requesting_user_id: requestingUserId },
@@ -484,7 +486,7 @@ export const revoke = action({
 
     await ctx.runMutation(internal.users.markInvitationRevoked, {
       clerkOrgId: orgId,
-      clerkInvitationId: args.invitationId,
+      clerkInvitationId: invitationId,
     });
 
     return { id: result.id, status: result.status };
