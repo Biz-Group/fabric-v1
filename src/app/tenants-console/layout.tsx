@@ -1,7 +1,7 @@
 "use client";
 
-import { useClerk, useUser } from "@clerk/nextjs";
-import { useMutation, useQuery } from "convex/react";
+import { useAuth, useClerk, useUser } from "@clerk/nextjs";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
@@ -21,23 +21,45 @@ export default function TenantsConsoleLayout({
   children: React.ReactNode;
 }) {
   const { isLoaded, isSignedIn } = useUser();
+  // `useUser` counts a pending session (org not chosen yet) as signed in;
+  // Convex only authenticates an active one.
+  const { isSignedIn: hasActiveSession } = useAuth();
+  const { redirectToSignIn } = useClerk();
+  const { isAuthenticated, isLoading: convexAuthLoading } = useConvexAuth();
   const me = useQuery(api.users.getMe);
   const storeUser = useMutation(api.users.store);
 
   // Ensure the Convex user row exists for a staff member whose first visit
   // is the console itself (requireSuperAdmin needs the row).
   useEffect(() => {
-    if (isLoaded && isSignedIn) void storeUser();
-  }, [isLoaded, isSignedIn, storeUser]);
+    if (isLoaded && isSignedIn && isAuthenticated) void storeUser();
+  }, [isLoaded, isSignedIn, isAuthenticated, storeUser]);
 
-  if (!isLoaded || me === undefined) {
+  // The session can end while the console is open (expiry, sign-out in
+  // another tab); send the user to sign in rather than leaving them here.
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) {
+      void redirectToSignIn({ redirectUrl: window.location.href });
+    }
+  }, [isLoaded, isSignedIn, redirectToSignIn]);
+
+  if (!isLoaded || convexAuthLoading) {
     return <LoadingScreen message="Loading tenant console..." />;
   }
 
   if (!isSignedIn) {
-    return (
-      <LoadingScreen message="Redirecting to sign in..." showSpinner={false} />
-    );
+    return <LoadingScreen message="Redirecting to sign in..." />;
+  }
+
+  // Convex dropped the session (e.g. a token refresh failed while offline):
+  // `getMe` reads null then, which must not look like "access denied".
+  // ConvexClientProvider retries on its own.
+  if (hasActiveSession && !isAuthenticated) {
+    return <LoadingScreen message="Reconnecting to the tenant console..." />;
+  }
+
+  if (me === undefined) {
+    return <LoadingScreen message="Loading tenant console..." />;
   }
 
   if (!me || me.platformRole !== "superAdmin") {

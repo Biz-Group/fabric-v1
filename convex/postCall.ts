@@ -5,6 +5,8 @@ import {
   internalMutation,
   internalQuery,
   type ActionCtx,
+  type MutationCtx,
+  type QueryCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
@@ -196,6 +198,36 @@ export const resolveContributorAttribution = internalQuery({
 // Internal helpers — all tenant-scoped via explicit clerkOrgId arg
 // ---------------------------------------------------------------------------
 
+const FOREIGN_CONVERSATION_MESSAGE =
+  "This conversation can't be imported into this workspace.";
+
+/** Every tenant shares one ElevenLabs agent, so a conversation id says nothing
+ * about which org it came from. The first org to import it owns it; any other
+ * org is refused, so a learned id can't pull another tenant's transcript. */
+async function elevenLabsConversationOwnedElsewhere(
+  ctx: QueryCtx | MutationCtx,
+  elevenlabsConversationId: string,
+  clerkOrgId: string,
+): Promise<boolean> {
+  const imports = await ctx.db
+    .query("conversations")
+    .withIndex("by_elevenlabsConversationId", (q) =>
+      q.eq("elevenlabsConversationId", elevenlabsConversationId),
+    )
+    .take(10);
+  return imports.some((conversation) => conversation.clerkOrgId !== clerkOrgId);
+}
+
+export const isElevenLabsConversationOwnedElsewhere = internalQuery({
+  args: { elevenlabsConversationId: v.string(), clerkOrgId: v.string() },
+  handler: async (ctx, args): Promise<boolean> =>
+    await elevenLabsConversationOwnedElsewhere(
+      ctx,
+      args.elevenlabsConversationId,
+      args.clerkOrgId,
+    ),
+});
+
 export const insertConversation = internalMutation({
   args: {
     processId: v.id("processes"),
@@ -264,6 +296,17 @@ export const insertConversation = internalMutation({
     }
     if (args.elevenlabsConversationId !== undefined) {
       requireElevenLabsConversationId(args.elevenlabsConversationId);
+      // Re-checked in the transaction: the import action polls for up to a
+      // minute, so another org could have imported the id meanwhile.
+      if (
+        await elevenLabsConversationOwnedElsewhere(
+          ctx,
+          args.elevenlabsConversationId,
+          args.clerkOrgId,
+        )
+      ) {
+        throw new Error(FOREIGN_CONVERSATION_MESSAGE);
+      }
     }
     return await ctx.db.insert("conversations", {
       processId: args.processId,
@@ -440,6 +483,15 @@ export const fetchConversation = action({
       submittedByName: attribution.submittedByName,
       consentAttestedAt: attribution.submittedByName ? Date.now() : undefined,
     };
+
+    // Refuse before fetching anything from ElevenLabs.
+    const ownedElsewhere: boolean = await ctx.runQuery(
+      internal.postCall.isElevenLabsConversationOwnedElsewhere,
+      { elevenlabsConversationId, clerkOrgId: orgId },
+    );
+    if (ownedElsewhere) {
+      throw new Error(FOREIGN_CONVERSATION_MESSAGE);
+    }
 
     const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) {

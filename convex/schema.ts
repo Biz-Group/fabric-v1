@@ -557,6 +557,9 @@ export default defineSchema({
       "clerkOrgId",
       "elevenlabsConversationId",
     ])
+    // Global lookup: an ElevenLabs conversation belongs to the first org that
+    // imports it (all tenants share one agent, so its ids aren't org-scoped).
+    .index("by_elevenlabsConversationId", ["elevenlabsConversationId"])
     .index("by_audioStorageId", ["audioStorageId"]),
 
   // One active upload grant per user/process. A grant proves the caller went

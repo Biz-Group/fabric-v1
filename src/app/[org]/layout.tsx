@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useAuth,
   useClerk,
   useOrganization,
   useOrganizationList,
@@ -29,6 +30,10 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
   const slugFromUrl = params.org;
   const { isAuthenticated, isLoading: authLoading } = useConvexAuth();
   const { isLoaded: userLoaded, isSignedIn } = useUser();
+  // `useUser` counts a pending session (org not chosen yet) as signed in;
+  // Convex only authenticates an active one.
+  const { isSignedIn: hasActiveSession } = useAuth();
+  const { redirectToSignIn } = useClerk();
   const { organization, isLoaded: orgLoaded } = useOrganization();
   const { setActive, isLoaded: orgListLoaded, userMemberships } =
     useOrganizationList({
@@ -80,14 +85,36 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
     setActive,
   ]);
 
+  // The proxy's auth.protect() redirects signed-out requests, but a session
+  // can also end while the page is open (expiry, sign-out in another tab).
+  useEffect(() => {
+    if (userLoaded && !isSignedIn) {
+      void redirectToSignIn({ redirectUrl: window.location.href });
+    }
+  }, [userLoaded, isSignedIn, redirectToSignIn]);
+
   if (authLoading || !userLoaded || !orgLoaded || !orgListLoaded) {
     return <LoadingScreen message="Loading workspace..." />;
   }
 
-  // Middleware.auth.protect() should have redirected unauthenticated requests
-  // to /sign-in. This is a belt-and-braces guard.
-  if (!isAuthenticated || !isSignedIn) {
-    return <LoadingScreen message="Redirecting to sign in..." showSpinner={false} />;
+  if (!isSignedIn) {
+    return <LoadingScreen message="Redirecting to sign in..." />;
+  }
+
+  // Signed in to Clerk but Convex has no session. Either the Clerk session is
+  // still pending (the setActive effect above is activating this org), or a
+  // background token refresh failed while offline, which ConvexClientProvider
+  // retries on its own.
+  if (!isAuthenticated) {
+    return (
+      <LoadingScreen
+        message={
+          hasActiveSession
+            ? "Reconnecting to your workspace..."
+            : "Loading workspace..."
+        }
+      />
+    );
   }
 
   // Don't conclude non-membership until every membership page has loaded —

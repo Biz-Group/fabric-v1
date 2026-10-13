@@ -7,6 +7,7 @@ import {
   mutation,
   type ActionCtx,
   type MutationCtx,
+  type QueryCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
@@ -532,6 +533,38 @@ async function writeVoiceUploadRateLimit(
   });
 }
 
+/**
+ * Convex only reveals a storage id after the browser has uploaded, so a grant
+ * can't name its file up front. Bind them by time instead: the file must have
+ * been created while this grant was live (the client asks for the grant right
+ * before uploading) and must not already belong to a conversation. Without
+ * this, a contributor could submit any storage id they learned — and a
+ * rejected "upload" would delete it.
+ */
+function createdWhileGrantLive(
+  creationTime: number,
+  grant: Doc<"voiceUploadGrants">,
+): boolean {
+  const issuedAt = grant.expiresAt - VOICE_UPLOAD_GRANT_TTL_MS;
+  return creationTime >= issuedAt && creationTime <= grant.expiresAt;
+}
+
+async function isUploadForGrant(
+  ctx: QueryCtx | MutationCtx,
+  grant: Doc<"voiceUploadGrants">,
+  storageId: Id<"_storage">,
+): Promise<boolean> {
+  const metadata = await ctx.db.system.get("_storage", storageId);
+  if (!metadata || !createdWhileGrantLive(metadata._creationTime, grant)) {
+    return false;
+  }
+  const attached = await ctx.db
+    .query("conversations")
+    .withIndex("by_audioStorageId", (q) => q.eq("audioStorageId", storageId))
+    .first();
+  return attached === null;
+}
+
 async function deleteUnattachedAudio(
   ctx: MutationCtx,
   storageId: Id<"_storage">,
@@ -626,19 +659,23 @@ export const hasValidVoiceUploadGrant = internalQuery({
     processId: v.id("processes"),
     clerkOrgId: v.string(),
     userId: v.id("users"),
+    storageId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
     const grant = await ctx.db
       .query("voiceUploadGrants")
       .withIndex("by_token", (q) => q.eq("token", args.token))
       .unique();
-    return Boolean(
-      grant &&
-        grant.processId === args.processId &&
-        grant.clerkOrgId === args.clerkOrgId &&
-        grant.userId === args.userId &&
-        grant.expiresAt > Date.now(),
-    );
+    if (
+      !grant ||
+      grant.processId !== args.processId ||
+      grant.clerkOrgId !== args.clerkOrgId ||
+      grant.userId !== args.userId ||
+      grant.expiresAt <= Date.now()
+    ) {
+      return false;
+    }
+    return await isUploadForGrant(ctx, grant, args.storageId);
   },
 });
 
@@ -664,8 +701,10 @@ export const rejectVoiceUpload = internalMutation({
       return false;
     }
 
+    const ownsFile = await isUploadForGrant(ctx, grant, args.storageId);
     await ctx.db.delete(grant._id);
-    return await deleteUnattachedAudio(ctx, args.storageId);
+    // Only ever delete the file this grant's upload created.
+    return ownsFile ? await deleteUnattachedAudio(ctx, args.storageId) : false;
   },
 });
 
@@ -703,6 +742,20 @@ export const admitVoiceRecording = internalMutation({
 
     const process = await ctx.db.get(args.processId);
     if (!process || process.clerkOrgId !== args.clerkOrgId) {
+      return { ok: false, reason: "invalid_grant" };
+    }
+
+    // Re-checked inside the transaction. A file that isn't this grant's upload
+    // is neither adopted nor deleted. (An already-attached file falls through
+    // to `duplicate_upload` below, unchanged.)
+    const metadataForBinding = await ctx.db.system.get(
+      "_storage",
+      args.storageId,
+    );
+    if (
+      metadataForBinding &&
+      !createdWhileGrantLive(metadataForBinding._creationTime, grant)
+    ) {
       return { ok: false, reason: "invalid_grant" };
     }
 
@@ -864,6 +917,7 @@ export const processVoiceRecording = action({
         clerkOrgId: orgId,
         token: args.uploadToken,
         userId: attribution.userId,
+        storageId: args.storageId,
       },
     );
     if (!hasGrant) {

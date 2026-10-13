@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import {
   action,
   ActionCtx,
+  internalAction,
+  internalMutation,
   internalQuery,
   QueryCtx,
 } from "./_generated/server";
@@ -12,6 +14,7 @@ import {
   assertClerkId,
   clerkFetch,
   clerkUserIdFromTokenIdentifier,
+  isClerkId,
 } from "./lib/clerkApi";
 
 // ---------------------------------------------------------------------------
@@ -97,6 +100,15 @@ function clerkInviteConflict(
   }
   return null;
 }
+
+// Pending invitations count toward Clerk's per-workspace member limit.
+function isClerkMemberQuotaError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("organization_membership_quota_exceeded");
+}
+
+const MEMBER_LIMIT_MESSAGE =
+  "This workspace has reached its member limit. Remove a member or revoke a pending invitation, then try again.";
 
 function rowsFromClerkResponse<T>(
   response: ClerkListResponse<T> | T[],
@@ -372,7 +384,9 @@ export const invite = action({
       return {
         outcome: "failed",
         email,
-        userMessage: "The invitation could not be sent. Please try again.",
+        userMessage: isClerkMemberQuotaError(error)
+          ? MEMBER_LIMIT_MESSAGE
+          : "The invitation could not be sent. Please try again.",
       };
     }
 
@@ -490,5 +504,106 @@ export const revoke = action({
     });
 
     return { id: result.id, status: result.status };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Seat reclaim: an invited user who joins through their subdomain (rather
+// than the invitation link) gets a Clerk membership created directly, which
+// leaves their Clerk invitation pending forever — and pending invitations
+// count toward the workspace's member limit. Once Fabric records the invite
+// as accepted, revoke the Clerk-side leftover.
+// ---------------------------------------------------------------------------
+
+/** A Clerk user allowed to revoke invitations in this org: a platform
+ * super-admin (fanned out as `org:admin` in every tenant), else the inviter. */
+export const getInvitationRevoker = internalQuery({
+  args: { clerkOrgId: v.string(), invitedBy: v.optional(v.id("users")) },
+  handler: async (ctx, args): Promise<string | null> => {
+    const superAdmins = await ctx.db
+      .query("users")
+      .withIndex("by_platformRole", (q) => q.eq("platformRole", "superAdmin"))
+      .take(50);
+    for (const admin of superAdmins) {
+      if (admin.deletedAt !== undefined) continue;
+      const membership = await ctx.db
+        .query("memberships")
+        .withIndex("by_tokenIdentifier_and_clerkOrgId", (q) =>
+          q
+            .eq("tokenIdentifier", admin.tokenIdentifier)
+            .eq("clerkOrgId", args.clerkOrgId),
+        )
+        .unique();
+      if (isActiveMembership(membership)) {
+        return clerkUserIdFromTokenIdentifier(admin.tokenIdentifier);
+      }
+    }
+    if (args.invitedBy) {
+      const inviter = await ctx.db.get(args.invitedBy);
+      if (inviter && inviter.deletedAt === undefined) {
+        return clerkUserIdFromTokenIdentifier(inviter.tokenIdentifier);
+      }
+    }
+    return null;
+  },
+});
+
+/** Audit only. The intent stays `accepted` — flipping it to `revoked` would
+ * corrupt accept history (see docs/clerk-invitation-seat-cleanup-plan.md). */
+export const recordFulfilledInvitationRevoked = internalMutation({
+  args: { clerkOrgId: v.string(), emailLower: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("authAuditEvents", {
+      clerkOrgId: args.clerkOrgId,
+      targetEmailLower: args.emailLower,
+      action: "inviteRevoked",
+      detail: "Fulfilled by direct join; Clerk invitation revoked to free its seat",
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const revokeFulfilledInvitation = internalAction({
+  args: {
+    clerkOrgId: v.string(),
+    clerkInvitationId: v.string(),
+    emailLower: v.string(),
+    invitedBy: v.optional(v.id("users")),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    if (
+      !isClerkId(args.clerkOrgId, "org") ||
+      !isClerkId(args.clerkInvitationId, "orginv")
+    ) {
+      return;
+    }
+
+    // Accepted through the invitation link, already revoked, or expired:
+    // nothing is holding a seat.
+    const invitation = (await clerkFetch(
+      `/organizations/${args.clerkOrgId}/invitations/${args.clerkInvitationId}`,
+    )) as ClerkInvitation;
+    if (invitation.status !== "pending") return;
+
+    const requestingUserId: string | null = await ctx.runQuery(
+      internal.invitations.getInvitationRevoker,
+      { clerkOrgId: args.clerkOrgId, invitedBy: args.invitedBy },
+    );
+    if (!requestingUserId) {
+      console.warn("No Clerk user available to revoke a fulfilled invitation", {
+        clerkOrgId: args.clerkOrgId,
+        clerkInvitationId: args.clerkInvitationId,
+      });
+      return;
+    }
+
+    await clerkFetch(
+      `/organizations/${args.clerkOrgId}/invitations/${args.clerkInvitationId}/revoke`,
+      { method: "POST", body: { requesting_user_id: requestingUserId } },
+    );
+    await ctx.runMutation(internal.invitations.recordFulfilledInvitationRevoked, {
+      clerkOrgId: args.clerkOrgId,
+      emailLower: args.emailLower,
+    });
   },
 });

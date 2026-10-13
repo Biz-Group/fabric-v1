@@ -22,16 +22,16 @@ type ClerkApiError = {
   errors?: Array<{ code?: string }>;
 };
 
-function isAlreadyMemberError(error: unknown): boolean {
+function hasClerkErrorCode(error: unknown, code: string): boolean {
   if (typeof error !== "object" || error === null) return false;
 
   const errors = (error as ClerkApiError).errors;
-  return (
-    Array.isArray(errors) &&
-    errors.some((entry) => entry.code === "already_a_member_in_organization")
-  );
+  return Array.isArray(errors) && errors.some((entry) => entry.code === code);
 }
 
+// Browsers send `Origin` on every POST, same-origin included, and modern ones
+// also send `Sec-Fetch-Site`. A request with neither didn't come from our
+// page, so refuse it rather than assume it's safe.
 function isSameOriginPost(req: NextRequest): boolean {
   const origin = req.headers.get("origin");
   if (origin) {
@@ -44,10 +44,7 @@ function isSameOriginPost(req: NextRequest): boolean {
     }
   }
 
-  const fetchSite = req.headers.get("sec-fetch-site");
-  return (
-    fetchSite === null || fetchSite === "same-origin" || fetchSite === "none"
-  );
+  return req.headers.get("sec-fetch-site") === "same-origin";
 }
 
 function getVerifiedEmails(user: {
@@ -269,7 +266,19 @@ export async function POST(req: NextRequest) {
         role: "org:member",
       });
     } catch (error) {
-      if (!isAlreadyMemberError(error)) {
+      // Pending invitations count toward Clerk's per-workspace member limit,
+      // so a full workspace is an expected state, not a server error.
+      if (hasClerkErrorCode(error, "organization_membership_quota_exceeded")) {
+        logBlockedJoin({ slug, userId, reason: "membership_quota_exceeded" });
+        return NextResponse.json(
+          {
+            error:
+              "This workspace has reached its member limit. Ask a workspace admin to free up a seat, then try again.",
+          },
+          { status: 409 },
+        );
+      }
+      if (!hasClerkErrorCode(error, "already_a_member_in_organization")) {
         logBlockedJoin({ slug, userId, reason: "clerk_membership_create_failed" });
         throw error;
       }

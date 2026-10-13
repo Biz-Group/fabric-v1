@@ -99,18 +99,22 @@ http.route({
       return new Response("Missing event type", { status: 400 });
     }
 
-    const result: { status: string; error?: string } = await ctx.runMutation(
-      internal.users.handleClerkWebhook,
-      {
+    try {
+      await ctx.runMutation(internal.users.handleClerkWebhook, {
         eventId: verification.eventId,
         eventType: payload.type,
         data: payload.data,
-      },
-    );
-    if (result.status === "failed") {
-      return new Response(result.error ?? "Webhook processing failed", {
-        status: 500,
       });
+    } catch (error) {
+      // The handler's writes were rolled back; record the failure on its own
+      // and answer 500 so Clerk retries delivery.
+      const message = error instanceof Error ? error.message : String(error);
+      await ctx.runMutation(internal.users.recordClerkWebhookFailure, {
+        eventId: verification.eventId,
+        eventType: payload.type,
+        error: message,
+      });
+      return new Response("Webhook processing failed", { status: 500 });
     }
     return new Response("ok", { status: 200 });
   }),
@@ -124,14 +128,14 @@ http.route({
 //
 // Env:
 //   ROOT_DOMAIN    — apex host without scheme/port, e.g. "bizfabric.ai" or
-//                    "lvh.me" (dev). Optional; if unset we fall back to
-//                    CLIENT_ORIGIN.
-//   CLIENT_ORIGIN  — legacy apex origin; used as a fallback when ROOT_DOMAIN
-//                    isn't set (e.g. early dev). Defaults to "*" only when
-//                    neither is set, which should never be true in prod.
+//                    "lvh.me" (dev).
+//   CLIENT_ORIGIN  — legacy single origin, matched exactly when ROOT_DOMAIN
+//                    isn't set.
+// Fails closed: with neither configured, no origin is allowed (never "*").
 function allowedOriginFor(origin: string | null): string | null {
+  if (!origin) return null;
   const root = process.env.ROOT_DOMAIN;
-  if (origin && root) {
+  if (root) {
     try {
       const host = new URL(origin).hostname;
       if (host === root || host.endsWith(`.${root}`)) return origin;
@@ -140,7 +144,8 @@ function allowedOriginFor(origin: string | null): string | null {
       return null;
     }
   }
-  return process.env.CLIENT_ORIGIN ?? "*";
+  const legacyOrigin = process.env.CLIENT_ORIGIN;
+  return legacyOrigin && origin === legacyOrigin ? origin : null;
 }
 
 /** Adds ACAO + Vary:Origin to a header bag iff the request Origin is allowed. */

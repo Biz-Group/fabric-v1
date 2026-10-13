@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
 import {
@@ -396,6 +396,12 @@ describe("voice recording upload admission", () => {
   test("persists authoritative metadata and schedules only validated audio", async () => {
     const t = convexTest(schema, modules);
     const { processId } = await seedVoiceUploadFixture(t);
+    const caller = t.withIdentity(identityForOrgA());
+    // Same order as the client: get the grant, then upload.
+    const { uploadToken } = await caller.mutation(
+      api.voiceRecordings.generateUploadUrl,
+      { processId },
+    );
     const storageId = await t.run(async (ctx) =>
       ctx.storage.store(validWebmBlob()),
     );
@@ -403,11 +409,6 @@ describe("voice recording upload admission", () => {
       ctx.db.system.get("_storage", storageId),
     );
     expect(metadata).toMatchObject({ size: 5 });
-    const caller = t.withIdentity(identityForOrgA());
-    const { uploadToken } = await caller.mutation(
-      api.voiceRecordings.generateUploadUrl,
-      { processId },
-    );
 
     const result = await caller.action(
       api.voiceRecordings.processVoiceRecording,
@@ -435,13 +436,13 @@ describe("voice recording upload admission", () => {
   test("deletes a granted object with a forged audio label", async () => {
     const t = convexTest(schema, modules);
     const { processId } = await seedVoiceUploadFixture(t);
-    const storageId = await t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["not audio"], { type: "audio/mpeg" })),
-    );
     const caller = t.withIdentity(identityForOrgA());
     const { uploadToken } = await caller.mutation(
       api.voiceRecordings.generateUploadUrl,
       { processId },
+    );
+    const storageId = await t.run(async (ctx) =>
+      ctx.storage.store(new Blob(["not audio"], { type: "audio/mpeg" })),
     );
 
     await expect(
@@ -467,13 +468,13 @@ describe("voice recording upload admission", () => {
   test("makes upload grants single-use and storage IDs non-replayable", async () => {
     const t = convexTest(schema, modules);
     const { processId } = await seedVoiceUploadFixture(t);
-    const storageId = await t.run(async (ctx) =>
-      ctx.storage.store(validWebmBlob()),
-    );
     const caller = t.withIdentity(identityForOrgA());
     const firstGrant = await caller.mutation(
       api.voiceRecordings.generateUploadUrl,
       { processId },
+    );
+    const storageId = await t.run(async (ctx) =>
+      ctx.storage.store(validWebmBlob()),
     );
 
     await caller.action(api.voiceRecordings.processVoiceRecording, {
@@ -493,6 +494,7 @@ describe("voice recording upload admission", () => {
       }),
     ).rejects.toThrow(/invalid or expired/);
 
+    // A fresh grant can't adopt a file that was uploaded under another one.
     const secondGrant = await caller.mutation(
       api.voiceRecordings.generateUploadUrl,
       { processId },
@@ -505,7 +507,7 @@ describe("voice recording upload admission", () => {
         mimeType: "audio/webm",
         source: "upload",
       }),
-    ).rejects.toThrow(/already been submitted/);
+    ).rejects.toThrow(/invalid or expired/);
 
     const state = await t.run(async (ctx) => ({
       storage: await ctx.db.system.get("_storage", storageId),
@@ -513,6 +515,45 @@ describe("voice recording upload admission", () => {
     }));
     expect(state.storage).not.toBeNull();
     expect(state.conversations).toHaveLength(1);
+  });
+
+  test("refuses a file the grant didn't upload, and never deletes it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-10-13T08:00:00Z"));
+      const t = convexTest(schema, modules);
+      const { processId } = await seedVoiceUploadFixture(t);
+      // Stand-in for a tenant logo or another member's earlier upload.
+      const foreignId = await t.run(async (ctx) =>
+        ctx.storage.store(new Blob(["png"], { type: "image/png" })),
+      );
+
+      vi.setSystemTime(new Date("2026-10-13T08:05:00Z"));
+      const caller = t.withIdentity(identityForOrgA());
+      const { uploadToken } = await caller.mutation(
+        api.voiceRecordings.generateUploadUrl,
+        { processId },
+      );
+
+      await expect(
+        caller.action(api.voiceRecordings.processVoiceRecording, {
+          processId,
+          storageId: foreignId,
+          uploadToken,
+          mimeType: "audio/webm",
+          source: "upload",
+        }),
+      ).rejects.toThrow(/invalid or expired/);
+
+      const state = await t.run(async (ctx) => ({
+        foreign: await ctx.db.system.get("_storage", foreignId),
+        conversations: await ctx.db.query("conversations").take(1),
+      }));
+      expect(state.foreign).not.toBeNull();
+      expect(state.conversations).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("enforces the per-user upload URL rate limit", async () => {
@@ -533,13 +574,13 @@ describe("voice recording upload admission", () => {
   test("deletes valid audio rejected by the per-user byte quota", async () => {
     const t = convexTest(schema, modules);
     const { processId, userId } = await seedVoiceUploadFixture(t);
-    const storageId = await t.run(async (ctx) =>
-      ctx.storage.store(validWebmBlob()),
-    );
     const caller = t.withIdentity(identityForOrgA());
     const { uploadToken } = await caller.mutation(
       api.voiceRecordings.generateUploadUrl,
       { processId },
+    );
+    const storageId = await t.run(async (ctx) =>
+      ctx.storage.store(validWebmBlob()),
     );
     await t.run(async (ctx) => {
       const row = await ctx.db

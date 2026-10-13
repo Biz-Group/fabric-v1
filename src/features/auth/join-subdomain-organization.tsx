@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth, useClerk } from "@clerk/nextjs";
-import { useAction, useMutation } from "convex/react";
+import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../../convex/_generated/api";
@@ -27,6 +27,13 @@ async function getErrorMessage(response: Response): Promise<string> {
 const FABRIC_PROFILE_SYNC_ERROR =
   "We joined you to the workspace, but could not finish setting up your Fabric profile. Please try again.";
 
+const FABRIC_UNREACHABLE_ERROR =
+  "We joined you to the workspace, but couldn't reach Fabric to finish setting up. This is usually temporary — please try again in a moment.";
+
+// How long to wait for Convex to confirm the newly activated org before
+// telling the user something is wrong instead of spinning indefinitely.
+const CONVEX_ORG_READY_TIMEOUT_MS = 20_000;
+
 export function JoinSubdomainOrganization() {
   const router = useRouter();
   const { setActive } = useClerk();
@@ -35,6 +42,8 @@ export function JoinSubdomainOrganization() {
   });
   const syncFabricProfile = useAction(api.users.syncCurrentUserFromClerk);
   const storeUser = useMutation(api.users.store);
+  const { isAuthenticated: convexAuthenticated } = useConvexAuth();
+  const convexActiveOrg = useQuery(api.users.getActiveOrg);
   const hasStarted = useRef(false);
   const hasSynced = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,11 +86,27 @@ export function JoinSubdomainOrganization() {
     });
   }, [isLoaded, router, setActive, userId, retryKey]);
 
+  // Clerk switches `orgId` before Convex has a token carrying that org, so
+  // wait until Convex itself reports the target org. Calling Convex earlier
+  // races the token refresh and fails with "Not authenticated".
+  const convexOrgReady =
+    convexAuthenticated && convexActiveOrg?.orgId === targetOrganizationId;
+
+  useEffect(() => {
+    if (!targetOrganizationId || hasSynced.current || convexOrgReady) return;
+    const timer = window.setTimeout(() => {
+      if (hasSynced.current) return;
+      setError(FABRIC_UNREACHABLE_ERROR);
+    }, CONVEX_ORG_READY_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [targetOrganizationId, convexOrgReady]);
+
   useEffect(() => {
     if (
       !isLoaded ||
       !targetOrganizationId ||
       orgId !== targetOrganizationId ||
+      !convexOrgReady ||
       hasSynced.current
     ) {
       return;
@@ -115,6 +140,7 @@ export function JoinSubdomainOrganization() {
   }, [
     isLoaded,
     orgId,
+    convexOrgReady,
     router,
     storeUser,
     syncFabricProfile,

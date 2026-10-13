@@ -563,6 +563,21 @@ async function upsertUserAndMembership(
       updatedAt: Date.now(),
     });
     await patchStatsIfPresent(ctx, orgId, { pendingInvite: -1 });
+    // If they joined through the subdomain instead of the invitation link,
+    // the Clerk invitation is still pending and holding a seat. Mutations
+    // can't call Clerk, so hand off; runs once per new membership.
+    if (matchedIntent.clerkInvitationId) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.invitations.revokeFulfilledInvitation,
+        {
+          clerkOrgId: orgId,
+          clerkInvitationId: matchedIntent.clerkInvitationId,
+          emailLower: display.emailLower,
+          invitedBy: matchedIntent.invitedBy,
+        },
+      );
+    }
   }
 
   await patchStatsIfPresent(ctx, orgId, roleDelta(role, 1));
@@ -1583,13 +1598,19 @@ function webhookMembershipData(data: Record<string, unknown>) {
   return { clerkOrgId, clerkUserId, email, name, clerkRole };
 }
 
+/**
+ * Applies one Clerk webhook event. Deliberately does not catch: if any step
+ * throws, Convex rolls back every write, so a retried event is applied once
+ * rather than on top of a half-applied earlier attempt. The HTTP action
+ * records failures via `recordClerkWebhookFailure` in a separate transaction.
+ */
 export const handleClerkWebhook = internalMutation({
   args: {
     eventId: v.string(),
     eventType: v.string(),
     data: v.any(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ status: "processed" | "duplicate" }> => {
     const existing = await ctx.db
       .query("processedWebhookEvents")
       .withIndex("by_eventId", (q) => q.eq("eventId", args.eventId))
@@ -1602,204 +1623,217 @@ export const handleClerkWebhook = internalMutation({
       typeof args.data === "object" && args.data !== null
         ? (args.data as Record<string, unknown>)
         : {};
-    try {
-      if (args.eventType === "user.created" || args.eventType === "user.updated") {
-        const clerkUserId = getString(data.id);
-        if (clerkUserId) {
-          await upsertUserAndMembership(ctx, {
-            tokenIdentifier: tokenIdentifierFromClerkUserId(clerkUserId),
-            clerkUserId,
-            name: displayNameFromParts(
-              getString(data.first_name),
-              getString(data.last_name),
-              getString(data.username) ?? clerkUserId,
-            ),
-            email: webhookEmail(data),
-          });
-        }
+    if (args.eventType === "user.created" || args.eventType === "user.updated") {
+      const clerkUserId = getString(data.id);
+      if (clerkUserId) {
+        await upsertUserAndMembership(ctx, {
+          tokenIdentifier: tokenIdentifierFromClerkUserId(clerkUserId),
+          clerkUserId,
+          name: displayNameFromParts(
+            getString(data.first_name),
+            getString(data.last_name),
+            getString(data.username) ?? clerkUserId,
+          ),
+          email: webhookEmail(data),
+        });
       }
+    }
 
-      if (args.eventType === "user.deleted") {
-        const clerkUserId = getString(data.id);
-        if (clerkUserId) {
-          const tokenIdentifier = tokenIdentifierFromClerkUserId(clerkUserId);
-          const user = await ctx.db
-            .query("users")
-            .withIndex("by_tokenIdentifier", (q) =>
-              q.eq("tokenIdentifier", tokenIdentifier),
-            )
-            .unique();
-          if (user) {
-            await ctx.db.patch(user._id, { deletedAt: Date.now() });
-            const memberships = await ctx.db
-              .query("memberships")
-              .withIndex("by_userId", (q) => q.eq("userId", user._id))
-              .take(1000);
-            for (const membership of memberships) {
-              await ctx.db.delete(membership._id);
-              await patchStatsIfPresent(
-                ctx,
-                membership.clerkOrgId,
-                roleDelta(membership.role, -1),
-              );
-              await writeAudit(ctx, {
-                clerkOrgId: membership.clerkOrgId,
-                targetUserId: user._id,
-                membershipId: membership._id,
-                action: "memberRemoved",
-                detail: "Clerk user.deleted",
-              });
-            }
-          }
-        }
-      }
-
-      if (args.eventType === "organizationMembership.created") {
-        const membership = webhookMembershipData(data);
-        if (membership.clerkOrgId && membership.clerkUserId) {
-          await upsertUserAndMembership(ctx, {
-            tokenIdentifier: tokenIdentifierFromClerkUserId(membership.clerkUserId),
-            clerkUserId: membership.clerkUserId,
-            name: membership.name,
-            email: membership.email,
-            orgId: membership.clerkOrgId,
-            source: "webhook",
-          });
-        }
-      }
-
-      if (args.eventType === "organizationMembership.deleted") {
-        const membership = webhookMembershipData(data);
-        if (membership.clerkOrgId && membership.clerkUserId) {
-          const tokenIdentifier = tokenIdentifierFromClerkUserId(membership.clerkUserId);
-          const existingMembership = await ctx.db
+    if (args.eventType === "user.deleted") {
+      const clerkUserId = getString(data.id);
+      if (clerkUserId) {
+        const tokenIdentifier = tokenIdentifierFromClerkUserId(clerkUserId);
+        const user = await ctx.db
+          .query("users")
+          .withIndex("by_tokenIdentifier", (q) =>
+            q.eq("tokenIdentifier", tokenIdentifier),
+          )
+          .unique();
+        if (user) {
+          await ctx.db.patch(user._id, { deletedAt: Date.now() });
+          const memberships = await ctx.db
             .query("memberships")
-            .withIndex("by_tokenIdentifier_and_clerkOrgId", (q) =>
-              q
-                .eq("tokenIdentifier", tokenIdentifier)
-                .eq("clerkOrgId", membership.clerkOrgId!),
-            )
-            .unique();
-          if (existingMembership) {
-            await ctx.db.delete(existingMembership._id);
+            .withIndex("by_userId", (q) => q.eq("userId", user._id))
+            .take(1000);
+          for (const membership of memberships) {
+            await ctx.db.delete(membership._id);
             await patchStatsIfPresent(
               ctx,
               membership.clerkOrgId,
-              roleDelta(existingMembership.role, -1),
+              roleDelta(membership.role, -1),
             );
             await writeAudit(ctx, {
               clerkOrgId: membership.clerkOrgId,
-              targetUserId: existingMembership.userId,
-              membershipId: existingMembership._id,
+              targetUserId: user._id,
+              membershipId: membership._id,
               action: "memberRemoved",
-              detail: "Clerk organizationMembership.deleted",
+              detail: "Clerk user.deleted",
             });
           }
         }
       }
-
-      // Keep the platform tenant registry in sync with orgs created/edited
-      // outside the console (e.g. directly in the Clerk dashboard).
-      if (
-        args.eventType === "organization.created" ||
-        args.eventType === "organization.updated"
-      ) {
-        const clerkOrgId = getString(data.id);
-        const name = getString(data.name);
-        const slug = getString(data.slug);
-        if (clerkOrgId && name && slug) {
-          await upsertTenantFromClerkOrg(
-            ctx,
-            {
-              clerkOrgId,
-              name,
-              slug,
-              logoUrl: getString(data.image_url),
-              allowedEmailDomains: allowedDomainsFromMetadata(
-                (data.public_metadata ?? null) as Record<
-                  string,
-                  unknown
-                > | null,
-              ),
-            },
-            "clerkSync",
-          );
-        }
-      }
-
-      if (args.eventType === "organization.deleted") {
-        const clerkOrgId = getString(data.id);
-        if (clerkOrgId) {
-          await markTenantDeleted(ctx, clerkOrgId);
-        }
-      }
-
-      if (args.eventType === "organizationInvitation.revoked") {
-        const invitationId = getString(data.id);
-        const organization = data.organization as Record<string, unknown> | undefined;
-        const clerkOrgId =
-          getString(data.organization_id) ?? getString(organization?.id);
-        if (invitationId && clerkOrgId) {
-          const intent = await ctx.db
-            .query("membershipIntents")
-            .withIndex("by_clerkInvitationId", (q) =>
-              q.eq("clerkInvitationId", invitationId),
-            )
-            .unique();
-          if (intent && intent.status === "pending") {
-            await ctx.db.patch(intent._id, {
-              status: "revoked",
-              updatedAt: Date.now(),
-            });
-            await patchStatsIfPresent(ctx, clerkOrgId, { pendingInvite: -1 });
-          }
-        }
-      }
-
-      if (existing) {
-        await ctx.db.patch(existing._id, {
-          eventType: args.eventType,
-          status: "processed",
-          processedAt: Date.now(),
-          error: undefined,
-        });
-      } else {
-        await ctx.db.insert("processedWebhookEvents", {
-          eventId: args.eventId,
-          eventType: args.eventType,
-          status: "processed",
-          processedAt: Date.now(),
-        });
-      }
-      await writeAudit(ctx, {
-        action: "webhookProcessed",
-        detail: args.eventType,
-      });
-      return { status: "processed" };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (existing) {
-        await ctx.db.patch(existing._id, {
-          eventType: args.eventType,
-          status: "failed",
-          processedAt: Date.now(),
-          error: message,
-        });
-      } else {
-        await ctx.db.insert("processedWebhookEvents", {
-          eventId: args.eventId,
-          eventType: args.eventType,
-          status: "failed",
-          processedAt: Date.now(),
-          error: message,
-        });
-      }
-      await writeAudit(ctx, {
-        action: "webhookFailed",
-        detail: `${args.eventType}: ${message}`,
-      });
-      return { status: "failed", error: message };
     }
+
+    if (args.eventType === "organizationMembership.created") {
+      const membership = webhookMembershipData(data);
+      if (membership.clerkOrgId && membership.clerkUserId) {
+        await upsertUserAndMembership(ctx, {
+          tokenIdentifier: tokenIdentifierFromClerkUserId(membership.clerkUserId),
+          clerkUserId: membership.clerkUserId,
+          name: membership.name,
+          email: membership.email,
+          orgId: membership.clerkOrgId,
+          source: "webhook",
+        });
+      }
+    }
+
+    if (args.eventType === "organizationMembership.deleted") {
+      const membership = webhookMembershipData(data);
+      if (membership.clerkOrgId && membership.clerkUserId) {
+        const tokenIdentifier = tokenIdentifierFromClerkUserId(membership.clerkUserId);
+        const existingMembership = await ctx.db
+          .query("memberships")
+          .withIndex("by_tokenIdentifier_and_clerkOrgId", (q) =>
+            q
+              .eq("tokenIdentifier", tokenIdentifier)
+              .eq("clerkOrgId", membership.clerkOrgId!),
+          )
+          .unique();
+        if (existingMembership) {
+          await ctx.db.delete(existingMembership._id);
+          await patchStatsIfPresent(
+            ctx,
+            membership.clerkOrgId,
+            roleDelta(existingMembership.role, -1),
+          );
+          await writeAudit(ctx, {
+            clerkOrgId: membership.clerkOrgId,
+            targetUserId: existingMembership.userId,
+            membershipId: existingMembership._id,
+            action: "memberRemoved",
+            detail: "Clerk organizationMembership.deleted",
+          });
+        }
+      }
+    }
+
+    // Keep the platform tenant registry in sync with orgs created/edited
+    // outside the console (e.g. directly in the Clerk dashboard).
+    if (
+      args.eventType === "organization.created" ||
+      args.eventType === "organization.updated"
+    ) {
+      const clerkOrgId = getString(data.id);
+      const name = getString(data.name);
+      const slug = getString(data.slug);
+      if (clerkOrgId && name && slug) {
+        await upsertTenantFromClerkOrg(
+          ctx,
+          {
+            clerkOrgId,
+            name,
+            slug,
+            logoUrl: getString(data.image_url),
+            allowedEmailDomains: allowedDomainsFromMetadata(
+              (data.public_metadata ?? null) as Record<
+                string,
+                unknown
+              > | null,
+            ),
+          },
+          "clerkSync",
+        );
+      }
+    }
+
+    if (args.eventType === "organization.deleted") {
+      const clerkOrgId = getString(data.id);
+      if (clerkOrgId) {
+        await markTenantDeleted(ctx, clerkOrgId);
+      }
+    }
+
+    if (args.eventType === "organizationInvitation.revoked") {
+      const invitationId = getString(data.id);
+      const organization = data.organization as Record<string, unknown> | undefined;
+      const clerkOrgId =
+        getString(data.organization_id) ?? getString(organization?.id);
+      if (invitationId && clerkOrgId) {
+        const intent = await ctx.db
+          .query("membershipIntents")
+          .withIndex("by_clerkInvitationId", (q) =>
+            q.eq("clerkInvitationId", invitationId),
+          )
+          .unique();
+        if (intent && intent.status === "pending") {
+          await ctx.db.patch(intent._id, {
+            status: "revoked",
+            updatedAt: Date.now(),
+          });
+          await patchStatsIfPresent(ctx, clerkOrgId, { pendingInvite: -1 });
+        }
+      }
+    }
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        eventType: args.eventType,
+        status: "processed",
+        processedAt: Date.now(),
+        error: undefined,
+      });
+    } else {
+      await ctx.db.insert("processedWebhookEvents", {
+        eventId: args.eventId,
+        eventType: args.eventType,
+        status: "processed",
+        processedAt: Date.now(),
+      });
+    }
+    await writeAudit(ctx, {
+      action: "webhookProcessed",
+      detail: args.eventType,
+    });
+    return { status: "processed" };
+  },
+});
+
+/** Records a webhook event whose processing threw (and was rolled back), so
+ * the failure is visible while Clerk retries delivery. */
+export const recordClerkWebhookFailure = internalMutation({
+  args: {
+    eventId: v.string(),
+    eventType: v.string(),
+    error: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("processedWebhookEvents")
+      .withIndex("by_eventId", (q) => q.eq("eventId", args.eventId))
+      .first();
+    if (existing?.status === "processed") return;
+    const error = args.error.slice(0, 500);
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        eventType: args.eventType,
+        status: "failed",
+        processedAt: Date.now(),
+        error,
+      });
+    } else {
+      await ctx.db.insert("processedWebhookEvents", {
+        eventId: args.eventId,
+        eventType: args.eventType,
+        status: "failed",
+        processedAt: Date.now(),
+        error,
+      });
+    }
+    await writeAudit(ctx, {
+      action: "webhookFailed",
+      detail: `${args.eventType}: ${error}`,
+    });
   },
 });
 

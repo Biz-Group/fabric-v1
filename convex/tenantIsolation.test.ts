@@ -639,6 +639,123 @@ describe("user provisioning sync", () => {
     expect(stored.intent?.acceptedTokenIdentifier).toBe(identity.tokenIdentifier);
   });
 
+  test("joining directly revokes the leftover pending Clerk invitation", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await t.run(async (ctx) => {
+        const superId = await ctx.db.insert("users", {
+          tokenIdentifier: `${ISSUER}|user_super`,
+          name: "Super",
+          email: "super@fabric.test",
+          profileComplete: true,
+          platformRole: "superAdmin",
+        });
+        await ctx.db.insert("memberships", {
+          tokenIdentifier: `${ISSUER}|user_super`,
+          userId: superId,
+          clerkOrgId: ORG_A,
+          role: "admin",
+          createdAt: Date.now(),
+        });
+        await ctx.db.insert("membershipIntents", {
+          clerkOrgId: ORG_A,
+          email: "invitee@a.test",
+          emailLower: "invitee@a.test",
+          requestedRole: "viewer",
+          source: "adminInvite",
+          status: "pending",
+          clerkInvitationId: "orginv_left_pending",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      });
+      const { calls } = stubClerkFetchSequence([
+        {
+          status: 200,
+          body: {
+            id: "orginv_left_pending",
+            status: "pending",
+            organization_id: ORG_A,
+          },
+        },
+        { status: 200, body: { id: "orginv_left_pending", status: "revoked" } },
+      ]);
+
+      await t
+        .withIdentity({
+          tokenIdentifier: `${ISSUER}|user_invitee`,
+          subject: "user_invitee",
+          issuer: ISSUER,
+          email: "invitee@a.test",
+          orgId: ORG_A,
+          orgSlug: "org-a",
+        })
+        .mutation(api.users.store, {});
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+      expect(calls.map((c) => [c.init?.method ?? "GET", new URL(c.url).pathname])).toEqual([
+        ["GET", `/v1/organizations/${ORG_A}/invitations/orginv_left_pending`],
+        ["POST", `/v1/organizations/${ORG_A}/invitations/orginv_left_pending/revoke`],
+      ]);
+      expect(JSON.parse(String(calls[1].init?.body))).toEqual({
+        requesting_user_id: "user_super",
+      });
+      const intent = await t.run(async (ctx) =>
+        ctx.db
+          .query("membershipIntents")
+          .withIndex("by_clerkInvitationId", (q) =>
+            q.eq("clerkInvitationId", "orginv_left_pending"),
+          )
+          .unique(),
+      );
+      // Accept history is preserved; only Clerk's leftover is revoked.
+      expect(intent?.status).toBe("accepted");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("an invitation already accepted in Clerk is left alone", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await t.run(async (ctx) => {
+        await ctx.db.insert("membershipIntents", {
+          clerkOrgId: ORG_A,
+          email: "linked@a.test",
+          emailLower: "linked@a.test",
+          requestedRole: "viewer",
+          source: "adminInvite",
+          status: "pending",
+          clerkInvitationId: "orginv_used_link",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      });
+      const { calls } = stubClerkFetchSequence([
+        { status: 200, body: { id: "orginv_used_link", status: "accepted" } },
+      ]);
+
+      await t
+        .withIdentity({
+          tokenIdentifier: `${ISSUER}|user_linked`,
+          subject: "user_linked",
+          issuer: ISSUER,
+          email: "linked@a.test",
+          orgId: ORG_A,
+          orgSlug: "org-a",
+        })
+        .mutation(api.users.store, {});
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0].init?.method ?? "GET").toBe("GET");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("super admins auto-provision as admins in each active org", async () => {
     const t = convexTest(schema, modules);
     const tokenIdentifier = `${ISSUER}|user_super`;
@@ -746,6 +863,133 @@ describe("Clerk webhook processing", () => {
     expect(stored.membership?.role).toBe("contributor");
     expect(stored.membership?.source).toBe("webhook");
     expect(stored.membership?.emailLower).toBe("webhook.member@a.test");
+  });
+});
+
+describe("Clerk webhook HTTP endpoint", () => {
+  const SECRET = `whsec_${btoa("fabric-test-webhook-signing-secret")}`;
+  // Schema-bound so helpers can query by index name.
+  const newSchemaTest = () => convexTest(schema, modules);
+
+  beforeEach(() => {
+    process.env.CLERK_WEBHOOK_SIGNING_SECRET = SECRET;
+    process.env.CLERK_JWT_ISSUER_DOMAIN = ISSUER;
+  });
+
+  afterEach(() => {
+    delete process.env.CLERK_WEBHOOK_SIGNING_SECRET;
+  });
+
+  async function sign(id: string, timestamp: number, body: string) {
+    const raw = atob(SECRET.slice("whsec_".length));
+    const keyBytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
+    const key = await crypto.subtle.importKey(
+      "raw",
+      keyBytes,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const mac = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(`${id}.${timestamp}.${body}`),
+    );
+    return `v1,${btoa(String.fromCharCode(...new Uint8Array(mac)))}`;
+  }
+
+  const membershipEvent = JSON.stringify({
+    type: "organizationMembership.created",
+    data: {
+      organization: { id: ORG_A },
+      public_user_data: {
+        user_id: "user_http",
+        first_name: "Http",
+        identifier: "http@a.test",
+      },
+      role: "org:member",
+    },
+  });
+
+  async function deliver(
+    t: ReturnType<typeof newSchemaTest>,
+    body: string,
+    options: { id?: string; timestamp?: number; signature?: string } = {},
+  ) {
+    const id = options.id ?? "msg_http_1";
+    const timestamp = options.timestamp ?? Math.floor(Date.now() / 1000);
+    const signature = options.signature ?? (await sign(id, timestamp, body));
+    return await t.fetch("/clerk/webhook", {
+      method: "POST",
+      headers: {
+        "svix-id": id,
+        "svix-timestamp": String(timestamp),
+        "svix-signature": signature,
+        "content-type": "application/json",
+      },
+      body,
+    });
+  }
+
+  async function httpMembership(t: ReturnType<typeof newSchemaTest>) {
+    return await t.run(async (ctx) =>
+      ctx.db
+        .query("memberships")
+        .withIndex("by_tokenIdentifier_and_clerkOrgId", (q) =>
+          q.eq("tokenIdentifier", `${ISSUER}|user_http`).eq("clerkOrgId", ORG_A),
+        )
+        .unique(),
+    );
+  }
+
+  test("a correctly signed event is applied", async () => {
+    const t = newSchemaTest();
+    const response = await deliver(t, membershipEvent);
+    expect(response.status).toBe(200);
+    expect((await httpMembership(t))?.role).toBe("contributor");
+  });
+
+  test("a tampered body is rejected and not applied", async () => {
+    const t = newSchemaTest();
+    const signature = await sign(
+      "msg_http_1",
+      Math.floor(Date.now() / 1000),
+      membershipEvent,
+    );
+    const tampered = membershipEvent.replace("org:member", "org:admin");
+    const response = await deliver(t, tampered, { signature });
+    expect(response.status).toBe(401);
+    expect(await httpMembership(t)).toBeNull();
+  });
+
+  test("a replayed event older than five minutes is rejected", async () => {
+    const t = newSchemaTest();
+    const response = await deliver(t, membershipEvent, {
+      timestamp: Math.floor(Date.now() / 1000) - 10 * 60,
+    });
+    expect(response.status).toBe(401);
+    expect(await httpMembership(t)).toBeNull();
+  });
+
+  test("a processing failure is rolled back, recorded, and applied on redelivery", async () => {
+    const t = newSchemaTest();
+    delete process.env.CLERK_JWT_ISSUER_DOMAIN;
+
+    const failed = await deliver(t, membershipEvent);
+    expect(failed.status).toBe(500);
+    expect(await httpMembership(t)).toBeNull();
+    const recorded = await t.run(async (ctx) =>
+      ctx.db
+        .query("processedWebhookEvents")
+        .withIndex("by_eventId", (q) => q.eq("eventId", "msg_http_1"))
+        .unique(),
+    );
+    expect(recorded?.status).toBe("failed");
+
+    process.env.CLERK_JWT_ISSUER_DOMAIN = ISSUER;
+    const retried = await deliver(t, membershipEvent);
+    expect(retried.status).toBe(200);
+    expect((await httpMembership(t))?.role).toBe("contributor");
   });
 });
 
@@ -973,6 +1217,35 @@ describe("invitations — admin gating and org scoping", () => {
     expect(
       pendingAfterFailure.some((intent) => intent.status === "pending"),
     ).toBe(false);
+  });
+
+  test("invite: a full workspace gets an actionable message, not raw Clerk JSON", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoOrgs(t);
+    stubClerkFetchSequence([
+      { status: 200, body: { data: [], total_count: 0 } },
+      { status: 200, body: { data: [], total_count: 0 } },
+      {
+        status: 403,
+        body: {
+          errors: [
+            {
+              code: "organization_membership_quota_exceeded",
+              message: "You have reached your limit of 20 organization memberships",
+            },
+          ],
+        },
+      },
+    ]);
+
+    const result = await t
+      .withIdentity(identityForOrgA())
+      .action(api.invitations.invite, { email: "one-too-many@a.test" });
+
+    expect(result).toMatchObject({
+      outcome: "failed",
+      userMessage: expect.stringMatching(/reached its member limit/),
+    });
   });
 
   test.each([
@@ -1428,7 +1701,7 @@ describe("member removal is durable", () => {
   }
 
   test("store with a still-valid token does not recreate the membership", async () => {
-    const t = convexTest(schema, modules);
+    const t = newSchemaTest();
     await seedTwoOrgs(t);
     const { membershipId } = await seedCarol(t, "admin");
     await removeCarol(t, membershipId);
@@ -1445,7 +1718,7 @@ describe("member removal is durable", () => {
   });
 
   test("a membership webhook after a domain rejoin is refused", async () => {
-    const t = convexTest(schema, modules);
+    const t = newSchemaTest();
     await seedTwoOrgs(t);
     const { membershipId } = await seedCarol(t, "contributor");
     await removeCarol(t, membershipId);
@@ -1472,7 +1745,7 @@ describe("member removal is durable", () => {
   });
 
   test("a tombstoned member cannot act while Clerk removal is in flight", async () => {
-    const t = convexTest(schema, modules);
+    const t = newSchemaTest();
     const { userAId } = await seedTwoOrgs(t);
     const { membershipId } = await seedCarol(t, "admin");
 
@@ -1503,7 +1776,7 @@ describe("member removal is durable", () => {
   });
 
   test("an admin re-invite lifts the block and applies the invited role", async () => {
-    const t = convexTest(schema, modules);
+    const t = newSchemaTest();
     const { userAId } = await seedTwoOrgs(t);
     const { membershipId } = await seedCarol(t, "admin");
     await removeCarol(t, membershipId);
@@ -1527,7 +1800,7 @@ describe("member removal is durable", () => {
   });
 
   test("an accepted invite does not restore a former role", async () => {
-    const t = convexTest(schema, modules);
+    const t = newSchemaTest();
     await seedTwoOrgs(t);
     await t.run(async (ctx) => {
       await ctx.db.insert("membershipIntents", {
@@ -1552,7 +1825,7 @@ describe("member removal is durable", () => {
   });
 
   test("a deleted Clerk user stays deleted and is not re-provisioned", async () => {
-    const t = convexTest(schema, modules);
+    const t = newSchemaTest();
     await seedTwoOrgs(t);
     const { userId } = await seedCarol(t, "contributor");
 
@@ -1576,6 +1849,56 @@ describe("member removal is durable", () => {
       .withIdentity(carolIdentity())
       .query(api.users.getMyJoinStatus, { clerkOrgId: ORG_A });
     expect(status.blocked).toBe(true);
+  });
+});
+
+describe("ElevenLabs imports are bound to the first importing org", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function seedOrgBImport(t: ReturnType<typeof convexTest>, procB: Id<"processes">) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("conversations", {
+        processId: procB,
+        clerkOrgId: ORG_B,
+        elevenlabsConversationId: "conv_owned_by_b",
+        contributorName: "Bob",
+        status: "done",
+      });
+    });
+  }
+
+  test("another org's conversation id is refused before calling ElevenLabs", async () => {
+    const t = convexTest(schema, modules);
+    const { procA, procB } = await seedTwoOrgs(t);
+    await seedOrgBImport(t, procB);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      t.withIdentity(identityForOrgA()).action(api.postCall.fetchConversation, {
+        elevenlabsConversationId: "conv_owned_by_b",
+        processId: procA,
+      }),
+    ).rejects.toThrow(/can't be imported into this workspace/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("the insert re-checks ownership inside its transaction", async () => {
+    const t = convexTest(schema, modules);
+    const { procA, procB } = await seedTwoOrgs(t);
+    await seedOrgBImport(t, procB);
+
+    await expect(
+      t.mutation(internal.postCall.insertConversation, {
+        processId: procA,
+        clerkOrgId: ORG_A,
+        elevenlabsConversationId: "conv_owned_by_b",
+        contributorName: "Alice",
+        status: "done",
+      }),
+    ).rejects.toThrow(/can't be imported into this workspace/);
   });
 });
 
