@@ -21,6 +21,8 @@ import { conversationTitle } from "./lib/conversationTitle";
 
 const DEFAULT_COMPACT_CONVERSATION_LIMIT = 50;
 const MAX_COMPACT_CONVERSATION_LIMIT = 100;
+const DEFAULT_MY_CONVERSATION_LIMIT = 6;
+const MAX_MY_CONVERSATION_LIMIT = 20;
 
 export const listByProcess = query({
   args: { processId: v.id("processes") },
@@ -107,6 +109,110 @@ export const processIdsNeedingAttention = query({
     const ids = new Set<Id<"processes">>();
     for (const row of rows) ids.add(row.processId);
     return [...ids];
+  },
+});
+
+// The caller's own interviews, newest first, for the workspace home. "Own"
+// covers both sides of the attribution: rows the caller submitted (their
+// self-recordings, legacy rows, and an admin's on-behalf filings) and rows an
+// admin filed about them. Each index read is bounded by the limit, so the merge
+// reads at most twice that many rows.
+export const listMine = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgMember(ctx);
+    const requestedLimit =
+      args.limit === undefined
+        ? DEFAULT_MY_CONVERSATION_LIMIT
+        : Math.floor(args.limit);
+    const limit = Math.min(
+      Math.max(requestedLimit, 1),
+      MAX_MY_CONVERSATION_LIMIT,
+    );
+
+    const [submitted, aboutCaller] = await Promise.all([
+      ctx.db
+        .query("conversations")
+        .withIndex("by_clerkOrgId_and_userId", (q) =>
+          q.eq("clerkOrgId", caller.orgId).eq("userId", caller.userId),
+        )
+        .order("desc")
+        .take(limit),
+      ctx.db
+        .query("conversations")
+        .withIndex("by_clerkOrgId_and_subjectUserId", (q) =>
+          q.eq("clerkOrgId", caller.orgId).eq("subjectUserId", caller.userId),
+        )
+        .order("desc")
+        .take(limit),
+    ]);
+
+    const byId = new Map<Id<"conversations">, Doc<"conversations">>();
+    for (const row of [...submitted, ...aboutCaller]) byId.set(row._id, row);
+    const newest = [...byId.values()]
+      .sort((a, b) => b._creationTime - a._creationTime)
+      .slice(0, limit);
+
+    const processes = new Map<Id<"processes">, Doc<"processes"> | null>();
+    const departments = new Map<Id<"departments">, Doc<"departments"> | null>();
+    const functions = new Map<Id<"functions">, Doc<"functions"> | null>();
+    const rows = [];
+    for (const conversation of newest) {
+      if (!processes.has(conversation.processId)) {
+        processes.set(
+          conversation.processId,
+          await ctx.db.get(conversation.processId),
+        );
+      }
+      const process = processes.get(conversation.processId);
+      if (!process || process.clerkOrgId !== caller.orgId) continue;
+
+      if (!departments.has(process.departmentId)) {
+        departments.set(
+          process.departmentId,
+          await ctx.db.get(process.departmentId),
+        );
+      }
+      const department = departments.get(process.departmentId);
+      if (!department || department.clerkOrgId !== caller.orgId) continue;
+
+      if (!functions.has(department.functionId)) {
+        functions.set(
+          department.functionId,
+          await ctx.db.get(department.functionId),
+        );
+      }
+      const fn = functions.get(department.functionId);
+      if (!fn || fn.clerkOrgId !== caller.orgId) continue;
+
+      // Rows the caller filed about someone else carry that person's name;
+      // rows filed about the caller carry the submitter's.
+      const attribution: "self" | "filedForOther" | "filedForCaller" =
+        !conversation.submittedByName
+          ? "self"
+          : conversation.userId === caller.userId
+            ? "filedForOther"
+            : "filedForCaller";
+
+      rows.push({
+        _id: conversation._id,
+        _creationTime: conversation._creationTime,
+        status: conversation.status,
+        inputMode: conversation.inputMode ?? "agent",
+        title: conversationTitle(conversation) ?? null,
+        durationSeconds: conversation.durationSeconds ?? null,
+        attribution,
+        contributorName: conversation.contributorName,
+        submittedByName: conversation.submittedByName ?? null,
+        processId: process._id,
+        processName: process.name,
+        departmentId: department._id,
+        departmentName: department.name,
+        functionId: fn._id,
+        functionName: fn.name,
+      });
+    }
+    return rows;
   },
 });
 

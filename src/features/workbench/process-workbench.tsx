@@ -18,6 +18,7 @@ import {
   Layers,
   Cog,
   FileText,
+  House,
   Mic,
 } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -59,6 +60,18 @@ import {
   RecordingModal,
   type RecordingMode,
 } from "@/features/recording/recording-modal";
+import {
+  WorkspaceHome,
+  type MyConversation,
+} from "@/features/home/workspace-home";
+import type {
+  HomeDepartmentEntry,
+  HomeProcessEntry,
+} from "@/features/home/home-view-model";
+import {
+  rememberRecentProcess,
+  useRecentProcessIds,
+} from "@/features/home/recent-processes";
 import { CrudDialog } from "@/features/hierarchy/crud-dialog";
 import { CommandPalette } from "@/features/hierarchy/command-palette";
 import { useProcessPdfDownload } from "@/features/workbench/process-pdf/use-process-pdf-download";
@@ -100,6 +113,10 @@ export function ProcessWorkbench() {
   const membership = useQuery(api.users.getMyMembership);
   const userRole = membership?.role ?? "viewer";
   const canEdit = userRole === "admin" || userRole === "contributor";
+  const recentProcessIds = useRecentProcessIds(
+    membership?.userId ?? null,
+    membership?.orgId ?? null,
+  );
 
   // URL <-> selection sync plumbing. Selection is mirrored into the query
   // string so the view is refresh-safe, shareable, and Back-traversable.
@@ -131,6 +148,11 @@ export function ProcessWorkbench() {
     deepestMobileLevel(initialSelection),
   );
   const [mobilePreview, setMobilePreview] = useState<MobilePreview>(null);
+  // Which half of the phone landing screen is showing. Session-only: it is
+  // remembered while drilling in and back out, and resets to Home on reload.
+  const [mobileHomeView, setMobileHomeView] = useState<"home" | "browse">(
+    "home",
+  );
 
   // Active detail tab (0 = Overview, 1 = Conversations, 2 = Process Flow,
   // 3 = Insights, 4 = Automations), seeded from the URL.
@@ -632,6 +654,16 @@ export function ProcessWorkbench() {
   }, [searchParams]);
   /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
+  // Feed the home's "Pick up where you left off" with processes actually opened
+  // (a mobile preview is not committed), once the process is confirmed to exist.
+  const membershipUserId = membership?.userId ?? null;
+  const membershipOrgId = membership?.orgId ?? null;
+  useEffect(() => {
+    if (!membershipUserId || !membershipOrgId || !committed.proc) return;
+    if (selectedProcess?._id !== committed.proc) return;
+    rememberRecentProcess(membershipUserId, membershipOrgId, committed.proc);
+  }, [committed.proc, membershipOrgId, membershipUserId, selectedProcess?._id]);
+
   // Location options for edit modals
   const departmentLocationOptions = (functions ?? []).map((fn) => ({
     value: fn._id,
@@ -930,6 +962,67 @@ export function ProcessWorkbench() {
     [],
   );
 
+  // --- Workspace home (right panel when nothing is selected) ---
+  const handleHomeOpenProcess = useCallback(
+    ({ fn, department, process }: HomeProcessEntry) => {
+      setFlowNodeId(null);
+      jumpToProcess(
+        fn._id,
+        fn.name,
+        department._id,
+        department.name,
+        process._id,
+        process.name,
+      );
+    },
+    [jumpToProcess],
+  );
+
+  // Phones have no department overview screen; the overview lives in the
+  // preview sheet, whose footer drills into the department's processes.
+  const handleHomeOpenDepartment = useCallback(
+    ({ fn, department }: HomeDepartmentEntry) => {
+      if (isMobile) {
+        setSelectedFunctionId(fn._id);
+        setSelectedFunctionName(fn.name);
+        handlePreviewDepartment(department._id, department.name);
+        return;
+      }
+      jumpToDepartment(fn._id, fn.name, department._id, department.name);
+    },
+    [handlePreviewDepartment, isMobile, jumpToDepartment],
+  );
+
+  const handleHomeCreateProcess = useCallback(
+    ({ fn, department }: HomeDepartmentEntry) => {
+      handleTreeCreateProcess(fn, department);
+    },
+    [handleTreeCreateProcess],
+  );
+
+  const handleHomeCapture = useCallback(
+    (entry: HomeProcessEntry, mode: RecordingMode) => {
+      handleHomeOpenProcess(entry);
+      handleOpenRecordingMode(mode);
+    },
+    [handleHomeOpenProcess, handleOpenRecordingMode],
+  );
+
+  const handleHomeOpenConversation = useCallback(
+    (conversation: MyConversation) => {
+      jumpToProcess(
+        conversation.functionId,
+        conversation.functionName,
+        conversation.departmentId,
+        conversation.departmentName,
+        conversation.processId,
+        conversation.processName,
+      );
+      handleOpenOverviewConversation(conversation._id);
+    },
+    [handleOpenOverviewConversation, jumpToProcess],
+  );
+
   const handleOpenProcessFlow = useCallback((nodeId?: string) => {
     setFlowNodeId(nodeId ?? null);
     setDetailTab(2);
@@ -1069,6 +1162,54 @@ export function ProcessWorkbench() {
     </div>
   );
 
+  // Phone landing screen: the member's home, with the full function list one
+  // tap away. Desktop shows the same home in the detail panel beside the tree.
+  const mobileLandingColumn = () => (
+    <Tabs
+      value={mobileHomeView}
+      onValueChange={(value) =>
+        setMobileHomeView(value === "browse" ? "browse" : "home")
+      }
+      className="flex h-full min-h-0 flex-col gap-0"
+    >
+      <div className="shrink-0 border-b bg-background px-3 py-2.5">
+        <TabsList
+          className="w-full group-data-horizontal/tabs:h-11"
+          aria-label="Workspace views"
+        >
+          <TabsTrigger value="home" className="gap-2 text-sm">
+            <House className="size-4" aria-hidden="true" />
+            Home
+          </TabsTrigger>
+          <TabsTrigger value="browse" className="gap-2 text-sm">
+            <Layers className="size-4" aria-hidden="true" />
+            Browse
+          </TabsTrigger>
+        </TabsList>
+      </div>
+      <TabsContent
+        value="home"
+        className="min-h-0 flex-1 overflow-y-auto scrollbar-hide"
+      >
+        <WorkspaceHome
+          tree={hierarchyTree}
+          canEdit={canEdit}
+          recentProcessIds={recentProcessIds}
+          mobile
+          onOpenProcess={handleHomeOpenProcess}
+          onOpenDepartment={handleHomeOpenDepartment}
+          onCapture={handleHomeCapture}
+          onOpenConversation={handleHomeOpenConversation}
+          onCreateProcess={handleHomeCreateProcess}
+          onCreateFunction={() => openCrud("create", "Function")}
+        />
+      </TabsContent>
+      <TabsContent value="browse" className="min-h-0 flex-1 overflow-hidden">
+        {functionsColumn(true)}
+      </TabsContent>
+    </Tabs>
+  );
+
   const departmentsColumn = (mobile?: boolean) => (
     <div className="flex h-full flex-col">
       {mobile && selectedFunctionId && (
@@ -1076,7 +1217,10 @@ export function ProcessWorkbench() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setMobileLevel(1)}
+            onClick={() => {
+              setMobileHomeView("browse");
+              setMobileLevel(1);
+            }}
             className="min-h-10 gap-2 px-3 text-sm"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -1268,6 +1412,12 @@ export function ProcessWorkbench() {
     </div>
   );
 
+  // Phones capture through a floating button (see ProcessHeader); scrolling
+  // tabs end with room for it so it never covers their last lines. The flow
+  // canvas pans instead, so it needs none.
+  const fabClearance = (mobile?: boolean) =>
+    mobile && canEdit ? "pb-24" : undefined;
+
   const detailPanel = (mobile?: boolean) => (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
       {mobile && selectedProcessId && (
@@ -1293,7 +1443,7 @@ export function ProcessWorkbench() {
                 ? departmentDisplayName || "Department Overview"
                 : selectedFunctionId
                   ? functionDisplayName || "Function Overview"
-                  : "Process Detail"
+                  : "Home"
             }
             mobile={mobile}
             actions={
@@ -1368,12 +1518,18 @@ export function ProcessWorkbench() {
             />
           )}
 
-          {/* No selection at all */}
+          {/* No selection at all: the member's workspace home */}
           {!selectedFunctionId && (
-            <EmptyState
-              icon={FileText}
-              title="Select a function"
-              description="Choose a function to start navigating the organization."
+            <WorkspaceHome
+              tree={hierarchyTree}
+              canEdit={canEdit}
+              recentProcessIds={recentProcessIds}
+              onOpenProcess={handleHomeOpenProcess}
+              onOpenDepartment={handleHomeOpenDepartment}
+              onCapture={handleHomeCapture}
+              onOpenConversation={handleHomeOpenConversation}
+              onCreateProcess={handleHomeCreateProcess}
+              onCreateFunction={() => openCrud("create", "Function")}
             />
           )}
         </div>
@@ -1385,6 +1541,7 @@ export function ProcessWorkbench() {
             departmentName={workbenchDepartmentName}
             workbench={processWorkbench}
             canEdit={canEdit}
+            mobile={mobile}
             functionHref={functionBreadcrumbHref}
             departmentHref={departmentBreadcrumbHref}
             onSelectFunction={() => {
@@ -1469,7 +1626,10 @@ export function ProcessWorkbench() {
             {/* Overview tab */}
             <TabsContent
               value={0}
-              className="min-h-0 min-w-0 flex-1 overflow-y-auto"
+              className={cn(
+                "min-h-0 min-w-0 flex-1 overflow-y-auto",
+                fabClearance(mobile),
+              )}
             >
               <ProcessOverview
                 processId={selectedProcessId!}
@@ -1486,7 +1646,10 @@ export function ProcessWorkbench() {
             {/* Conversations tab */}
             <TabsContent
               value={1}
-              className="min-h-0 min-w-0 flex-1 overflow-y-auto md:overflow-hidden"
+              className={cn(
+                "min-h-0 min-w-0 flex-1 overflow-y-auto md:overflow-hidden",
+                fabClearance(mobile),
+              )}
             >
               <ProcessConversationsTab
                 key={selectedProcessId}
@@ -1533,7 +1696,10 @@ export function ProcessWorkbench() {
             {/* Insights tab */}
             <TabsContent
               value={3}
-              className="min-h-0 min-w-0 flex-1 overflow-y-auto scrollbar-hide"
+              className={cn(
+                "min-h-0 min-w-0 flex-1 overflow-y-auto scrollbar-hide",
+                fabClearance(mobile),
+              )}
             >
               <ProcessInsightsTab
                 processId={selectedProcessId!}
@@ -1551,7 +1717,10 @@ export function ProcessWorkbench() {
             {/* Automations tab */}
             <TabsContent
               value={4}
-              className="min-h-0 min-w-0 flex-1 overflow-y-auto"
+              className={cn(
+                "min-h-0 min-w-0 flex-1 overflow-y-auto",
+                fabClearance(mobile),
+              )}
             >
               <ProcessAutomationsTab
                 key={selectedProcessId}
@@ -1638,7 +1807,7 @@ export function ProcessWorkbench() {
 
           {/* Mobile: stacked single column */}
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:hidden">
-            {mobileLevel === 1 && functionsColumn(true)}
+            {mobileLevel === 1 && mobileLandingColumn()}
             {mobileLevel === 2 && departmentsColumn(true)}
             {mobileLevel === 3 && processesColumn(true)}
             {mobileLevel === 4 && detailPanel(true)}

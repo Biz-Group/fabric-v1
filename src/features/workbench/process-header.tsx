@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useOrganization } from "@clerk/nextjs";
+import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "../../../convex/_generated/api";
 import {
@@ -13,6 +14,7 @@ import {
   Mic,
   MoreHorizontal,
   Pencil,
+  Plus,
   Share2,
   Trash2,
   Upload,
@@ -47,6 +49,9 @@ type ProcessHeaderProps = {
   departmentName: string;
   workbench: ProcessWorkbench | null | undefined;
   canEdit: boolean;
+  /** Phone layout: capture actions move to a floating button so the overview
+   * starts near the top of the screen, and the "more" menu joins the title. */
+  mobile?: boolean;
   functionHref: string;
   departmentHref: string;
   onSelectFunction: () => void;
@@ -297,12 +302,91 @@ function CaptureActions({
   );
 }
 
+/**
+ * Phone replacement for CaptureActions: a speed-dial button pinned bottom-right
+ * that expands into the three capture options. Built on the Base UI menu for
+ * focus handling, Escape, and tap-outside dismissal. It lifts above a docked
+ * bottom bar (the audio mini-player) via `--bottom-dock-height`.
+ */
+function CaptureFab({
+  disabled,
+  onStartInterview,
+  onRecordVoice,
+  onUploadAudio,
+}: {
+  disabled: boolean;
+  onStartInterview: () => void;
+  onRecordVoice: () => void;
+  onUploadAudio: () => void;
+}) {
+  // Listed top to bottom; the primary action sits nearest the thumb.
+  const actions = [
+    { label: "Upload files", icon: Upload, onSelect: onUploadAudio },
+    { label: "Record a voice note", icon: Mic, onSelect: onRecordVoice },
+    {
+      label: "Start AI interview",
+      icon: Bot,
+      onSelect: onStartInterview,
+      primary: true,
+    },
+  ];
+
+  return (
+    <MenuPrimitive.Root>
+      <MenuPrimitive.Trigger
+        disabled={disabled}
+        aria-label="Add information"
+        className="group/fab org-focus-ring fixed right-4 bottom-[calc(1rem+var(--bottom-dock-height,0px)+env(safe-area-inset-bottom))] z-40 flex size-14 items-center justify-center rounded-full bg-org-accent text-org-accent-foreground shadow-lg shadow-black/20 transition-transform active:scale-95 disabled:opacity-50 motion-reduce:transition-none"
+      >
+        <Plus
+          className="size-6 transition-transform duration-200 group-data-popup-open/fab:rotate-45 motion-reduce:transition-none"
+          aria-hidden="true"
+        />
+      </MenuPrimitive.Trigger>
+      <MenuPrimitive.Portal>
+        <MenuPrimitive.Backdrop className="fixed inset-0 z-30 bg-background/75 backdrop-blur-[2px] duration-150 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 motion-reduce:animate-none" />
+        <MenuPrimitive.Positioner
+          side="top"
+          align="end"
+          sideOffset={16}
+          className="isolate z-50 outline-none"
+        >
+          <MenuPrimitive.Popup className="flex flex-col items-end gap-3 pr-1 outline-none duration-150 data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-bottom-3 data-closed:animate-out data-closed:fade-out-0 data-closed:slide-out-to-bottom-3 motion-reduce:animate-none">
+            {actions.map(({ label, icon: Icon, onSelect, primary }) => (
+              <MenuPrimitive.Item
+                key={label}
+                onClick={onSelect}
+                className="group/fab-item flex min-h-12 items-center gap-3 outline-none select-none"
+              >
+                <span className="rounded-full border bg-background px-3.5 py-2 text-sm font-medium text-foreground shadow-md group-data-highlighted/fab-item:bg-org-accent-selected">
+                  {label}
+                </span>
+                <span
+                  className={cn(
+                    "flex size-12 items-center justify-center rounded-full shadow-md group-data-highlighted/fab-item:ring-3 group-data-highlighted/fab-item:ring-org-accent-ring/35",
+                    primary
+                      ? "bg-org-accent text-org-accent-foreground"
+                      : "border bg-background text-foreground",
+                  )}
+                >
+                  <Icon className="size-5" aria-hidden="true" />
+                </span>
+              </MenuPrimitive.Item>
+            ))}
+          </MenuPrimitive.Popup>
+        </MenuPrimitive.Positioner>
+      </MenuPrimitive.Portal>
+    </MenuPrimitive.Root>
+  );
+}
+
 export function ProcessHeader({
   processName,
   functionName,
   departmentName,
   workbench,
   canEdit,
+  mobile = false,
   functionHref,
   departmentHref,
   onSelectFunction,
@@ -359,61 +443,135 @@ export function ProcessHeader({
           ? "Copy failed"
           : "Share";
 
+  const moreMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-lg"
+            className="text-muted-foreground hover:text-foreground"
+            aria-label={`More actions for ${safeProcessName}`}
+          />
+        }
+      >
+        <MoreHorizontal className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent role="menu" align="end" className="w-48">
+        <DropdownMenuItem
+          className="md:hidden"
+          disabled={copyState === "copying"}
+          onClick={handleCopyLink}
+        >
+          {copyState === "copying" ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : copyState === "copied" ? (
+            <Check className="size-4" />
+          ) : (
+            <Share2 className="size-4" />
+          )}
+          {copyLabel}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator className="md:hidden" />
+        <DropdownMenuItem
+          disabled={isDownloading}
+          onClick={onDownloadProcess}
+        >
+          {isDownloading ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Download className="size-4" />
+          )}
+          {isDownloading ? "Preparing PDF…" : "Download PDF"}
+        </DropdownMenuItem>
+        {canEdit && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onEditProcess}>
+              <Pencil className="size-4" />
+              Edit process
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onMoveProcess}>
+              <GitBranch className="size-4" />
+              Move process
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={onDeleteProcess}
+            >
+              <Trash2 className="size-4" />
+              Delete process
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
     <header className="shrink-0 border-b bg-background">
       <div className="grid min-w-0 gap-y-3 px-4 py-4 md:px-6 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center xl:gap-x-6">
-        <div className="min-w-0 xl:col-span-2 xl:row-start-1">
-          <Breadcrumb>
-            <BreadcrumbList className="text-xs">
-              <BreadcrumbItem>
-                <BreadcrumbLink
-                  href={functionHref}
-                  title={functionName || "Function"}
-                  className="block max-w-40 truncate rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    onSelectFunction();
-                  }}
-                >
-                  {functionName || "Function"}
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbLink
-                  href={departmentHref}
-                  title={departmentName || "Department"}
-                  className="block max-w-48 truncate rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    onSelectDepartment();
-                  }}
-                >
-                  {departmentName || "Department"}
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem className="min-w-0">
-                <span
-                  aria-current="page"
-                  title={processName || "Process"}
-                  className="block max-w-72 truncate text-xs text-foreground"
-                >
-                  {processName || "Process"}
-                </span>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </div>
+        {/* Phones drop the breadcrumb: the back button above already names
+            the department, and the title below names the process. */}
+        {!mobile && (
+          <div className="min-w-0 xl:col-span-2 xl:row-start-1">
+            <Breadcrumb>
+              <BreadcrumbList className="text-xs">
+                <BreadcrumbItem>
+                  <BreadcrumbLink
+                    href={functionHref}
+                    title={functionName || "Function"}
+                    className="block max-w-40 truncate rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      onSelectFunction();
+                    }}
+                  >
+                    {functionName || "Function"}
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbLink
+                    href={departmentHref}
+                    title={departmentName || "Department"}
+                    className="block max-w-48 truncate rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      onSelectDepartment();
+                    }}
+                  >
+                    {departmentName || "Department"}
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem className="min-w-0">
+                  <span
+                    aria-current="page"
+                    title={processName || "Process"}
+                    className="block max-w-72 truncate text-xs text-foreground"
+                  >
+                    {processName || "Process"}
+                  </span>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+          </div>
+        )}
 
-        <div className="flex min-w-0 flex-wrap items-center gap-2 xl:col-start-1 xl:row-start-2">
-          <h1 className="min-w-0 max-w-full break-words text-2xl font-semibold tracking-normal md:text-3xl">
-            {processName || "Untitled process"}
-          </h1>
-          <ProcessStatusBadge
-            workbench={workbench}
-            onJumpToLabeling={onJumpToLabeling}
-          />
+        <div className="flex min-w-0 items-start gap-2 xl:col-start-1 xl:row-start-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <h1 className="min-w-0 max-w-full break-words text-2xl font-semibold tracking-normal md:text-3xl">
+              {processName || "Untitled process"}
+            </h1>
+            <ProcessStatusBadge
+              workbench={workbench}
+              onJumpToLabeling={onJumpToLabeling}
+            />
+          </div>
+          {mobile && <div className="-mr-2 shrink-0">{moreMenu}</div>}
         </div>
 
         <div className="flex min-w-0 flex-wrap items-center gap-2 xl:col-start-1 xl:row-start-3">
@@ -436,106 +594,51 @@ export function ProcessHeader({
           )}
         </div>
 
-        <div className="flex w-full shrink-0 flex-col gap-3 lg:flex-row lg:items-center xl:col-start-2 xl:row-start-2 xl:w-auto xl:flex-nowrap xl:justify-end">
-          {canEdit && (
-            <CaptureActions
-              disabled={captureDisabled}
-              onStartInterview={onStartInterview}
-              onRecordVoice={onRecordVoice}
-              onUploadAudio={onUploadAudio}
-            />
-          )}
-          <div
-            className={cn(
-              "flex shrink-0 items-center justify-end gap-1.5",
-              canEdit && "lg:border-l lg:pl-3",
+        {!mobile && (
+          <div className="flex w-full shrink-0 flex-col gap-3 lg:flex-row lg:items-center xl:col-start-2 xl:row-start-2 xl:w-auto xl:flex-nowrap xl:justify-end">
+            {canEdit && (
+              <CaptureActions
+                disabled={captureDisabled}
+                onStartInterview={onStartInterview}
+                onRecordVoice={onRecordVoice}
+                onUploadAudio={onUploadAudio}
+              />
             )}
-          >
-            <Button
-              type="button"
-              variant="ghost"
-              className="hidden min-h-10 justify-start gap-2 px-2.5 text-muted-foreground hover:text-foreground md:inline-flex"
-              onClick={handleCopyLink}
-              disabled={copyState === "copying"}
-            >
-              {copyState === "copying" ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : copyState === "copied" ? (
-                <Check className="size-4" />
-              ) : (
-                <Share2 className="size-4" />
+            <div
+              className={cn(
+                "flex shrink-0 items-center justify-end gap-1.5",
+                canEdit && "lg:border-l lg:pl-3",
               )}
-              {copyLabel}
-            </Button>
-            <div>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-lg"
-                      className="text-muted-foreground hover:text-foreground"
-                      aria-label={`More actions for ${safeProcessName}`}
-                    />
-                  }
-                >
-                  <MoreHorizontal className="size-4" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent role="menu" align="end" className="w-48">
-                  <DropdownMenuItem
-                    className="md:hidden"
-                    disabled={copyState === "copying"}
-                    onClick={handleCopyLink}
-                  >
-                    {copyState === "copying" ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : copyState === "copied" ? (
-                      <Check className="size-4" />
-                    ) : (
-                      <Share2 className="size-4" />
-                    )}
-                    {copyLabel}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator className="md:hidden" />
-                  <DropdownMenuItem
-                    disabled={isDownloading}
-                    onClick={onDownloadProcess}
-                  >
-                    {isDownloading ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Download className="size-4" />
-                    )}
-                    {isDownloading ? "Preparing PDF…" : "Download PDF"}
-                  </DropdownMenuItem>
-                  {canEdit && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={onEditProcess}>
-                        <Pencil className="size-4" />
-                        Edit process
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={onMoveProcess}>
-                        <GitBranch className="size-4" />
-                        Move process
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={onDeleteProcess}
-                      >
-                        <Trash2 className="size-4" />
-                        Delete process
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                className="hidden min-h-10 justify-start gap-2 px-2.5 text-muted-foreground hover:text-foreground md:inline-flex"
+                onClick={handleCopyLink}
+                disabled={copyState === "copying"}
+              >
+                {copyState === "copying" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : copyState === "copied" ? (
+                  <Check className="size-4" />
+                ) : (
+                  <Share2 className="size-4" />
+                )}
+                {copyLabel}
+              </Button>
+              <div>{moreMenu}</div>
             </div>
           </div>
-        </div>
+        )}
       </div>
+      {mobile && canEdit && (
+        <CaptureFab
+          disabled={captureDisabled}
+          onStartInterview={onStartInterview}
+          onRecordVoice={onRecordVoice}
+          onUploadAudio={onUploadAudio}
+        />
+      )}
     </header>
   );
 }

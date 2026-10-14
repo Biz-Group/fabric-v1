@@ -558,6 +558,10 @@ export default defineSchema({
       "status",
     ])
     .index("by_clerkOrgId_and_status", ["clerkOrgId", "status"])
+    // A member's own interviews for the workspace home: the ones they submitted,
+    // and the ones an admin filed on their behalf.
+    .index("by_clerkOrgId_and_userId", ["clerkOrgId", "userId"])
+    .index("by_clerkOrgId_and_subjectUserId", ["clerkOrgId", "subjectUserId"])
     .index("by_clerkOrgId_and_elevenlabsConversationId", [
       "clerkOrgId",
       "elevenlabsConversationId",
