@@ -1,20 +1,7 @@
 import type { Metadata } from "next";
-import { Instrument_Sans, Newsreader } from "next/font/google";
+import { instrumentSans, newsreader } from "@/features/marketing/marketing-fonts";
 
 import { MarketingLandingPage } from "@/features/marketing/marketing-landing-page";
-
-const instrumentSans = Instrument_Sans({
-  variable: "--font-marketing-sans",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const newsreader = Newsreader({
-  variable: "--font-marketing-serif",
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://bizfabric.ai"),

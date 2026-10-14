@@ -9,8 +9,12 @@ const isJoinOrganizationPath = createRouteMatcher([
   "/join-organization(.*)",
   "/api/join-subdomain-organization",
 ]);
+// Legal documents must stay readable before sign-in, on every site host.
+// Match only these routes so adjacent paths still follow tenant auth rules.
+const isLegalPath = createRouteMatcher(["/privacy", "/terms"]);
 // `isPublicPath` is what middleware lets through without an auth.protect.
-// On the apex, only the marketing landing and its link-preview image (every
+// Legal pages bypass rewriting on every host. On the apex, the marketing
+// landing and its link-preview image are also public (every
 // page's og:image resolves to the apex via `metadataBase`, and crawlers have
 // no session). On a subdomain, only auth pages and the signup org-join
 // handoff are public — tenant `/` stays the workspace entrypoint and
@@ -27,6 +31,8 @@ const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "";
 
 export default clerkMiddleware(
   async (auth, req) => {
+    if (isLegalPath(req)) return;
+
     const host = req.headers.get("host");
     const subdomain = getTenantSubdomain(host, ROOT_DOMAIN);
 
@@ -57,7 +63,7 @@ export default clerkMiddleware(
       return NextResponse.rewrite(url);
     }
 
-    // Apex request — marketing landing only. Anyone hitting /sign-in or
+    // Apex request — public marketing routes. Anyone hitting /sign-in or
     // /sign-up on the apex gets redirected to the marketing page (sign-in is
     // a per-tenant flow, not a global one).
     if (!subdomain) {

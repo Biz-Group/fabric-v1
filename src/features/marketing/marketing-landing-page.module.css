@@ -1618,6 +1618,29 @@
 .finalCtaRings span:nth-child(2) { inset: 12%; }
 .finalCtaRings span:nth-child(3) { inset: 24%; }
 
+.legalLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  grid-column: 1 / -1;
+  font-size: 0.85rem;
+}
+
+.legalLinks a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.legalLinks a:hover {
+  color: var(--ink);
+}
+
+.legalLinks a:focus-visible {
+  outline: 2px solid var(--moss-dark);
+  outline-offset: 5px;
+}
+
 .footer {
   display: grid;
   width: min(100%, 88rem);

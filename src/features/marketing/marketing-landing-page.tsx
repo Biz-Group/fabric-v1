@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   ArrowDown,
   ArrowRight,
@@ -392,6 +393,10 @@ export function MarketingLandingPage() {
         <span>
           &copy; {new Date().getFullYear()} Fabric. Built by Biz Group.
         </span>
+        <nav className={styles.legalLinks} aria-label="Legal">
+          <Link href="/privacy">Privacy Policy</Link>
+          <Link href="/terms">Terms of Use</Link>
+        </nav>
       </footer>
     </main>
   );
