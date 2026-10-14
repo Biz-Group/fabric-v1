@@ -1565,20 +1565,6 @@ export function ProcessWorkbench() {
             onUploadAudio={() => handleOpenRecordingMode("audioUpload")}
           />
 
-          {canEdit && selectedProcessId && (
-            <RecordingModal
-              open={recordingOpen}
-              onOpenChange={setRecordingOpen}
-              processId={selectedProcessId}
-              processName={workbenchProcessName}
-              functionName={workbenchFunctionName}
-              departmentName={workbenchDepartmentName}
-              departmentDescription={safeDepartmentDescription}
-              processDescription={safeProcessDescription}
-              mode={recordingMode}
-            />
-          )}
-
           <Tabs
             value={detailTab}
             onValueChange={(value) => {
@@ -1918,6 +1904,23 @@ export function ProcessWorkbench() {
                 : undefined
             }
             onConfirm={handleCrudConfirm}
+          />
+        )}
+
+        {/* Mounted once here, not in detailPanel(): the desktop and phone
+            trees both render that panel, and a portaled dialog in each
+            would open as two stacked copies. */}
+        {canEdit && selectedProcessId && (
+          <RecordingModal
+            open={recordingOpen}
+            onOpenChange={setRecordingOpen}
+            processId={selectedProcessId}
+            processName={workbenchProcessName}
+            functionName={workbenchFunctionName}
+            departmentName={workbenchDepartmentName}
+            departmentDescription={safeDepartmentDescription}
+            processDescription={safeProcessDescription}
+            mode={recordingMode}
           />
         )}
 

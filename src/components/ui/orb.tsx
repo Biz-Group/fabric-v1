@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useId, useMemo, useRef, useState } from "react"
+import { Suspense, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useTexture } from "@react-three/drei"
 import { Canvas, useFrame, useThree } from "@react-three/fiber"
 import * as THREE from "three"
@@ -40,28 +40,34 @@ export function Orb({
 }: OrbProps) {
   return (
     <div className={className ?? "relative h-full w-full"}>
-      <Canvas
-        resize={{ debounce: resizeDebounce }}
-        gl={{
-          alpha: true,
-          antialias: true,
-          premultipliedAlpha: true,
-        }}
-      >
-        <Scene
-          colors={colors}
-          colorsRef={colorsRef}
-          seed={seed}
-          agentState={agentState}
-          volumeMode={volumeMode}
-          manualInput={manualInput}
-          manualOutput={manualOutput}
-          inputVolumeRef={inputVolumeRef}
-          outputVolumeRef={outputVolumeRef}
-          getInputVolume={getInputVolume}
-          getOutputVolume={getOutputVolume}
-        />
-      </Canvas>
+      {/* Scene suspends while its noise texture downloads, and Canvas rethrows
+          that into the page. Without a boundary here the nearest one wraps the
+          whole workspace, which flashed "Loading your workspace..." the first
+          time an orb appeared. */}
+      <Suspense fallback={null}>
+        <Canvas
+          resize={{ debounce: resizeDebounce }}
+          gl={{
+            alpha: true,
+            antialias: true,
+            premultipliedAlpha: true,
+          }}
+        >
+          <Scene
+            colors={colors}
+            colorsRef={colorsRef}
+            seed={seed}
+            agentState={agentState}
+            volumeMode={volumeMode}
+            manualInput={manualInput}
+            manualOutput={manualOutput}
+            inputVolumeRef={inputVolumeRef}
+            outputVolumeRef={outputVolumeRef}
+            getInputVolume={getInputVolume}
+            getOutputVolume={getOutputVolume}
+          />
+        </Canvas>
+      </Suspense>
     </div>
   )
 }

@@ -445,15 +445,25 @@ describe("voice recording upload admission", () => {
       ctx.storage.store(new Blob(["not audio"], { type: "audio/mpeg" })),
     );
 
-    await expect(
-      caller.action(api.voiceRecordings.processVoiceRecording, {
+    const rejection = await caller
+      .action(api.voiceRecordings.processVoiceRecording, {
         processId,
         storageId,
         uploadToken,
         mimeType: "audio/mpeg",
         source: "upload",
-      }),
-    ).rejects.toThrow(/supported audio format/);
+      })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    // Sent as ConvexError data, so production shows the reason rather than
+    // redacting it to "Server Error". convex-test leaves data as JSON.
+    const data = (rejection as { data?: unknown } | null)?.data;
+    expect(typeof data === "string" ? JSON.parse(data) : data).toEqual({
+      code: "AUDIO_UPLOAD_REJECTED",
+      userMessage: "The uploaded file does not contain a supported audio format.",
+    });
 
     const state = await t.run(async (ctx) => ({
       storage: await ctx.db.system.get("_storage", storageId),

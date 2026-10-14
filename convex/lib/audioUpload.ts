@@ -1,3 +1,5 @@
+import { ConvexError } from "convex/values";
+
 export const MAX_AUDIO_UPLOAD_BYTES = 100 * 1024 * 1024;
 export const MAX_AUDIO_DURATION_SECONDS = 4 * 60 * 60;
 
@@ -77,6 +79,21 @@ const CANONICAL_MIME: Readonly<Record<AudioContainer, string>> = {
 
 export function normalizeAudioMimeType(value: string): string {
   return value.split(";", 1)[0]!.trim().toLowerCase();
+}
+
+/** Whether uploads declared with this MIME type pass metadata validation. */
+export function isSupportedAudioMimeType(value: string): boolean {
+  return Object.hasOwn(MIME_CONTAINERS, normalizeAudioMimeType(value));
+}
+
+/**
+ * An upload refusal the person uploading should read. Plain `Error` messages
+ * are redacted to "Server Error" in production; `ConvexError` data is not.
+ */
+export function audioUploadError(
+  userMessage: string,
+): ConvexError<{ code: "AUDIO_UPLOAD_REJECTED"; userMessage: string }> {
+  return new ConvexError({ code: "AUDIO_UPLOAD_REJECTED", userMessage });
 }
 
 export function audioFileExtension(mimeType: string): string {

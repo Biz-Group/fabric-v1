@@ -4,10 +4,13 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, useAction, useMutation } from "convex/react";
 import { useConversation } from "@elevenlabs/react";
 import type { Status } from "@elevenlabs/react";
+import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { userErrorMessage } from "@/lib/user-error-message";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +50,15 @@ import {
 } from "@/components/ui/collapsible";
 import { SpeakerLabelReview } from "@/features/recording/speaker-label-review";
 import {
+  AUDIO_UPLOAD_ACCEPT,
+  AUDIO_UPLOAD_FORMATS_LABEL,
+  resolveUploadMimeType,
+} from "@/features/recording/audio-file-type";
+import {
+  UploadNetworkError,
+  uploadWithProgress,
+} from "@/features/recording/upload-with-progress";
+import {
   Mic,
   MicOff,
   PhoneOff,
@@ -69,6 +81,44 @@ type ModalStep =
   | "processing"
   | "review";
 export type RecordingMode = "agent" | "voiceRecord" | "audioUpload";
+
+/** Actions that lose or end work, so they are confirmed first. */
+type ConfirmAction = "endInterview" | "discardVoiceNote" | "discardFailed";
+
+const CONFIRM_COPY: Record<
+  ConfirmAction,
+  {
+    title: string;
+    description: string;
+    confirmLabel: string;
+    cancelLabel: string;
+    destructive: boolean;
+  }
+> = {
+  endInterview: {
+    title: "End the interview?",
+    description: "Everything said so far will be saved and processed.",
+    confirmLabel: "End interview",
+    cancelLabel: "Keep talking",
+    destructive: false,
+  },
+  discardVoiceNote: {
+    title: "Discard this voice note?",
+    description:
+      "It hasn't been submitted yet, so closing now deletes it for good.",
+    confirmLabel: "Discard",
+    cancelLabel: "Keep it",
+    destructive: true,
+  },
+  discardFailed: {
+    title: "Discard this recording?",
+    description:
+      "The audio and anything transcribed from it will be deleted. This can't be undone.",
+    confirmLabel: "Discard",
+    cancelLabel: "Keep it",
+    destructive: true,
+  },
+};
 
 /**
  * Who the recording is about. "self" is the default and the only option for
@@ -188,27 +238,82 @@ interface RecordingModalProps {
 // --- Mic Permission Check ---
 // Returns the stream on success so it can be kept alive for WebRTC
 
+type MicFailure =
+  | "denied"
+  | "no-device"
+  | "in-use"
+  | "insecure"
+  | "unsupported"
+  | "failed";
+
+// Each cause needs a different fix, so each gets its own advice.
+const MIC_FAILURE_COPY: Record<MicFailure, { title: string; body: string }> = {
+  denied: {
+    title: "Microphone access is blocked",
+    body: "Allow microphone access for this site (usually from the icon at the start of the address bar), then try again.",
+  },
+  "no-device": {
+    title: "No microphone found",
+    body: "Connect a microphone or headset, then try again.",
+  },
+  "in-use": {
+    title: "Microphone is busy",
+    body: "Another app, such as Teams or Zoom, may be using it. End the call or close that app, then try again.",
+  },
+  insecure: {
+    title: "Microphone needs a secure connection",
+    body: "Open Fabric over https:// to record from this browser.",
+  },
+  unsupported: {
+    title: "This browser can't record audio",
+    body: "Use a current version of Chrome, Edge, Safari or Firefox.",
+  },
+  failed: {
+    title: "Couldn't start the microphone",
+    body: "Check it's connected and not in use by another app, then try again.",
+  },
+};
+
+function micFailureFromError(name: string | undefined): MicFailure {
+  switch (name) {
+    case "NotAllowedError":
+    case "PermissionDeniedError":
+    case "SecurityError":
+      return "denied";
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+    case "OverconstrainedError":
+      return "no-device";
+    case "NotReadableError":
+    case "TrackStartError":
+    case "AbortError":
+      return "in-use";
+    default:
+      return "failed";
+  }
+}
+
 async function acquireMicStream(): Promise<
-  { status: "granted"; stream: MediaStream } | { status: "denied" | "unavailable"; stream: null }
+  | { status: "granted"; stream: MediaStream }
+  | { status: MicFailure; stream: null }
 > {
+  if (typeof window !== "undefined" && !window.isSecureContext) {
+    return { status: "insecure", stream: null };
+  }
   if (
     typeof navigator === "undefined" ||
     !navigator.mediaDevices?.getUserMedia
   ) {
-    return { status: "unavailable", stream: null };
+    return { status: "unsupported", stream: null };
   }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     return { status: "granted", stream };
   } catch (err: unknown) {
-    const error = err as DOMException;
-    if (
-      error.name === "NotAllowedError" ||
-      error.name === "PermissionDeniedError"
-    ) {
-      return { status: "denied", stream: null };
-    }
-    return { status: "unavailable", stream: null };
+    return {
+      status: micFailureFromError((err as DOMException | undefined)?.name),
+      stream: null,
+    };
   }
 }
 
@@ -240,10 +345,13 @@ export function RecordingModal({
   departmentName,
   departmentDescription,
   processDescription,
-  mode = "agent",
+  mode: requestedMode = "agent",
 }: RecordingModalProps) {
   // Step state
   const [step, setStep] = useState<ModalStep>("name");
+  // Set when someone without a working microphone switches to uploading.
+  const [modeOverride, setModeOverride] = useState<RecordingMode | null>(null);
+  const mode = modeOverride ?? requestedMode;
 
   // Name prompt state
   const user = useQuery(api.users.getMe);
@@ -300,8 +408,14 @@ export function RecordingModal({
 
   // Mic state — start as "prompt" (unchecked); only set to "checking" while acquiring
   const [micPermission, setMicPermission] = useState<
-    "granted" | "denied" | "prompt" | "unavailable" | "checking"
+    "granted" | "prompt" | "checking" | MicFailure
   >("prompt");
+  const micFailure =
+    micPermission === "granted" ||
+    micPermission === "prompt" ||
+    micPermission === "checking"
+      ? null
+      : micPermission;
 
   // Recording state
   const [messages, setMessages] = useState<LiveMessage[]>([]);
@@ -327,7 +441,18 @@ export function RecordingModal({
   const [submittedVoiceConversationId, setSubmittedVoiceConversationId] =
     useState<Id<"conversations"> | null>(null);
   const [speakerLabelsSubmitted, setSpeakerLabelsSubmitted] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [failureRetrying, setFailureRetrying] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(
+    null,
+  );
+  // Kept apart from confirmAction so the copy holds steady while the confirm
+  // dialog animates out.
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const wasOpenRef = useRef(false);
+  // Bumped on every open. Uploads and post-call fetches outlive a closed
+  // dialog on purpose, but must not drive a later session's screens.
+  const sessionRef = useRef(0);
 
   // Post-call state
   const [postCallResult, setPostCallResult] = useState<{
@@ -350,6 +475,9 @@ export function RecordingModal({
   const abandonVoiceRecording = useMutation(
     api.voiceRecordings.abandonVoiceRecording
   );
+  const retryAudioProcessing = useMutation(
+    api.voiceRecordings.retryAudioProcessing
+  );
   const conversationIdRef = useRef<string | null>(null);
 
   // Fetch process data for dynamic prompt context
@@ -371,7 +499,9 @@ export function RecordingModal({
   );
 
   const resetModalState = useCallback(() => {
+    sessionRef.current += 1;
     setStep("name");
+    setModeOverride(null);
     setSubjectMode("self");
     setSubjectMemberId(null);
     setExternalName("");
@@ -394,6 +524,10 @@ export function RecordingModal({
     setVoiceRecordError(null);
     setSubmittedVoiceConversationId(null);
     setSpeakerLabelsSubmitted(false);
+    setUploadProgress(null);
+    setFailureRetrying(false);
+    setConfirmAction(null);
+    setConfirmOpen(false);
     audioChunksRef.current = [];
   }, []);
 
@@ -528,6 +662,7 @@ export function RecordingModal({
       // to avoid stale closure issues
       const currentConvId = conversationIdRef.current;
       if (currentConvId) {
+        const session = sessionRef.current;
         setStep("processing");
         // Release mic stream since recording is over
         if (mediaStreamRef.current) {
@@ -540,11 +675,13 @@ export function RecordingModal({
           ...submittedAttributionRef.current,
         })
           .then((result) => {
+            if (sessionRef.current !== session) return;
             setPostCallResult({ status: result.status });
             setStep("review");
           })
           .catch((err) => {
             console.error("fetchConversation failed:", err);
+            if (sessionRef.current !== session) return;
             setPostCallResult({ status: "failed" });
             setStep("review");
           });
@@ -699,21 +836,35 @@ export function RecordingModal({
   const handleAudioFileSelected = useCallback(
     async (file: File | null) => {
       if (!file) return;
-      if (!file.type.startsWith("audio/")) {
-        setVoiceRecordError("Please choose an audio file.");
+      // A rejected pick replaces the previous one, so the error never sits
+      // beside a file that looks ready to upload.
+      const rejectFile = (message: string) => {
+        setRecordedBlob(null);
+        setUploadedFileName(null);
+        setUploadedFileSize(null);
+        setVoiceRecordSeconds(0);
+        setVoiceRecordError(message);
         setVoiceRecordState("error");
+      };
+      const mimeType = resolveUploadMimeType(file);
+      if (!mimeType) {
+        rejectFile(
+          `That file type isn't supported. Upload ${AUDIO_UPLOAD_FORMATS_LABEL}.`,
+        );
         return;
       }
       if (file.size > MAX_UPLOAD_BYTES) {
-        setVoiceRecordError("Audio files must be 100 MB or smaller.");
-        setVoiceRecordState("error");
+        rejectFile(
+          "Files must be 100 MB or smaller. For a long meeting video, export just the audio (M4A or MP3) and upload that.",
+        );
         return;
       }
       setVoiceRecordError(null);
       setRecordedBlob(file);
       setUploadedFileName(file.name);
       setUploadedFileSize(file.size);
-      recordingMimeTypeRef.current = file.type || "audio/mpeg";
+      setVoiceRecordSeconds(0);
+      recordingMimeTypeRef.current = mimeType;
       const duration = await probeAudioDuration(file);
       if (duration) setVoiceRecordSeconds(duration);
       setVoiceRecordState("stopped");
@@ -723,27 +874,31 @@ export function RecordingModal({
 
   const submitVoiceRecording = useCallback(async () => {
     if (!recordedBlob) return;
+    const session = sessionRef.current;
+    const isCurrentSession = () => sessionRef.current === session;
+    // Uploads carry the type resolved at pick time, which maps meeting videos
+    // to the audio type the server accepts.
     const mimeType =
-      recordedBlob.type || recordingMimeTypeRef.current || "audio/webm";
+      recordingMimeTypeRef.current || recordedBlob.type || "audio/webm";
 
     try {
+      setVoiceRecordError(null);
       setVoiceRecordState("uploading");
+      setUploadProgress(0);
       setStep("processing");
       setSpeakerLabelsSubmitted(false);
 
       const { uploadUrl, uploadToken } =
         await generateVoiceRecordingUploadUrl({ processId });
-      const upload = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": mimeType },
-        body: recordedBlob,
-      });
-      if (!upload.ok) {
-        throw new Error(`Upload failed with status ${upload.status}`);
-      }
-      const { storageId } = (await upload.json()) as {
-        storageId: Id<"_storage">;
-      };
+      const storageId = (await uploadWithProgress(
+        uploadUrl,
+        recordedBlob,
+        mimeType,
+        (fraction) => {
+          if (isCurrentSession()) setUploadProgress(fraction);
+        },
+      )) as Id<"_storage">;
+      if (isCurrentSession()) setVoiceRecordState("processing");
 
       const result = await processVoiceRecording({
         processId,
@@ -754,17 +909,25 @@ export function RecordingModal({
         source: mode === "audioUpload" ? "upload" : "record",
         ...submittedAttributionRef.current,
       });
+      if (!isCurrentSession()) return;
       setPostCallResult({ status: result.status });
       setSubmittedVoiceConversationId(result.conversationId);
       setVoiceRecordState("processing");
     } catch (err) {
       console.error("Voice recording upload/processing failed:", err);
+      if (!isCurrentSession()) return;
+      // Nothing was saved and the audio is still in memory, so go back to
+      // the recording step where it can be retried or swapped for another
+      // file.
       setVoiceRecordError(
-        "Something went wrong while uploading or processing the recording."
+        userErrorMessage(err) ??
+          (err instanceof UploadNetworkError
+            ? "The upload was interrupted. Check your connection, then retry."
+            : "Something went wrong while uploading. Your recording is still here, so you can retry."),
       );
-      setPostCallResult({ status: "failed" });
-      setVoiceRecordState("error");
-      setStep("review");
+      setUploadProgress(null);
+      setVoiceRecordState("stopped");
+      setStep("recording");
     }
   }, [
     recordedBlob,
@@ -864,9 +1027,10 @@ export function RecordingModal({
     startVoiceRecording,
   ]);
 
-  // If the user bails before approving speaker labels, drop the conversation
-  // row + audio so we don't retain half-processed inputs. The server gates
-  // on status, so this is a no-op for already-finalized rows.
+  // Closing never deletes a submitted recording. Once uploaded it keeps
+  // processing on the server, and one waiting for speaker labels can be
+  // labelled later from the process's list. Deleting is only ever the
+  // explicit "Discard recording" on the failure screen.
   const handleClose = useCallback(() => {
     if (isConnected || isConnecting) {
       conversation.endSession();
@@ -876,12 +1040,14 @@ export function RecordingModal({
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
     }
-    if (isStoredAudio && submittedVoiceConversationId && !speakerLabelsSubmitted) {
-      void abandonVoiceRecording({
-        conversationId: submittedVoiceConversationId,
-      }).catch((err) => {
-        console.error("Failed to clean up abandoned recording:", err);
-      });
+    if (step === "processing") {
+      toast(
+        isStoredAudio && voiceRecordState === "uploading"
+          ? "The upload continues in the background. Keep this tab open until it finishes."
+          : "Still processing. It will appear in this process when it's ready.",
+      );
+    } else if (step === "speakerLabels") {
+      toast("Saved. You can label the speakers later from this process.");
     }
     onOpenChange(false);
   }, [
@@ -890,20 +1056,112 @@ export function RecordingModal({
     conversation,
     stopVoiceRecording,
     onOpenChange,
+    step,
     isStoredAudio,
-    submittedVoiceConversationId,
-    speakerLabelsSubmitted,
-    abandonVoiceRecording,
+    voiceRecordState,
   ]);
+
+  // What closing right now would lose: a live interview, or a voice note that
+  // only exists in this tab. Uploads are skipped because the file is still on
+  // the user's device.
+  const closeRisk: ConfirmAction | null =
+    step !== "recording"
+      ? null
+      : mode === "agent" && isConnected
+        ? "endInterview"
+        : mode === "voiceRecord" &&
+            (voiceRecordState === "recording" ||
+              (recordedBlob !== null && voiceRecordState === "stopped"))
+          ? "discardVoiceNote"
+          : null;
+
+  const openConfirm = useCallback((action: ConfirmAction) => {
+    setConfirmAction(action);
+    setConfirmOpen(true);
+  }, []);
+
+  const requestClose = useCallback(() => {
+    if (closeRisk) {
+      openConfirm(closeRisk);
+    } else {
+      handleClose();
+    }
+  }, [closeRisk, handleClose, openConfirm]);
 
   const handleDialogOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (!nextOpen) {
-        handleClose();
+        requestClose();
       }
     },
-    [handleClose]
+    [requestClose]
   );
+
+  const discardFailedRecording = useCallback(async () => {
+    if (submittedVoiceConversationId) {
+      try {
+        await abandonVoiceRecording({
+          conversationId: submittedVoiceConversationId,
+        });
+      } catch (err) {
+        console.error("Failed to discard recording:", err);
+        toast.error(
+          userErrorMessage(err) ??
+            "Couldn't discard the recording. Try again in a moment.",
+        );
+        // Keeps the confirm dialog open.
+        throw err;
+      }
+    }
+    onOpenChange(false);
+  }, [abandonVoiceRecording, onOpenChange, submittedVoiceConversationId]);
+
+  const retryFailedRecording = useCallback(async () => {
+    if (!submittedVoiceConversationId) return;
+    setFailureRetrying(true);
+    try {
+      await retryAudioProcessing({
+        conversationId: submittedVoiceConversationId,
+      });
+      setSpeakerLabelsSubmitted(false);
+      setPostCallResult({ status: "processing" });
+      setVoiceRecordState("processing");
+      setStep("processing");
+    } catch (err) {
+      console.error("Failed to retry recording:", err);
+      toast.error(
+        userErrorMessage(err) ?? "Couldn't retry. Try again in a moment.",
+      );
+    } finally {
+      setFailureRetrying(false);
+    }
+  }, [retryAudioProcessing, submittedVoiceConversationId]);
+
+  const handleConfirmAction = useCallback(async () => {
+    switch (confirmAction) {
+      case "endInterview":
+        // The dialog stays open and moves on to processing, exactly as if
+        // End Call had been pressed.
+        await endSession();
+        return;
+      case "discardVoiceNote":
+        handleClose();
+        return;
+      case "discardFailed":
+        await discardFailedRecording();
+        return;
+    }
+  }, [confirmAction, discardFailedRecording, endSession, handleClose]);
+
+  const isFailedStoredAudio =
+    step === "review" &&
+    isStoredAudio &&
+    postCallResult?.status === "failed" &&
+    submittedVoiceConversationId !== null;
+  // retryAudioProcessing is admin-only on the server.
+  const canRetryProcessing = userRole === "admin";
+  const isUploading = isStoredAudio && voiceRecordState === "uploading";
+  const uploadPercent = Math.round((uploadProgress ?? 0) * 100);
 
   // --- Render ---
 
@@ -911,7 +1169,14 @@ export function RecordingModal({
   if (userRole === "viewer") return null;
 
   return (
-    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
+    // A stray tap outside must never close a capture in progress; Esc and the
+    // close button go through requestClose, which confirms when work is at
+    // stake.
+    <Dialog
+      open={open}
+      onOpenChange={handleDialogOpenChange}
+      disablePointerDismissal
+    >
       <DialogContent
         className={cn(
           "flex max-h-[calc(100dvh-1rem)] flex-col gap-0 overflow-hidden p-0",
@@ -1105,34 +1370,37 @@ export function RecordingModal({
                 </p>
               </div>
 
-              {/* Mic permission errors */}
-              {micPermission === "denied" && (
-                <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              {/* Mic errors: a fix per cause, and a way to contribute without one */}
+              {micFailure && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+                >
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   <div>
-                    <p className="font-medium">Microphone access denied</p>
-                    <p className="mt-1 text-xs text-destructive/80">
-                      Please enable microphone access in your browser settings
-                      and try again.
+                    <p className="font-medium">
+                      {MIC_FAILURE_COPY[micFailure].title}
                     </p>
-                  </div>
-                </div>
-              )}
-              {micPermission === "unavailable" && (
-                <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <div>
-                    <p className="font-medium">Microphone unavailable</p>
                     <p className="mt-1 text-xs text-destructive/80">
-                      Your browser doesn&apos;t support microphone access, or
-                      the page isn&apos;t served over HTTPS.
+                      {MIC_FAILURE_COPY[micFailure].body}
                     </p>
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="mt-1 h-auto px-0 text-xs"
+                      onClick={() => {
+                        setModeOverride("audioUpload");
+                        setMicPermission("prompt");
+                      }}
+                    >
+                      Upload a recording instead
+                    </Button>
                   </div>
                 </div>
               )}
             </div>
             <DialogFooter className="mt-6">
-              <Button variant="outline" onClick={handleClose}>
+              <Button variant="outline" onClick={requestClose}>
                 Cancel
               </Button>
               <Button
@@ -1197,10 +1465,10 @@ export function RecordingModal({
                       </p>
                     )}
                     <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
-                      Upload an existing audio recording (e.g. an interview,
-                      meeting capture, or voice memo). Up to 100 MB. We&apos;ll
-                      transcribe and analyze it the same way as a live
-                      recording.
+                      Upload an existing recording, such as an interview,
+                      a meeting or a voice memo: {AUDIO_UPLOAD_FORMATS_LABEL},
+                      up to 100 MB. We&apos;ll transcribe and analyze it the
+                      same way as a live recording.
                     </p>
                   </div>
 
@@ -1220,16 +1488,19 @@ export function RecordingModal({
                       </div>
                     ) : (
                       <p className="text-muted-foreground">
-                        Click to select an audio file
+                        Click to choose a recording
                       </p>
                     )}
                     <input
                       type="file"
-                      accept="audio/*"
+                      accept={AUDIO_UPLOAD_ACCEPT}
                       className="sr-only"
-                      onChange={(e) =>
-                        handleAudioFileSelected(e.target.files?.[0] ?? null)
-                      }
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        // Lets the same file be picked again after a failure.
+                        e.target.value = "";
+                        void handleAudioFileSelected(file);
+                      }}
                       disabled={
                         voiceRecordState === "uploading" ||
                         voiceRecordState === "processing"
@@ -1332,14 +1603,16 @@ export function RecordingModal({
                     }
                   >
                     <Upload className="h-4 w-4" />
-                    {mode === "audioUpload"
-                      ? "Upload & Process"
-                      : "Submit Recording"}
+                    {voiceRecordError
+                      ? "Retry upload"
+                      : mode === "audioUpload"
+                        ? "Upload & Process"
+                        : "Submit Recording"}
                   </Button>
                 </div>
               ) : (
                 <div className="flex items-center justify-center gap-2">
-                  <Button variant="outline" onClick={handleClose}>
+                  <Button variant="outline" onClick={requestClose}>
                     Cancel
                   </Button>
                 </div>
@@ -1389,7 +1662,7 @@ export function RecordingModal({
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={handleClose}>
+                  <Button variant="outline" onClick={requestClose}>
                     Close
                   </Button>
                   <Button
@@ -1543,7 +1816,7 @@ export function RecordingModal({
 
                     {/* Session ended without post-call pipeline (no conversationId) */}
                     {isDisconnected && !disconnectError && !conversationId && (
-                      <Button onClick={handleClose} className="gap-2">
+                      <Button onClick={requestClose} className="gap-2">
                         Done
                       </Button>
                     )}
@@ -1629,19 +1902,39 @@ export function RecordingModal({
                 colors={["#6366f1", "#8b5cf6"]}
               />
             </div>
-            <ShimmeringText
-              text={
-                mode === "audioUpload"
-                  ? "Processing your upload..."
-                  : mode === "voiceRecord"
-                    ? "Processing your recording..."
+            {isUploading ? (
+              <div className="w-full max-w-xs space-y-2 text-center">
+                <p className="text-sm text-muted-foreground tabular-nums">
+                  Uploading… {uploadPercent}%
+                </p>
+                <div
+                  role="progressbar"
+                  aria-label="Upload progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={uploadPercent}
+                  className="h-1.5 overflow-hidden rounded-full bg-muted"
+                >
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width] duration-300"
+                    style={{ width: `${uploadPercent}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <ShimmeringText
+                text={
+                  isStoredAudio
+                    ? "Transcribing and analyzing..."
                     : "Processing your conversation..."
-              }
-              className="text-sm text-muted-foreground"
-            />
-            <p className="max-w-xs text-center text-xs text-muted-foreground/70">
-              This may take up to a minute while we transcribe and analyze the
-              recording.
+                }
+                className="text-sm text-muted-foreground"
+              />
+            )}
+            <p className="max-w-xs text-center text-xs text-muted-foreground">
+              {isUploading
+                ? "Keep this tab open until the upload finishes."
+                : "Long recordings can take a few minutes. You can close this window: processing carries on, and the result appears in this process when it's ready."}
             </p>
           </div>
         )}
@@ -1687,7 +1980,11 @@ export function RecordingModal({
                       : mode === "voiceRecord"
                         ? "The recording is being transcribed and analyzed. It will appear automatically once ready."
                         : "The conversation is still being processed. It will appear automatically once ready."
-                    : "Something went wrong while processing the recording. Please try again."}
+                    : isFailedStoredAudio
+                      ? canRetryProcessing
+                        ? "Your recording was saved, but we couldn't transcribe or analyze it. Retry now, or discard it."
+                        : "Your recording was saved, but we couldn't transcribe or analyze it. It stays in this process marked as failed, and an admin can retry it."
+                      : "Something went wrong while processing the recording. Please try again."}
               </DialogDescription>
             </DialogHeader>
 
@@ -1726,9 +2023,54 @@ export function RecordingModal({
             )}
 
             <DialogFooter className="mt-6">
-              <Button onClick={handleClose}>Done</Button>
+              {isFailedStoredAudio ? (
+                <>
+                  <Button
+                    variant="destructive"
+                    onClick={() => openConfirm("discardFailed")}
+                    disabled={failureRetrying}
+                    className="sm:mr-auto"
+                  >
+                    Discard recording
+                  </Button>
+                  <Button
+                    variant={canRetryProcessing ? "outline" : "default"}
+                    onClick={requestClose}
+                    disabled={failureRetrying}
+                  >
+                    Close
+                  </Button>
+                  {canRetryProcessing && (
+                    <Button
+                      onClick={retryFailedRecording}
+                      disabled={failureRetrying}
+                      className="gap-2"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      {failureRetrying ? "Retrying…" : "Retry"}
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <Button onClick={requestClose}>Done</Button>
+              )}
             </DialogFooter>
           </div>
+        )}
+
+        {confirmAction && (
+          <ConfirmDialog
+            open={confirmOpen}
+            onOpenChange={setConfirmOpen}
+            {...CONFIRM_COPY[confirmAction]}
+            cancelLabel={
+              confirmAction === "discardVoiceNote" &&
+              voiceRecordState === "recording"
+                ? "Keep recording"
+                : CONFIRM_COPY[confirmAction].cancelLabel
+            }
+            onConfirm={handleConfirmAction}
+          />
         )}
       </DialogContent>
     </Dialog>

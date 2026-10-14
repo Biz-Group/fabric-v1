@@ -44,6 +44,7 @@ import {
   USER_UPLOAD_WINDOW_MS,
   VOICE_UPLOAD_GRANT_TTL_MS,
   audioFileExtension,
+  audioUploadError,
   audioUploadRejectionMessage,
   fixedWindowStart,
   inspectAudioUpload,
@@ -603,10 +604,12 @@ export const generateUploadUrl = mutation({
       windowMs: ORG_UPLOAD_WINDOW_MS,
     });
     if (userLimit.uploadUrlsIssued >= MAX_USER_UPLOADS_PER_WINDOW) {
-      throw new Error("Audio upload rate limit reached. Try again later.");
+      throw audioUploadError(
+        "Audio upload rate limit reached. Try again later.",
+      );
     }
     if (orgLimit.uploadUrlsIssued >= MAX_ORG_UPLOADS_PER_WINDOW) {
-      throw new Error(
+      throw audioUploadError(
         "Organization audio upload limit reached. Try again later.",
       );
     }
@@ -922,7 +925,9 @@ export const processVoiceRecording = action({
       },
     );
     if (!hasGrant) {
-      throw new Error("Audio upload authorization is invalid or expired.");
+      throw audioUploadError(
+        "Audio upload authorization is invalid or expired.",
+      );
     }
 
     const audio = await ctx.storage.get(args.storageId);
@@ -934,7 +939,7 @@ export const processVoiceRecording = action({
         userId: attribution.userId,
         storageId: args.storageId,
       });
-      throw new Error("The uploaded audio file could not be found.");
+      throw audioUploadError("The uploaded audio file could not be found.");
     }
 
     const inspection = await inspectAudioUpload(
@@ -950,7 +955,7 @@ export const processVoiceRecording = action({
         userId: attribution.userId,
         storageId: args.storageId,
       });
-      throw new Error(audioUploadRejectionMessage(inspection.reason));
+      throw audioUploadError(audioUploadRejectionMessage(inspection.reason));
     }
 
     const admission: VoiceUploadAdmission = await ctx.runMutation(
@@ -977,12 +982,12 @@ export const processVoiceRecording = action({
         admission.reason === "user_quota" ||
         admission.reason === "organization_quota"
       ) {
-        throw new Error("Audio upload quota reached. Try again later.");
+        throw audioUploadError("Audio upload quota reached. Try again later.");
       }
       if (admission.reason === "duplicate_upload") {
-        throw new Error("This audio file has already been submitted.");
+        throw audioUploadError("This audio file has already been submitted.");
       }
-      throw new Error("The audio upload could not be accepted.");
+      throw audioUploadError("The audio upload could not be accepted.");
     }
 
     return {
