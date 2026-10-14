@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { assertClerkId, clerkFetch, isClerkId } from "./clerkApi";
+import {
+  assertClerkId,
+  ClerkApiError,
+  clerkFetch,
+  isClerkApiErrorCode,
+  isClerkId,
+} from "./clerkApi";
 
 describe("clerkFetch path guard", () => {
   const fetchMock = vi.fn(
@@ -54,5 +60,75 @@ describe("Clerk id validation", () => {
     expect(isClerkId("orginv_1/../x", "orginv")).toBe(false);
     expect(isClerkId("orginv_", "orginv")).toBe(false);
     expect(() => assertClerkId("../org_b", "org")).toThrow(/Invalid Clerk org id/);
+  });
+});
+
+describe("clerkFetch failures", () => {
+  beforeEach(() => {
+    process.env.CLERK_SECRET_KEY = "sk_test_abc";
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function respondWith(status: number, body: string) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(body, { status })),
+    );
+  }
+
+  async function failure(): Promise<ClerkApiError> {
+    try {
+      await clerkFetch("/organizations/org_a/invitations", { method: "POST" });
+    } catch (error) {
+      if (error instanceof ClerkApiError) return error;
+      throw error;
+    }
+    throw new Error("Expected clerkFetch to fail");
+  }
+
+  test("keeps the status, codes and trace id but not the body", async () => {
+    respondWith(
+      422,
+      JSON.stringify({
+        errors: [
+          {
+            code: "duplicate_record",
+            message: "duplicate",
+            long_message: "jane.doe@client.test is already invited",
+            meta: { email_address: "jane.doe@client.test" },
+          },
+        ],
+        clerk_trace_id: "trace_123",
+      }),
+    );
+
+    const error = await failure();
+
+    expect(error.status).toBe(422);
+    expect(error.codes).toEqual(["duplicate_record"]);
+    expect(isClerkApiErrorCode(error, "duplicate_record")).toBe(true);
+    expect(error.message).toBe(
+      "Clerk API POST /organizations/org_a/invitations failed with 422 (duplicate_record) [trace trace_123]",
+    );
+    expect(error.message).not.toContain("jane.doe");
+  });
+
+  test("survives a body that isn't JSON", async () => {
+    respondWith(502, "<html>upstream error for jane.doe@client.test</html>");
+
+    const error = await failure();
+
+    expect(error.status).toBe(502);
+    expect(error.codes).toEqual([]);
+    expect(error.message).not.toContain("jane.doe");
+  });
+
+  test("only a Clerk API failure counts as having a code", () => {
+    expect(
+      isClerkApiErrorCode(new Error("duplicate_record"), "duplicate_record"),
+    ).toBe(false);
   });
 });

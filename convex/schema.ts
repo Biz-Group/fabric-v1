@@ -218,6 +218,11 @@ export default defineSchema({
     removedAt: v.optional(v.number()),
     status: v.optional(membershipStatusValidator),
     source: v.optional(membershipSourceValidator),
+    // What a super-admin fan-out replaced when it promoted an existing
+    // membership to admin, so demotion can give the original role back.
+    // Unset on memberships the fan-out created (demotion removes those).
+    roleBeforeFanOut: v.optional(roleValidator),
+    sourceBeforeFanOut: v.optional(membershipSourceValidator),
     clerkUserId: v.optional(v.string()),
     name: v.optional(v.string()),
     email: v.optional(v.string()),

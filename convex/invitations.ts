@@ -15,6 +15,7 @@ import {
   assertClerkId,
   clerkFetch,
   clerkUserIdFromTokenIdentifier,
+  isClerkApiErrorCode,
   isClerkId,
 } from "./lib/clerkApi";
 
@@ -92,11 +93,10 @@ type InviteResult =
 function clerkInviteConflict(
   error: unknown,
 ): "alreadyMember" | "alreadyInvited" | null {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("already_a_member_in_organization")) {
+  if (isClerkApiErrorCode(error, "already_a_member_in_organization")) {
     return "alreadyMember";
   }
-  if (message.includes("duplicate_record")) {
+  if (isClerkApiErrorCode(error, "duplicate_record")) {
     return "alreadyInvited";
   }
   return null;
@@ -104,8 +104,7 @@ function clerkInviteConflict(
 
 // Pending invitations count toward Clerk's per-workspace member limit.
 function isClerkMemberQuotaError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes("organization_membership_quota_exceeded");
+  return isClerkApiErrorCode(error, "organization_membership_quota_exceeded");
 }
 
 const MEMBER_LIMIT_MESSAGE =

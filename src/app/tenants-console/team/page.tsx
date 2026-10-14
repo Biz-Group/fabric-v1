@@ -114,16 +114,18 @@ function SuperAdminRow({
           open={confirming}
           onOpenChange={setConfirming}
           title={`Demote ${name}?`}
-          description="They keep their existing workspace memberships but lose platform-level access, including this console."
+          description="They lose platform-level access, including this console, and are removed from the workspaces super-admin access added them to. Workspaces they belonged to before keep their original role."
           confirmLabel="Demote"
           destructive
           onConfirm={async () => {
             try {
-              await setPlatformRole({
+              const result = await setPlatformRole({
                 targetUserId: userId,
                 platformRole: null,
               });
-              toast.success(`${name} is no longer a super-admin.`);
+              toast.success(`${name} is no longer a super-admin.`, {
+                description: describeDemotion(result),
+              });
             } catch (err) {
               toast.error(
                 err instanceof Error ? err.message : "Failed to demote.",
@@ -135,6 +137,22 @@ function SuperAdminRow({
       </TableCell>
     </TableRow>
   );
+}
+
+function describeDemotion({
+  workspacesRemoved,
+  rolesRestored,
+}: {
+  workspacesRemoved: number;
+  rolesRestored: number;
+}): string | undefined {
+  const parts = [
+    workspacesRemoved > 0 &&
+      `Removed from ${workspacesRemoved} workspace${workspacesRemoved === 1 ? "" : "s"}.`,
+    rolesRestored > 0 &&
+      `Original role restored in ${rolesRestored} workspace${rolesRestored === 1 ? "" : "s"}.`,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
 function PromoteCard() {

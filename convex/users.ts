@@ -24,6 +24,7 @@ import {
 } from "./lib/orgAuth";
 import { authError } from "./lib/authErrors";
 import {
+  ClerkApiError,
   clerkFetch,
   clerkUserIdFromTokenIdentifier,
   normalizeEmail,
@@ -150,15 +151,35 @@ function optionalProfileText(
   return trimmed;
 }
 
+/**
+ * The address to trust as someone's email: their primary one if it is
+ * verified, otherwise their first verified one. Unverified addresses never
+ * count. Invite roles are matched by email, so trusting one would let someone
+ * claim an invitation sent to an address they don't own. Takes the
+ * `email_addresses` shape shared by Clerk's Backend API and its webhooks.
+ */
+function verifiedEmailFrom(
+  addresses: unknown,
+  primaryId: unknown,
+): string | null {
+  if (!Array.isArray(addresses)) return null;
+  const verified = addresses.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const { id, email_address: email, verification } = entry as {
+      id?: unknown;
+      email_address?: unknown;
+      verification?: { status?: unknown } | null;
+    };
+    if (typeof email !== "string" || !email.trim()) return [];
+    if (verification?.status !== "verified") return [];
+    return [{ id, email }];
+  });
+  const primary = verified.find((entry) => entry.id === primaryId);
+  return (primary ?? verified[0])?.email ?? null;
+}
+
 function emailFromClerkUser(user: ClerkUserResponse): string | null {
-  const primary = user.email_addresses?.find(
-    (email) => email.id === user.primary_email_address_id,
-  );
-  return (
-    primary?.email_address ??
-    user.email_addresses?.[0]?.email_address ??
-    null
-  );
+  return verifiedEmailFrom(user.email_addresses, user.primary_email_address_id);
 }
 
 function profileFromClerkUser(user: ClerkUserResponse): {
@@ -701,16 +722,10 @@ export const reconcileOrgMembersFromClerk = internalAction({
           publicUser.last_name,
           publicUser.identifier,
         );
-        let email =
-          publicUser.identifier && publicUser.identifier.includes("@")
-            ? publicUser.identifier
-            : null;
-
-        if (!name || !email) {
-          const profile = await getClerkUserProfile(clerkUserId);
-          name ??= profile.name;
-          email ??= profile.email;
-        }
+        // `identifier` carries no verification status; the profile does.
+        const profile = await getClerkUserProfile(clerkUserId);
+        name ??= profile.name;
+        const email = profile.email;
 
         const upsertArgs: {
           tokenIdentifier: string;
@@ -1353,8 +1368,8 @@ export const removeMemberFromOrg = action({
         method: "DELETE",
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes("404")) {
+      // Already gone from Clerk (a 404) is the outcome we wanted.
+      if (!(err instanceof ClerkApiError && err.status === 404)) {
         await ctx.runMutation(internal.users.abortMemberRemoval, {
           membershipId: args.membershipId,
           blockId: removal.blockId,
@@ -1569,19 +1584,7 @@ function getString(value: unknown): string | null {
 }
 
 function webhookEmail(data: Record<string, unknown>): string | null {
-  const emailAddresses = data.email_addresses;
-  const primaryId = getString(data.primary_email_address_id);
-  if (!Array.isArray(emailAddresses)) return null;
-  const primary = emailAddresses.find(
-    (entry) =>
-      typeof entry === "object" &&
-      entry !== null &&
-      getString((entry as Record<string, unknown>).id) === primaryId,
-  ) as Record<string, unknown> | undefined;
-  return (
-    getString(primary?.email_address) ??
-    getString((emailAddresses[0] as Record<string, unknown> | undefined)?.email_address)
-  );
+  return verifiedEmailFrom(data.email_addresses, data.primary_email_address_id);
 }
 
 function webhookMembershipData(data: Record<string, unknown>) {
@@ -1678,11 +1681,24 @@ export const handleClerkWebhook = internalMutation({
     if (args.eventType === "organizationMembership.created") {
       const membership = webhookMembershipData(data);
       if (membership.clerkOrgId && membership.clerkUserId) {
+        const tokenIdentifier = tokenIdentifierFromClerkUserId(
+          membership.clerkUserId,
+        );
+        // The payload's `identifier` says nothing about verification, so it
+        // only fills in someone Fabric hasn't seen yet. A known user's email
+        // comes from verified sources: the user.* webhooks, the Clerk profile
+        // sync and the session token.
+        const knownUser = await ctx.db
+          .query("users")
+          .withIndex("by_tokenIdentifier", (q) =>
+            q.eq("tokenIdentifier", tokenIdentifier),
+          )
+          .unique();
         await upsertUserAndMembership(ctx, {
-          tokenIdentifier: tokenIdentifierFromClerkUserId(membership.clerkUserId),
+          tokenIdentifier,
           clerkUserId: membership.clerkUserId,
           name: membership.name,
-          email: membership.email,
+          email: knownUser ? null : membership.email,
           orgId: membership.clerkOrgId,
           source: "webhook",
         });

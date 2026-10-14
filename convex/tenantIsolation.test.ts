@@ -684,6 +684,7 @@ describe("user provisioning sync", () => {
           {
             id: "email_1",
             email_address: "new.member@a.test",
+            verification: { status: "verified" },
           },
         ],
       },
@@ -738,6 +739,7 @@ describe("user provisioning sync", () => {
           {
             id: "email_1",
             email_address: "invited.admin@a.test",
+            verification: { status: "verified" },
           },
         ],
       },
@@ -793,6 +795,168 @@ describe("user provisioning sync", () => {
     expect(stored.intent?.status).toBe("accepted");
     expect(stored.intent?.acceptedUserId).toBe(userId);
     expect(stored.intent?.acceptedTokenIdentifier).toBe(identity.tokenIdentifier);
+  });
+
+  // Schema-bound so helpers can query by index name.
+  const newSchemaTest = () => convexTest(schema, modules);
+
+  async function seedPendingAdminInvite(
+    t: ReturnType<typeof newSchemaTest>,
+    clerkOrgId: string,
+    email: string,
+  ) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("membershipIntents", {
+        clerkOrgId,
+        email,
+        emailLower: email,
+        requestedRole: "admin",
+        source: "adminInvite",
+        status: "pending",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    });
+  }
+
+  async function membershipAndIntent(
+    t: ReturnType<typeof newSchemaTest>,
+    tokenIdentifier: string,
+    clerkOrgId: string,
+    inviteEmail: string,
+  ) {
+    return await t.run(async (ctx) => ({
+      membership: await ctx.db
+        .query("memberships")
+        .withIndex("by_tokenIdentifier_and_clerkOrgId", (q) =>
+          q.eq("tokenIdentifier", tokenIdentifier).eq("clerkOrgId", clerkOrgId),
+        )
+        .unique(),
+      intent: await ctx.db
+        .query("membershipIntents")
+        .withIndex("by_clerkOrgId_and_emailLower", (q) =>
+          q.eq("clerkOrgId", clerkOrgId).eq("emailLower", inviteEmail),
+        )
+        .unique(),
+    }));
+  }
+
+  test("an unverified address can't claim an invitation", async () => {
+    const t = newSchemaTest();
+    // The invited address is on the account but was never verified; the
+    // verified one belongs to someone else's domain.
+    stubClerkFetch([
+      {
+        id: "user_claimer",
+        first_name: "Claimer",
+        last_name: "Person",
+        primary_email_address_id: "email_1",
+        email_addresses: [
+          {
+            id: "email_1",
+            email_address: "invited.admin@a.test",
+            verification: { status: "unverified" },
+          },
+          {
+            id: "email_2",
+            email_address: "claimer@elsewhere.test",
+            verification: { status: "verified" },
+          },
+        ],
+      },
+    ]);
+    await seedPendingAdminInvite(t, ORG_A, "invited.admin@a.test");
+
+    const identity = {
+      tokenIdentifier: `${ISSUER}|user_claimer`,
+      subject: "user_claimer",
+      issuer: ISSUER,
+      orgId: ORG_A,
+      orgSlug: "org-a",
+    };
+    const userId = await t
+      .withIdentity(identity)
+      .action(api.users.syncCurrentUserFromClerk, {});
+
+    const stored = await membershipAndIntent(
+      t,
+      identity.tokenIdentifier,
+      ORG_A,
+      "invited.admin@a.test",
+    );
+    const user = await t.run(async (ctx) => ctx.db.get(userId));
+    expect(user?.email).toBe("claimer@elsewhere.test");
+    expect(stored.membership?.role).toBe("contributor");
+    expect(stored.intent?.status).toBe("pending");
+  });
+
+  test("a user webhook with an unverified primary keeps the verified email", async () => {
+    const t = newSchemaTest();
+    await seedTwoOrgs(t);
+
+    await t.mutation(internal.users.handleClerkWebhook, {
+      eventId: "evt_unverified_primary",
+      eventType: "user.updated",
+      data: {
+        id: "user_a",
+        first_name: "Alice",
+        primary_email_address_id: "email_new",
+        email_addresses: [
+          {
+            id: "email_new",
+            email_address: "someone.else@b.test",
+            verification: { status: "unverified" },
+          },
+        ],
+      },
+    });
+
+    const user = await t.run(async (ctx) =>
+      ctx.db
+        .query("users")
+        .withIndex("by_tokenIdentifier", (q) =>
+          q.eq("tokenIdentifier", `${ISSUER}|user_a`),
+        )
+        .unique(),
+    );
+    expect(user?.email).toBe("alice@a.test");
+  });
+
+  test("the membership webhook's identifier can't replace a known user's email", async () => {
+    const t = newSchemaTest();
+    await seedTwoOrgs(t);
+    await seedPendingAdminInvite(t, ORG_B, "invited.admin@b.test");
+
+    await t.mutation(internal.users.handleClerkWebhook, {
+      eventId: "evt_identifier_swap",
+      eventType: "organizationMembership.created",
+      data: {
+        organization: { id: ORG_B },
+        public_user_data: {
+          user_id: "user_a",
+          identifier: "invited.admin@b.test",
+        },
+        role: "org:member",
+      },
+    });
+
+    const stored = await membershipAndIntent(
+      t,
+      `${ISSUER}|user_a`,
+      ORG_B,
+      "invited.admin@b.test",
+    );
+    const user = await t.run(async (ctx) =>
+      ctx.db
+        .query("users")
+        .withIndex("by_tokenIdentifier", (q) =>
+          q.eq("tokenIdentifier", `${ISSUER}|user_a`),
+        )
+        .unique(),
+    );
+    expect(user?.email).toBe("alice@a.test");
+    expect(stored.membership?.role).toBe("contributor");
+    expect(stored.intent?.status).toBe("pending");
   });
 
   test("joining directly revokes the leftover pending Clerk invitation", async () => {
@@ -2482,15 +2646,16 @@ describe("conversations admin — cross-tenant scoping", () => {
   });
 });
 
-describe("auth failures carry a code the client can act on", () => {
-  async function codeOf(call: Promise<unknown>) {
-    try {
-      await call;
-    } catch (error) {
-      return authErrorCode(error);
-    }
-    throw new Error("Expected the call to fail");
+async function codeOf(call: Promise<unknown>) {
+  try {
+    await call;
+  } catch (error) {
+    return authErrorCode(error);
   }
+  throw new Error("Expected the call to fail");
+}
+
+describe("auth failures carry a code the client can act on", () => {
 
   async function seedDave(
     t: ReturnType<typeof convexTest>,
@@ -2534,9 +2699,13 @@ describe("auth failures carry a code the client can act on", () => {
   test("no org claim → NO_ACTIVE_ORG", async () => {
     const t = convexTest(schema, modules);
     await seedTwoOrgs(t);
-    const { orgId: _orgId, orgSlug: _orgSlug, ...noOrg } = identityForOrgA();
+    const { tokenIdentifier, subject, issuer } = identityForOrgA();
     expect(
-      await codeOf(t.withIdentity(noOrg).query(api.functions.list, {})),
+      await codeOf(
+        t
+          .withIdentity({ tokenIdentifier, subject, issuer })
+          .query(api.functions.list, {}),
+      ),
     ).toBe("NO_ACTIVE_ORG");
   });
 
@@ -2576,5 +2745,209 @@ describe("auth failures carry a code the client can act on", () => {
         t.withIdentity(dave).mutation(api.functions.create, { name: "Ops" }),
       ),
     ).toBe("INSUFFICIENT_ROLE");
+  });
+});
+
+describe("demoting a super-admin takes back what the fan-out gave", () => {
+  // Schema-bound so helpers can query by index name.
+  const newSchemaTest = () => convexTest(schema, modules);
+
+  beforeEach(() => {
+    process.env.CLERK_SECRET_KEY = "sk_test_abc";
+    process.env.CLERK_JWT_ISSUER_DOMAIN = ISSUER;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+    vi.useRealTimers();
+  });
+
+  const superIdentity = {
+    tokenIdentifier: `${ISSUER}|user_super`,
+    subject: "user_super",
+    issuer: ISSUER,
+  };
+
+  function formerSuperIn(orgId: string) {
+    return {
+      tokenIdentifier: `${ISSUER}|user_ex`,
+      subject: "user_ex",
+      issuer: ISSUER,
+      orgId,
+      orgSlug: orgId,
+    };
+  }
+
+  async function seedSuperAdmins(t: ReturnType<typeof newSchemaTest>) {
+    return await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        tokenIdentifier: `${ISSUER}|user_super`,
+        clerkUserId: "user_super",
+        name: "Super",
+        email: "super@fabric.test",
+        profileComplete: true,
+        platformRole: "superAdmin",
+      });
+      const exId = await ctx.db.insert("users", {
+        tokenIdentifier: `${ISSUER}|user_ex`,
+        clerkUserId: "user_ex",
+        name: "Former Super",
+        email: "ex@fabric.test",
+        profileComplete: true,
+        platformRole: "superAdmin",
+      });
+      return exId;
+    });
+  }
+
+  async function exMembership(t: ReturnType<typeof newSchemaTest>, orgId: string) {
+    return await t.run(async (ctx) =>
+      ctx.db
+        .query("memberships")
+        .withIndex("by_tokenIdentifier_and_clerkOrgId", (q) =>
+          q.eq("tokenIdentifier", `${ISSUER}|user_ex`).eq("clerkOrgId", orgId),
+        )
+        .unique(),
+    );
+  }
+
+  // ORG_A: the fan-out created the membership. ORG_B: the fan-out promoted
+  // an existing viewer membership.
+  async function seedFanOutMemberships(
+    t: ReturnType<typeof newSchemaTest>,
+    exId: Id<"users">,
+  ) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("memberships", {
+        tokenIdentifier: `${ISSUER}|user_ex`,
+        userId: exId,
+        clerkOrgId: ORG_A,
+        role: "admin",
+        createdAt: Date.now(),
+        status: "active",
+        source: "superAdminFanOut",
+        platformRole: "superAdmin",
+      });
+      await ctx.db.insert("memberships", {
+        tokenIdentifier: `${ISSUER}|user_ex`,
+        userId: exId,
+        clerkOrgId: ORG_B,
+        role: "admin",
+        createdAt: Date.now(),
+        status: "active",
+        source: "superAdminFanOut",
+        roleBeforeFanOut: "viewer",
+        sourceBeforeFanOut: "adminInvite",
+        platformRole: "superAdmin",
+      });
+    });
+  }
+
+  test("restores promoted roles and removes fan-out memberships", async () => {
+    vi.useFakeTimers();
+    const t = newSchemaTest();
+    const exId = await seedSuperAdmins(t);
+    await seedFanOutMemberships(t, exId);
+    const { calls } = stubClerkFetchStatus(200, {});
+
+    const result = await t
+      .withIdentity(superIdentity)
+      .mutation(api.platform.setPlatformRole, {
+        targetUserId: exId,
+        platformRole: null,
+      });
+
+    expect(result).toEqual({ workspacesRemoved: 1, rolesRestored: 1 });
+    // Cut off in the demotion itself, before Clerk is called.
+    expect(
+      await codeOf(
+        t.withIdentity(formerSuperIn(ORG_A)).query(api.functions.list, {}),
+      ),
+    ).toBe("REMOVED");
+    const restored = await exMembership(t, ORG_B);
+    expect(restored).toMatchObject({ role: "viewer", source: "adminInvite" });
+    expect(restored?.roleBeforeFanOut).toBeUndefined();
+    expect(restored?.platformRole).toBeUndefined();
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(
+      calls.map((c) => [c.init?.method ?? "GET", new URL(c.url).pathname]),
+    ).toEqual([["DELETE", `/v1/organizations/${ORG_A}/memberships/user_ex`]]);
+    expect(await exMembership(t, ORG_A)).toBeNull();
+  });
+
+  test("a failed Clerk removal still leaves no access", async () => {
+    vi.useFakeTimers();
+    const t = newSchemaTest();
+    const exId = await seedSuperAdmins(t);
+    await seedFanOutMemberships(t, exId);
+    stubClerkFetchStatus(500, { errors: [{ code: "internal_clerk_error" }] });
+
+    await t
+      .withIdentity(superIdentity)
+      .mutation(api.platform.setPlatformRole, {
+        targetUserId: exId,
+        platformRole: null,
+      });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    // Their Clerk membership survived, so their token still names ORG_A.
+    await t.withIdentity(formerSuperIn(ORG_A)).mutation(api.users.store, {});
+
+    expect(await exMembership(t, ORG_A)).toMatchObject({ status: "removed" });
+    expect(
+      await codeOf(
+        t.withIdentity(formerSuperIn(ORG_A)).query(api.functions.list, {}),
+      ),
+    ).toBe("REMOVED");
+  });
+
+  test("the fan-out remembers the role it replaced", async () => {
+    const t = newSchemaTest();
+    const exId = await seedSuperAdmins(t);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("memberships", {
+        tokenIdentifier: `${ISSUER}|user_ex`,
+        userId: exId,
+        clerkOrgId: ORG_A,
+        role: "contributor",
+        createdAt: Date.now(),
+        status: "active",
+        source: "selfSignup",
+      });
+    });
+    stubClerkFetchStatus(400, {
+      errors: [{ code: "already_a_member_in_organization" }],
+    });
+
+    await t.action(internal.platform.fanOutSuperAdminMembershipsInternal, {
+      clerkOrgId: ORG_A,
+    });
+    // A second fan-out must not overwrite the original with "admin".
+    await t.action(internal.platform.fanOutSuperAdminMembershipsInternal, {
+      clerkOrgId: ORG_A,
+    });
+
+    expect(await exMembership(t, ORG_A)).toMatchObject({
+      role: "admin",
+      source: "superAdminFanOut",
+      roleBeforeFanOut: "contributor",
+      sourceBeforeFanOut: "selfSignup",
+    });
+
+    const result = await t
+      .withIdentity(superIdentity)
+      .mutation(api.platform.setPlatformRole, {
+        targetUserId: exId,
+        platformRole: null,
+      });
+
+    expect(result).toEqual({ workspacesRemoved: 0, rolesRestored: 1 });
+    expect(await exMembership(t, ORG_A)).toMatchObject({
+      role: "contributor",
+      source: "selfSignup",
+      status: "active",
+    });
   });
 });

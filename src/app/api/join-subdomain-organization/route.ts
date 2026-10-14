@@ -281,11 +281,58 @@ async function resolveCaller(
   return { slug, caller: session as Caller };
 }
 
+// Clerk SDK errors carry Clerk's messages and metadata, which can include
+// email addresses. Log only what identifies the failure for support.
+function logUnexpectedFailure(stage: string, error: unknown) {
+  const { status, errors, clerkTraceId } = (
+    typeof error === "object" && error !== null ? error : {}
+  ) as { status?: unknown; errors?: unknown; clerkTraceId?: unknown };
+  console.error(
+    `[join-subdomain-organization] ${stage} failed: ${JSON.stringify({
+      errorType: error instanceof Error ? error.name : typeof error,
+      status: typeof status === "number" ? status : undefined,
+      codes: Array.isArray(errors)
+        ? errors.flatMap((entry: { code?: unknown } | null) =>
+            typeof entry?.code === "string" ? [entry.code] : [],
+          )
+        : undefined,
+      clerkTraceId: typeof clerkTraceId === "string" ? clerkTraceId : undefined,
+    })}`,
+  );
+}
+
 /**
  * Pre-check for the "Join this workspace" button: whether joining would
  * succeed, and if not, the reason to show instead. Changes nothing.
  */
 export async function GET(req: NextRequest) {
+  try {
+    return await checkEligibility(req);
+  } catch (error) {
+    logUnexpectedFailure("eligibility check", error);
+    return NextResponse.json(
+      { error: "We couldn't check this workspace right now. Please try again." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    return await join(req);
+  } catch (error) {
+    logUnexpectedFailure("join", error);
+    return NextResponse.json(
+      {
+        error:
+          "We couldn't add you to this workspace right now. Please try again.",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+async function checkEligibility(req: NextRequest) {
   const resolved = await resolveCaller(req);
   if (resolved instanceof NextResponse) return resolved;
 
@@ -302,7 +349,7 @@ export async function GET(req: NextRequest) {
   );
 }
 
-export async function POST(req: NextRequest) {
+async function join(req: NextRequest) {
   if (!isSameOriginPost(req)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

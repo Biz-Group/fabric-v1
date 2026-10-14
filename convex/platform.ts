@@ -10,12 +10,14 @@ import {
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
-import { requireSuperAdmin } from "./lib/orgAuth";
+import { Doc, Id } from "./_generated/dataModel";
+import { requireSuperAdmin, type Role } from "./lib/orgAuth";
 import {
   assertClerkId,
+  ClerkApiError,
   clerkFetch,
   clerkUserIdFromTokenIdentifier,
+  isClerkApiErrorCode,
   normalizeEmail,
 } from "./lib/clerkApi";
 
@@ -137,27 +139,14 @@ export const seedAndBootstrapSuperAdmin = internalAction({
     userId: Id<"users">;
     action: "patched-existing" | "inserted-new";
   }> => {
-    const clerkSecret = process.env.CLERK_SECRET_KEY;
     const issuerDomain = process.env.CLERK_JWT_ISSUER_DOMAIN;
-    if (!clerkSecret) {
-      throw new Error("CLERK_SECRET_KEY is not set in Convex env");
-    }
     if (!issuerDomain) {
       throw new Error("CLERK_JWT_ISSUER_DOMAIN is not set in Convex env");
     }
 
-    const url = new URL("https://api.clerk.com/v1/users");
-    url.searchParams.append("email_address", args.email);
-    url.searchParams.set("limit", "1");
-
-    const resp = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${clerkSecret}` },
-    });
-    if (!resp.ok) {
-      const body = await resp.text();
-      throw new Error(`Clerk API ${resp.status}: ${body}`);
-    }
-    const users = (await resp.json()) as Array<{
+    const users = (await clerkFetch("/users", {
+      query: { email_address: [args.email], limit: "1" },
+    })) as Array<{
       id: string;
       first_name?: string | null;
       last_name?: string | null;
@@ -378,16 +367,21 @@ export const findUserByEmail = query({
  * locking the platform out of super-admin access (symmetric to the
  * "can't demote the last admin" guard on org roles).
  *
- * Note: this mutation only toggles the flag. When promoting, the newly-minted
- * super-admin must still be added as a Clerk member of any org they need
- * access to — run `fanOutSuperAdminMemberships` for each such org.
+ * Promoting only sets the flag: the new super-admin still needs Clerk and
+ * Fabric memberships in each tenant, which `fanOutSuperAdminMemberships`
+ * adds. Demoting also takes back what the fan-out gave (see
+ * `revokeFanOutAccess`), so a former super-admin doesn't stay an admin of
+ * every client tenant.
  */
 export const setPlatformRole = mutation({
   args: {
     targetUserId: v.id("users"),
     platformRole: v.union(v.literal("superAdmin"), v.null()),
   },
-  handler: async (ctx, args) => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ workspacesRemoved: number; rolesRestored: number }> => {
     const caller = await requireSuperAdmin(ctx);
 
     const target = await ctx.db.get(args.targetUserId);
@@ -404,9 +398,186 @@ export const setPlatformRole = mutation({
 
     if (args.platformRole === null) {
       await ctx.db.patch(args.targetUserId, { platformRole: undefined });
-    } else {
-      await ctx.db.patch(args.targetUserId, { platformRole: args.platformRole });
+      return await revokeFanOutAccess(ctx, target, caller._id);
     }
+    await ctx.db.patch(args.targetUserId, { platformRole: args.platformRole });
+    return { workspacesRemoved: 0, rolesRestored: 0 };
+  },
+});
+
+function roleDelta(role: Role, amount: number) {
+  return {
+    admin: role === "admin" ? amount : 0,
+    contributor: role === "contributor" ? amount : 0,
+    viewer: role === "viewer" ? amount : 0,
+  };
+}
+
+/**
+ * Undoes the fan-out for a demoted super-admin, in the same transaction as
+ * the demotion:
+ *   - a membership the fan-out promoted goes back to its original role;
+ *   - a membership the fan-out created is cut off now (tombstoned, which
+ *     every access check and automatic re-provisioning respects) and then
+ *     removed from Clerk and Fabric by `removeFanOutClerkMemberships`.
+ * Fan-outs before `roleBeforeFanOut` existed didn't record the original
+ * role, so those memberships count as created and are removed; the person
+ * can be invited back with the right role.
+ */
+async function revokeFanOutAccess(
+  ctx: MutationCtx,
+  user: Doc<"users">,
+  actorUserId: Id<"users">,
+): Promise<{ workspacesRemoved: number; rolesRestored: number }> {
+  const memberships = await ctx.db
+    .query("memberships")
+    .withIndex("by_userId", (q) => q.eq("userId", user._id))
+    .take(500);
+  const now = Date.now();
+  const toRemove: Array<{
+    membershipId: Id<"memberships">;
+    clerkOrgId: string;
+  }> = [];
+  let rolesRestored = 0;
+
+  for (const membership of memberships) {
+    if (membership.source !== "superAdminFanOut") {
+      if (membership.platformRole !== undefined) {
+        await ctx.db.patch(membership._id, { platformRole: undefined });
+      }
+      continue;
+    }
+
+    const originalRole = membership.roleBeforeFanOut;
+    if (originalRole) {
+      await ctx.db.patch(membership._id, {
+        role: originalRole,
+        source: membership.sourceBeforeFanOut,
+        roleBeforeFanOut: undefined,
+        sourceBeforeFanOut: undefined,
+        platformRole: undefined,
+        updatedAt: now,
+      });
+      if (originalRole !== membership.role) {
+        await patchStatsIfPresent(ctx, membership.clerkOrgId, {
+          ...roleDelta(membership.role, -1),
+          [originalRole]: 1,
+        });
+      }
+      await ctx.db.insert("authAuditEvents", {
+        clerkOrgId: membership.clerkOrgId,
+        actorUserId,
+        targetUserId: user._id,
+        membershipId: membership._id,
+        action: "roleChanged",
+        detail: `Super-admin demoted: role restored to ${originalRole}`,
+        createdAt: now,
+      });
+      rolesRestored++;
+      continue;
+    }
+
+    if (membership.status !== "removed") {
+      await ctx.db.patch(membership._id, {
+        status: "removed",
+        removedAt: now,
+        platformRole: undefined,
+        updatedAt: now,
+      });
+    }
+    toRemove.push({
+      membershipId: membership._id,
+      clerkOrgId: membership.clerkOrgId,
+    });
+  }
+
+  if (toRemove.length > 0) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.platform.removeFanOutClerkMemberships,
+      {
+        clerkUserId:
+          user.clerkUserId ??
+          clerkUserIdFromTokenIdentifier(user.tokenIdentifier),
+        actorUserId,
+        memberships: toRemove,
+      },
+    );
+  }
+  return { workspacesRemoved: toRemove.length, rolesRestored };
+}
+
+/**
+ * Second half of a demotion: removes the former super-admin from each Clerk
+ * org the fan-out added them to, then deletes the tombstoned Fabric row. A
+ * Clerk failure leaves that org's tombstone in place (no Fabric access
+ * either way) and is logged; demoting again retries it.
+ */
+export const removeFanOutClerkMemberships = internalAction({
+  args: {
+    clerkUserId: v.string(),
+    actorUserId: v.id("users"),
+    memberships: v.array(
+      v.object({ membershipId: v.id("memberships"), clerkOrgId: v.string() }),
+    ),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    assertClerkId(args.clerkUserId, "user");
+    for (const { membershipId, clerkOrgId } of args.memberships) {
+      assertClerkId(clerkOrgId, "org");
+      try {
+        await clerkFetch(
+          `/organizations/${clerkOrgId}/memberships/${args.clerkUserId}`,
+          { method: "DELETE" },
+        );
+      } catch (error) {
+        // Already gone from Clerk (a 404) is the outcome we wanted.
+        if (!(error instanceof ClerkApiError && error.status === 404)) {
+          console.error(
+            `Demotion: could not remove ${args.clerkUserId} from ${clerkOrgId}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          continue;
+        }
+      }
+      await ctx.runMutation(internal.platform.completeFanOutRemoval, {
+        membershipId,
+        actorUserId: args.actorUserId,
+      });
+    }
+  },
+});
+
+export const completeFanOutRemoval = internalMutation({
+  args: {
+    membershipId: v.id("memberships"),
+    actorUserId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const membership = await ctx.db.get(args.membershipId);
+    // Re-promoted and fanned out again in the meantime: leave it.
+    if (
+      !membership ||
+      membership.status !== "removed" ||
+      membership.source !== "superAdminFanOut"
+    ) {
+      return;
+    }
+    await ctx.db.delete(membership._id);
+    await patchStatsIfPresent(ctx, membership.clerkOrgId, {
+      active: -1,
+      ...roleDelta(membership.role, -1),
+    });
+    await ctx.db.insert("authAuditEvents", {
+      clerkOrgId: membership.clerkOrgId,
+      actorUserId: args.actorUserId,
+      targetUserId: membership.userId,
+      membershipId: membership._id,
+      action: "memberRemoved",
+      detail: "Super-admin demoted: fan-out access removed",
+      createdAt: Date.now(),
+    });
   },
 });
 
@@ -436,9 +607,26 @@ export const insertSuperAdminMembershipInternal = internalMutation({
       )
       .unique();
     if (existing) {
+      // Remember what this membership was before the fan-out took it over, so
+      // demotion can restore it. A later fan-out keeps the first record.
+      const original =
+        existing.source === "superAdminFanOut"
+          ? {}
+          : {
+              roleBeforeFanOut: existing.role,
+              sourceBeforeFanOut: existing.source,
+            };
+      // The fan-out is an explicit grant, so it also lifts a tombstone left
+      // by a demotion whose Clerk cleanup failed.
+      const reactivate =
+        existing.status === "removed"
+          ? { status: "active" as const, removedAt: undefined }
+          : {};
       // Upgrade to admin if existing membership has a lower role.
       if (existing.role !== "admin") {
         await ctx.db.patch(existing._id, {
+          ...original,
+          ...reactivate,
           role: "admin",
           source: "superAdminFanOut",
           clerkUserId,
@@ -458,6 +646,8 @@ export const insertSuperAdminMembershipInternal = internalMutation({
         });
       } else {
         await ctx.db.patch(existing._id, {
+          ...original,
+          ...reactivate,
           source: "superAdminFanOut",
           clerkUserId,
           name,
@@ -547,40 +737,17 @@ export async function fanOutImpl(
     // Idempotency: if the user is already a member, Clerk returns a 400 with
     // code `already_a_member_in_organization` — we treat that as success so
     // the fan-out can be re-run safely.
-    const resp = await fetch(
-      `https://api.clerk.com/v1/organizations/${clerkOrgId}/memberships`,
-      {
+    try {
+      await clerkFetch(`/organizations/${clerkOrgId}/memberships`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${clerkSecret}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          user_id: clerkUserId,
-          role: "org:admin",
-        }),
-      },
-    );
-
-    if (!resp.ok) {
-      const body = await resp.text();
-      let alreadyMember = false;
-      try {
-        const parsed = JSON.parse(body) as {
-          errors?: Array<{ code?: string }>;
-        };
-        alreadyMember =
-          parsed.errors?.some(
-            (e) => e.code === "already_a_member_in_organization",
-          ) ?? false;
-      } catch {
-        // Non-JSON body — fall through to error handling.
-      }
-      if (!alreadyMember) {
+        body: { user_id: clerkUserId, role: "org:admin" },
+      });
+    } catch (error) {
+      if (!isClerkApiErrorCode(error, "already_a_member_in_organization")) {
         result.clerkApiErrors.push({
           userId: sa.userId,
           email: sa.email,
-          message: `Clerk API ${resp.status}: ${body}`,
+          message: error instanceof Error ? error.message : String(error),
         });
         // Don't write Fabric membership if Clerk side failed — keeps the two
         // systems consistent. The caller can retry once the error is fixed.

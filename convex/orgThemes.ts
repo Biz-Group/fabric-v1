@@ -1,15 +1,8 @@
 import { v } from "convex/values";
 import { mutation, query, QueryCtx, MutationCtx } from "./_generated/server";
-import { getActiveOrgClaims, requireAuth, requireOrgAdmin } from "./lib/orgAuth";
-import { authError } from "./lib/authErrors";
+import { requireOrgAdmin, requireOrgMember } from "./lib/orgAuth";
+import { authErrorCode } from "./lib/authErrors";
 import { buildOrgThemeTokens, clampRgb } from "./themeColors";
-
-async function requireActiveOrgId(ctx: QueryCtx | MutationCtx): Promise<string> {
-  const identity = await requireAuth(ctx);
-  const { orgId } = getActiveOrgClaims(identity);
-  if (!orgId) throw authError("NO_ACTIVE_ORG", "No active organization");
-  return orgId;
-}
 
 async function getExistingTheme(ctx: QueryCtx | MutationCtx, clerkOrgId: string) {
   return await ctx.db
@@ -58,8 +51,18 @@ function getRuntimeTokens(theme: Awaited<ReturnType<typeof getExistingTheme>>) {
 export const getForCurrentOrg = query({
   args: {},
   handler: async (ctx) => {
-    const clerkOrgId = await requireActiveOrgId(ctx);
-    const theme = await getExistingTheme(ctx, clerkOrgId);
+    // Members only, like every other tenant read. The workspace also renders
+    // this theme around its "setting up" and "access removed" screens, so a
+    // caller who isn't (or isn't yet) a member gets the default theme rather
+    // than an error.
+    let orgId: string;
+    try {
+      ({ orgId } = await requireOrgMember(ctx));
+    } catch (error) {
+      if (authErrorCode(error)) return null;
+      throw error;
+    }
+    const theme = await getExistingTheme(ctx, orgId);
     return getRuntimeTokens(theme);
   },
 });

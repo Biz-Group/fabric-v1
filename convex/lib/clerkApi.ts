@@ -36,6 +36,59 @@ export function assertClerkId(value: string, prefix: ClerkIdPrefix): string {
   return value;
 }
 
+/**
+ * A failed Clerk Backend API call. Keeps what callers branch on (the status
+ * and Clerk's error codes) and the trace id Clerk support asks for, but never
+ * the response body: it can echo email addresses, metadata and request
+ * details, and this message ends up in logs and error screens.
+ */
+export class ClerkApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly codes: string[],
+    description: string,
+    traceId?: string,
+  ) {
+    super(
+      `${description} failed with ${status}` +
+        (codes.length > 0 ? ` (${codes.join(", ")})` : "") +
+        (traceId ? ` [trace ${traceId}]` : ""),
+    );
+    this.name = "ClerkApiError";
+  }
+
+  hasCode(code: string): boolean {
+    return this.codes.includes(code);
+  }
+}
+
+/** True when `error` is a Clerk API failure carrying `code`. */
+export function isClerkApiErrorCode(error: unknown, code: string): boolean {
+  return error instanceof ClerkApiError && error.hasCode(code);
+}
+
+/** Builds a `ClerkApiError` from a failed response, reading only the codes. */
+export async function clerkApiError(
+  res: Response,
+  description: string,
+): Promise<ClerkApiError> {
+  let codes: string[] = [];
+  let traceId: string | undefined;
+  try {
+    const body = (await res.json()) as {
+      errors?: Array<{ code?: unknown }>;
+      clerk_trace_id?: unknown;
+    };
+    codes = (body.errors ?? []).flatMap((entry) =>
+      typeof entry?.code === "string" ? [entry.code] : [],
+    );
+    if (typeof body.clerk_trace_id === "string") traceId = body.clerk_trace_id;
+  } catch {
+    // Not JSON: the status alone will have to do.
+  }
+  return new ClerkApiError(res.status, codes, description, traceId);
+}
+
 function getSecretKey(): string {
   const key = process.env.CLERK_SECRET_KEY;
   if (!key) {
@@ -79,12 +132,7 @@ export async function clerkFetch(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(
-      `Clerk API ${method} ${path} failed with ${res.status}: ${text}`,
-    );
-  }
+  if (!res.ok) throw await clerkApiError(res, `Clerk API ${method} ${path}`);
 
   // Some Clerk DELETE endpoints return empty bodies.
   const contentType = res.headers.get("content-type") ?? "";

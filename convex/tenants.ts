@@ -15,8 +15,10 @@ import { Doc, Id } from "./_generated/dataModel";
 import { requireSuperAdmin } from "./lib/orgAuth";
 import {
   assertClerkId,
+  clerkApiError,
   clerkFetch,
   clerkUserIdFromTokenIdentifier,
+  isClerkApiErrorCode,
 } from "./lib/clerkApi";
 import { isValidTenantSlug } from "./lib/slugs";
 import {
@@ -163,20 +165,15 @@ async function uploadOrgLogo(
       body: form,
     },
   );
-  if (!res.ok) {
-    throw new Error(
-      `Clerk logo upload failed with ${res.status}: ${await res.text()}`,
-    );
-  }
+  if (!res.ok) throw await clerkApiError(res, "Clerk logo upload");
   const body = (await res.json()) as { image_url?: string | null };
   return body.image_url ?? null;
 }
 
 function isDuplicateInviteOrMemberError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
   return (
-    message.includes("duplicate_record") ||
-    message.includes("already_a_member_in_organization")
+    isClerkApiErrorCode(error, "duplicate_record") ||
+    isClerkApiErrorCode(error, "already_a_member_in_organization")
   );
 }
 
