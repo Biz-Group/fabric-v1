@@ -234,6 +234,7 @@ function CaptureActions({
       className="flex min-w-0 flex-wrap gap-2"
       role="group"
       aria-label="Add information"
+      data-tour="capture"
     >
       <span className={styles.aiButtonGlow}>
         <Button
@@ -305,6 +306,7 @@ function CaptureFab({
       <MenuPrimitive.Trigger
         disabled={disabled}
         aria-label="Add information"
+        data-tour="capture"
         className="group/fab org-focus-ring fixed right-4 bottom-[calc(1rem+var(--bottom-dock-height,0px)+env(safe-area-inset-bottom))] z-40 flex size-14 items-center justify-center rounded-full bg-org-accent text-org-accent-foreground shadow-lg shadow-black/20 transition-transform active:scale-95 disabled:opacity-50 motion-reduce:transition-none"
       >
         <Plus

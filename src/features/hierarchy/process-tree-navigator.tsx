@@ -2,10 +2,13 @@
 
 import {
   Fragment,
+  useEffect,
+  useRef,
   useState,
   type ComponentType,
   type KeyboardEvent,
 } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -47,8 +50,36 @@ export type ProcessTreeDepartment =
   ProcessTreeFunction["departments"][number];
 export type ProcessTreeProcess = ProcessTreeDepartment["processes"][number];
 
+/** A node to show without selecting it: its branch expands, it scrolls into
+ * view and is highlighted for a moment. `key` changes on every request, so
+ * revealing the same node twice works. */
+export type TreeReveal = {
+  nodeId: string;
+  functionId: Id<"functions">;
+  departmentId?: Id<"departments">;
+  key: number;
+};
+
+/** How long a revealed row stays highlighted. */
+const REVEAL_HIGHLIGHT_MS = 2400;
+
+function collectNodeIds(tree: ProcessTreeData) {
+  const ids = new Set<string>();
+  for (const fn of tree.functions) {
+    ids.add(fn._id);
+    for (const department of fn.departments) {
+      ids.add(department._id);
+      for (const process of department.processes) ids.add(process._id);
+    }
+  }
+  return ids;
+}
+
 type ProcessTreeNavigatorProps = {
   tree: ProcessTreeData | undefined;
+  /** Getting started shows what it builds here, leaving the selection (and
+   * so Home) alone. */
+  reveal?: TreeReveal | null;
   canEdit: boolean;
   selectedFunctionId: Id<"functions"> | null;
   selectedDepartmentId: Id<"departments"> | null;
@@ -351,6 +382,9 @@ function RowActions({
 }
 
 function TreeRow({
+  nodeId,
+  isNew,
+  highlighted,
   label,
   icon: Icon,
   iconClassName,
@@ -365,6 +399,11 @@ function TreeRow({
   onSelect,
   onToggle,
 }: {
+  nodeId: string;
+  /** Created since the tree first loaded: animates in (unless reduced motion
+   * is on, which the caller has already folded in). */
+  isNew: boolean;
+  highlighted: boolean;
   label: string;
   icon: ComponentType<{ className?: string }>;
   iconClassName?: string;
@@ -393,12 +432,17 @@ function TreeRow({
   };
 
   return (
-    <div
+    <motion.div
       role="none"
+      data-tree-id={nodeId}
+      initial={isNew ? { opacity: 0, y: -4 } : false}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
       className={cn(
-        "group/tree-row flex h-9 min-w-0 items-center gap-1 px-2",
-        level === 2 && "pl-6",
-        level === 3 && "pl-10",
+        "group/tree-row mx-1 flex h-9 min-w-0 items-center gap-1 rounded-md px-1 transition-colors duration-500 motion-reduce:transition-none",
+        level === 2 && "pl-5",
+        level === 3 && "pl-9",
+        highlighted && "bg-org-accent-subtle",
       )}
     >
       {expandable ? (
@@ -425,6 +469,8 @@ function TreeRow({
       <button
         type="button"
         role="treeitem"
+        data-tour="tree-node"
+        data-tour-node={nodeId}
         aria-level={level}
         aria-selected={selected}
         aria-expanded={expandable ? expanded : undefined}
@@ -452,12 +498,13 @@ function TreeRow({
         {count > 0 && <CountBadge count={count} label={countTitle} />}
       </button>
       <RowActions label={label} items={actions} />
-    </div>
+    </motion.div>
   );
 }
 
 export function ProcessTreeNavigator({
   tree,
+  reveal = null,
   canEdit,
   selectedFunctionId,
   selectedDepartmentId,
@@ -526,6 +573,58 @@ export function ProcessTreeNavigator({
     }
   }
 
+  // Rows that exist when the tree first loads stay still; anything created
+  // after that animates in.
+  const reduceMotion = useReducedMotion();
+  const [initialNodeIds, setInitialNodeIds] = useState<Set<string> | null>(
+    () => (tree ? collectNodeIds(tree) : null),
+  );
+  if (tree && initialNodeIds === null) setInitialNodeIds(collectNodeIds(tree));
+  const isNewNode = (id: string) =>
+    !reduceMotion && initialNodeIds !== null && !initialNodeIds.has(id);
+
+  // A reveal expands the branch and highlights the row, without selecting.
+  const [prevRevealKey, setPrevRevealKey] = useState(reveal?.key ?? null);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  if (reveal && reveal.key !== prevRevealKey) {
+    setPrevRevealKey(reveal.key);
+    setHighlightedId(reveal.nodeId);
+    if (reveal.departmentId || reveal.nodeId !== reveal.functionId) {
+      const functionId = reveal.functionId;
+      setExpandedFunctionIds((ids) =>
+        ids.has(functionId) ? ids : new Set(ids).add(functionId),
+      );
+    }
+    if (reveal.departmentId && reveal.nodeId !== reveal.departmentId) {
+      const departmentId = reveal.departmentId;
+      setExpandedDepartmentIds((ids) =>
+        ids.has(departmentId) ? ids : new Set(ids).add(departmentId),
+      );
+    }
+  }
+
+  const treeScrollRef = useRef<HTMLDivElement>(null);
+  // Scroll the highlighted row into view once it's rendered (an action can
+  // resolve before the tree query has the new row), then let it fade.
+  useEffect(() => {
+    if (!highlightedId) return;
+    const row = treeScrollRef.current?.querySelector(
+      `[data-tree-id="${CSS.escape(highlightedId)}"]`,
+    );
+    row?.scrollIntoView({
+      block: "nearest",
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
+  }, [highlightedId, tree, reduceMotion]);
+  useEffect(() => {
+    if (!highlightedId) return;
+    const timer = window.setTimeout(
+      () => setHighlightedId(null),
+      REVEAL_HIGHLIGHT_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [highlightedId]);
+
   const homeSelected = !selectedFunctionId;
 
   const toggleFunction = (id: Id<"functions">) => {
@@ -549,6 +648,7 @@ export function ProcessTreeNavigator({
   return (
     <aside
       aria-label="Process tree"
+      data-tour="tree"
       className="flex h-full w-[320px] shrink-0 flex-col border-r bg-muted/10 xl:w-[360px]"
     >
       <div className="shrink-0 border-b bg-background px-4 py-3">
@@ -609,7 +709,10 @@ export function ProcessTreeNavigator({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto py-2 scrollbar-hide">
+      <div
+        ref={treeScrollRef}
+        className="min-h-0 flex-1 overflow-y-auto py-2 scrollbar-hide"
+      >
         {/* The workspace home, above the hierarchy rather than in it: it
             isn't a function. With no functions yet, Home is all there is. */}
         {tree && tree.functions.length > 0 && (
@@ -659,6 +762,9 @@ export function ProcessTreeNavigator({
               return (
                 <div key={fn._id} role="none">
                   <TreeRow
+                    nodeId={fn._id}
+                    isNew={isNewNode(fn._id)}
+                    highlighted={highlightedId === fn._id}
                     label={fn.name}
                     icon={Building2}
                     iconClassName={iconTone.function}
@@ -708,6 +814,9 @@ export function ProcessTreeNavigator({
                         return (
                           <div key={department._id} role="none">
                             <TreeRow
+                              nodeId={department._id}
+                              isNew={isNewNode(department._id)}
+                              highlighted={highlightedId === department._id}
                               label={department.name}
                               icon={Layers}
                               iconClassName={iconTone.department}
@@ -771,6 +880,9 @@ export function ProcessTreeNavigator({
                                     return (
                                       <TreeRow
                                         key={process._id}
+                                        nodeId={process._id}
+                                        isNew={isNewNode(process._id)}
+                                        highlighted={highlightedId === process._id}
                                         label={process.name}
                                         icon={Cog}
                                         iconClassName={iconTone.process}

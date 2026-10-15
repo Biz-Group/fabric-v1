@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   formatSecondsLeft,
   playedSeconds,
+  checklistSteps,
+  shouldPlaceInNewDepartment,
   resolveWelcomeStep,
   tourSecondsLeft,
   welcomeSteps,
@@ -57,17 +59,18 @@ describe("welcome steps", () => {
     expect(welcomeSteps(stateOf())).toEqual(["tour", "profile"]);
   });
 
-  it("asks where you sit on Explore and Waiting, never on Build", () => {
+  it("asks where you sit on every path when departments already exist", () => {
     const owed = { placementOwed: true, profileComplete: true };
-    expect(welcomeSteps(stateOf({ ...owed, path: "explore" }))).toEqual([
+    for (const path of ["explore", "waiting", "build"] as const) {
+      expect(welcomeSteps(stateOf({ ...owed, path }))).toEqual([
+        "tour",
+        "placement",
+      ]);
+    }
+    // No departments yet: nothing is owed, and the builder places them.
+    expect(welcomeSteps(stateOf({ profileComplete: true, path: "build" }))).toEqual([
       "tour",
-      "placement",
     ]);
-    expect(welcomeSteps(stateOf({ ...owed, path: "waiting" }))).toEqual([
-      "tour",
-      "placement",
-    ]);
-    expect(welcomeSteps(stateOf({ ...owed, path: "build" }))).toEqual(["tour"]);
   });
 });
 
@@ -108,5 +111,187 @@ describe("resolveWelcomeStep", () => {
         stateOf({ tourWatched: true, profileComplete: true }),
       ),
     ).toBeNull();
+  });
+});
+
+describe("checklistSteps", () => {
+  type Tree = Parameters<typeof checklistSteps>[0];
+  type Onboarding = Parameters<typeof checklistSteps>[1];
+
+  function processRow(
+    id: string,
+    created: number,
+    options: { contributions?: number; flow?: "ready" | "generating" } = {},
+  ) {
+    return {
+      _id: id,
+      _creationTime: created,
+      name: `Process ${id}`,
+      conversationCounts: { total: options.contributions ?? 0 },
+      flow: options.flow ? { status: options.flow } : null,
+    };
+  }
+
+  function treeOf(
+    functions: {
+      id: string;
+      created: number;
+      departments?: {
+        id: string;
+        created: number;
+        processes?: ReturnType<typeof processRow>[];
+      }[];
+    }[],
+  ) {
+    return {
+      functions: functions.map((fn) => ({
+        _id: fn.id,
+        _creationTime: fn.created,
+        name: `Function ${fn.id}`,
+        departments: (fn.departments ?? []).map((department) => ({
+          _id: department.id,
+          _creationTime: department.created,
+          name: `Department ${department.id}`,
+          processes: department.processes ?? [],
+        })),
+      })),
+    } as unknown as Tree;
+  }
+
+  function onboardingOf(
+    overrides: { watched?: boolean; invited?: boolean; firstMapSeen?: boolean } = {},
+  ): Onboarding {
+    return {
+      tour: { required: false, watched: overrides.watched ?? true },
+      checklist: { visible: true, hidden: false, invited: overrides.invited ?? false },
+      hints: { captureSeen: false, firstMapSeen: overrides.firstMapSeen ?? false },
+    };
+  }
+
+  const states = (tree: Tree, onboarding = onboardingOf()) =>
+    checklistSteps(tree, onboarding).steps.map((step) => `${step.id}:${step.state}`);
+
+  it("starts at the function in an empty workspace", () => {
+    expect(states(treeOf([]))).toEqual([
+      "tour:done",
+      "function:current",
+      "department:todo",
+      "process:todo",
+      "contribution:todo",
+      "invite:todo",
+    ]);
+  });
+
+  it("starts at the tour when it hasn't been watched", () => {
+    expect(states(treeOf([]), onboardingOf({ watched: false }))[0]).toBe(
+      "tour:current",
+    );
+  });
+
+  it("ticks a function a colleague created, naming the newest", () => {
+    const checklist = checklistSteps(
+      treeOf([
+        { id: "f1", created: 1 },
+        { id: "f2", created: 5 },
+      ]),
+      onboardingOf(),
+    );
+    expect(checklist.steps[1]).toEqual({
+      id: "function",
+      state: "done",
+      detail: "Function f2",
+    });
+    expect(checklist.steps[2].state).toBe("current");
+    expect(checklist.newestFunction?.fn._id).toBe("f2");
+  });
+
+  it("finishes the tree once a process exists", () => {
+    const checklist = checklistSteps(
+      treeOf([
+        {
+          id: "f1",
+          created: 1,
+          departments: [{ id: "d1", created: 2, processes: [processRow("p1", 3)] }],
+        },
+      ]),
+      onboardingOf(),
+    );
+    expect(checklist.treeDone).toBe(true);
+    expect(checklist.doneCount).toBe(4);
+    expect(checklist.newestProcess?.department._id).toBe("d1");
+    expect(checklist.contribution).toBe("none");
+  });
+
+  it("waits for the first map, and for it to be seen, before ticking capture", () => {
+    const captured = treeOf([
+      {
+        id: "f1",
+        created: 1,
+        departments: [
+          {
+            id: "d1",
+            created: 2,
+            processes: [processRow("p1", 3, { contributions: 1, flow: "generating" })],
+          },
+        ],
+      },
+    ]);
+    expect(checklistSteps(captured, onboardingOf()).contribution).toBe("processing");
+
+    const mapped = treeOf([
+      {
+        id: "f1",
+        created: 1,
+        departments: [
+          {
+            id: "d1",
+            created: 2,
+            processes: [processRow("p1", 3, { contributions: 1, flow: "ready" })],
+          },
+        ],
+      },
+    ]);
+    const ready = checklistSteps(mapped, onboardingOf());
+    expect(ready.contribution).toBe("mapReady");
+    expect(ready.mapProcess?.process._id).toBe("p1");
+    expect(ready.steps[4].state).toBe("current");
+
+    const done = checklistSteps(
+      mapped,
+      onboardingOf({ firstMapSeen: true, invited: true }),
+    );
+    expect(done.contribution).toBe("seen");
+    expect(done.allDone).toBe(true);
+  });
+});
+
+describe("shouldPlaceInNewDepartment", () => {
+  const unplaced = { placement: null, orgHasDepartments: true, placementSkipped: false };
+
+  it("places an unplaced member who ticked the box", () => {
+    expect(shouldPlaceInNewDepartment(true, unplaced)).toBe(true);
+    expect(shouldPlaceInNewDepartment(false, unplaced)).toBe(false);
+  });
+
+  it("never moves someone placed, or who chose Not sure", () => {
+    expect(
+      shouldPlaceInNewDepartment(true, {
+        ...unplaced,
+        placement: {
+          departmentId: "d1",
+          departmentName: "Payroll",
+          functionId: "f1",
+          functionName: "Finance",
+        } as never,
+      }),
+    ).toBe(false);
+    expect(
+      shouldPlaceInNewDepartment(true, { ...unplaced, placementSkipped: true }),
+    ).toBe(false);
+  });
+
+  it("does nothing while the placement is unknown", () => {
+    expect(shouldPlaceInNewDepartment(true, undefined)).toBe(false);
+    expect(shouldPlaceInNewDepartment(true, null)).toBe(false);
   });
 });

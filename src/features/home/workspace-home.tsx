@@ -31,6 +31,11 @@ import type {
   ProcessTreeFunction,
 } from "@/features/hierarchy/process-tree-navigator";
 import type { RecordingMode } from "@/features/recording/recording-modal";
+import { WaitingCard } from "@/features/onboarding/waiting-card";
+import {
+  GettingStartedCard,
+  type GettingStartedActions,
+} from "@/features/onboarding/getting-started-card";
 import { StatusBadge } from "@/features/status/status-badge";
 import {
   STATUS_TONE_SURFACE,
@@ -74,6 +79,8 @@ type WorkspaceHomeProps = {
   onCreateProcess: (entry: HomeDepartmentEntry) => void;
   onCreateDepartment: (fn: ProcessTreeFunction) => void;
   onCreateFunction: () => void;
+  /** What the Getting started card does with what it builds. */
+  gettingStarted: GettingStartedActions;
 };
 
 const ROW_CLASS =
@@ -656,9 +663,17 @@ export function WorkspaceHome({
   onCreateProcess,
   onCreateDepartment,
   onCreateFunction,
+  gettingStarted,
 }: WorkspaceHomeProps) {
   const me = useQuery(api.users.getMe);
   const placement = useQuery(api.users.getMyPlacement);
+  const onboarding = useQuery(api.onboarding.getMyOnboarding);
+  // A member who waited here this visit sees the card flip to "ready" when
+  // the first process lands (the path is reactive). Remembered so it stays
+  // once the path has moved on to Explore.
+  const waiting = Boolean(onboarding?.eligible && onboarding.path === "waiting");
+  const [sawWaiting, setSawWaiting] = useState(false);
+  if (waiting && !sawWaiting) setSawWaiting(true);
   const [feedLimit, setFeedLimit] = useState(FEED_PAGE_SIZE);
   const latestConversations = useQuery(api.conversations.listMine, {
     limit: feedLimit,
@@ -674,11 +689,23 @@ export function WorkspaceHome({
     canEdit ? {} : "skip",
   );
 
-  if (tree === undefined || me === undefined || placement === undefined) {
+  if (
+    tree === undefined ||
+    me === undefined ||
+    placement === undefined ||
+    onboarding === undefined
+  ) {
     return <WorkspaceHomeLoading />;
   }
 
   const name = firstName(me?.name);
+  // Getting started is for eligible admins until they hide or finish it
+  // (the server decides visibility); it replaces the empty state.
+  const showGettingStarted = Boolean(canEdit && onboarding?.checklist.visible);
+  const workspaceReady =
+    sawWaiting &&
+    onboarding?.path === "explore" &&
+    onboarding.walkthrough === "pending";
   const homePlacement = placement?.placement ?? null;
   const home = homePlacement
     ? findTreeDepartment(tree, homePlacement.departmentId)
@@ -697,7 +724,13 @@ export function WorkspaceHome({
     >
       <header>
         <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-          {name ? `Welcome back, ${name}` : "Welcome back"}
+          {showGettingStarted
+            ? name
+              ? `Welcome to Fabric, ${name}`
+              : "Welcome to Fabric"
+            : name
+              ? `Welcome back, ${name}`
+              : "Welcome back"}
         </h1>
         {homePlacement && (
           <p className="mt-2 flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
@@ -711,7 +744,22 @@ export function WorkspaceHome({
         )}
       </header>
 
-      {buildStep ? (
+      {showGettingStarted && onboarding && (
+        <GettingStartedCard
+          tree={tree}
+          onboarding={onboarding}
+          mobile={mobile}
+          actions={gettingStarted}
+        />
+      )}
+
+      {workspaceReady && (
+        <WaitingCard state="ready" canCapture={canEdit} mobile={mobile} />
+      )}
+
+      {waiting ? (
+        <WaitingCard state="waiting" canCapture={canEdit} mobile={mobile} />
+      ) : buildStep && showGettingStarted ? null : buildStep ? (
         <EmptyWorkspace
           step={buildStep}
           canEdit={canEdit}

@@ -154,6 +154,7 @@ function SearchTrigger({
         compact ? "size-9 justify-center" : "h-9 w-full max-w-xl gap-2 px-3",
       )}
       aria-label="Search functions, departments, or processes"
+      data-tour="search"
     >
       <Search className="size-4 shrink-0" />
       {!compact && (

@@ -44,7 +44,24 @@ import {
   type ProcessTreeDepartment,
   type ProcessTreeFunction,
   type ProcessTreeProcess,
+  type TreeReveal,
 } from "@/features/hierarchy/process-tree-navigator";
+import { Coachmark } from "@/components/ui/coachmark";
+import type {
+  GettingStartedActions,
+  ProcessPath,
+} from "@/features/onboarding/getting-started-card";
+import {
+  ExploreSheet,
+  SHOW_ME_AROUND_EVENT,
+  Walkthrough,
+  type WalkthroughOutcome,
+} from "@/features/onboarding/walkthrough";
+import {
+  shouldAutoStartWalkthrough,
+  walkthroughSteps,
+} from "@/features/onboarding/walkthrough-steps";
+import { toast } from "sonner";
 import {
   type SelectionParams,
   readSelectionParams,
@@ -112,6 +129,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { GitBranch } from "lucide-react";
+import type { RevealPath } from "./reveal-path";
 
 // --- Types ---
 
@@ -120,27 +138,6 @@ type MobilePreview =
   | { type: "department"; id: Id<"departments">; name: string }
   | { type: "process"; id: Id<"processes">; name: string }
   | null;
-
-/** A node and every ancestor, for selectAndReveal. A blank name is filled in
- * by the *DisplayName fallbacks once its query loads. */
-type RevealPath =
-  | { kind: "function"; functionId: Id<"functions">; functionName: string }
-  | {
-      kind: "department";
-      functionId: Id<"functions">;
-      functionName: string;
-      departmentId: Id<"departments">;
-      departmentName: string;
-    }
-  | {
-      kind: "process";
-      functionId: Id<"functions">;
-      functionName: string;
-      departmentId: Id<"departments">;
-      departmentName: string;
-      processId: Id<"processes">;
-      processName: string;
-    };
 
 function countLabel(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
@@ -1209,6 +1206,141 @@ export function ProcessWorkbench() {
     [handleTreeCreateProcess],
   );
 
+  // --- Getting started (first-run onboarding) ---
+  // The card builds from Home, so new functions and departments are revealed
+  // in the tree without selecting them; only a new process is opened.
+  const onboarding = useQuery(api.onboarding.getMyOnboarding);
+  const markHintSeen = useMutation(api.onboarding.markHintSeen);
+  const [treeReveal, setTreeReveal] = useState<TreeReveal | null>(null);
+  // The process the capture hint is for; it shows only while that process
+  // is open.
+  const [captureHintProcessId, setCaptureHintProcessId] =
+    useState<Id<"processes"> | null>(null);
+  const captureHintSeen = onboarding?.hints.captureSeen ?? true;
+
+  const revealInTree = useCallback((path: RevealPath) => {
+    setTreeReveal({
+      nodeId:
+        path.kind === "function"
+          ? path.functionId
+          : path.kind === "department"
+            ? path.departmentId
+            : path.processId,
+      functionId: path.functionId,
+      departmentId: path.kind === "function" ? undefined : path.departmentId,
+      key: Date.now(),
+    });
+  }, []);
+
+  const openFromGettingStarted = useCallback(
+    (path: ProcessPath, options?: { captureHint?: boolean; tab?: "flow" }) => {
+      selectAndReveal(path);
+      if (options?.tab === "flow") setDetailTab(2);
+      if (options?.captureHint && !captureHintSeen) {
+        setCaptureHintProcessId(path.processId);
+      }
+    },
+    [captureHintSeen, selectAndReveal],
+  );
+
+  const gettingStartedActions = useMemo<GettingStartedActions>(
+    () => ({
+      onReveal: revealInTree,
+      onOpenProcess: openFromGettingStarted,
+      onSeeInTree: () => setMobileHomeView("browse"),
+    }),
+    [openFromGettingStarted, revealInTree],
+  );
+
+  // --- Explore walkthrough (desktop) / sheet (phones and tablets) ---
+  const resolveWalkthrough = useMutation(api.onboarding.resolveWalkthrough);
+  const myPlacement = useQuery(api.users.getMyPlacement);
+  // Whether the visit began on a link to a function, department or process.
+  const [arrivedOnDeepLink] = useState(() =>
+    Boolean(initialSelection.fn || initialSelection.dept || initialSelection.proc),
+  );
+  const [tourActive, setTourActive] = useState(false);
+  // Each start remounts the walkthrough, so a replay begins at step 1.
+  const [tourRun, setTourRun] = useState(0);
+  const [deepLinkToastDue, setDeepLinkToastDue] = useState(false);
+
+  const startTour = useCallback(() => {
+    setTourRun((run) => run + 1);
+    setTourActive(true);
+  }, []);
+
+  // Decided once per visit, when onboarding state and the tree have loaded.
+  const [tourStartDecided, setTourStartDecided] = useState(false);
+  if (
+    !tourStartDecided &&
+    onboarding !== undefined &&
+    hierarchyTree !== undefined
+  ) {
+    setTourStartDecided(true);
+    if (onboarding) {
+      const pendingExplore = {
+        path: onboarding.path,
+        welcomed: onboarding.welcomed,
+        walkthrough: onboarding.walkthrough,
+      };
+      if (shouldAutoStartWalkthrough({ ...pendingExplore, deepLink: arrivedOnDeepLink })) {
+        startTour();
+      } else if (
+        arrivedOnDeepLink &&
+        shouldAutoStartWalkthrough({ ...pendingExplore, deepLink: false })
+      ) {
+        setDeepLinkToastDue(true);
+      }
+    }
+  }
+
+  // A deep link means they came for something specific: offer, don't start.
+  useEffect(() => {
+    if (!deepLinkToastDue) return;
+    toast("New here?", {
+      id: "show-me-around",
+      description: "Take a quick look at how this workspace is organized.",
+      duration: 15_000,
+      action: { label: "Show me around", onClick: startTour },
+    });
+  }, [deepLinkToastDue, startTour]);
+
+  // Help → Show me around and the waiting card's button.
+  useEffect(() => {
+    window.addEventListener(SHOW_ME_AROUND_EVENT, startTour);
+    return () => window.removeEventListener(SHOW_ME_AROUND_EVENT, startTour);
+  }, [startTour]);
+
+  const walkthroughStepList = useMemo(
+    () =>
+      hierarchyTree && tourActive
+        ? walkthroughSteps({
+            canCapture: canEdit,
+            tree: hierarchyTree,
+            placementDepartmentId: myPlacement?.placement?.departmentId ?? null,
+          })
+        : [],
+    [canEdit, hierarchyTree, myPlacement, tourActive],
+  );
+
+  const finishTour = useCallback(
+    (outcome: WalkthroughOutcome) => {
+      setTourActive(false);
+      // First outcome wins on the server; a replay changes nothing there.
+      resolveWalkthrough({ outcome }).catch((err: unknown) => {
+        console.warn("Couldn't save the walkthrough outcome", err);
+      });
+    },
+    [resolveWalkthrough],
+  );
+
+  const dismissCaptureHint = useCallback(() => {
+    setCaptureHintProcessId(null);
+    markHintSeen({ hint: "capture" }).catch((err: unknown) => {
+      console.warn("Couldn't save that the capture hint was seen", err);
+    });
+  }, [markHintSeen]);
+
   const handleHomeCapture = useCallback(
     (entry: HomeProcessEntry, mode: RecordingMode) => {
       handleHomeOpenProcess(entry);
@@ -1406,6 +1538,7 @@ export function ProcessWorkbench() {
           onCreateProcess={handleHomeCreateProcess}
           onCreateDepartment={handleTreeCreateDepartment}
           onCreateFunction={() => openCrud("create", "Function")}
+          gettingStarted={gettingStartedActions}
         />
       </TabsContent>
       <TabsContent value="browse" className="min-h-0 flex-1 overflow-hidden">
@@ -1690,6 +1823,7 @@ export function ProcessWorkbench() {
               onCreateProcess={handleHomeCreateProcess}
               onCreateDepartment={handleTreeCreateDepartment}
               onCreateFunction={() => openCrud("create", "Function")}
+              gettingStarted={gettingStartedActions}
             />
           )}
         </div>
@@ -1735,7 +1869,10 @@ export function ProcessWorkbench() {
             }}
             className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-0"
           >
-            <div className="shrink-0 overflow-x-auto overflow-y-hidden border-b px-2 sm:px-4">
+            <div
+              className="shrink-0 overflow-x-auto overflow-y-hidden border-b px-2 sm:px-4"
+              data-tour="process-tabs"
+            >
               <TabsList
                 variant="line"
                 className="h-10 min-w-max justify-start"
@@ -1935,6 +2072,7 @@ export function ProcessWorkbench() {
           <div className="hidden min-w-0 flex-1 overflow-hidden lg:flex">
             <ProcessTreeNavigator
               tree={hierarchyTree}
+              reveal={treeReveal}
               canEdit={canEdit}
               selectedFunctionId={selectedFunctionId}
               selectedDepartmentId={selectedDepartmentId}
@@ -2088,6 +2226,40 @@ export function ProcessWorkbench() {
             departmentDescription={safeDepartmentDescription}
             processDescription={safeProcessDescription}
             mode={recordingMode}
+          />
+        )}
+
+        {/* Once, at the root: it portals, and the desktop and phone layouts
+            are both mounted. It finds whichever capture control is visible. */}
+        {canEdit &&
+          captureHintProcessId !== null &&
+          captureHintProcessId === selectedProcessId && (
+            <Coachmark
+              anchor="capture"
+              side={isMobile ? "top" : "bottom"}
+              title="Capture how this process works"
+              body="Your first contribution turns into a process map. Start an AI interview, record a voice note, or upload a recording."
+              onDismiss={dismissCaptureHint}
+              // No capture control on screen: try again another time.
+              onAnchorMissing={() => setCaptureHintProcessId(null)}
+            />
+          )}
+
+        {tourActive && !isMobile && walkthroughStepList.length > 0 && (
+          <Walkthrough
+            key={tourRun}
+            steps={walkthroughStepList}
+            onSelect={selectAndReveal}
+            onFinish={finishTour}
+          />
+        )}
+        {tourActive && isMobile && (
+          <ExploreSheet
+            key={tourRun}
+            open
+            canCapture={canEdit}
+            departmentName={myPlacement?.placement?.departmentName ?? null}
+            onFinish={finishTour}
           />
         )}
 

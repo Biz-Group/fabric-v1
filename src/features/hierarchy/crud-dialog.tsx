@@ -61,7 +61,7 @@ interface CrudDialogProps {
   ) => Promise<void>;
 }
 
-function getCrudErrorMessage(err: unknown): string {
+export function getCrudErrorMessage(err: unknown): string {
   const sent = userErrorMessage(err);
   if (sent) return sent;
 
@@ -86,7 +86,7 @@ function getCrudErrorMessage(err: unknown): string {
   return describeError(err, "Something went wrong.");
 }
 
-function withSaveTimeout<T>(promise: Promise<T>): Promise<T> {
+export function withSaveTimeout<T>(promise: Promise<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     const timeoutId = window.setTimeout(() => {
       reject(
