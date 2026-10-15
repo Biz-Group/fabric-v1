@@ -1,6 +1,7 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import {
+  ActionCtx,
   action,
   internalAction,
   internalMutation,
@@ -13,7 +14,6 @@ import {
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import {
-  assertOrgOwns,
   getActiveOrgClaims,
   isActiveMembership,
   requireAuth,
@@ -22,8 +22,13 @@ import {
   requireOrgMember,
   resolveOrgForAction,
 } from "./lib/orgAuth";
-import { authError } from "./lib/authErrors";
-import { userError } from "./lib/userError";
+import { authError, authErrorCode } from "./lib/authErrors";
+import { userError, userErrorMessageOf } from "./lib/userError";
+import {
+  memberSearchText,
+  membershipTitleFields,
+  normalizeJobTitleOverride,
+} from "./lib/memberProfile";
 import {
   ClerkApiError,
   clerkFetch,
@@ -132,9 +137,12 @@ function validateProfileText(
   maxLength = 120,
 ): string {
   const trimmed = value.trim();
-  if (!trimmed) throw new Error(`${field} is required`);
+  if (!trimmed) throw userError("PROFILE_FIELD_REQUIRED", `${field} is required.`);
   if (trimmed.length > maxLength) {
-    throw new Error(`${field} must be ${maxLength} characters or fewer`);
+    throw userError(
+      "PROFILE_FIELD_TOO_LONG",
+      `${field} must be ${maxLength} characters or fewer.`,
+    );
   }
   return trimmed;
 }
@@ -147,7 +155,10 @@ function optionalProfileText(
   if (value === undefined) return undefined;
   const trimmed = value.trim();
   if (trimmed.length > maxLength) {
-    throw new Error(`${field} must be ${maxLength} characters or fewer`);
+    throw userError(
+      "PROFILE_FIELD_TOO_LONG",
+      `${field} must be ${maxLength} characters or fewer.`,
+    );
   }
   return trimmed;
 }
@@ -219,10 +230,7 @@ function memberDisplayFromUser(user: Doc<"users">): MemberDisplay {
     user.clerkUserId ?? clerkUserIdFromTokenIdentifier(user.tokenIdentifier);
   const name = user.name || email || "Anonymous";
   const jobTitle = user.jobTitle?.trim() || undefined;
-  const searchText = [name, email, jobTitle ?? ""]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+  const searchText = memberSearchText([name, email, jobTitle]);
   return {
     name,
     email,
@@ -249,6 +257,7 @@ async function writeAudit(
       | "inviteRevoked"
       | "membershipAccepted"
       | "roleChanged"
+      | "placementChanged"
       | "memberRemoved"
       | "webhookProcessed"
       | "webhookFailed"
@@ -420,10 +429,9 @@ async function syncMembershipProfilesForUser(
         name: display.name,
         email: display.email,
         emailLower: display.emailLower,
-        jobTitle: display.jobTitle,
         profileComplete: display.profileComplete,
         platformRole: display.platformRole,
-        searchText: display.searchText,
+        ...membershipTitleFields(display, membership.jobTitleOverride),
         updatedAt: Date.now(),
       }),
     ),
@@ -507,10 +515,9 @@ async function upsertUserAndMembership(
       name: display.name,
       email: display.email,
       emailLower: display.emailLower,
-      jobTitle: display.jobTitle,
       profileComplete: display.profileComplete,
       platformRole: display.platformRole,
-      searchText: display.searchText,
+      ...membershipTitleFields(display, existingMembership.jobTitleOverride),
       status: "active",
       updatedAt: Date.now(),
     });
@@ -799,6 +806,8 @@ export const completeProfile = mutation({
     // Placement in the caller's active org. Optional so an org without a
     // hierarchy yet can still onboard members.
     departmentId: v.optional(v.id("departments")),
+    // "Not sure where I sit": don't ask again; an admin places them later.
+    skipPlacement: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const identity = await requireAuth(ctx);
@@ -812,6 +821,8 @@ export const completeProfile = mutation({
 
     if (args.departmentId) {
       await setCallerPlacement(ctx, args.departmentId);
+    } else if (args.skipPlacement) {
+      await skipCallerPlacement(ctx);
     }
     await ctx.db.patch(user._id, {
       name: validateProfileText(args.name, "Name"),
@@ -878,12 +889,31 @@ async function setCallerPlacement(
   departmentId: Id<"departments">,
 ) {
   const caller = await requireOrgMember(ctx);
-  const department = await ctx.db.get(departmentId);
-  assertOrgOwns(caller, department);
+  await assertOrgDepartment(ctx, caller.orgId, departmentId);
   await ctx.db.patch(caller.membershipId, {
     departmentId,
     placementUpdatedAt: Date.now(),
   });
+}
+
+async function skipCallerPlacement(ctx: MutationCtx) {
+  const caller = await requireOrgMember(ctx);
+  await ctx.db.patch(caller.membershipId, { placementSkippedAt: Date.now() });
+}
+
+/** Same answer whether the department was deleted or belongs to another org. */
+async function assertOrgDepartment(
+  ctx: MutationCtx,
+  clerkOrgId: string,
+  departmentId: Id<"departments">,
+) {
+  const department = await ctx.db.get(departmentId);
+  if (!department || department.clerkOrgId !== clerkOrgId) {
+    throw userError(
+      "DEPARTMENT_NOT_FOUND",
+      "That department no longer exists. Pick another one.",
+    );
+  }
 }
 
 /** Per-request resolver that memoizes department + function lookups. A
@@ -957,6 +987,84 @@ export const setMyPlacement = mutation({
   },
 });
 
+/** The member doesn't know where they sit. Stops the placement prompt; an
+ * admin can place them from Members. */
+export const skipMyPlacement = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await skipCallerPlacement(ctx);
+  },
+});
+
+/**
+ * Admin-only. Where a member sits in this org, and the job title shown for
+ * them here. Both live on the membership, so the edit never reaches the
+ * member's profile in other workspaces. The name isn't editable: it comes
+ * from the member's sign-in account and would be overwritten on their next
+ * sign-in.
+ */
+export const updateMemberPlacement = mutation({
+  args: {
+    membershipId: v.id("memberships"),
+    departmentId: v.union(v.id("departments"), v.null()),
+    // Empty clears the override, so the member's own title shows again.
+    jobTitle: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgAdmin(ctx);
+    const target = await ctx.db.get(args.membershipId);
+    if (!isActiveMembership(target) || target.clerkOrgId !== caller.orgId) {
+      throw memberNotFoundError();
+    }
+    if (args.departmentId !== null) {
+      await assertOrgDepartment(ctx, caller.orgId, args.departmentId);
+    }
+
+    const user = await ctx.db.get(target.userId);
+    const display = user
+      ? memberDisplayFromUser(user)
+      : { name: target.name ?? "", email: target.email ?? "", jobTitle: undefined };
+    // Matching the member's own title needs no override, and storing none
+    // lets a later change to their profile show through.
+    const requested = normalizeJobTitleOverride(args.jobTitle);
+    const jobTitleOverride =
+      requested === display.jobTitle ? undefined : requested;
+
+    const departmentChanged =
+      (target.departmentId ?? null) !== args.departmentId;
+    const titleChanged = target.jobTitleOverride !== jobTitleOverride;
+    if (!departmentChanged && !titleChanged) return;
+
+    const now = Date.now();
+    await ctx.db.patch(target._id, {
+      jobTitleOverride,
+      ...membershipTitleFields(display, jobTitleOverride),
+      ...(departmentChanged
+        ? {
+            departmentId: args.departmentId ?? undefined,
+            placementUpdatedAt: now,
+          }
+        : {}),
+      updatedAt: now,
+    });
+    await writeAudit(ctx, {
+      clerkOrgId: caller.orgId,
+      actorUserId: caller.userId,
+      targetUserId: target.userId,
+      membershipId: target._id,
+      action: "placementChanged",
+      detail: [
+        departmentChanged
+          ? `department ${target.departmentId ?? "none"} -> ${args.departmentId ?? "none"}`
+          : null,
+        titleChanged ? "job title" : null,
+      ]
+        .filter(Boolean)
+        .join("; "),
+    });
+  },
+});
+
 /** The caller's placement in their active org, plus whether the org has any
  * departments to choose from (an org without a hierarchy never blocks
  * onboarding on placement). Null when the caller has no active membership. */
@@ -979,7 +1087,11 @@ export const getMyPlacement = query({
         q.eq("clerkOrgId", caller.orgId),
       )
       .first();
-    return { placement, orgHasDepartments: anyDepartment !== null };
+    return {
+      placement,
+      orgHasDepartments: anyDepartment !== null,
+      placementSkipped: membership?.placementSkippedAt !== undefined,
+    };
   },
 });
 
@@ -1009,29 +1121,61 @@ export const listOrgMembersPage = query({
     paginationOpts: paginationOptsValidator,
     search: v.optional(v.string()),
     role: v.optional(roleValidator),
+    // A department id, or "unplaced" for members with no department here.
+    department: v.optional(
+      v.union(v.id("departments"), v.literal("unplaced")),
+    ),
   },
   handler: async (ctx, args) => {
     const caller = await requireOrgAdmin(ctx);
     const search = args.search?.trim();
+    const role = args.role;
+    const department = args.department;
+    // An index or search filter on `departmentId` matches a missing field
+    // with `undefined`, which is how "unplaced" is stored.
+    const departmentId =
+      department === "unplaced" ? undefined : department;
+    const memberships = ctx.db.query("memberships");
     const result =
       search && search.length > 0
-        ? await ctx.db
-            .query("memberships")
-            .withSearchIndex("search_member", (q) =>
-              q.search("searchText", search).eq("clerkOrgId", caller.orgId),
-            )
+        ? await memberships
+            .withSearchIndex("search_member", (q) => {
+              let filter = q
+                .search("searchText", search)
+                .eq("clerkOrgId", caller.orgId);
+              if (role) filter = filter.eq("role", role);
+              if (department) filter = filter.eq("departmentId", departmentId);
+              return filter;
+            })
             .paginate(args.paginationOpts)
-        : args.role
-          ? await ctx.db
-              .query("memberships")
-              .withIndex("by_clerkOrgId_and_role", (q) =>
-                q.eq("clerkOrgId", caller.orgId).eq("role", args.role!),
+        : role && department
+          ? await memberships
+              .withIndex("by_clerkOrgId_and_role_and_departmentId", (q) =>
+                q
+                  .eq("clerkOrgId", caller.orgId)
+                  .eq("role", role)
+                  .eq("departmentId", departmentId),
               )
               .paginate(args.paginationOpts)
-          : await ctx.db
-              .query("memberships")
-              .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", caller.orgId))
-              .paginate(args.paginationOpts);
+          : role
+            ? await memberships
+                .withIndex("by_clerkOrgId_and_role", (q) =>
+                  q.eq("clerkOrgId", caller.orgId).eq("role", role),
+                )
+                .paginate(args.paginationOpts)
+            : department
+              ? await memberships
+                  .withIndex("by_clerkOrgId_and_departmentId", (q) =>
+                    q
+                      .eq("clerkOrgId", caller.orgId)
+                      .eq("departmentId", departmentId),
+                  )
+                  .paginate(args.paginationOpts)
+              : await memberships
+                  .withIndex("by_clerkOrgId", (q) =>
+                    q.eq("clerkOrgId", caller.orgId),
+                  )
+                  .paginate(args.paginationOpts);
 
     const placementOf = placementResolver(ctx, caller.orgId);
     return {
@@ -1039,10 +1183,19 @@ export const listOrgMembersPage = query({
       page: await Promise.all(
         result.page.map(async (m) => {
           const placement = await placementOf(m.departmentId);
+          // The member's own title, shown as the fallback when an admin
+          // clears the override. Only overridden rows need the user read.
+          const profileJobTitle = m.jobTitleOverride
+            ? ((await ctx.db.get(m.userId))?.jobTitle?.trim() || null)
+            : (m.jobTitle ?? null);
           return {
             ...(await memberRow(ctx, m)),
+            departmentId: placement?.departmentId ?? null,
             departmentName: placement?.departmentName ?? null,
+            functionId: placement?.functionId ?? null,
             functionName: placement?.functionName ?? null,
+            jobTitleOverride: m.jobTitleOverride ?? null,
+            profileJobTitle,
           };
         }),
       ),
@@ -1183,6 +1336,32 @@ async function hasOtherAdmin(
   );
 }
 
+/** Writes one role change with its stats and audit. Callers check the
+ * last-admin rule first. */
+async function applyRoleChange(
+  ctx: MutationCtx,
+  caller: { orgId: string; userId: Id<"users"> },
+  target: Doc<"memberships">,
+  role: Role,
+) {
+  await ctx.db.patch(target._id, { role, updatedAt: Date.now() });
+  await patchStatsIfPresent(ctx, caller.orgId, {
+    admin: (target.role === "admin" ? -1 : 0) + (role === "admin" ? 1 : 0),
+    contributor:
+      (target.role === "contributor" ? -1 : 0) +
+      (role === "contributor" ? 1 : 0),
+    viewer: (target.role === "viewer" ? -1 : 0) + (role === "viewer" ? 1 : 0),
+  });
+  await writeAudit(ctx, {
+    clerkOrgId: caller.orgId,
+    actorUserId: caller.userId,
+    targetUserId: target.userId,
+    membershipId: target._id,
+    action: "roleChanged",
+    detail: `${target.role} -> ${role}`,
+  });
+}
+
 export const setMembershipRole = mutation({
   args: {
     membershipId: v.id("memberships"),
@@ -1206,28 +1385,53 @@ export const setMembershipRole = mutation({
       }
     }
 
-    await ctx.db.patch(args.membershipId, {
-      role: args.role,
-      updatedAt: Date.now(),
-    });
-    await patchStatsIfPresent(ctx, caller.orgId, {
-      ...roleDelta(target.role, -1),
-      admin: (target.role === "admin" ? -1 : 0) + (args.role === "admin" ? 1 : 0),
-      contributor:
-        (target.role === "contributor" ? -1 : 0) +
-        (args.role === "contributor" ? 1 : 0),
-      viewer:
-        (target.role === "viewer" ? -1 : 0) + (args.role === "viewer" ? 1 : 0),
-      active: 0,
-    });
-    await writeAudit(ctx, {
-      clerkOrgId: caller.orgId,
-      actorUserId: caller.userId,
-      targetUserId: target.userId,
-      membershipId: target._id,
-      action: "roleChanged",
-      detail: `${target.role} -> ${args.role}`,
-    });
+    await applyRoleChange(ctx, caller, target, args.role);
+  },
+});
+
+const MAX_BULK_MEMBERS = 50;
+
+/**
+ * Admin-only. Gives every selected member the same role, all or nothing:
+ * one transaction, so a refusal changes nobody. The caller's own row is
+ * refused, matching the single-row control, which never offers it.
+ */
+export const setMembershipRoles = mutation({
+  args: {
+    membershipIds: v.array(v.id("memberships")),
+    role: roleValidator,
+  },
+  handler: async (ctx, args): Promise<{ changed: number }> => {
+    const caller = await requireOrgAdmin(ctx);
+    const ids = [...new Set(args.membershipIds)];
+    if (ids.length > MAX_BULK_MEMBERS) {
+      throw userError(
+        "TOO_MANY_MEMBERS",
+        `Select up to ${MAX_BULK_MEMBERS} members at a time.`,
+      );
+    }
+    if (ids.includes(caller.membershipId)) {
+      throw userError(
+        "SELF_ROLE_CHANGE",
+        "You can't change your own role. Deselect yourself and try again.",
+      );
+    }
+
+    const targets: Doc<"memberships">[] = [];
+    for (const id of ids) {
+      const target = await ctx.db.get(id);
+      if (!isActiveMembership(target) || target.clerkOrgId !== caller.orgId) {
+        throw memberNotFoundError();
+      }
+      targets.push(target);
+    }
+    // No last-admin check is needed: the caller is an active admin and can't
+    // be in the set, so at least one admin always remains.
+    const changing = targets.filter((target) => target.role !== args.role);
+    for (const target of changing) {
+      await applyRoleChange(ctx, caller, target, args.role);
+    }
+    return { changed: changing.length };
   },
 });
 
@@ -1365,46 +1569,99 @@ export const completeMemberRemoval = internalMutation({
   },
 });
 
+async function removeMember(
+  ctx: ActionCtx,
+  orgId: string,
+  tokenIdentifier: string,
+  membershipId: Id<"memberships">,
+) {
+  const removal: {
+    blockId: Id<"membershipIntents">;
+    targetTokenIdentifier: string;
+  } = await ctx.runMutation(internal.users.beginMemberRemoval, {
+    membershipId,
+    orgId,
+    callerTokenIdentifier: tokenIdentifier,
+  });
+
+  const clerkUserId = clerkUserIdFromTokenIdentifier(
+    removal.targetTokenIdentifier,
+  );
+  try {
+    await clerkFetch(`/organizations/${orgId}/memberships/${clerkUserId}`, {
+      method: "DELETE",
+    });
+  } catch (err) {
+    // Already gone from Clerk (a 404) is the outcome we wanted.
+    if (!(err instanceof ClerkApiError && err.status === 404)) {
+      await ctx.runMutation(internal.users.abortMemberRemoval, {
+        membershipId,
+        blockId: removal.blockId,
+      });
+      console.error("Clerk refused a member removal", err);
+      throw userError(
+        "MEMBER_REMOVAL_FAILED",
+        "The member couldn't be removed just now, so they still have access. Try again in a moment.",
+      );
+    }
+  }
+
+  await ctx.runMutation(internal.users.completeMemberRemoval, {
+    membershipId,
+    orgId,
+    callerTokenIdentifier: tokenIdentifier,
+  });
+}
+
 export const removeMemberFromOrg = action({
   args: { membershipId: v.id("memberships") },
   handler: async (ctx, args): Promise<void> => {
     const { orgId, tokenIdentifier } = await resolveOrgForAction(ctx);
-    const removal: {
-      blockId: Id<"membershipIntents">;
-      targetTokenIdentifier: string;
-    } = await ctx.runMutation(internal.users.beginMemberRemoval, {
-      membershipId: args.membershipId,
-      orgId,
-      callerTokenIdentifier: tokenIdentifier,
-    });
+    await removeMember(ctx, orgId, tokenIdentifier, args.membershipId);
+  },
+});
 
-    const clerkUserId = clerkUserIdFromTokenIdentifier(
-      removal.targetTokenIdentifier,
-    );
-    try {
-      await clerkFetch(`/organizations/${orgId}/memberships/${clerkUserId}`, {
-        method: "DELETE",
-      });
-    } catch (err) {
-      // Already gone from Clerk (a 404) is the outcome we wanted.
-      if (!(err instanceof ClerkApiError && err.status === 404)) {
-        await ctx.runMutation(internal.users.abortMemberRemoval, {
-          membershipId: args.membershipId,
-          blockId: removal.blockId,
+/**
+ * Admin-only. Removes each selected member in turn, through the same checks
+ * as a single removal. Each removal stands alone (Clerk can't join a
+ * transaction), so one refusal, such as the last admin, doesn't undo the
+ * others; the result says who stayed and why.
+ */
+export const removeMembersFromOrg = action({
+  args: { membershipIds: v.array(v.id("memberships")) },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    removed: Id<"memberships">[];
+    failed: { membershipId: Id<"memberships">; message: string }[];
+  }> => {
+    const { orgId, tokenIdentifier } = await resolveOrgForAction(ctx);
+    const ids = [...new Set(args.membershipIds)];
+    if (ids.length > MAX_BULK_MEMBERS) {
+      throw userError(
+        "TOO_MANY_MEMBERS",
+        `Select up to ${MAX_BULK_MEMBERS} members at a time.`,
+      );
+    }
+    const removed: Id<"memberships">[] = [];
+    const failed: { membershipId: Id<"memberships">; message: string }[] = [];
+    for (const membershipId of ids) {
+      try {
+        await removeMember(ctx, orgId, tokenIdentifier, membershipId);
+        removed.push(membershipId);
+      } catch (err) {
+        // A caller who stopped being an admin mid-run can't remove anyone.
+        if (authErrorCode(err)) throw err;
+        failed.push({
+          membershipId,
+          message:
+            userErrorMessageOf(err) ??
+            "They couldn't be removed just now. Try again in a moment.",
         });
-        console.error("Clerk refused a member removal", err);
-        throw userError(
-          "MEMBER_REMOVAL_FAILED",
-          "The member couldn't be removed just now, so they still have access. Try again in a moment.",
-        );
       }
     }
-
-    await ctx.runMutation(internal.users.completeMemberRemoval, {
-      membershipId: args.membershipId,
-      orgId,
-      callerTokenIdentifier: tokenIdentifier,
-    });
+    return { removed, failed };
   },
 });
 

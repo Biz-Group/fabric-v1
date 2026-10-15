@@ -1942,6 +1942,73 @@ describe("removeMemberFromOrg — admin gating + Clerk coordination", () => {
     const row = await t.run(async (ctx) => ctx.db.get(targetId));
     expect(row).toBeNull();
   });
+
+  test("bulk removal removes each member and reports each refusal", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoOrgs(t);
+    const carol = await addOrgAMember(t, "user_c", "contributor");
+    const dan = await addOrgAMember(t, "user_d", "viewer");
+    const [self, foreign] = await t.run(async (ctx) => [
+      (await ctx.db
+        .query("memberships")
+        .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", ORG_A))
+        .first())!._id,
+      (await ctx.db
+        .query("memberships")
+        .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", ORG_B))
+        .first())!._id,
+    ]);
+    const { calls } = stubClerkFetchStatus(200, {});
+
+    const result = await t
+      .withIdentity(identityForOrgA())
+      .action(api.users.removeMembersFromOrg, {
+        membershipIds: [carol, self, foreign, dan],
+      });
+
+    expect(result.removed).toEqual([carol, dan]);
+    expect(result.failed).toEqual([
+      { membershipId: self, message: "You can't remove yourself from the workspace." },
+      {
+        membershipId: foreign,
+        message: "Membership not found. They may already have been removed.",
+      },
+    ]);
+    // Clerk only hears about the two members who were removed.
+    expect(calls).toHaveLength(2);
+    const rows = await t.run(async (ctx) => ({
+      carol: await ctx.db.get(carol),
+      dan: await ctx.db.get(dan),
+      self: await ctx.db.get(self),
+      foreign: await ctx.db.get(foreign),
+    }));
+    expect(rows.carol).toBeNull();
+    expect(rows.dan).toBeNull();
+    expect(rows.self).not.toBeNull();
+    expect(rows.foreign).not.toBeNull();
+  });
+
+  test("bulk removal by a non-admin stops before touching anyone", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoOrgs(t);
+    const carol = await addOrgAMember(t, "user_c", "contributor");
+    await t.run(async (ctx) => {
+      const caller = await ctx.db
+        .query("memberships")
+        .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", ORG_A))
+        .first();
+      await ctx.db.patch(caller!._id, { role: "viewer" });
+    });
+    const { calls } = stubClerkFetchStatus(200, {});
+
+    await expect(
+      t.withIdentity(identityForOrgA()).action(api.users.removeMembersFromOrg, {
+        membershipIds: [carol],
+      }),
+    ).rejects.toThrow(/Insufficient permissions/);
+    expect(calls).toHaveLength(0);
+    expect(await t.run((ctx) => ctx.db.get(carol))).not.toBeNull();
+  });
 });
 
 describe("member removal is durable", () => {

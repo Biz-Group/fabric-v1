@@ -32,6 +32,7 @@ import type * as lib_clerkApi from "../lib/clerkApi.js";
 import type * as lib_contributorAttribution from "../lib/contributorAttribution.js";
 import type * as lib_conversationAnalysis from "../lib/conversationAnalysis.js";
 import type * as lib_conversationEvidenceV2 from "../lib/conversationEvidenceV2.js";
+import type * as lib_conversationFailure from "../lib/conversationFailure.js";
 import type * as lib_conversationPipelines from "../lib/conversationPipelines.js";
 import type * as lib_conversationTitle from "../lib/conversationTitle.js";
 import type * as lib_elevenLabsCharging from "../lib/elevenLabsCharging.js";
@@ -39,6 +40,7 @@ import type * as lib_elevenLabsConversation from "../lib/elevenLabsConversation.
 import type * as lib_flowQuality from "../lib/flowQuality.js";
 import type * as lib_flowStages from "../lib/flowStages.js";
 import type * as lib_hierarchyOverviewV2 from "../lib/hierarchyOverviewV2.js";
+import type * as lib_memberProfile from "../lib/memberProfile.js";
 import type * as lib_orgAuth from "../lib/orgAuth.js";
 import type * as lib_processOverviewV2 from "../lib/processOverviewV2.js";
 import type * as lib_slugs from "../lib/slugs.js";
@@ -99,6 +101,7 @@ declare const fullApi: ApiFromModules<{
   "lib/contributorAttribution": typeof lib_contributorAttribution;
   "lib/conversationAnalysis": typeof lib_conversationAnalysis;
   "lib/conversationEvidenceV2": typeof lib_conversationEvidenceV2;
+  "lib/conversationFailure": typeof lib_conversationFailure;
   "lib/conversationPipelines": typeof lib_conversationPipelines;
   "lib/conversationTitle": typeof lib_conversationTitle;
   "lib/elevenLabsCharging": typeof lib_elevenLabsCharging;
@@ -106,6 +109,7 @@ declare const fullApi: ApiFromModules<{
   "lib/flowQuality": typeof lib_flowQuality;
   "lib/flowStages": typeof lib_flowStages;
   "lib/hierarchyOverviewV2": typeof lib_hierarchyOverviewV2;
+  "lib/memberProfile": typeof lib_memberProfile;
   "lib/orgAuth": typeof lib_orgAuth;
   "lib/processOverviewV2": typeof lib_processOverviewV2;
   "lib/slugs": typeof lib_slugs;

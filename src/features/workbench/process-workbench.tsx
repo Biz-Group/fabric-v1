@@ -48,6 +48,7 @@ import {
   type SelectionParams,
   readSelectionParams,
   buildSelectionQuery,
+  readConversationParam,
 } from "@/features/workbench/use-selection-params";
 import {
   ColumnItem,
@@ -170,9 +171,15 @@ export function ProcessWorkbench() {
     initialSelection.node,
   );
   const [labelingJumpKey, setLabelingJumpKey] = useState(0);
+  // A `conv` link (Admin → Conversations) opens that contribution once.
+  const [initialConversationId] = useState(() =>
+    initialSelection.proc ? readConversationParam(searchParams) : null,
+  );
   const [conversationFocusId, setConversationFocusId] =
-    useState<Id<"conversations"> | null>(null);
-  const [conversationFocusJumpKey, setConversationFocusJumpKey] = useState(0);
+    useState<Id<"conversations"> | null>(initialConversationId);
+  const [conversationFocusJumpKey, setConversationFocusJumpKey] = useState(
+    initialConversationId ? 1 : 0,
+  );
 
   // Selected names for breadcrumbs / back buttons
   const [selectedFunctionName, setSelectedFunctionName] = useState("");
@@ -673,9 +680,14 @@ export function ProcessWorkbench() {
 
     const target = buildSelectionQuery(searchParams, committed);
     if (target !== searchParams.toString()) {
-      router.push(target ? `${pathname}?${target}` : pathname, {
-        scroll: false,
-      });
+      const href = target ? `${pathname}?${target}` : pathname;
+      // When the URL already names this selection, the write only tidies it
+      // (e.g. drops a consumed `conv` link) and mustn't add a history entry.
+      const tidyOnly =
+        target ===
+        buildSelectionQuery(searchParams, readSelectionParams(searchParams));
+      if (tidyOnly) router.replace(href, { scroll: false });
+      else router.push(href, { scroll: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- excludes `searchParams` by design; see note above
   }, [committed, pathname, router]);
@@ -1696,6 +1708,7 @@ export function ProcessWorkbench() {
                 key={selectedProcessId}
                 processId={selectedProcessId!}
                 canLabelSpeakers={canEdit}
+                canRetry={userRole === "admin"}
                 labelingJumpKey={labelingJumpKey}
                 focusConversationId={conversationFocusId}
                 focusConversationJumpKey={conversationFocusJumpKey}

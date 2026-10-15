@@ -2,7 +2,18 @@ import { v } from "convex/values";
 import { mutation, query, QueryCtx, MutationCtx } from "./_generated/server";
 import { requireOrgAdmin, requireOrgMember } from "./lib/orgAuth";
 import { authErrorCode } from "./lib/authErrors";
+import { userError } from "./lib/userError";
 import { buildOrgThemeTokens, clampRgb } from "./themeColors";
+
+const MANUAL_OVERRIDE_REASON = "Manual accent color selected by admin.";
+
+const NO_PREVIOUS_THEME = {
+  previousAccentRgb: undefined,
+  previousLightTokens: undefined,
+  previousDarkTokens: undefined,
+  previousSource: undefined,
+  previousApprovedAt: undefined,
+};
 
 async function getExistingTheme(ctx: QueryCtx | MutationCtx, clerkOrgId: string) {
   return await ctx.db
@@ -30,16 +41,48 @@ function activeStatusFor(theme: Awaited<ReturnType<typeof getExistingTheme>>) {
   return "ready" as const;
 }
 
+/**
+ * The approved theme as a `previous*` patch, so whatever replaces or clears it
+ * can keep it for "Restore previous theme". Reads the active fields, else the
+ * legacy ones on rows from before the migration. Null when no approved theme
+ * exists (the workspace is neutral).
+ */
+function approvedThemeAsPrevious(
+  theme: Awaited<ReturnType<typeof getExistingTheme>>,
+) {
+  if (!theme) return null;
+  const lightTokens = theme.activeLightTokens ?? theme.lightTokens;
+  const darkTokens = theme.activeDarkTokens ?? theme.darkTokens;
+  if (!lightTokens || !darkTokens) return null;
+
+  return {
+    previousAccentRgb: theme.activeAccentRgb ?? theme.accentRgb,
+    previousLightTokens: lightTokens,
+    previousDarkTokens: darkTokens,
+    previousSource:
+      theme.activeSource ??
+      (activeStatusFor(theme) === "override" ? ("manual" as const) : ("logo" as const)),
+    previousApprovedAt: theme.adminApprovedAt,
+  };
+}
+
+/**
+ * The approved theme the workspace wears, or null for neutral. Keyed on the
+ * approved tokens, not `status`: `status` also tracks the candidate workflow
+ * ("extracting", "pending", "failed"), and generating or reviewing a new
+ * candidate must not take the approved theme off the live workspace. Only
+ * approval and restore write these tokens and only a reset clears them, so
+ * their presence means an admin approved what they hold.
+ */
 function getRuntimeTokens(theme: Awaited<ReturnType<typeof getExistingTheme>>) {
   if (!theme) return null;
-  if (theme.status !== "ready" && theme.status !== "override") return null;
 
   const lightTokens = theme.activeLightTokens ?? theme.lightTokens;
   const darkTokens = theme.activeDarkTokens ?? theme.darkTokens;
   if (!lightTokens || !darkTokens) return null;
 
   return {
-    status: theme.status,
+    status: activeStatusFor(theme),
     sourceLogoUrl: theme.sourceLogoUrl,
     lightTokens,
     darkTokens,
@@ -202,6 +245,9 @@ export const approveCandidateTheme = mutation({
     const now = Date.now();
     const candidateSource = existing.candidateSource ?? "logo";
     await ctx.db.patch(existing._id, {
+      // The theme this replaces stays restorable. Approving from neutral keeps
+      // the slot as it was, so a theme cleared by a reset can still come back.
+      ...approvedThemeAsPrevious(existing),
       status: candidateSource === "manual" ? "override" : "ready",
       activeAccentRgb: existing.candidateAccentRgb ?? existing.accentRgb,
       activeLightTokens: existing.candidateLightTokens,
@@ -220,9 +266,7 @@ export const approveCandidateTheme = mutation({
       approvedByUserId: org.userId,
       lastExtractionError: undefined,
       overrideReason:
-        candidateSource === "manual"
-          ? "Manual accent color selected by admin."
-          : undefined,
+        candidateSource === "manual" ? MANUAL_OVERRIDE_REASON : undefined,
       fallbackReason: undefined,
       updatedAt: now,
     });
@@ -306,6 +350,8 @@ export const resetToNeutral = mutation({
     if (!existing) return null;
 
     await ctx.db.patch(existing._id, {
+      // Keep the cleared theme restorable, so a reset can be undone.
+      ...approvedThemeAsPrevious(existing),
       status: "pending",
       activeAccentRgb: undefined,
       activeLightTokens: undefined,
@@ -324,6 +370,49 @@ export const resetToNeutral = mutation({
       overrideReason: undefined,
       fallbackReason: undefined,
       updatedAt: Date.now(),
+    });
+    return existing._id;
+  },
+});
+
+export const restorePreviousTheme = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const org = await requireOrgAdmin(ctx);
+    const existing = await getExistingTheme(ctx, org.orgId);
+    if (!existing?.previousLightTokens || !existing.previousDarkTokens) {
+      throw userError("NO_PREVIOUS_THEME", "There's no earlier theme to restore.");
+    }
+
+    const now = Date.now();
+    const restoredSource = existing.previousSource ?? "logo";
+    await ctx.db.patch(existing._id, {
+      // The theme being replaced takes the slot, so restoring again swaps
+      // back. Restoring over neutral leaves nothing earlier to keep.
+      ...NO_PREVIOUS_THEME,
+      ...approvedThemeAsPrevious(existing),
+      status: restoredSource === "manual" ? "override" : "ready",
+      activeAccentRgb: existing.previousAccentRgb,
+      activeLightTokens: existing.previousLightTokens,
+      activeDarkTokens: existing.previousDarkTokens,
+      activeSource: restoredSource,
+      // Legacy fields stay in sync during the migration window.
+      accentRgb: existing.previousAccentRgb,
+      lightTokens: existing.previousLightTokens,
+      darkTokens: existing.previousDarkTokens,
+      // A candidate awaiting approval is dropped, as a reset drops it: it was
+      // proposed against the theme this replaces.
+      candidateAccentRgb: undefined,
+      candidateLightTokens: undefined,
+      candidateDarkTokens: undefined,
+      candidateSource: undefined,
+      candidateGeneratedAt: undefined,
+      adminApprovedAt: now,
+      approvedByUserId: org.userId,
+      overrideReason:
+        restoredSource === "manual" ? MANUAL_OVERRIDE_REASON : undefined,
+      fallbackReason: undefined,
+      updatedAt: now,
     });
     return existing._id;
   },

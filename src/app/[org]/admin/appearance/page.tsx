@@ -1,23 +1,42 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { useOrganization } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import {
   Check,
+  History,
+  MoonStar,
   Palette,
   Pencil,
   PlayCircle,
   RefreshCw,
   RotateCcw,
   Save,
+  Sun,
   X,
 } from "lucide-react";
 import Image from "next/image";
 import { toast } from "sonner";
 import { api } from "../../../../../convex/_generated/api";
+import {
+  ACCENT_MIN_CONTRAST,
+  buildOrgThemeTokens,
+  type OrgThemeTokens,
+  type OrgThemeTokenSet,
+} from "../../../../../convex/themeColors";
+import {
+  describeAccentAdjustment,
+  hexToRgb,
+  normalizeHex,
+  rgbToHex,
+  type AccentAdjustment,
+} from "@/features/theming/accent-color";
 import { extractLogoAccentRgb } from "@/features/theming/logo-theme";
+import { themePreviewStyle } from "@/features/theming/org-theme-variables";
+import type { ResolvedTheme } from "@/features/theming/theme-config";
+import { useTheme } from "@/features/theming/theme-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,68 +53,36 @@ import { LoadingScreen } from "@/components/ui/loading-screen";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { StatusTone } from "@/features/status/status-meta";
 import { describeError } from "@/lib/user-error-message";
-
-type ThemeTokens = {
-  accent: string;
-  accentForeground: string;
-  subtle: string;
-  border: string;
-  ring: string;
-  selected: string;
-  selectedForeground: string;
-  chart1: string;
-  chart2: string;
-  chart3: string;
-  chart4: string;
-  chart5: string;
-};
-
-type Rgb = {
-  r: number;
-  g: number;
-  b: number;
-};
+import { cn } from "@/lib/utils";
 
 const DEFAULT_ACCENT_HEX = "#2563D2";
 
-function rgbChannelToHex(channel: number) {
-  return Math.round(Math.min(255, Math.max(0, channel)))
-    .toString(16)
-    .padStart(2, "0")
-    .toUpperCase();
-}
+const PREVIEW_MODES = [
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: MoonStar },
+] as const;
 
-function rgbToHex(rgb?: Rgb | null) {
-  if (!rgb) return null;
-  return `#${rgbChannelToHex(rgb.r)}${rgbChannelToHex(rgb.g)}${rgbChannelToHex(rgb.b)}`;
-}
+const TOKEN_SWATCHES = [
+  ["Accent", "bg-org-accent"],
+  ["Subtle", "bg-org-accent-subtle"],
+  ["Selected", "bg-org-accent-selected"],
+  ["Border", "bg-org-accent-border"],
+  ["Ring", "bg-org-accent-ring"],
+] as const;
 
-function normalizeHex(value: string) {
-  const trimmed = value.trim();
-  const candidate = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
-  const shortMatch = candidate.match(/^#([0-9a-fA-F]{3})$/);
+const CHART_SWATCHES = [
+  "bg-chart-1",
+  "bg-chart-2",
+  "bg-chart-3",
+  "bg-chart-4",
+  "bg-chart-5",
+] as const;
 
-  if (shortMatch) {
-    const [red, green, blue] = shortMatch[1].split("");
-    return `#${red}${red}${green}${green}${blue}${blue}`.toUpperCase();
-  }
-
-  if (/^#[0-9a-fA-F]{6}$/.test(candidate)) {
-    return candidate.toUpperCase();
-  }
-
-  return null;
-}
-
-function hexToRgb(value: string): Rgb | null {
-  const normalized = normalizeHex(value);
-  if (!normalized) return null;
-
-  return {
-    r: Number.parseInt(normalized.slice(1, 3), 16),
-    g: Number.parseInt(normalized.slice(3, 5), 16),
-    b: Number.parseInt(normalized.slice(5, 7), 16),
-  };
+function tokenSet(
+  lightTokens?: OrgThemeTokens,
+  darkTokens?: OrgThemeTokens,
+): OrgThemeTokenSet | null {
+  return lightTokens && darkTokens ? { lightTokens, darkTokens } : null;
 }
 
 function getSafeHttpsUrl(imageUrl?: string | null): string | null {
@@ -129,37 +116,227 @@ function statusTone(
   return "neutral";
 }
 
-function getRestrainedPreviewTokens(tokens: ThemeTokens): ThemeTokens {
-  return {
-    ...tokens,
-    subtle: `color-mix(in oklch, ${tokens.accent} 7%, var(--background))`,
-    border: `color-mix(in oklch, ${tokens.accent} 34%, var(--border))`,
-    selected: `color-mix(in oklch, ${tokens.accent} 11%, var(--background))`,
-    selectedForeground: "var(--foreground)",
-  };
+/**
+ * A frame drawn in one mode whatever mode the page is in. It carries the
+ * theme's CSS variables exactly as the workspace applies them, and children
+ * style with the ordinary tokens (`bg-background`, `org-selected-surface`), so
+ * the preview resolves through the same variables as the live app. Children
+ * avoid `dark:` variants, which follow the page rather than the frame.
+ */
+function PreviewFrame({
+  mode,
+  tokens,
+  className,
+  children,
+}: {
+  mode: ResolvedTheme;
+  tokens: OrgThemeTokens;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        mode === "dark" && "dark",
+        "bg-background text-foreground",
+        className,
+      )}
+      style={themePreviewStyle(mode, tokens)}
+    >
+      {children}
+    </div>
+  );
 }
 
-function TokenSwatches({ tokens }: { tokens: ThemeTokens }) {
-  const previewTokens = getRestrainedPreviewTokens(tokens);
-  const swatches = [
-    ["Accent", previewTokens.accent],
-    ["Subtle", previewTokens.subtle],
-    ["Selected", previewTokens.selected],
-    ["Border", previewTokens.border],
-    ["Ring", previewTokens.ring],
-  ] as const;
-
+function PreviewModeToggle({
+  mode,
+  onModeChange,
+}: {
+  mode: ResolvedTheme;
+  onModeChange: (mode: ResolvedTheme) => void;
+}) {
   return (
-    <div className="grid gap-2 sm:grid-cols-5">
-      {swatches.map(([label, color]) => (
-        <div key={label} className="space-y-1">
-          <div
-            className="h-10 rounded-lg border"
-            style={{ backgroundColor: color }}
-          />
-          <p className="text-xs text-muted-foreground">{label}</p>
-        </div>
+    <div
+      role="group"
+      aria-label="Preview mode"
+      className="inline-flex rounded-lg bg-muted p-[3px]"
+    >
+      {PREVIEW_MODES.map(({ value, label, icon: Icon }) => (
+        <Button
+          key={value}
+          type="button"
+          variant="ghost"
+          size="xs"
+          aria-pressed={mode === value}
+          onClick={() => onModeChange(value)}
+          className={cn(
+            "text-muted-foreground",
+            mode === value &&
+              "bg-background text-foreground shadow-sm hover:bg-background dark:hover:bg-background",
+          )}
+        >
+          <Icon />
+          {label}
+        </Button>
       ))}
+    </div>
+  );
+}
+
+function TokenSwatches({
+  mode,
+  tokens,
+}: {
+  mode: ResolvedTheme;
+  tokens: OrgThemeTokens;
+}) {
+  return (
+    <PreviewFrame
+      mode={mode}
+      tokens={tokens}
+      className="space-y-2 rounded-lg border p-3"
+    >
+      <p className="text-xs font-medium">{mode === "dark" ? "Dark" : "Light"}</p>
+      <div className="grid grid-cols-5 gap-2">
+        {TOKEN_SWATCHES.map(([label, swatchClassName]) => (
+          <div key={label} className="min-w-0 space-y-1">
+            <div className={cn("h-8 rounded-md border", swatchClassName)} />
+            <p className="truncate text-xs text-muted-foreground">{label}</p>
+          </div>
+        ))}
+      </div>
+    </PreviewFrame>
+  );
+}
+
+// A slice of the workspace, styled only through theme variables.
+function WorkspaceMock() {
+  return (
+    <div className="grid min-h-72 md:grid-cols-[12rem_minmax(0,1fr)]">
+      <aside className="border-b bg-muted/20 p-3 md:border-b-0 md:border-r">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold">Fabric.</span>
+          <span className="h-4 w-px bg-border" aria-hidden />
+          <span className="flex size-7 items-center justify-center rounded-md border border-org-accent-border bg-org-accent-subtle text-[10px] font-semibold text-org-accent-selected-foreground">
+            ORG
+          </span>
+        </div>
+        <div className="mt-4 space-y-1 text-sm">
+          <div className="org-selected-surface flex items-center gap-2 rounded-lg border px-2.5 py-2 font-medium">
+            <span className="size-2 rounded-full bg-org-accent" />
+            Processes
+          </div>
+          <div className="rounded-lg px-2.5 py-2 text-muted-foreground">
+            Admin
+          </div>
+        </div>
+      </aside>
+
+      <div className="min-w-0">
+        <div className="border-b p-3">
+          <div className="truncate text-xs text-muted-foreground">
+            Learning Technology / Axonify
+          </div>
+          <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <h4 className="min-w-0 truncate text-base font-semibold">
+              Axonify Support Ticketing
+            </h4>
+            <span className="inline-flex h-7 items-center rounded-lg bg-org-accent px-2.5 text-[0.8rem] font-medium text-org-accent-foreground">
+              Primary action
+            </span>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-[13rem_minmax(0,1fr)]">
+          <div className="space-y-1 border-b p-3 text-sm md:border-b-0 md:border-r">
+            <div className="flex items-center gap-2 px-2 py-1.5 font-medium">
+              <span className="size-2 rounded-full bg-muted-foreground/50" />
+              Learning Technology
+            </div>
+            <div className="flex items-center gap-2 px-5 py-1.5 text-muted-foreground">
+              <span className="size-2 rounded-full bg-muted-foreground/35" />
+              Axonify
+            </div>
+            <div className="org-selected-surface flex items-center gap-2 rounded-md border px-5 py-1.5 font-medium">
+              <span className="size-2 rounded-full bg-org-accent" />
+              <span className="min-w-0 truncate">Support Ticketing</span>
+            </div>
+          </div>
+
+          <div className="space-y-3 p-3">
+            <div className="flex items-center gap-3 border-b text-xs">
+              <span className="border-b-2 border-org-accent px-1 pb-2 font-medium text-org-accent">
+                Conversations
+              </span>
+              <span className="px-1 pb-2 text-muted-foreground">
+                Process Flow
+              </span>
+              <span className="mb-2 flex h-5 min-w-5 items-center justify-center rounded-full border border-org-accent-border bg-org-accent-subtle px-1.5 text-[11px] font-semibold text-org-accent-selected-foreground">
+                2
+              </span>
+            </div>
+
+            <div className="org-selected-surface rounded-lg border p-3">
+              <div className="flex items-start gap-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background text-sm font-semibold text-org-accent">
+                  <PlayCircle className="size-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">
+                    AI Interview with Saish
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Apr 22, 1:39 PM - 15:28
+                  </div>
+                </div>
+                <span className="rounded-full border border-org-accent-border bg-org-accent-subtle px-2 py-0.5 text-[11px] font-medium text-org-accent-selected-foreground">
+                  Completed
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div className="h-full w-2/3 rounded-full bg-org-accent" />
+              </div>
+              <div className="flex gap-1.5">
+                {CHART_SWATCHES.map((swatchClassName, index) => (
+                  <div
+                    key={swatchClassName}
+                    className={cn("h-8 flex-1 rounded-md", swatchClassName)}
+                    title={`Chart ${index + 1}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Both modes' tokens side by side, and the workspace in the chosen mode. */
+function ThemePreviewBody({
+  tokens,
+  mode,
+}: {
+  tokens: OrgThemeTokenSet;
+  mode: ResolvedTheme;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 lg:grid-cols-2">
+        <TokenSwatches mode="light" tokens={tokens.lightTokens} />
+        <TokenSwatches mode="dark" tokens={tokens.darkTokens} />
+      </div>
+      <PreviewFrame
+        mode={mode}
+        tokens={mode === "dark" ? tokens.darkTokens : tokens.lightTokens}
+        className="overflow-hidden rounded-lg border"
+      >
+        <WorkspaceMock />
+      </PreviewFrame>
     </div>
   );
 }
@@ -167,188 +344,71 @@ function TokenSwatches({ tokens }: { tokens: ThemeTokens }) {
 function ThemePreview({
   title,
   tokens,
+  mode,
+  onModeChange,
   description = "Preview of the accent tokens before they affect the live workspace.",
   actions,
 }: {
   title: string;
-  tokens: ThemeTokens;
+  tokens: OrgThemeTokenSet;
+  mode: ResolvedTheme;
+  onModeChange: (mode: ResolvedTheme) => void;
   description?: string;
   actions?: ReactNode;
 }) {
-  const chartColors = [
-    tokens.chart1,
-    tokens.chart2,
-    tokens.chart3,
-    tokens.chart4,
-    tokens.chart5,
-  ];
-  const previewTokens = getRestrainedPreviewTokens(tokens);
-  const selectedStyle = {
-    backgroundColor: previewTokens.selected,
-    borderColor: previewTokens.border,
-    color: previewTokens.selectedForeground,
-  } satisfies CSSProperties;
-  const subtleStyle = {
-    backgroundColor: previewTokens.subtle,
-    borderColor: previewTokens.border,
-    color: previewTokens.selectedForeground,
-  } satisfies CSSProperties;
-  const accentStyle = {
-    backgroundColor: tokens.accent,
-    color: tokens.accentForeground,
-  } satisfies CSSProperties;
-  const accentTextStyle = {
-    color: tokens.accent,
-  } satisfies CSSProperties;
-
   return (
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
-        {actions && <CardAction>{actions}</CardAction>}
+        <CardAction className="flex flex-wrap items-center justify-end gap-2">
+          <PreviewModeToggle mode={mode} onModeChange={onModeChange} />
+          {actions}
+        </CardAction>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <TokenSwatches tokens={tokens} />
-
-        <div className="overflow-hidden rounded-lg border bg-background">
-          <div className="grid min-h-72 md:grid-cols-[12rem_minmax(0,1fr)]">
-            <aside className="border-b bg-muted/20 p-3 md:border-b-0 md:border-r">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold">Fabric.</span>
-                <span className="h-4 w-px bg-border" aria-hidden />
-                <span
-                  className="flex size-7 items-center justify-center rounded-md border text-[10px] font-semibold"
-                  style={subtleStyle}
-                >
-                  ORG
-                </span>
-              </div>
-              <div className="mt-4 space-y-1 text-sm">
-                <div
-                  className="flex items-center gap-2 rounded-lg border px-2.5 py-2 font-medium"
-                  style={selectedStyle}
-                >
-                  <span className="size-2 rounded-full" style={accentStyle} />
-                  Processes
-                </div>
-                <div className="rounded-lg px-2.5 py-2 text-muted-foreground">
-                  Admin
-                </div>
-              </div>
-            </aside>
-
-            <div className="min-w-0">
-              <div className="border-b p-3">
-                <div className="truncate text-xs text-muted-foreground">
-                  Learning Technology / Axonify
-                </div>
-                <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
-                  <h4 className="min-w-0 truncate text-base font-semibold">
-                    Axonify Support Ticketing
-                  </h4>
-                  <Button type="button" size="sm" style={accentStyle}>
-                    Primary action
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-[13rem_minmax(0,1fr)]">
-                <div className="space-y-1 border-b p-3 text-sm md:border-b-0 md:border-r">
-                  <div className="flex items-center gap-2 px-2 py-1.5 font-medium">
-                    <span className="size-2 rounded-full bg-muted-foreground/50" />
-                    Learning Technology
-                  </div>
-                  <div className="flex items-center gap-2 px-5 py-1.5 text-muted-foreground">
-                    <span className="size-2 rounded-full bg-muted-foreground/35" />
-                    Axonify
-                  </div>
-                  <div
-                    className="flex items-center gap-2 rounded-md border px-5 py-1.5 font-medium"
-                    style={selectedStyle}
-                  >
-                    <span className="size-2 rounded-full" style={accentStyle} />
-                    <span className="min-w-0 truncate">Support Ticketing</span>
-                  </div>
-                </div>
-
-                <div className="space-y-3 p-3">
-                  <div className="flex items-center gap-3 border-b text-xs">
-                    <span
-                      className="border-b-2 px-1 pb-2 font-medium"
-                      style={{ borderColor: tokens.accent, color: tokens.accent }}
-                    >
-                      Conversations
-                    </span>
-                    <span className="px-1 pb-2 text-muted-foreground">
-                      Process Flow
-                    </span>
-                    <span
-                      className="mb-2 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold"
-                      style={subtleStyle}
-                    >
-                      2
-                    </span>
-                  </div>
-
-                  <div
-                    className="rounded-lg border p-3"
-                    style={selectedStyle}
-                  >
-                    <div className="flex items-start gap-3">
-                      <span
-                        className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background text-sm font-semibold"
-                        style={accentTextStyle}
-                      >
-                        <PlayCircle className="size-4" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium">
-                          AI Interview with Saish
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          Apr 22, 1:39 PM - 15:28
-                        </div>
-                      </div>
-                      <span
-                        className="rounded-full border px-2 py-0.5 text-[11px] font-medium"
-                        style={subtleStyle}
-                      >
-                        Completed
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="h-2 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full w-2/3 rounded-full"
-                        style={{ backgroundColor: tokens.accent }}
-                      />
-                    </div>
-                    <div className="flex gap-1.5">
-                      {chartColors.map((color, index) => (
-                        <div
-                          key={color}
-                          className="h-8 flex-1 rounded-md"
-                          style={{ backgroundColor: color }}
-                          title={`Chart ${index + 1}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <CardContent>
+        <ThemePreviewBody tokens={tokens} mode={mode} />
       </CardContent>
     </Card>
   );
 }
 
+/** What the entered colour ships as, beside the field. */
+function AccentAdjustmentNote({ adjustment }: { adjustment: AccentAdjustment }) {
+  const swatches = [
+    ["Entered", adjustment.enteredHex],
+    ["Light mode", adjustment.lightHex],
+    ["Dark mode", adjustment.darkHex],
+  ] as const;
+
+  return (
+    <div className="space-y-3 rounded-lg border p-3">
+      <div className="flex flex-wrap gap-x-5 gap-y-2">
+        {swatches.map(([label, hex]) => (
+          <div key={label} className="flex items-center gap-2">
+            <span
+              className="size-8 shrink-0 rounded-md border"
+              style={{ backgroundColor: hex }}
+            />
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="font-mono text-xs">{hex}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {adjustment.adjusted
+          ? `Ships as ${adjustment.lightHex} in light mode and ${adjustment.darkHex} in dark mode, tuned to the workspace so text on it stays readable (${ACCENT_MIN_CONTRAST}:1).`
+          : `Ships as entered in light mode. Dark mode uses ${adjustment.darkHex}, so text on it stays readable (${ACCENT_MIN_CONTRAST}:1).`}
+      </p>
+    </div>
+  );
+}
+
 export default function AdminAppearancePage() {
   const { organization } = useOrganization();
+  const { resolvedTheme } = useTheme();
   const theme = useQuery(api.orgThemes.getThemeAdminState);
   const startThemeGeneration = useMutation(api.orgThemes.startThemeGeneration);
   const saveGeneratedCandidate = useMutation(api.orgThemes.saveGeneratedCandidate);
@@ -357,22 +417,48 @@ export default function AdminAppearancePage() {
   const rejectCandidateTheme = useMutation(api.orgThemes.rejectCandidateTheme);
   const markThemeGenerationFailed = useMutation(api.orgThemes.markThemeGenerationFailed);
   const resetToNeutral = useMutation(api.orgThemes.resetToNeutral);
+  const restorePreviousTheme = useMutation(api.orgThemes.restorePreviousTheme);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [isEditingAccent, setIsEditingAccent] = useState(false);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [accentHex, setAccentHex] = useState(DEFAULT_ACCENT_HEX);
+  // Every preview follows one switch, starting from the admin's own mode, so
+  // the candidate and the active theme compare in the same mode.
+  const [chosenPreviewMode, setPreviewMode] = useState<ResolvedTheme | null>(null);
+  const previewMode = chosenPreviewMode ?? resolvedTheme;
 
   const logoUrl = getSafeHttpsUrl(
     organization?.hasImage ? organization.imageUrl : null,
   );
-  const activeTokens = theme?.activeLightTokens ?? theme?.lightTokens ?? null;
-  const candidateTokens = theme?.candidateLightTokens ?? null;
+  const activeTokens = tokenSet(
+    theme?.activeLightTokens ?? theme?.lightTokens,
+    theme?.activeDarkTokens ?? theme?.darkTokens,
+  );
+  const candidateTokens = tokenSet(
+    theme?.candidateLightTokens,
+    theme?.candidateDarkTokens,
+  );
   const hasCandidate = Boolean(candidateTokens);
+  const hasPreviousTheme = Boolean(
+    theme?.previousLightTokens && theme.previousDarkTokens,
+  );
   const selectedAccentRgb =
     theme?.activeAccentRgb ?? theme?.accentRgb ?? theme?.candidateAccentRgb ?? null;
   const initialAccentHex = rgbToHex(selectedAccentRgb) ?? DEFAULT_ACCENT_HEX;
   const manualAccentRgb = hexToRgb(accentHex);
   const colorInputValue = normalizeHex(accentHex) ?? initialAccentHex;
+
+  // Computed in the browser with the server's own derivation, so the preview
+  // follows every keystroke before anything is saved.
+  const draft = useMemo(() => {
+    const rgb = hexToRgb(accentHex);
+    if (!rgb) return null;
+    return {
+      tokens: buildOrgThemeTokens(rgb),
+      adjustment: describeAccentAdjustment(rgb),
+    };
+  }, [accentHex]);
 
   const statusLabel = useMemo(() => {
     switch (theme?.status) {
@@ -480,8 +566,39 @@ export default function AdminAppearancePage() {
     }
   };
 
+  const handleRestore = async () => {
+    setBusyAction("restore");
+    try {
+      await restorePreviousTheme({});
+      toast.success("Previous theme restored.");
+    } catch (error) {
+      toast.error(describeError(error, "Failed to restore the previous theme."));
+      // Keeps the confirmation open.
+      throw error;
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const candidateTitle =
     theme?.candidateSource === "manual" ? "Manual candidate" : "Generated candidate";
+
+  const previousThemeName = [
+    theme?.previousSource === "manual" ? "the custom accent" : "the logo accent",
+    rgbToHex(theme?.previousAccentRgb),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const previousApproved = theme?.previousApprovedAt
+    ? `, approved ${formatDate(theme.previousApprovedAt)},`
+    : "";
+  const restoreDescription = [
+    `This brings back ${previousThemeName}${previousApproved} in place of ${activeTokens ? "the current theme" : "the neutral default"}.`,
+    activeTokens ? "Restoring again switches back." : null,
+    candidateTokens ? "The candidate awaiting approval is discarded." : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const manualAccentEditor = isEditingAccent ? (
     <Card>
@@ -531,21 +648,25 @@ export default function AdminAppearancePage() {
             </Button>
           </div>
         </div>
-        {!manualAccentRgb && (
+        {draft ? (
+          <AccentAdjustmentNote adjustment={draft.adjustment} />
+        ) : (
           <p className="text-xs text-destructive">Enter a valid hex color.</p>
         )}
-        <div className="flex items-center gap-3 rounded-lg border p-3">
-          <div
-            className="size-10 shrink-0 rounded-md border"
-            style={{ backgroundColor: colorInputValue }}
-          />
-          <div className="min-w-0">
-            <p className="text-sm font-medium">Candidate accent</p>
-            <p className="font-mono text-xs text-muted-foreground">
-              {manualAccentRgb ? colorInputValue : "Invalid color"}
-            </p>
+        {draft && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium">Live preview</p>
+                <p className="text-xs text-muted-foreground">
+                  Follows the field as you edit. The workspace changes only after you save and approve.
+                </p>
+              </div>
+              <PreviewModeToggle mode={previewMode} onModeChange={setPreviewMode} />
+            </div>
+            <ThemePreviewBody tokens={draft.tokens} mode={previewMode} />
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   ) : null;
@@ -605,24 +726,40 @@ export default function AdminAppearancePage() {
               )}
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              onClick={handleGenerate}
-              disabled={!logoUrl || busyAction !== null}
-            >
-              <RefreshCw />
-              {hasCandidate ? "Regenerate" : "Generate"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setResetConfirmOpen(true)}
-              disabled={busyAction !== null || (!activeTokens && !candidateTokens)}
-            >
-              <RotateCcw />
-              Reset neutral
-            </Button>
+          <div className="space-y-1.5 sm:text-right">
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              <Button
+                type="button"
+                onClick={handleGenerate}
+                disabled={!logoUrl || busyAction !== null}
+              >
+                <RefreshCw />
+                {hasCandidate ? "Regenerate" : "Generate"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRestoreConfirmOpen(true)}
+                disabled={busyAction !== null || !hasPreviousTheme}
+              >
+                <History />
+                Restore previous
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setResetConfirmOpen(true)}
+                disabled={busyAction !== null || (!activeTokens && !candidateTokens)}
+              >
+                <RotateCcw />
+                Reset neutral
+              </Button>
+            </div>
+            {!hasPreviousTheme && (
+              <p className="text-xs text-muted-foreground">
+                Restore previous turns on once an approved theme is replaced or reset.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -664,7 +801,12 @@ export default function AdminAppearancePage() {
               </Button>
             </div>
           </div>
-          <ThemePreview title="Candidate preview" tokens={candidateTokens} />
+          <ThemePreview
+            title="Candidate preview"
+            tokens={candidateTokens}
+            mode={previewMode}
+            onModeChange={setPreviewMode}
+          />
         </div>
       )}
 
@@ -674,6 +816,8 @@ export default function AdminAppearancePage() {
             title="Active workspace theme"
             description="Approved accent tokens currently applied to the workspace."
             tokens={activeTokens}
+            mode={previewMode}
+            onModeChange={setPreviewMode}
             actions={(
               <Button
                 type="button"
@@ -713,10 +857,18 @@ export default function AdminAppearancePage() {
         open={resetConfirmOpen}
         onOpenChange={setResetConfirmOpen}
         title="Reset workspace theme?"
-        description="This removes the active and candidate accent theme and returns the workspace to the neutral default."
+        description={`This removes the active and candidate accent theme and returns the workspace to the neutral default.${activeTokens ? " Restore previous can bring the active theme back." : ""}`}
         confirmLabel="Reset theme"
         destructive
         onConfirm={handleReset}
+      />
+      <ConfirmDialog
+        open={restoreConfirmOpen}
+        onOpenChange={setRestoreConfirmOpen}
+        title="Restore previous theme?"
+        description={restoreDescription}
+        confirmLabel="Restore theme"
+        onConfirm={handleRestore}
       />
     </div>
   );

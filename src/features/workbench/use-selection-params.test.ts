@@ -3,6 +3,9 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import {
   buildSelectionQuery,
   paramToTab,
+  processConversationHref,
+  processConversationQuery,
+  readConversationParam,
   readSelectionParams,
   tabToParam,
 } from "./use-selection-params";
@@ -82,5 +85,56 @@ describe("overview tab URL compatibility", () => {
         new URLSearchParams("proc=process-1&tab=insights&node=old-node"),
       ).node,
     ).toBeNull();
+  });
+});
+
+describe("contribution deep links", () => {
+  const conversationId = "conversation-1" as Id<"conversations">;
+
+  it("opens the process on its Conversations tab with the contribution", () => {
+    const query = new URLSearchParams(
+      processConversationQuery(selection, conversationId),
+    );
+    expect(Object.fromEntries(query)).toEqual({
+      fn: "function-1",
+      dept: "department-1",
+      proc: "process-1",
+      tab: "conversations",
+      conv: "conversation-1",
+    });
+    expect(readSelectionParams(query).tab).toBe(1);
+    expect(readConversationParam(query)).toBe(conversationId);
+  });
+
+  it("is one-shot: the next URL write drops it", () => {
+    const current = new URLSearchParams(
+      processConversationQuery(selection, conversationId),
+    );
+    const next = new URLSearchParams(
+      buildSelectionQuery(current, readSelectionParams(current)),
+    );
+    expect(next.has("conv")).toBe(false);
+    expect(next.get("proc")).toBe("process-1");
+  });
+
+  it("builds no link when the hierarchy is gone", () => {
+    expect(
+      processConversationHref("/acme", {
+        _id: conversationId,
+        processId: selection.proc,
+        departmentId: null,
+        functionId: null,
+      }),
+    ).toBeNull();
+    expect(
+      processConversationHref("/acme", {
+        _id: conversationId,
+        processId: selection.proc,
+        departmentId: selection.dept,
+        functionId: selection.fn,
+      }),
+    ).toBe(
+      "/acme?fn=function-1&dept=department-1&proc=process-1&tab=conversations&conv=conversation-1",
+    );
   });
 });

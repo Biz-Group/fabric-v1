@@ -30,6 +30,7 @@ import {
 } from "./lib/contributorAttribution";
 import { summaryTitleFromAnalysis } from "./lib/conversationTitle";
 import { startConversationPipelines } from "./lib/conversationPipelines";
+import { conversationFailureReasonValidator } from "./lib/conversationFailure";
 import {
   assertElevenLabsConversationIdentity,
   buildElevenLabsConversationUrl,
@@ -287,6 +288,7 @@ export const insertConversation = internalMutation({
       v.literal("done"),
       v.literal("failed"),
     ),
+    failureReason: v.optional(conversationFailureReasonValidator),
   },
   handler: async (ctx, args) => {
     // Defensive: ensure the parent process belongs to the stamping org.
@@ -329,6 +331,7 @@ export const insertConversation = internalMutation({
       analysis: args.analysis,
       durationSeconds: args.durationSeconds,
       status: args.status,
+      failureReason: args.status === "failed" ? args.failureReason : undefined,
     });
   },
 });
@@ -527,6 +530,7 @@ export const fetchConversation = action({
             transcriptionProvider: "elevenlabs-convai",
             analysisProvider: "elevenlabs-convai",
             status: "failed",
+            failureReason: "interview_fetch",
           });
           return { status: "failed" as const };
         }
@@ -554,6 +558,7 @@ export const fetchConversation = action({
           transcriptionProvider: "elevenlabs-convai",
           analysisProvider: "elevenlabs-convai",
           status: "failed",
+          failureReason: "interview_fetch",
         });
         return { status: "failed" as const };
       }
@@ -624,6 +629,7 @@ export const fetchConversation = action({
           transcriptionProvider: "elevenlabs-convai",
           analysisProvider: "elevenlabs-convai",
           status: "failed",
+          failureReason: "interview_failed",
         });
         return { status: "failed" as const };
       }

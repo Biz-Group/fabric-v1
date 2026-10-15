@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  useAction,
   useConvex,
   useMutation,
   usePaginatedQuery,
@@ -11,12 +11,14 @@ import {
 } from "convex/react";
 import { toast } from "sonner";
 import {
+  ArrowUpRight,
   Bot,
   Download,
   Mic,
   MoreHorizontal,
   RotateCcw,
   Search,
+  Tag,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -57,15 +59,28 @@ import {
   buildConversationsCsv,
   downloadCsv,
 } from "@/features/admin/conversations-export";
+import {
+  retryLabel,
+  useRetryConversation,
+} from "@/features/conversations/use-retry-conversation";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 import { StatusBadge } from "@/features/status/status-badge";
+import { describeConversationFailure } from "@/features/status/conversation-failure";
 import { conversationStatusMeta } from "@/features/status/status-meta";
+import { processConversationHref } from "@/features/workbench/use-selection-params";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useLastLoaded } from "@/hooks/use-last-loaded";
 import { describeError } from "@/lib/user-error-message";
+import { cn } from "@/lib/utils";
 
 type Status = "processing" | "needs_speaker_labels" | "done" | "failed";
 type StatusFilter = "all" | Status;
 
 const PAGE_SIZE = 50;
+// Search returns the newest matches rather than a paginated stream; export
+// asks for the server's maximum.
+const SEARCH_EXPORT_LIMIT = 200;
+const NO_ROWS: ConversationRow[] = [];
 
 function formatDate(ts: number) {
   return new Date(ts).toLocaleDateString("en-US", {
@@ -94,19 +109,6 @@ function getConversationTypeLabel(inputMode: ConversationRow["inputMode"]) {
   if (inputMode === "voiceRecord") return "Voice Recording";
   if (inputMode === "audioUpload") return "Audio Upload";
   return "AI Interview";
-}
-
-function isStoredAudioConversation(inputMode: ConversationRow["inputMode"]) {
-  return inputMode === "voiceRecord" || inputMode === "audioUpload";
-}
-
-function getRetryLabel(conversation: ConversationRow) {
-  if (!isStoredAudioConversation(conversation.inputMode)) {
-    return "Retry fetch";
-  }
-  return conversation.transcript?.length
-    ? "Retry summary generation"
-    : "Retry transcription";
 }
 
 function ConversationTypeBadge({
@@ -152,7 +154,6 @@ export default function AdminConversationsPage() {
   const [viewingId, setViewingId] = useState<Id<"conversations"> | null>(null);
   const [pendingDelete, setPendingDelete] =
     useState<Id<"conversations"> | null>(null);
-  const [retryingId, setRetryingId] = useState<Id<"conversations"> | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const me = useQuery(api.users.getMyMembership);
@@ -164,30 +165,34 @@ export default function AdminConversationsPage() {
     return args;
   }, [processIdFilter, statusFilter]);
 
+  // Search runs on the server across every contribution, not just the
+  // loaded page, so it switches from the paginated list to a search query.
+  const debouncedSearch = useDebouncedValue(search.trim(), 250);
+  const searching = debouncedSearch.length > 0;
   const { results, status, loadMore } = usePaginatedQuery(
     api.conversations.listAllForOrg,
-    queryArgs,
+    searching ? "skip" : queryArgs,
     { initialNumItems: PAGE_SIZE },
   );
+  const searchResult = useQuery(
+    api.conversations.searchForOrg,
+    searching ? { ...queryArgs, search: debouncedSearch } : "skip",
+  );
+  const loadingRows = searching
+    ? searchResult === undefined
+    : status === "LoadingFirstPage";
+  // Keep the previous rows on screen while a new search or filter loads, so
+  // the table updates in place.
+  const rows = useLastLoaded(
+    searching ? (searchResult?.page ?? NO_ROWS) : results,
+    loadingRows,
+  );
+  const refreshing = loadingRows && rows.length > 0;
+  const truncated = searching && searchResult?.truncated === true;
 
   const convex = useConvex();
   const deleteConversation = useMutation(api.conversations.deleteForAdmin);
-  const retryAgentConversation = useAction(api.conversations.retryFetch);
-  const retryAudioConversation = useMutation(
-    api.voiceRecordings.retryAudioProcessing,
-  );
-
-  const filtered = useMemo(() => {
-    if (!search.trim()) return results;
-    const q = search.toLowerCase();
-    return results.filter(
-      (r) =>
-        r.contributorName.toLowerCase().includes(q) ||
-        (r.processName ?? "").toLowerCase().includes(q) ||
-        (r.summary ?? "").toLowerCase().includes(q) ||
-        getConversationTypeLabel(r.inputMode).toLowerCase().includes(q),
-    );
-  }, [results, search]);
+  const { retry, retryingId } = useRetryConversation();
 
   const handleDelete = async () => {
     if (!pendingDelete) return;
@@ -200,55 +205,44 @@ export default function AdminConversationsPage() {
     }
   };
 
-  const handleRetry = async (conversation: ConversationRow) => {
-    setRetryingId(conversation._id);
-    try {
-      if (isStoredAudioConversation(conversation.inputMode)) {
-        const result = await retryAudioConversation({
-          conversationId: conversation._id,
-        });
-        toast.success(
-          result.retryStage === "analysis"
-            ? "Summary retry queued."
-            : "Transcription retry queued.",
-        );
-        return;
-      }
-
-      const result = await retryAgentConversation({
-        conversationId: conversation._id,
-      });
-      if (result.status === "done") toast.success("Retry succeeded.");
-      else if (result.status === "failed") toast.error("Retry failed again.");
-      else toast.info(`Retry queued (status: ${result.status}).`);
-    } catch (err) {
-      toast.error(describeError(err, "Failed to retry conversation."));
-    } finally {
-      setRetryingId(null);
-    }
-  };
-
   const handleExport = async () => {
     setExporting(true);
     try {
-      const rows: ConversationRow[] = [];
-      let cursor: string | null = null;
-      for (;;) {
-        const result: FunctionReturnType<
-          typeof api.conversations.listAllForOrg
-        > = await convex.query(api.conversations.listAllForOrg, {
+      const exported: ConversationRow[] = [];
+      let exportTruncated = false;
+      if (searching) {
+        const result = await convex.query(api.conversations.searchForOrg, {
           ...queryArgs,
-          paginationOpts: { numItems: 500, cursor },
+          search: debouncedSearch,
+          limit: SEARCH_EXPORT_LIMIT,
         });
-        rows.push(...result.page);
-        if (result.isDone) break;
-        cursor = result.continueCursor;
+        exported.push(...result.page);
+        exportTruncated = result.truncated;
+      } else {
+        let cursor: string | null = null;
+        for (;;) {
+          const result: FunctionReturnType<
+            typeof api.conversations.listAllForOrg
+          > = await convex.query(api.conversations.listAllForOrg, {
+            ...queryArgs,
+            paginationOpts: { numItems: 500, cursor },
+          });
+          exported.push(...result.page);
+          if (result.isDone) break;
+          cursor = result.continueCursor;
+        }
       }
-      const csv = buildConversationsCsv(rows);
+      const csv = buildConversationsCsv(exported);
       const slug = me?.orgSlug || "workspace";
       const date = new Date().toISOString().slice(0, 10);
       downloadCsv(`conversations-${slug}-${date}.csv`, csv);
-      toast.success(`Exported ${rows.length} conversations.`);
+      if (exportTruncated) {
+        toast.warning(
+          `Exported the ${exported.length} newest matches. Narrow the search to export the rest.`,
+        );
+      } else {
+        toast.success(`Exported ${exported.length} conversations.`);
+      }
     } catch (err) {
       toast.error(describeError(err, "Export failed."));
     } finally {
@@ -256,7 +250,7 @@ export default function AdminConversationsPage() {
     }
   };
 
-  const isLoading = status === "LoadingFirstPage";
+  const filtersActive = statusFilter !== "all" || processIdFilter !== null;
 
   return (
     <div className="space-y-6">
@@ -271,10 +265,10 @@ export default function AdminConversationsPage() {
         <Button
           variant="outline"
           onClick={handleExport}
-          disabled={exporting || results.length === 0}
+          disabled={exporting || loadingRows || rows.length === 0}
         >
           <Download />
-          {exporting ? "Exporting..." : "Export CSV"}
+          {exporting ? "Exporting…" : "Export CSV"}
         </Button>
       </div>
 
@@ -283,7 +277,8 @@ export default function AdminConversationsPage() {
         <div className="relative max-w-sm flex-1">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search contributor, type, process, or summary..."
+            placeholder="Search contributor, process, title, or summary…"
+            aria-label="Search conversations"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -316,53 +311,103 @@ export default function AdminConversationsPage() {
         )}
       </div>
 
-      {isLoading ? (
-        <div className="flex h-64 items-center justify-center">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-        </div>
-      ) : (
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
+      <div
+        className={cn(
+          "rounded-lg border transition-opacity",
+          refreshing && "opacity-60",
+        )}
+        aria-busy={loadingRows}
+      >
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Created</TableHead>
+              <TableHead>Contributor</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Process</TableHead>
+              <TableHead>Duration</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="w-10"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.length === 0 ? (
               <TableRow>
-                <TableHead>Created</TableHead>
-                <TableHead>Contributor</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Process</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-10"></TableHead>
+                <TableCell
+                  colSpan={7}
+                  className="h-24 text-center text-muted-foreground"
+                >
+                  {loadingRows ? (
+                    <div
+                      className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary"
+                      role="status"
+                      aria-label="Loading conversations"
+                    />
+                  ) : searching ? (
+                    "No conversations match your search."
+                  ) : filtersActive ? (
+                    "No contributions match these filters."
+                  ) : (
+                    "No conversations yet."
+                  )}
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={7}
-                    className="h-24 text-center text-muted-foreground"
+            ) : (
+              rows.map((r) => {
+                const href = processConversationHref(routes.appHref, r);
+                const failure =
+                  r.status === "failed"
+                    ? describeConversationFailure(r.failureReason)
+                    : null;
+                const retryTarget = {
+                  _id: r._id,
+                  inputMode: r.inputMode,
+                  hasTranscript: Boolean(r.transcript?.length),
+                };
+                return (
+                  <TableRow
+                    key={r._id}
+                    className="cursor-pointer"
+                    onClick={(event) => {
+                      // Menu items are portaled but still bubble here through
+                      // React; only plain clicks on the row open it.
+                      const target = event.target as HTMLElement;
+                      if (
+                        !event.currentTarget.contains(target) ||
+                        target.closest("a, button, [role='menuitem']")
+                      ) {
+                        return;
+                      }
+                      setViewingId(r._id);
+                    }}
                   >
-                    {search
-                      ? "No conversations match your search."
-                      : statusFilter !== "all" || processIdFilter
-                        ? "No contributions match these filters."
-                        : "No conversations yet."}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((r) => (
-                  <TableRow key={r._id}>
                     <TableCell className="text-muted-foreground">
                       {formatDate(r._creationTime)}
                     </TableCell>
-                    <TableCell className="font-medium">
-                      {r.contributorName}
+                    <TableCell>
+                      <button
+                        type="button"
+                        className="rounded-sm text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => setViewingId(r._id)}
+                      >
+                        {r.contributorName}
+                      </button>
                     </TableCell>
                     <TableCell>
                       <ConversationTypeBadge inputMode={r.inputMode} />
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span>{r.processName ?? "—"}</span>
+                        {href ? (
+                          <Link
+                            href={href}
+                            className="w-fit rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            {r.processName}
+                          </Link>
+                        ) : (
+                          <span>{r.processName ?? "—"}</span>
+                        )}
                         {r.functionName && r.departmentName && (
                           <span className="text-xs text-muted-foreground">
                             {r.functionName} · {r.departmentName}
@@ -382,21 +427,35 @@ export default function AdminConversationsPage() {
                           render={<Button variant="ghost" size="icon-sm" />}
                         >
                           <MoreHorizontal />
-                          <span className="sr-only">Open actions</span>
+                          <span className="sr-only">
+                            Actions for {r.contributorName}&apos;s conversation
+                          </span>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setViewingId(r._id)}>
                             View transcript
                           </DropdownMenuItem>
-                          {r.status === "failed" && (
+                          {href && r.status === "needs_speaker_labels" && (
+                            <DropdownMenuItem onClick={() => router.push(href)}>
+                              <Tag />
+                              Label speakers
+                            </DropdownMenuItem>
+                          )}
+                          {href && r.status !== "needs_speaker_labels" && (
+                            <DropdownMenuItem onClick={() => router.push(href)}>
+                              <ArrowUpRight />
+                              Open in process
+                            </DropdownMenuItem>
+                          )}
+                          {failure?.retryable && (
                             <DropdownMenuItem
-                              onClick={() => handleRetry(r)}
+                              onClick={() => void retry(retryTarget)}
                               disabled={retryingId === r._id}
                             >
                               <RotateCcw />
                               {retryingId === r._id
-                                ? "Retrying..."
-                                : getRetryLabel(r)}
+                                ? "Retrying…"
+                                : retryLabel(retryTarget)}
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem
@@ -410,19 +469,22 @@ export default function AdminConversationsPage() {
                       </DropdownMenu>
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          {filtered.length} shown
-          {search && ` (filtered from ${results.length} loaded)`}
+          {searching
+            ? truncated
+              ? `Showing the ${rows.length} newest matches. Refine the search to narrow it down.`
+              : `${rows.length} match${rows.length === 1 ? "" : "es"}`
+            : `${rows.length} shown`}
         </p>
-        {status === "CanLoadMore" && (
+        {!searching && status === "CanLoadMore" && (
           <Button
             variant="outline"
             size="sm"
@@ -431,8 +493,8 @@ export default function AdminConversationsPage() {
             Load more
           </Button>
         )}
-        {status === "LoadingMore" && (
-          <p className="text-xs text-muted-foreground">Loading more...</p>
+        {!searching && status === "LoadingMore" && (
+          <p className="text-xs text-muted-foreground">Loading more…</p>
         )}
       </div>
 

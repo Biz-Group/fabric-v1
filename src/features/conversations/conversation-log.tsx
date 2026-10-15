@@ -38,6 +38,7 @@ import { SpeakerLabelReview } from "@/features/recording/speaker-label-review";
 import { StatusBadge } from "@/features/status/status-badge";
 import { conversationStatusMeta } from "@/features/status/status-meta";
 import { useConversationAudioUrl } from "@/features/conversations/use-conversation-audio-url";
+import { ConversationFailureNotice } from "@/features/conversations/conversation-failure-notice";
 import { registerBottomDock } from "@/lib/bottom-dock";
 
 // --- Helpers ---
@@ -1018,9 +1019,12 @@ function StickyMiniPlayer() {
 export function FocusedConversationPlayback({
   conversation,
   canLabelSpeakers,
+  canRetry,
 }: {
   conversation: Doc<"conversations">;
   canLabelSpeakers: boolean;
+  /** Admins can retry a failed contribution from here. */
+  canRetry: boolean;
 }) {
   const isAwaitingSpeakerLabels =
     conversation.status === "needs_speaker_labels";
@@ -1099,6 +1103,13 @@ export function FocusedConversationPlayback({
 
               {!isDone && (
                 <StatusBadge meta={conversationStatusMeta[conversation.status]} />
+              )}
+
+              {conversation.status === "failed" && (
+                <ConversationFailureNotice
+                  conversation={conversation}
+                  canRetry={canRetry}
+                />
               )}
 
             </div>

@@ -222,3 +222,48 @@ describe("conversations.listMine", () => {
     ]);
   });
 });
+
+describe("conversations.myNeedsLabelsSummary", () => {
+  test("counts every awaiting contribution on either side of attribution", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seed(t);
+    // Older than the feed's window: Home's six newest wouldn't include it.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(ids.aliceSelf, { status: "needs_speaker_labels" });
+    });
+
+    const alice = await t
+      .withIdentity(who("alice"))
+      .query(api.conversations.myNeedsLabelsSummary, {});
+    expect(alice.count).toBe(2);
+    // The oldest opens first.
+    expect(alice.oldest).toMatchObject({
+      _id: ids.aliceSelf,
+      processName: "Course intake",
+      departmentName: "Instructional Design",
+      functionName: "Learning",
+    });
+
+    const bob = await t
+      .withIdentity(who("bob"))
+      .query(api.conversations.myNeedsLabelsSummary, {});
+    expect(bob.count).toBe(1);
+    expect(bob.oldest?._id).toBe(ids.bobForAlice);
+  });
+
+  test("is zero for a member with nothing waiting, and scoped to the org", async () => {
+    const t = convexTest(schema, modules);
+    await seed(t);
+
+    expect(
+      await t
+        .withIdentity(who("carol"))
+        .query(api.conversations.myNeedsLabelsSummary, {}),
+    ).toEqual({ count: 0, oldest: null });
+    expect(
+      await t
+        .withIdentity(who("alice", ORG_B))
+        .query(api.conversations.myNeedsLabelsSummary, {}),
+    ).toEqual({ count: 0, oldest: null });
+  });
+});

@@ -1,15 +1,22 @@
 "use client";
 
+import Link from "next/link";
 import { useQuery } from "convex/react";
+import { ArrowUpRight, Tag } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConversationFailureNotice } from "@/features/conversations/conversation-failure-notice";
+import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
+import { processConversationHref } from "@/features/workbench/use-selection-params";
 import { StatusBadge } from "@/features/status/status-badge";
 import { conversationStatusMeta } from "@/features/status/status-meta";
 
@@ -52,10 +59,14 @@ export function ConversationTranscriptDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const routes = useWorkspaceRoutes();
   const conversation = useQuery(
     api.conversations.getForAdmin,
     conversationId ? { conversationId } : "skip",
   );
+  const processHref = conversation
+    ? processConversationHref(routes.appHref, conversation)
+    : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -93,6 +104,10 @@ export function ConversationTranscriptDialog({
             <div className="flex items-center gap-2">
               <StatusBadge meta={conversationStatusMeta[conversation.status]} />
             </div>
+
+            {conversation.status === "failed" && (
+              <ConversationFailureNotice conversation={conversation} canRetry />
+            )}
 
             {conversation.summary && (
               <section className="space-y-1">
@@ -137,6 +152,22 @@ export function ConversationTranscriptDialog({
               </p>
             )}
           </div>
+        )}
+
+        {conversation && processHref && (
+          <DialogFooter>
+            {conversation.status === "needs_speaker_labels" ? (
+              <Button render={<Link href={processHref} />}>
+                <Tag />
+                Label speakers
+              </Button>
+            ) : (
+              <Button variant="outline" render={<Link href={processHref} />}>
+                <ArrowUpRight />
+                Open in process
+              </Button>
+            )}
+          </DialogFooter>
         )}
       </DialogContent>
     </Dialog>

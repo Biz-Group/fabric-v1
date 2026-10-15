@@ -112,7 +112,7 @@ describe("member placement", () => {
       t
         .withIdentity(aliceIn(ORG_A))
         .mutation(api.users.setMyPlacement, { departmentId: ids.deptB }),
-    ).rejects.toThrow("Not found");
+    ).rejects.toThrow("DEPARTMENT_NOT_FOUND");
 
     const membership = await t.run((ctx) => ctx.db.get(ids.aliceInA));
     expect(membership?.departmentId).toBeUndefined();
@@ -170,7 +170,7 @@ describe("member placement", () => {
         hireDate: "2024-01-15",
         departmentId: ids.deptB,
       }),
-    ).rejects.toThrow("Not found");
+    ).rejects.toThrow("DEPARTMENT_NOT_FOUND");
 
     const user = await t.run((ctx) => ctx.db.get(ids.aliceId));
     expect(user?.profileComplete).toBe(false);
@@ -193,12 +193,20 @@ describe("member placement", () => {
     const inEmpty = await t
       .withIdentity(aliceIn(ORG_EMPTY))
       .query(api.users.getMyPlacement);
-    expect(inEmpty).toEqual({ placement: null, orgHasDepartments: false });
+    expect(inEmpty).toEqual({
+      placement: null,
+      orgHasDepartments: false,
+      placementSkipped: false,
+    });
 
     const inA = await t
       .withIdentity(aliceIn(ORG_A))
       .query(api.users.getMyPlacement);
-    expect(inA).toEqual({ placement: null, orgHasDepartments: true });
+    expect(inA).toEqual({
+      placement: null,
+      orgHasDepartments: true,
+      placementSkipped: false,
+    });
   });
 
   test("renames are reflected without writing to users or memberships", async () => {
@@ -310,5 +318,430 @@ describe("member placement", () => {
       departmentName: "Inside Sales",
       functionName: "Sales",
     });
+  });
+});
+
+// Bob is a contributor in org A with his own job title, and a viewer in org
+// B, so an org-A edit can be checked against what org B still sees.
+async function addBob(t: ReturnType<typeof convexTest>) {
+  return await t.run(async (ctx) => {
+    const bobId = await ctx.db.insert("users", {
+      tokenIdentifier: `${ISSUER}|bob`,
+      name: "Bob",
+      email: "bob@a.test",
+      jobTitle: "Analyst",
+      profileComplete: true,
+    });
+    const bobInA = await ctx.db.insert("memberships", {
+      tokenIdentifier: `${ISSUER}|bob`,
+      userId: bobId,
+      clerkOrgId: ORG_A,
+      role: "contributor",
+      createdAt: Date.now(),
+      name: "Bob",
+      email: "bob@a.test",
+      jobTitle: "Analyst",
+      profileComplete: true,
+      searchText: "bob bob@a.test analyst",
+    });
+    const bobInB = await ctx.db.insert("memberships", {
+      tokenIdentifier: `${ISSUER}|bob`,
+      userId: bobId,
+      clerkOrgId: ORG_B,
+      role: "viewer",
+      createdAt: Date.now(),
+      name: "Bob",
+      email: "bob@a.test",
+      jobTitle: "Analyst",
+      profileComplete: true,
+      // convex-test tokenizes every row in a search, so each needs the field.
+      searchText: "bob bob@a.test analyst",
+    });
+    return { bobId, bobInA, bobInB };
+  });
+}
+
+function bobIn(orgId: string) {
+  return {
+    tokenIdentifier: `${ISSUER}|bob`,
+    subject: "bob",
+    issuer: ISSUER,
+    name: "Bob",
+    email: "bob@a.test",
+    orgId,
+    orgSlug: orgId,
+  };
+}
+
+describe("skipping placement", () => {
+  test("skipMyPlacement stops the prompt without placing the member", async () => {
+    const t = convexTest(schema, modules);
+    await seed(t);
+    const alice = t.withIdentity(aliceIn(ORG_A));
+
+    await alice.mutation(api.users.skipMyPlacement, {});
+
+    expect(await alice.query(api.users.getMyPlacement)).toEqual({
+      placement: null,
+      orgHasDepartments: true,
+      placementSkipped: true,
+    });
+  });
+
+  test("completeProfile can skip placement and still completes the profile", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seed(t);
+    await t.run((ctx) => ctx.db.patch(ids.aliceId, { profileComplete: false }));
+
+    await t.withIdentity(aliceIn(ORG_A)).mutation(api.users.completeProfile, {
+      name: "Alice Smith",
+      jobTitle: "Account Executive",
+      hireDate: "2024-01-15",
+      skipPlacement: true,
+    });
+
+    const [user, membership] = await t.run(async (ctx) => [
+      await ctx.db.get(ids.aliceId),
+      await ctx.db.get(ids.aliceInA),
+    ]);
+    expect(user).toMatchObject({ profileComplete: true, name: "Alice Smith" });
+    expect(membership?.departmentId).toBeUndefined();
+    expect(membership?.placementSkippedAt).toBeTypeOf("number");
+  });
+
+  test("a blank name is refused with a readable message", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seed(t);
+    await t.run((ctx) => ctx.db.patch(ids.aliceId, { profileComplete: false }));
+
+    await expect(
+      t.withIdentity(aliceIn(ORG_A)).mutation(api.users.completeProfile, {
+        name: "  ",
+        jobTitle: "Account Executive",
+        hireDate: "2024-01-15",
+      }),
+    ).rejects.toThrow("PROFILE_FIELD_REQUIRED");
+  });
+});
+
+describe("admin placement edits", () => {
+  test("an admin moves a member and sets a job title for this org only", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seed(t);
+    const bob = await addBob(t);
+
+    await t
+      .withIdentity(aliceIn(ORG_A))
+      .mutation(api.users.updateMemberPlacement, {
+        membershipId: bob.bobInA,
+        departmentId: ids.deptA,
+        jobTitle: "Senior Analyst",
+      });
+
+    const rows = await t.run(async (ctx) => ({
+      user: await ctx.db.get(bob.bobId),
+      inA: await ctx.db.get(bob.bobInA),
+      inB: await ctx.db.get(bob.bobInB),
+      audit: await ctx.db
+        .query("authAuditEvents")
+        .withIndex("by_targetUserId", (q) => q.eq("targetUserId", bob.bobId))
+        .collect(),
+    }));
+    expect(rows.inA).toMatchObject({
+      departmentId: ids.deptA,
+      jobTitle: "Senior Analyst",
+      jobTitleOverride: "Senior Analyst",
+    });
+    expect(rows.inA?.searchText).toContain("senior analyst");
+    // The global profile and the other org are untouched.
+    expect(rows.user?.jobTitle).toBe("Analyst");
+    expect(rows.inB?.jobTitle).toBe("Analyst");
+    expect(rows.audit.map((event) => event.action)).toEqual([
+      "placementChanged",
+    ]);
+
+    // The member sees the new placement on Home.
+    const placement = await t
+      .withIdentity(bobIn(ORG_A))
+      .query(api.users.getMyPlacement);
+    expect(placement?.placement).toMatchObject({
+      departmentId: ids.deptA,
+      departmentName: "Inside Sales",
+    });
+  });
+
+  test("the override survives the member's own profile sync", async () => {
+    const t = convexTest(schema, modules);
+    await seed(t);
+    const bob = await addBob(t);
+    await t
+      .withIdentity(aliceIn(ORG_A))
+      .mutation(api.users.updateMemberPlacement, {
+        membershipId: bob.bobInA,
+        departmentId: null,
+        jobTitle: "Team Lead",
+      });
+
+    await t
+      .withIdentity(bobIn(ORG_A))
+      .mutation(api.users.updateProfile, { jobTitle: "Principal Analyst" });
+
+    const [inA, inB] = await t.run(async (ctx) => [
+      await ctx.db.get(bob.bobInA),
+      await ctx.db.get(bob.bobInB),
+    ]);
+    expect(inA?.jobTitle).toBe("Team Lead");
+    expect(inB?.jobTitle).toBe("Principal Analyst");
+  });
+
+  test("a blank job title clears the override", async () => {
+    const t = convexTest(schema, modules);
+    await seed(t);
+    const bob = await addBob(t);
+    const alice = t.withIdentity(aliceIn(ORG_A));
+    await alice.mutation(api.users.updateMemberPlacement, {
+      membershipId: bob.bobInA,
+      departmentId: null,
+      jobTitle: "Team Lead",
+    });
+
+    await alice.mutation(api.users.updateMemberPlacement, {
+      membershipId: bob.bobInA,
+      departmentId: null,
+      jobTitle: "  ",
+    });
+
+    const inA = await t.run((ctx) => ctx.db.get(bob.bobInA));
+    expect(inA?.jobTitleOverride).toBeUndefined();
+    expect(inA?.jobTitle).toBe("Analyst");
+  });
+
+  test("a non-admin can't edit placement", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seed(t);
+    await addBob(t);
+
+    await expect(
+      t.withIdentity(bobIn(ORG_A)).mutation(api.users.updateMemberPlacement, {
+        membershipId: ids.aliceInA,
+        departmentId: ids.deptA,
+        jobTitle: "",
+      }),
+    ).rejects.toThrow("INSUFFICIENT_ROLE");
+    const alice = await t.run((ctx) => ctx.db.get(ids.aliceInA));
+    expect(alice?.departmentId).toBeUndefined();
+  });
+
+  test("another org's member or department is refused", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seed(t);
+    const bob = await addBob(t);
+    const alice = t.withIdentity(aliceIn(ORG_A));
+
+    await expect(
+      alice.mutation(api.users.updateMemberPlacement, {
+        membershipId: bob.bobInB,
+        departmentId: ids.deptA,
+        jobTitle: "",
+      }),
+    ).rejects.toThrow("MEMBER_NOT_FOUND");
+    await expect(
+      alice.mutation(api.users.updateMemberPlacement, {
+        membershipId: bob.bobInA,
+        departmentId: ids.deptB,
+        jobTitle: "",
+      }),
+    ).rejects.toThrow("DEPARTMENT_NOT_FOUND");
+
+    const [inA, inB] = await t.run(async (ctx) => [
+      await ctx.db.get(bob.bobInA),
+      await ctx.db.get(bob.bobInB),
+    ]);
+    expect(inA?.departmentId).toBeUndefined();
+    expect(inB?.departmentId).toBeUndefined();
+  });
+});
+
+describe("member list filters", () => {
+  async function seedFiltered(t: ReturnType<typeof convexTest>) {
+    const ids = await seed(t);
+    const bob = await addBob(t);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(ids.aliceInA, {
+        departmentId: ids.deptA,
+        name: "Alice",
+        searchText: "alice alice@a.test",
+      });
+      await ctx.db.patch(bob.bobInA, { departmentId: ids.deptA });
+    });
+    return { ...ids, ...bob };
+  }
+
+  async function names(
+    t: ReturnType<typeof convexTest>,
+    args: {
+      search?: string;
+      role?: "admin" | "contributor" | "viewer";
+      department?: Id<"departments"> | "unplaced";
+    },
+  ) {
+    const result = await t
+      .withIdentity(aliceIn(ORG_A))
+      .query(api.users.listOrgMembersPage, {
+        paginationOpts: { numItems: 10, cursor: null },
+        ...args,
+      });
+    return result.page.map((row) => row.name).sort();
+  }
+
+  test("filters by role and department, alone and together", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seedFiltered(t);
+
+    expect(await names(t, { role: "contributor" })).toEqual(["Bob"]);
+    expect(await names(t, { department: ids.deptA })).toEqual(["Alice", "Bob"]);
+    expect(await names(t, { role: "admin", department: ids.deptA })).toEqual([
+      "Alice",
+    ]);
+    expect(await names(t, { department: ids.emptyDeptA })).toEqual([]);
+  });
+
+  test("unplaced finds members with no department here", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seedFiltered(t);
+    await t.run((ctx) =>
+      ctx.db.patch(ids.bobInA, { departmentId: undefined }),
+    );
+
+    expect(await names(t, { department: "unplaced" })).toEqual(["Bob"]);
+    expect(
+      await names(t, { role: "contributor", department: "unplaced" }),
+    ).toEqual(["Bob"]);
+  });
+
+  test("search combines with the role and department filters", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seedFiltered(t);
+
+    expect(await names(t, { search: "bob" })).toEqual(["Bob"]);
+    expect(await names(t, { search: "bob", role: "admin" })).toEqual([]);
+    expect(
+      await names(t, { search: "bob", department: ids.deptA }),
+    ).toEqual(["Bob"]);
+    expect(
+      await names(t, { search: "bob", department: "unplaced" }),
+    ).toEqual([]);
+  });
+
+  test("rows carry the override and the member's own title", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seedFiltered(t);
+    await t
+      .withIdentity(aliceIn(ORG_A))
+      .mutation(api.users.updateMemberPlacement, {
+        membershipId: ids.bobInA,
+        departmentId: ids.deptA,
+        jobTitle: "Team Lead",
+      });
+
+    const result = await t
+      .withIdentity(aliceIn(ORG_A))
+      .query(api.users.listOrgMembersPage, {
+        paginationOpts: { numItems: 10, cursor: null },
+        role: "contributor",
+      });
+    expect(result.page[0]).toMatchObject({
+      jobTitle: "Team Lead",
+      jobTitleOverride: "Team Lead",
+      profileJobTitle: "Analyst",
+      departmentId: ids.deptA,
+    });
+  });
+});
+
+describe("bulk role changes", () => {
+  async function addCarol(t: ReturnType<typeof convexTest>) {
+    return await t.run(async (ctx) => {
+      const carolId = await ctx.db.insert("users", {
+        tokenIdentifier: `${ISSUER}|carol`,
+        name: "Carol",
+        email: "carol@a.test",
+        profileComplete: true,
+      });
+      return await ctx.db.insert("memberships", {
+        tokenIdentifier: `${ISSUER}|carol`,
+        userId: carolId,
+        clerkOrgId: ORG_A,
+        role: "viewer",
+        createdAt: Date.now(),
+      });
+    });
+  }
+
+  test("changes every selected member, skipping those already in the role", async () => {
+    const t = convexTest(schema, modules);
+    await seed(t);
+    const bob = await addBob(t);
+    const carolInA = await addCarol(t);
+
+    const result = await t
+      .withIdentity(aliceIn(ORG_A))
+      .mutation(api.users.setMembershipRoles, {
+        membershipIds: [bob.bobInA, carolInA],
+        role: "contributor",
+      });
+
+    expect(result).toEqual({ changed: 1 });
+    const carol = await t.run((ctx) => ctx.db.get(carolInA));
+    expect(carol?.role).toBe("contributor");
+  });
+
+  test("refuses the caller's own row and changes nobody", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seed(t);
+    const carolInA = await addCarol(t);
+
+    await expect(
+      t.withIdentity(aliceIn(ORG_A)).mutation(api.users.setMembershipRoles, {
+        membershipIds: [carolInA, ids.aliceInA],
+        role: "contributor",
+      }),
+    ).rejects.toThrow("SELF_ROLE_CHANGE");
+    const carol = await t.run((ctx) => ctx.db.get(carolInA));
+    expect(carol?.role).toBe("viewer");
+  });
+
+  test("refuses another org's member and changes nobody", async () => {
+    const t = convexTest(schema, modules);
+    await seed(t);
+    const bob = await addBob(t);
+    const carolInA = await addCarol(t);
+
+    await expect(
+      t.withIdentity(aliceIn(ORG_A)).mutation(api.users.setMembershipRoles, {
+        membershipIds: [carolInA, bob.bobInB],
+        role: "admin",
+      }),
+    ).rejects.toThrow("MEMBER_NOT_FOUND");
+    const [carol, bobInB] = await t.run(async (ctx) => [
+      await ctx.db.get(carolInA),
+      await ctx.db.get(bob.bobInB),
+    ]);
+    expect(carol?.role).toBe("viewer");
+    expect(bobInB?.role).toBe("viewer");
+  });
+
+  test("refuses non-admins", async () => {
+    const t = convexTest(schema, modules);
+    await seed(t);
+    await addBob(t);
+    const carolInA = await addCarol(t);
+
+    await expect(
+      t.withIdentity(bobIn(ORG_A)).mutation(api.users.setMembershipRoles, {
+        membershipIds: [carolInA],
+        role: "admin",
+      }),
+    ).rejects.toThrow("INSUFFICIENT_ROLE");
   });
 });

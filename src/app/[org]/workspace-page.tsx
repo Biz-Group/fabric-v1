@@ -23,9 +23,13 @@ export default function OrgHomePage() {
 
   // The profile is global (once per person); placement is per org. A member
   // who completed their profile in another org still owes this org a
-  // department, but only once this org has a hierarchy to choose from.
+  // department, but only once this org has a hierarchy to choose from, and
+  // not after they said they don't know (an admin places them instead).
   const needsPlacement =
-    placement !== null && placement.orgHasDepartments && !placement.placement;
+    placement !== null &&
+    placement.orgHasDepartments &&
+    !placement.placement &&
+    !placement.placementSkipped;
 
   if (!user.profileComplete) {
     return (

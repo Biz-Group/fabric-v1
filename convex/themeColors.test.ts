@@ -1,5 +1,37 @@
 import { describe, expect, test } from "vitest";
-import { buildOrgThemeTokens, clampRgb } from "./themeColors";
+import {
+  ACCENT_MIN_CONTRAST,
+  buildOrgThemeAccentRgb,
+  buildOrgThemeTokens,
+  clampRgb,
+  type Rgb,
+} from "./themeColors";
+
+// WCAG contrast, written out here so the test doesn't trust the module's own.
+function luminance({ r, g, b }: Rgb): number {
+  const [red, green, blue] = [r, g, b].map((channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function contrast(a: Rgb, b: Rgb): number {
+  const [lighter, darker] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+// OKLab lightness of an sRGB colour, to compare with a token's `oklch(L …)`.
+function oklabLightness({ r, g, b }: Rgb): number {
+  const [red, green, blue] = [r, g, b].map((channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  const l = Math.cbrt(0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue);
+  const m = Math.cbrt(0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue);
+  const s = Math.cbrt(0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue);
+  return 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s;
+}
 
 function chroma(token: string): number {
   const match = token.match(/^oklch\([^\s]+\s+([^\s]+)\s+/);
@@ -80,5 +112,51 @@ describe("org theme color normalization", () => {
       darkAccentChroma,
     );
     expect(tokens.darkTokens.selectedForeground).toBe("oklch(0.985 0 0)");
+  });
+});
+
+describe("shipped accent colours", () => {
+  test.each([
+    ["blue", { r: 28, g: 95, b: 210 }],
+    ["orange", { r: 220, g: 76, b: 44 }],
+    ["pale yellow", { r: 250, g: 235, b: 140 }],
+    ["green", { r: 30, g: 130, b: 82 }],
+    ["near black", { r: 12, g: 12, b: 12 }],
+  ])("keeps text on the %s accent readable in both modes", (_label, rgb) => {
+    const accents = buildOrgThemeAccentRgb(rgb);
+
+    // Light mode puts white text on the accent, dark mode near-black.
+    expect(contrast(accents.light, { r: 255, g: 255, b: 255 })).toBeGreaterThanOrEqual(
+      ACCENT_MIN_CONTRAST,
+    );
+    expect(contrast(accents.dark, { r: 18, g: 18, b: 18 })).toBeGreaterThanOrEqual(
+      ACCENT_MIN_CONTRAST,
+    );
+  });
+
+  test("darkens a mid-tone input for light mode and lightens it for dark mode", () => {
+    const input = { r: 28, g: 95, b: 210 };
+    const accents = buildOrgThemeAccentRgb(input);
+
+    expect(luminance(accents.light)).toBeLessThan(luminance(input));
+    expect(luminance(accents.dark)).toBeGreaterThan(luminance(input));
+  });
+
+  test.each([
+    ["blue", { r: 28, g: 95, b: 210 }],
+    ["orange", { r: 220, g: 76, b: 44 }],
+    ["grey", { r: 35, g: 35, b: 35 }],
+  ])("matches the %s accent tokens the workspace applies", (_label, rgb) => {
+    const tokens = buildOrgThemeTokens(rgb);
+    const accents = buildOrgThemeAccentRgb(rgb);
+
+    expect(oklabLightness(accents.light)).toBeCloseTo(
+      lightness(tokens.lightTokens.accent),
+      2,
+    );
+    expect(oklabLightness(accents.dark)).toBeCloseTo(
+      lightness(tokens.darkTokens.accent),
+      2,
+    );
   });
 });

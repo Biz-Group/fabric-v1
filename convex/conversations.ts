@@ -6,6 +6,7 @@ import {
   internalQuery,
   mutation,
   query,
+  QueryCtx,
 } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
@@ -23,7 +24,14 @@ import { conversationTitle } from "./lib/conversationTitle";
 const DEFAULT_COMPACT_CONVERSATION_LIMIT = 50;
 const MAX_COMPACT_CONVERSATION_LIMIT = 100;
 const DEFAULT_MY_CONVERSATION_LIMIT = 6;
-const MAX_MY_CONVERSATION_LIMIT = 20;
+const MAX_MY_CONVERSATION_LIMIT = 50;
+// Org-wide rows awaiting labels read to find the caller's own. Labelling is
+// a short-lived state, so an org rarely has more than a handful.
+const MAX_NEEDS_LABELS_SCAN = 500;
+const DEFAULT_SEARCH_LIMIT = 50;
+const MAX_SEARCH_LIMIT = 200;
+// Processes whose name matches a search bring their contributions along.
+const MAX_SEARCH_PROCESSES = 5;
 
 export const listByProcess = query({
   args: { processId: v.id("processes") },
@@ -154,68 +162,103 @@ export const listMine = query({
       .sort((a, b) => b._creationTime - a._creationTime)
       .slice(0, limit);
 
-    const processes = new Map<Id<"processes">, Doc<"processes"> | null>();
-    const departments = new Map<Id<"departments">, Doc<"departments"> | null>();
-    const functions = new Map<Id<"functions">, Doc<"functions"> | null>();
-    const rows = [];
-    for (const conversation of newest) {
-      if (!processes.has(conversation.processId)) {
-        processes.set(
-          conversation.processId,
-          await ctx.db.get(conversation.processId),
-        );
-      }
-      const process = processes.get(conversation.processId);
-      if (!process || process.clerkOrgId !== caller.orgId) continue;
-
-      if (!departments.has(process.departmentId)) {
-        departments.set(
-          process.departmentId,
-          await ctx.db.get(process.departmentId),
-        );
-      }
-      const department = departments.get(process.departmentId);
-      if (!department || department.clerkOrgId !== caller.orgId) continue;
-
-      if (!functions.has(department.functionId)) {
-        functions.set(
-          department.functionId,
-          await ctx.db.get(department.functionId),
-        );
-      }
-      const fn = functions.get(department.functionId);
-      if (!fn || fn.clerkOrgId !== caller.orgId) continue;
-
-      // Rows the caller filed about someone else carry that person's name;
-      // rows filed about the caller carry the submitter's.
-      const attribution: "self" | "filedForOther" | "filedForCaller" =
-        !conversation.submittedByName
-          ? "self"
-          : conversation.userId === caller.userId
-            ? "filedForOther"
-            : "filedForCaller";
-
-      rows.push({
-        _id: conversation._id,
-        _creationTime: conversation._creationTime,
-        status: conversation.status,
-        inputMode: conversation.inputMode ?? "agent",
-        title: conversationTitle(conversation) ?? null,
-        durationSeconds: conversation.durationSeconds ?? null,
-        attribution,
-        contributorName: conversation.contributorName,
-        submittedByName: conversation.submittedByName ?? null,
-        processId: process._id,
-        processName: process.name,
-        departmentId: department._id,
-        departmentName: department.name,
-        functionId: fn._id,
-        functionName: fn.name,
-      });
-    }
-    return rows;
+    return await myConversationRows(ctx, caller, newest);
   },
 });
+
+/**
+ * How many of the caller's own contributions are waiting for speaker labels,
+ * and the oldest of them to open first. Home's feed shows only the newest
+ * few, so it can't count these itself. Reads the org's (typically few)
+ * awaiting rows through the status index and keeps the caller's.
+ */
+export const myNeedsLabelsSummary = query({
+  args: {},
+  handler: async (ctx) => {
+    const caller = await requireOrgMember(ctx);
+    const awaiting = await ctx.db
+      .query("conversations")
+      .withIndex("by_clerkOrgId_and_status", (q) =>
+        q.eq("clerkOrgId", caller.orgId).eq("status", "needs_speaker_labels"),
+      )
+      .take(MAX_NEEDS_LABELS_SCAN);
+    const mine = awaiting.filter(
+      (row) =>
+        row.userId === caller.userId || row.subjectUserId === caller.userId,
+    );
+    const [oldest] = await myConversationRows(ctx, caller, mine.slice(0, 1));
+    return { count: mine.length, oldest: oldest ?? null };
+  },
+});
+
+/** Home rows for the caller's conversations, joined with their hierarchy.
+ * Rows whose process, department or function is gone or foreign drop out. */
+async function myConversationRows(
+  ctx: QueryCtx,
+  caller: { orgId: string; userId: Id<"users"> },
+  conversations: Doc<"conversations">[],
+) {
+  const processes = new Map<Id<"processes">, Doc<"processes"> | null>();
+  const departments = new Map<Id<"departments">, Doc<"departments"> | null>();
+  const functions = new Map<Id<"functions">, Doc<"functions"> | null>();
+  const rows = [];
+  for (const conversation of conversations) {
+    if (!processes.has(conversation.processId)) {
+      processes.set(
+        conversation.processId,
+        await ctx.db.get(conversation.processId),
+      );
+    }
+    const process = processes.get(conversation.processId);
+    if (!process || process.clerkOrgId !== caller.orgId) continue;
+
+    if (!departments.has(process.departmentId)) {
+      departments.set(
+        process.departmentId,
+        await ctx.db.get(process.departmentId),
+      );
+    }
+    const department = departments.get(process.departmentId);
+    if (!department || department.clerkOrgId !== caller.orgId) continue;
+
+    if (!functions.has(department.functionId)) {
+      functions.set(
+        department.functionId,
+        await ctx.db.get(department.functionId),
+      );
+    }
+    const fn = functions.get(department.functionId);
+    if (!fn || fn.clerkOrgId !== caller.orgId) continue;
+
+    // Rows the caller filed about someone else carry that person's name;
+    // rows filed about the caller carry the submitter's.
+    const attribution: "self" | "filedForOther" | "filedForCaller" =
+      !conversation.submittedByName
+        ? "self"
+        : conversation.userId === caller.userId
+          ? "filedForOther"
+          : "filedForCaller";
+
+    rows.push({
+      _id: conversation._id,
+      _creationTime: conversation._creationTime,
+      status: conversation.status,
+      inputMode: conversation.inputMode ?? "agent",
+      title: conversationTitle(conversation) ?? null,
+      durationSeconds: conversation.durationSeconds ?? null,
+      attribution,
+      contributorName: conversation.contributorName,
+      submittedByName: conversation.submittedByName ?? null,
+      processId: process._id,
+      processName: process.name,
+      departmentId: department._id,
+      departmentName: department.name,
+      functionId: fn._id,
+      functionName: fn.name,
+    });
+  }
+  return rows;
+}
 
 // ---------------------------------------------------------------------------
 // Admin surface — org-wide listing, delete, retry. Every query/mutation/action
@@ -225,9 +268,77 @@ export const listMine = query({
 
 type ConversationRow = Doc<"conversations"> & {
   processName: string | null;
+  departmentId: Id<"departments"> | null;
   departmentName: string | null;
+  functionId: Id<"functions"> | null;
   functionName: string | null;
 };
+
+/** Joins each admin row with its process, department and function, so the
+ * table can name them and link into the process. A join that crosses org
+ * boundaries leaves the names blank rather than leaking another tenant's. */
+async function withHierarchy(
+  ctx: QueryCtx,
+  orgId: string,
+  conversations: Doc<"conversations">[],
+): Promise<ConversationRow[]> {
+  const processCache = new Map<Id<"processes">, Doc<"processes"> | null>();
+  const departmentCache = new Map<
+    Id<"departments">,
+    Doc<"departments"> | null
+  >();
+  const functionCache = new Map<Id<"functions">, Doc<"functions"> | null>();
+
+  return await Promise.all(
+    conversations.map(async (conv) => {
+      const row: ConversationRow = {
+        ...conv,
+        processName: null,
+        departmentId: null,
+        departmentName: null,
+        functionId: null,
+        functionName: null,
+      };
+
+      let process = processCache.get(conv.processId);
+      if (process === undefined) {
+        process = await ctx.db.get(conv.processId);
+        processCache.set(conv.processId, process);
+      }
+      if (!process || process.clerkOrgId !== orgId) return row;
+      row.processName = process.name;
+
+      let department = departmentCache.get(process.departmentId);
+      if (department === undefined) {
+        department = await ctx.db.get(process.departmentId);
+        departmentCache.set(process.departmentId, department);
+      }
+      if (!department || department.clerkOrgId !== orgId) return row;
+      row.departmentId = department._id;
+      row.departmentName = department.name;
+
+      let fn = functionCache.get(department.functionId);
+      if (fn === undefined) {
+        fn = await ctx.db.get(department.functionId);
+        functionCache.set(department.functionId, fn);
+      }
+      if (fn && fn.clerkOrgId === orgId) {
+        row.functionId = fn._id;
+        row.functionName = fn.name;
+      }
+      return row;
+    }),
+  );
+}
+
+const conversationStatusArg = v.optional(
+  v.union(
+    v.literal("processing"),
+    v.literal("needs_speaker_labels"),
+    v.literal("done"),
+    v.literal("failed"),
+  ),
+);
 
 /**
  * Admin-only. Paginated listing of every conversation in the caller's org,
@@ -239,14 +350,7 @@ type ConversationRow = Doc<"conversations"> & {
 export const listAllForOrg = query({
   args: {
     paginationOpts: paginationOptsValidator,
-    status: v.optional(
-      v.union(
-        v.literal("processing"),
-        v.literal("needs_speaker_labels"),
-        v.literal("done"),
-        v.literal("failed"),
-      ),
-    ),
+    status: conversationStatusArg,
     processId: v.optional(v.id("processes")),
   },
   handler: async (ctx, args) => {
@@ -290,56 +394,102 @@ export const listAllForOrg = query({
         : base;
 
     const result = await filtered.order("desc").paginate(args.paginationOpts);
+    return {
+      ...result,
+      page: await withHierarchy(ctx, caller.orgId, result.page),
+    };
+  },
+});
 
-    // Join each conversation with its process/department/function names.
-    const processCache = new Map<Id<"processes">, Doc<"processes"> | null>();
-    const departmentCache = new Map<
-      Id<"departments">,
-      Doc<"departments"> | null
-    >();
-    const functionCache = new Map<Id<"functions">, Doc<"functions"> | null>();
-
-    const joined: ConversationRow[] = await Promise.all(
-      result.page.map(async (conv) => {
-        let processName: string | null = null;
-        let departmentName: string | null = null;
-        let functionName: string | null = null;
-
-        let process = processCache.get(conv.processId);
-        if (process === undefined) {
-          process = await ctx.db.get(conv.processId);
-          processCache.set(conv.processId, process);
-        }
-
-        // Defense-in-depth: if the join somehow crosses org boundaries, leave
-        // the name blank rather than leaking another tenant's label.
-        if (process && process.clerkOrgId === caller.orgId) {
-          processName = process.name;
-
-          let department = departmentCache.get(process.departmentId);
-          if (department === undefined) {
-            department = await ctx.db.get(process.departmentId);
-            departmentCache.set(process.departmentId, department);
-          }
-          if (department && department.clerkOrgId === caller.orgId) {
-            departmentName = department.name;
-
-            let fn = functionCache.get(department.functionId);
-            if (fn === undefined) {
-              fn = await ctx.db.get(department.functionId);
-              functionCache.set(department.functionId, fn);
-            }
-            if (fn && fn.clerkOrgId === caller.orgId) {
-              functionName = fn.name;
-            }
-          }
-        }
-
-        return { ...conv, processName, departmentName, functionName };
-      }),
+/**
+ * Admin-only. Searches every contribution in the caller's org, not just the
+ * loaded page: by contributor name, title and summary through their search
+ * indexes, plus every contribution to a process whose name matches. Search
+ * indexes take one field each and can't share a cursor, so this returns the
+ * newest `limit` matches across all of them instead of a paginated stream;
+ * `truncated` says there were more. Honours the same status and process
+ * filters as `listAllForOrg`.
+ */
+export const searchForOrg = query({
+  args: {
+    search: v.string(),
+    status: conversationStatusArg,
+    processId: v.optional(v.id("processes")),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgAdmin(ctx);
+    const search = args.search.trim();
+    const empty = { page: [] as ConversationRow[], truncated: false };
+    if (!search) return empty;
+    if (args.processId) {
+      const process = await ctx.db.get(args.processId);
+      if (!process || process.clerkOrgId !== caller.orgId) return empty;
+    }
+    const limit = Math.min(
+      Math.max(Math.floor(args.limit ?? DEFAULT_SEARCH_LIMIT), 1),
+      MAX_SEARCH_LIMIT,
     );
+    const { status, processId } = args;
 
-    return { ...result, page: joined };
+    const bySearchIndex = (
+      index: "search_contributor" | "search_title" | "search_summary",
+      field: "contributorName" | "title" | "summary",
+    ) =>
+      ctx.db
+        .query("conversations")
+        .withSearchIndex(index, (q) => {
+          let filter = q.search(field, search).eq("clerkOrgId", caller.orgId);
+          if (status) filter = filter.eq("status", status);
+          if (processId) filter = filter.eq("processId", processId);
+          return filter;
+        })
+        .take(limit + 1);
+
+    const matchingProcesses = processId
+      ? []
+      : await ctx.db
+          .query("processes")
+          .withSearchIndex("search_name", (q) =>
+            q.search("name", search).eq("clerkOrgId", caller.orgId),
+          )
+          .take(MAX_SEARCH_PROCESSES);
+
+    const batches = await Promise.all([
+      bySearchIndex("search_contributor", "contributorName"),
+      bySearchIndex("search_title", "title"),
+      bySearchIndex("search_summary", "summary"),
+      ...matchingProcesses.map((process) =>
+        status
+          ? ctx.db
+              .query("conversations")
+              .withIndex("by_clerkOrgId_and_processId_and_status", (q) =>
+                q
+                  .eq("clerkOrgId", caller.orgId)
+                  .eq("processId", process._id)
+                  .eq("status", status),
+              )
+              .order("desc")
+              .take(limit + 1)
+          : ctx.db
+              .query("conversations")
+              .withIndex("by_clerkOrgId_and_processId", (q) =>
+                q.eq("clerkOrgId", caller.orgId).eq("processId", process._id),
+              )
+              .order("desc")
+              .take(limit + 1),
+      ),
+    ]);
+
+    const byId = new Map<Id<"conversations">, Doc<"conversations">>();
+    for (const row of batches.flat()) byId.set(row._id, row);
+    const newest = [...byId.values()].sort(
+      (a, b) => b._creationTime - a._creationTime,
+    );
+    return {
+      page: await withHierarchy(ctx, caller.orgId, newest.slice(0, limit)),
+      truncated: newest.length > limit,
+    };
   },
 });
 
@@ -354,7 +504,8 @@ export const getForAdmin = query({
     const caller = await requireOrgAdmin(ctx);
     const conv = await ctx.db.get(args.conversationId);
     assertOrgOwns(caller, conv);
-    return conv;
+    const [row] = await withHierarchy(ctx, caller.orgId, [conv]);
+    return row;
   },
 });
 

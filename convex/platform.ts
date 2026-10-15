@@ -13,6 +13,7 @@ import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { requireSuperAdmin, type Role } from "./lib/orgAuth";
 import { userError } from "./lib/userError";
+import { memberSearchText, membershipTitleFields } from "./lib/memberProfile";
 import {
   assertClerkId,
   ClerkApiError,
@@ -36,10 +37,6 @@ import {
 // them real Clerk members of every org and writes matching Fabric memberships
 // rows. No per-request bypass anywhere in the auth path.
 // ---------------------------------------------------------------------------
-
-function memberSearchText(parts: Array<string | undefined>): string {
-  return parts.filter(Boolean).join(" ").toLowerCase();
-}
 
 async function patchStatsIfPresent(
   ctx: MutationCtx,
@@ -613,6 +610,10 @@ export const insertSuperAdminMembershipInternal = internalMutation({
       )
       .unique();
     if (existing) {
+      const titleFields = membershipTitleFields(
+        { name, email: user.email, jobTitle: user.jobTitle },
+        existing.jobTitleOverride,
+      );
       // Remember what this membership was before the fan-out took it over, so
       // demotion can restore it. A later fan-out keeps the first record.
       const original =
@@ -639,10 +640,9 @@ export const insertSuperAdminMembershipInternal = internalMutation({
           name,
           email: user.email,
           emailLower,
-          jobTitle: user.jobTitle,
           profileComplete: user.profileComplete,
           platformRole: "superAdmin",
-          searchText,
+          ...titleFields,
           updatedAt: Date.now(),
         });
         await patchStatsIfPresent(ctx, args.clerkOrgId, {
@@ -659,10 +659,9 @@ export const insertSuperAdminMembershipInternal = internalMutation({
           name,
           email: user.email,
           emailLower,
-          jobTitle: user.jobTitle,
           profileComplete: user.profileComplete,
           platformRole: "superAdmin",
-          searchText,
+          ...titleFields,
           updatedAt: Date.now(),
         });
       }

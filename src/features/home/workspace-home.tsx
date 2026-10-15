@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useLastLoaded } from "@/hooks/use-last-loaded";
 import { cn } from "@/lib/utils";
 import type { ProcessTreeData } from "@/features/hierarchy/process-tree-navigator";
 import type { RecordingMode } from "@/features/recording/recording-modal";
@@ -49,6 +50,10 @@ import {
 export type MyConversation = FunctionReturnType<
   typeof api.conversations.listMine
 >[number];
+
+// The feed starts short and grows on request, up to the server's cap.
+const FEED_PAGE_SIZE = 6;
+const FEED_MAX = 50;
 
 type WorkspaceHomeProps = {
   tree: ProcessTreeData | undefined;
@@ -376,15 +381,26 @@ function conversationByline(conversation: MyConversation) {
 
 function MyInterviewsSection({
   conversations,
+  limit,
+  loadingMore,
   canEdit,
   mobile,
+  onShowMore,
   onOpenConversation,
 }: {
   conversations: MyConversation[] | undefined;
+  /** How many rows were asked for; a full page means there may be more. */
+  limit: number;
+  loadingMore: boolean;
   canEdit: boolean;
   mobile: boolean;
+  onShowMore: () => void;
   onOpenConversation: WorkspaceHomeProps["onOpenConversation"];
 }) {
+  // While a longer list loads, the shorter one stays up with its button.
+  const full =
+    conversations !== undefined &&
+    (loadingMore || conversations.length >= limit);
   return (
     <HomeSection title="Your interviews">
       {conversations === undefined ? (
@@ -440,21 +456,41 @@ function MyInterviewsSection({
           })}
         </div>
       )}
+      {full &&
+        (limit < FEED_MAX ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn("mt-2", mobile && "h-10 w-full")}
+            onClick={onShowMore}
+            disabled={loadingMore}
+          >
+            <ChevronDown aria-hidden="true" />
+            {loadingMore ? "Loading…" : "Show more"}
+          </Button>
+        ) : (
+          <SectionNote>Showing your {FEED_MAX} most recent.</SectionNote>
+        ))}
     </HomeSection>
   );
 }
 
 function LabelsCallout({
-  conversations,
+  count,
+  first,
   mobile,
   onOpenConversation,
 }: {
-  conversations: MyConversation[];
+  /** All of the member's contributions awaiting labels, not just the ones
+   * the feed shows. */
+  count: number;
+  /** The oldest of them, opened by "Review". */
+  first: MyConversation | null;
   mobile: boolean;
   onOpenConversation: WorkspaceHomeProps["onOpenConversation"];
 }) {
-  const [first] = conversations;
-  if (!first) return null;
+  if (count === 0 || !first) return null;
   return (
     <div
       role="status"
@@ -470,13 +506,13 @@ function LabelsCallout({
         />
         <div className="min-w-0">
           <p className="text-sm font-medium">
-            {conversations.length === 1
+            {count === 1
               ? "One of your interviews needs speaker labels"
-              : `${conversations.length} of your interviews need speaker labels`}
+              : `${count} of your interviews need speaker labels`}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Confirm who is speaking so Fabric can finish processing{" "}
-            {conversations.length === 1 ? "it" : "them"}.
+            {count === 1 ? "it" : "them"}.
           </p>
         </div>
       </div>
@@ -563,7 +599,20 @@ export function WorkspaceHome({
 }: WorkspaceHomeProps) {
   const me = useQuery(api.users.getMe);
   const placement = useQuery(api.users.getMyPlacement);
-  const myConversations = useQuery(api.conversations.listMine, {});
+  const [feedLimit, setFeedLimit] = useState(FEED_PAGE_SIZE);
+  const latestConversations = useQuery(api.conversations.listMine, {
+    limit: feedLimit,
+  });
+  // Keep the rows on screen while "Show more" loads the longer list.
+  const myConversations = useLastLoaded(
+    latestConversations,
+    latestConversations === undefined,
+  );
+  // Only people who can label see the callout.
+  const labels = useQuery(
+    api.conversations.myNeedsLabelsSummary,
+    canEdit ? {} : "skip",
+  );
 
   if (tree === undefined || me === undefined || placement === undefined) {
     return <WorkspaceHomeLoading />;
@@ -575,10 +624,6 @@ export function WorkspaceHome({
     ? findTreeDepartment(tree, homePlacement.departmentId)
     : null;
   const recent = resolveRecentProcesses(tree, recentProcessIds);
-  const needsLabels =
-    myConversations?.filter(
-      (conversation) => conversation.status === "needs_speaker_labels",
-    ) ?? [];
 
   return (
     <article
@@ -612,9 +657,10 @@ export function WorkspaceHome({
         />
       ) : (
         <>
-          {canEdit && (
+          {canEdit && labels && (
             <LabelsCallout
-              conversations={needsLabels}
+              count={labels.count}
+              first={labels.oldest}
               mobile={mobile}
               onOpenConversation={onOpenConversation}
             />
@@ -646,8 +692,15 @@ export function WorkspaceHome({
               />
               <MyInterviewsSection
                 conversations={myConversations}
+                limit={feedLimit}
+                loadingMore={latestConversations === undefined}
                 canEdit={canEdit}
                 mobile={mobile}
+                onShowMore={() =>
+                  setFeedLimit((limit) =>
+                    Math.min(limit + FEED_PAGE_SIZE * 2, FEED_MAX),
+                  )
+                }
                 onOpenConversation={onOpenConversation}
               />
             </div>

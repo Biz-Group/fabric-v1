@@ -13,6 +13,11 @@ const PARAM = {
   node: "node",
 } as const;
 
+// One-shot link to a contribution: the workbench opens it in the
+// Conversations tab on load, and the next URL write drops it, so it never
+// outlives the visit it was for.
+const CONVERSATION_PARAM = "conv";
+
 export type SelectionParams = {
   fn: Id<"functions"> | null;
   dept: Id<"departments"> | null;
@@ -56,6 +61,49 @@ export function readSelectionParams(
   };
 }
 
+export function readConversationParam(
+  searchParams: URLSearchParams | ReturnType<typeof useSearchParams>,
+): Id<"conversations"> | null {
+  const conversationId = searchParams.get(CONVERSATION_PARAM);
+  return conversationId ? (conversationId as Id<"conversations">) : null;
+}
+
+/** Query string that opens a process on its Conversations tab with one
+ * contribution selected, e.g. from Admin → Conversations. */
+export function processConversationQuery(
+  ids: {
+    fn: Id<"functions">;
+    dept: Id<"departments">;
+    proc: Id<"processes">;
+  },
+  conversationId: Id<"conversations">,
+): string {
+  const params = new URLSearchParams(
+    buildSelectionQuery(new URLSearchParams(), { ...ids, tab: 1, node: null }),
+  );
+  params.set(CONVERSATION_PARAM, conversationId);
+  return params.toString();
+}
+
+/** Link from an admin row into the contribution's process, or null when its
+ * process, department or function is gone. */
+export function processConversationHref(
+  appHref: string,
+  row: {
+    _id: Id<"conversations">;
+    processId: Id<"processes">;
+    departmentId: Id<"departments"> | null;
+    functionId: Id<"functions"> | null;
+  },
+): string | null {
+  if (!row.functionId || !row.departmentId) return null;
+  const query = processConversationQuery(
+    { fn: row.functionId, dept: row.departmentId, proc: row.processId },
+    row._id,
+  );
+  return `${appHref}?${query}`;
+}
+
 // Build a query string from the committed selection, deleting descendant keys
 // when a parent is absent so the URL can never describe an impossible path
 // (e.g. a process with no function). Starts from the current params to stay
@@ -82,6 +130,7 @@ export function buildSelectionQuery(
     PARAM.node,
     sel.fn && sel.dept && sel.proc && sel.tab === 2 ? sel.node : null,
   );
+  params.delete(CONVERSATION_PARAM);
 
   return params.toString();
 }

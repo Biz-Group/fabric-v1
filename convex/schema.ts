@@ -24,6 +24,7 @@ import {
   summaryRunSourceSnapshotValidator,
   summaryRunStateValidator,
 } from "./summaryV2";
+import { conversationFailureReasonValidator } from "./lib/conversationFailure";
 
 const rgbValidator = v.object({
   r: v.number(),
@@ -227,7 +228,12 @@ export default defineSchema({
     name: v.optional(v.string()),
     email: v.optional(v.string()),
     emailLower: v.optional(v.string()),
+    // The title shown in THIS org: `jobTitleOverride` when an admin set one,
+    // else the member's own title from their global profile.
     jobTitle: v.optional(v.string()),
+    // An admin's correction of the member's job title, scoped to this org so
+    // it never rewrites the profile other tenants see. Survives profile syncs.
+    jobTitleOverride: v.optional(v.string()),
     profileComplete: v.optional(v.boolean()),
     platformRole: v.optional(v.literal("superAdmin")),
     searchText: v.optional(v.string()),
@@ -236,6 +242,9 @@ export default defineSchema({
     // from department.functionId so department moves need none either.
     departmentId: v.optional(v.id("departments")),
     placementUpdatedAt: v.optional(v.number()),
+    // Set when the member chose "Not sure" at the placement prompt, so they
+    // aren't asked again. An admin can place them later.
+    placementSkippedAt: v.optional(v.number()),
   })
     .index("by_tokenIdentifier_and_clerkOrgId", [
       "tokenIdentifier",
@@ -243,12 +252,17 @@ export default defineSchema({
     ])
     .index("by_clerkOrgId", ["clerkOrgId"])
     .index("by_clerkOrgId_and_role", ["clerkOrgId", "role"])
+    .index("by_clerkOrgId_and_role_and_departmentId", [
+      "clerkOrgId",
+      "role",
+      "departmentId",
+    ])
     .index("by_clerkOrgId_and_emailLower", ["clerkOrgId", "emailLower"])
     .index("by_clerkOrgId_and_departmentId", ["clerkOrgId", "departmentId"])
     .index("by_userId", ["userId"])
     .searchIndex("search_member", {
       searchField: "searchText",
-      filterFields: ["clerkOrgId"],
+      filterFields: ["clerkOrgId", "role", "departmentId"],
     }),
 
   membershipIntents: defineTable({
@@ -322,6 +336,7 @@ export default defineSchema({
       v.literal("inviteRevoked"),
       v.literal("membershipAccepted"),
       v.literal("roleChanged"),
+      v.literal("placementChanged"),
       v.literal("memberRemoved"),
       v.literal("webhookProcessed"),
       v.literal("webhookFailed"),
@@ -374,6 +389,14 @@ export default defineSchema({
     activeSource: v.optional(themeSourceValidator),
     adminApprovedAt: v.optional(v.number()),
     approvedByUserId: v.optional(v.id("users")),
+    // The approved theme that was live before the current one, or before a
+    // reset to neutral, so an admin can bring it back. A single slot:
+    // restoring swaps it with the live theme.
+    previousAccentRgb: v.optional(rgbValidator),
+    previousLightTokens: v.optional(orgThemeTokensValidator),
+    previousDarkTokens: v.optional(orgThemeTokensValidator),
+    previousSource: v.optional(themeSourceValidator),
+    previousApprovedAt: v.optional(v.number()),
     extractionAttempts: v.optional(v.number()),
     lastExtractionRequestedAt: v.optional(v.number()),
     lastExtractionError: v.optional(v.string()),
@@ -475,7 +498,12 @@ export default defineSchema({
     summaryV2LastError: v.optional(summaryRunErrorValidator),
     summaryV2LastCompletedAt: v.optional(v.number()),
     clerkOrgId: v.string(),
-  }).index("by_clerkOrgId_and_departmentId", ["clerkOrgId", "departmentId"]),
+  })
+    .index("by_clerkOrgId_and_departmentId", ["clerkOrgId", "departmentId"])
+    .searchIndex("search_name", {
+      searchField: "name",
+      filterFields: ["clerkOrgId"],
+    }),
 
   // Conversation records
   conversations: defineTable({
@@ -548,6 +576,9 @@ export default defineSchema({
     analysis: v.optional(v.any()),
     durationSeconds: v.optional(v.number()),
     status: conversationStatusValidator,
+    // Why the row is `failed`; cleared when a retry starts. Absent on rows
+    // that failed before this column existed.
+    failureReason: v.optional(conversationFailureReasonValidator),
     clerkOrgId: v.string(),
   })
     .index("by_clerkOrgId", ["clerkOrgId"])
@@ -569,7 +600,21 @@ export default defineSchema({
     // Global lookup: an ElevenLabs conversation belongs to the first org that
     // imports it (all tenants share one agent, so its ids aren't org-scoped).
     .index("by_elevenlabsConversationId", ["elevenlabsConversationId"])
-    .index("by_audioStorageId", ["audioStorageId"]),
+    .index("by_audioStorageId", ["audioStorageId"])
+    // Admin → Conversations search. One field per index, so the admin search
+    // queries each and merges (see `searchForOrg`).
+    .searchIndex("search_contributor", {
+      searchField: "contributorName",
+      filterFields: ["clerkOrgId", "status", "processId"],
+    })
+    .searchIndex("search_title", {
+      searchField: "title",
+      filterFields: ["clerkOrgId", "status", "processId"],
+    })
+    .searchIndex("search_summary", {
+      searchField: "summary",
+      filterFields: ["clerkOrgId", "status", "processId"],
+    }),
 
   // One active upload grant per user/process. A grant proves the caller went
   // through the authenticated URL-issuance path and makes blob admission

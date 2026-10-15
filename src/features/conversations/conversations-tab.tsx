@@ -59,6 +59,8 @@ type SortOrder = "newest" | "oldest";
 type ProcessConversationListProps = {
   processId: Id<"processes">;
   canLabelSpeakers: boolean;
+  /** Admins can retry failed contributions from the playback panel. */
+  canRetry: boolean;
   labelingJumpKey?: number;
   focusConversationId?: Id<"conversations"> | null;
   focusConversationJumpKey?: number;
@@ -268,11 +270,13 @@ function ConversationPlaybackPanel({
   processId,
   conversationId,
   canLabelSpeakers,
+  canRetry,
   hasConversations,
 }: {
   processId: Id<"processes">;
   conversationId: Id<"conversations"> | null;
   canLabelSpeakers: boolean;
+  canRetry: boolean;
   hasConversations: boolean;
 }) {
   const conversations = useQuery(
@@ -325,6 +329,7 @@ function ConversationPlaybackPanel({
       <FocusedConversationPlayback
         conversation={conversation}
         canLabelSpeakers={canLabelSpeakers}
+        canRetry={canRetry}
       />
     </section>
   );
@@ -333,6 +338,7 @@ function ConversationPlaybackPanel({
 export function ProcessConversationsTab({
   processId,
   canLabelSpeakers,
+  canRetry,
   labelingJumpKey = 0,
   focusConversationId = null,
   focusConversationJumpKey = 0,
@@ -572,6 +578,7 @@ export function ProcessConversationsTab({
             processId={processId}
             conversationId={activeConversationId}
             canLabelSpeakers={canLabelSpeakers}
+            canRetry={canRetry}
             hasConversations={(conversations?.length ?? 0) > 0}
           />
         </aside>

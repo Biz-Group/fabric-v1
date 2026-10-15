@@ -30,8 +30,16 @@ export type OrgThemeTokenSet = {
   darkTokens: OrgThemeTokens;
 };
 
+export type OrgThemeAccentRgb = {
+  light: Rgb;
+  dark: Rgb;
+};
+
 const WHITE: Rgb = { r: 255, g: 255, b: 255 };
 const BLACK: Rgb = { r: 18, g: 18, b: 18 };
+
+/** Text on the accent (button labels, badges) holds at least this contrast. */
+export const ACCENT_MIN_CONTRAST = 4.5;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -124,6 +132,16 @@ function contrastRatio(a: Rgb, b: Rgb): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+// The same rounding formatOklch writes, as numbers, so a colour converted back
+// to sRGB is the one the CSS token renders.
+function quantizeOklch(color: Oklch): Oklch {
+  return {
+    l: Number(clamp(color.l, 0, 1).toFixed(3)),
+    c: Number(clamp(color.c, 0, 0.4).toFixed(3)),
+    h: Number(normalizeHue(color.h).toFixed(1)),
+  };
+}
+
 function formatOklch(color: Oklch, alpha?: number): string {
   const l = clamp(color.l, 0, 1).toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
   const c = clamp(color.c, 0, 0.4).toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
@@ -137,7 +155,9 @@ function formatOklch(color: Oklch, alpha?: number): string {
 function readableAccent(color: Oklch, foreground: Rgb, direction: "darker" | "lighter"): Oklch {
   let next = { ...color };
   for (let i = 0; i < 16; i += 1) {
-    if (contrastRatio(oklchToRgb(next), foreground) >= 4.5) return next;
+    if (contrastRatio(oklchToRgb(next), foreground) >= ACCENT_MIN_CONTRAST) {
+      return next;
+    }
     next = {
       ...next,
       l: direction === "darker" ? next.l - 0.025 : next.l + 0.025,
@@ -159,26 +179,46 @@ function tone(source: Oklch, l: number, cScale: number, maxC: number, hueShift =
   };
 }
 
+function buildAccents(source: Oklch): { light: Oklch; dark: Oklch } {
+  return {
+    light: readableAccent(
+      {
+        l: clamp(source.l * 0.62, 0.29, 0.44),
+        c: chromaFor(source, 0.065, 0.16),
+        h: source.h,
+      },
+      WHITE,
+      "darker",
+    ),
+    dark: readableAccent(
+      {
+        l: clamp(source.l + 0.16, 0.68, 0.78),
+        c: chromaFor(source, 0.055, 0.14),
+        h: source.h,
+      },
+      BLACK,
+      "lighter",
+    ),
+  };
+}
+
+/**
+ * The accent each mode ships for an input colour, as sRGB. The input is
+ * darkened for light mode and lightened for dark mode until text on it holds
+ * ACCENT_MIN_CONTRAST, so it rarely ships exactly as given; the admin UI uses
+ * this to say what changed.
+ */
+export function buildOrgThemeAccentRgb(input: Rgb): OrgThemeAccentRgb {
+  const accents = buildAccents(rgbToOklch(clampRgb(input)));
+  return {
+    light: oklchToRgb(quantizeOklch(accents.light)),
+    dark: oklchToRgb(quantizeOklch(accents.dark)),
+  };
+}
+
 export function buildOrgThemeTokens(input: Rgb): OrgThemeTokenSet {
   const source = rgbToOklch(clampRgb(input));
-  const lightAccent = readableAccent(
-    {
-      l: clamp(source.l * 0.62, 0.29, 0.44),
-      c: chromaFor(source, 0.065, 0.16),
-      h: source.h,
-    },
-    WHITE,
-    "darker",
-  );
-  const darkAccent = readableAccent(
-    {
-      l: clamp(source.l + 0.16, 0.68, 0.78),
-      c: chromaFor(source, 0.055, 0.14),
-      h: source.h,
-    },
-    BLACK,
-    "lighter",
-  );
+  const { light: lightAccent, dark: darkAccent } = buildAccents(source);
 
   return {
     lightTokens: {

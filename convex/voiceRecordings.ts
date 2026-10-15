@@ -53,6 +53,11 @@ import {
   validateAudioUploadMetadata,
 } from "./lib/audioUpload";
 import type { ResolvedAttribution } from "./postCall";
+import {
+  ConversationFailure,
+  conversationFailureReasonValidator,
+  failureReasonFrom,
+} from "./lib/conversationFailure";
 
 type TranscriptMessage = {
   role: string;
@@ -1024,6 +1029,7 @@ export const finishVoiceRecording = internalMutation({
       analysisProvider: args.analysisProvider,
       durationSeconds: args.durationSeconds,
       status: "done",
+      failureReason: undefined,
     });
   },
 });
@@ -1046,6 +1052,7 @@ export const markVoiceRecordingNeedsSpeakerLabels = internalMutation({
       speakerLabels: args.speakerLabels,
       durationSeconds: args.durationSeconds,
       status: "needs_speaker_labels",
+      failureReason: undefined,
     });
   },
 });
@@ -1054,11 +1061,15 @@ export const markVoiceRecordingFailed = internalMutation({
   args: {
     conversationId: v.id("conversations"),
     clerkOrgId: v.string(),
+    reason: conversationFailureReasonValidator,
   },
   handler: async (ctx, args) => {
     const conv = await ctx.db.get(args.conversationId);
     if (!conv || conv.clerkOrgId !== args.clerkOrgId) return;
-    await ctx.db.patch(args.conversationId, { status: "failed" });
+    await ctx.db.patch(args.conversationId, {
+      status: "failed",
+      failureReason: args.reason,
+    });
   },
 });
 
@@ -1214,6 +1225,7 @@ export const retryAudioProcessing = mutation({
     if (hasTranscript) {
       await ctx.db.patch(args.conversationId, {
         status: "processing",
+        failureReason: undefined,
         summary: undefined,
         title: undefined,
         analysis: undefined,
@@ -1235,6 +1247,7 @@ export const retryAudioProcessing = mutation({
 
     await ctx.db.patch(args.conversationId, {
       status: "processing",
+      failureReason: undefined,
       transcript: undefined,
       speakerLabels: undefined,
       summary: undefined,
@@ -1310,7 +1323,10 @@ export const processVoiceRecordingInternal = internalAction({
 
       const audio = await ctx.storage.get(args.storageId);
       if (!audio) {
-        throw new Error(`Storage object ${args.storageId} not found`);
+        throw new ConversationFailure(
+          "audio_missing",
+          `Storage object ${args.storageId} not found`,
+        );
       }
       const inspection = await inspectAudioUpload(
         audio,
@@ -1318,7 +1334,12 @@ export const processVoiceRecordingInternal = internalAction({
         args.durationSeconds,
       );
       if (!inspection.ok) {
-        throw new Error(audioUploadRejectionMessage(inspection.reason));
+        throw new ConversationFailure(
+          inspection.reason === "invalid_duration"
+            ? "too_long"
+            : "audio_unreadable",
+          audioUploadRejectionMessage(inspection.reason),
+        );
       }
 
       const transcriptionStartedAt = Date.now();
@@ -1383,13 +1404,19 @@ export const processVoiceRecordingInternal = internalAction({
       );
 
       if (transcript.length === 0) {
-        throw new Error("Scribe returned an empty transcript");
+        throw new ConversationFailure(
+          "no_speech",
+          "Scribe returned an empty transcript",
+        );
       }
       if (
         inferredDuration !== undefined &&
         inferredDuration > MAX_AUDIO_DURATION_SECONDS
       ) {
-        throw new Error("Recording exceeds the four-hour duration limit");
+        throw new ConversationFailure(
+          "too_long",
+          "Recording exceeds the four-hour duration limit",
+        );
       }
 
       const speakerLabels = defaultSpeakerLabels(transcript);
@@ -1414,6 +1441,7 @@ export const processVoiceRecordingInternal = internalAction({
       await ctx.runMutation(internal.voiceRecordings.markVoiceRecordingFailed, {
         conversationId: args.conversationId,
         clerkOrgId: args.clerkOrgId,
+        reason: failureReasonFrom(error, "transcription"),
       });
       return { status: "failed" as const };
     }
@@ -1477,6 +1505,7 @@ export const analyzeVoiceRecordingInternal = internalAction({
       await ctx.runMutation(internal.voiceRecordings.markVoiceRecordingFailed, {
         conversationId: args.conversationId,
         clerkOrgId: args.clerkOrgId,
+        reason: "analysis",
       });
       return { status: "failed" as const };
     }
