@@ -99,7 +99,7 @@ export const privacyPolicy: LegalDocument = {
     {
       id: "cookies", title: "Cookies and browser storage",
       content: <>
-        <p>Fabric and its authentication services use cookies and similar technologies to support sign-in, session security, and service operation. The application also uses local and session storage for preferences such as theme, navigation, view settings, and product-tour state.</p>
+        <p>Fabric and its authentication services use cookies and similar technologies to support sign-in, session security, and service operation. The application also uses local and session storage for preferences such as theme, navigation, view settings, and whether you skipped the welcome tour.</p>
         <p>If you install Fabric as a web app, a service worker can cache static assets to support the installed experience. This browser storage is separate from the recordings, transcripts, and workspace data maintained by the service.</p>
         <p>You can manage cookies, site data, and microphone permissions in your browser settings. Blocking or clearing necessary storage may sign you out, reset preferences, or prevent features from working. Any optional tracking that requires consent must be handled through an appropriate consent mechanism before it is used.</p>
       </>,

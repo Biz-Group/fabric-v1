@@ -1,8 +1,9 @@
 # Product tour video
 
-Builds the two-minute tour that first-time users open from the "Watch the 2-min tour"
-button in the workspace header (`src/features/shell/product-tour.tsx`). The output
-lives in `public/demo/`.
+Builds the two-minute tour that new members watch in the first-run welcome, and that
+anyone can replay from the header's Help menu (`src/features/onboarding/tour-player.tsx`
+plays it). The output lives in `public/demo/`. The welcome's transcript is read from the
+`.vtt` captions, so keep them in step with the narration.
 
 The video is built from real screens of the `biz-group` tenant. Before any screenshot
 is taken, people's names are swapped for stand-ins in the browser. Captures are then

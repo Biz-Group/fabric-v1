@@ -32,7 +32,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ProductTourButton } from "@/features/shell/product-tour";
+import { HelpMenu } from "@/features/shell/help-menu";
 import { UserMenu } from "@/features/shell/user-menu";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 import {
@@ -537,7 +537,7 @@ export function ProcessAppShell({
   onSearch,
 }: ProcessAppShellProps) {
   return (
-    <WorkspaceAppShell onSearch={onSearch} headerActions={<ProductTourButton />}>
+    <WorkspaceAppShell onSearch={onSearch} headerActions={<HelpMenu />}>
       {children}
     </WorkspaceAppShell>
   );
