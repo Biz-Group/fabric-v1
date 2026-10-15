@@ -29,6 +29,10 @@ import {
   flowStage,
 } from "@/lib/flow-status";
 import { pluralize } from "@/features/insights/insights-derivations";
+import {
+  confidenceTone,
+  STATUS_TONE_TEXT,
+} from "@/features/status/status-meta";
 import { useSummaryOverview } from "@/features/workbench/use-summary-overview";
 import {
   type AutomationOpportunity,
@@ -43,9 +47,9 @@ const KIND_LABEL: Record<AutomationOpportunity["kind"], string> = {
 };
 
 const CONFIDENCE_CLASS: Record<AutomationOpportunity["confidence"], string> = {
-  high: "text-emerald-600 dark:text-emerald-400",
-  medium: "text-amber-600 dark:text-amber-400",
-  low: "text-muted-foreground",
+  high: STATUS_TONE_TEXT[confidenceTone.high],
+  medium: STATUS_TONE_TEXT[confidenceTone.medium],
+  low: STATUS_TONE_TEXT[confidenceTone.low],
 };
 
 const markdownComponents: Components = {
@@ -251,7 +255,7 @@ export function ProcessAutomationsTab({
   return (
     <div className="flex min-h-0 flex-col">
       {(flow.stale || flowHasIncompleteDetails(flow)) && (
-        <div className="border-b bg-amber-50/60 px-4 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+        <div className="border-b border-warning-border bg-warning-subtle px-4 py-2 text-xs text-foreground">
           {flow.stale
             ? "New conversations have landed since this flow was generated. Regenerate the process flow for automations that reflect them."
             : "Some steps were never described, so these briefs report a floor, not a complete picture."}

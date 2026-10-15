@@ -26,9 +26,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { ProcessTreeData } from "@/features/hierarchy/process-tree-navigator";
 import type { RecordingMode } from "@/features/recording/recording-modal";
+import { StatusBadge } from "@/features/status/status-badge";
 import {
-  type Activity,
-  type ActivityTone,
+  STATUS_TONE_SURFACE,
+  STATUS_TONE_TEXT,
+  type StatusMeta,
+} from "@/features/status/status-meta";
+import {
   type HomeDepartmentEntry,
   type HomeProcessEntry,
   departmentInterviewCoverage,
@@ -61,15 +65,6 @@ type WorkspaceHomeProps = {
   onCreateFunction: () => void;
 };
 
-const TONE_STYLES: Record<ActivityTone, string> = {
-  attention:
-    "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200",
-  processing:
-    "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200",
-  failed: "border-destructive/30 bg-destructive/10 text-destructive",
-  gap: "border-border text-muted-foreground",
-};
-
 const ROW_CLASS =
   "org-focus-ring flex min-h-14 w-full min-w-0 items-center gap-3 rounded-md px-2 py-2.5 text-left transition-colors hover:bg-org-accent-subtle";
 
@@ -84,13 +79,13 @@ function RowDetail({
   children,
 }: {
   mobile: boolean;
-  activity: Activity | null;
+  activity: StatusMeta | null;
   children: ReactNode;
 }) {
   return (
     <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
       <span className="truncate">{children}</span>
-      {mobile && activity && <ActivityChip activity={activity} />}
+      {mobile && activity && <StatusBadge meta={activity} />}
     </span>
   );
 }
@@ -100,19 +95,6 @@ const INPUT_MODE_ICONS = {
   voiceRecord: Mic,
   audioUpload: Upload,
 } as const;
-
-function ActivityChip({ activity }: { activity: Activity }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
-        TONE_STYLES[activity.tone],
-      )}
-    >
-      {activity.label}
-    </span>
-  );
-}
 
 function RowIcon({ icon: Icon }: { icon: typeof GitBranch }) {
   return (
@@ -315,7 +297,7 @@ function DepartmentSection({
                       {interviewCountLabel(process.conversationCounts.total)}
                     </RowDetail>
                   </span>
-                  {!mobile && activity && <ActivityChip activity={activity} />}
+                  {!mobile && activity && <StatusBadge meta={activity} />}
                 </button>
                 {canEdit && (
                   <CaptureMenu
@@ -451,7 +433,7 @@ function MyInterviewsSection({
                       {byline ? ` · ${byline}` : ""}
                     </RowDetail>
                   </span>
-                  {!mobile && status && <ActivityChip activity={status} />}
+                  {!mobile && status && <StatusBadge meta={status} />}
                 </button>
               </div>
             );
@@ -476,17 +458,23 @@ function LabelsCallout({
   return (
     <div
       role="status"
-      className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100"
+      className={cn(
+        "mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3",
+        STATUS_TONE_SURFACE.warning,
+      )}
     >
       <div className="flex min-w-0 items-start gap-3">
-        <Tag className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        <Tag
+          className={cn("mt-0.5 size-4 shrink-0", STATUS_TONE_TEXT.warning)}
+          aria-hidden="true"
+        />
         <div className="min-w-0">
           <p className="text-sm font-medium">
             {conversations.length === 1
               ? "One of your interviews needs speaker labels"
               : `${conversations.length} of your interviews need speaker labels`}
           </p>
-          <p className="mt-0.5 text-xs opacity-80">
+          <p className="mt-0.5 text-xs text-muted-foreground">
             Confirm who is speaking so Fabric can finish processing{" "}
             {conversations.length === 1 ? "it" : "them"}.
           </p>
@@ -496,10 +484,7 @@ function LabelsCallout({
         type="button"
         variant="outline"
         size="sm"
-        className={cn(
-          "border-amber-300 bg-background/70 dark:border-amber-500/40",
-          mobile && "h-10 w-full",
-        )}
+        className={cn("border-warning-border", mobile && "h-10 w-full")}
         onClick={() => onOpenConversation(first)}
       >
         Review

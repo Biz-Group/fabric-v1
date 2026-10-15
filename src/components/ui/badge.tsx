@@ -13,12 +13,22 @@ const badgeVariants = cva(
         secondary:
           "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
         destructive:
-          "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
+          "bg-destructive-subtle text-destructive focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
         outline:
           "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground dark:[a]:hover:bg-muted/50",
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
+      },
+      // Status colour, on the semantic tokens. A tone replaces the variant's
+      // colours, so pass one or the other.
+      tone: {
+        success: "border-success-border bg-success-subtle text-success",
+        warning: "border-warning-border bg-warning-subtle text-warning",
+        info: "border-info-border bg-info-subtle text-info",
+        destructive:
+          "border-destructive-border bg-destructive-subtle text-destructive",
+        neutral: "border-border bg-transparent text-muted-foreground",
       },
     },
     defaultVariants: {
@@ -29,22 +39,26 @@ const badgeVariants = cva(
 
 function Badge({
   className,
-  variant = "default",
+  variant,
+  tone,
   render,
   ...props
 }: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
+  // A toned badge skips the default variant, whose solid fill would fight it.
+  const resolvedVariant = variant ?? (tone ? null : "default")
   return useRender({
     defaultTagName: "span",
     props: mergeProps<"span">(
       {
-        className: cn(badgeVariants({ variant }), className),
+        className: cn(badgeVariants({ variant: resolvedVariant, tone }), className),
       },
       props
     ),
     render,
     state: {
       slot: "badge",
-      variant,
+      variant: resolvedVariant,
+      tone,
     },
   })
 }

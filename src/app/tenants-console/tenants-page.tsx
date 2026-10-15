@@ -30,10 +30,12 @@ function formatDate(ts: number) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "active") return <Badge variant="secondary">Active</Badge>;
+  if (status === "active") return <Badge tone="success">Active</Badge>;
+  // Provisioning failed partway; "Retry provisioning" fixes it, so it waits on
+  // a person rather than having failed for good.
   if (status === "needsAttention")
-    return <Badge variant="destructive">Needs attention</Badge>;
-  return <Badge variant="outline">Deleted</Badge>;
+    return <Badge tone="warning">Needs attention</Badge>;
+  return <Badge tone="neutral">Deleted</Badge>;
 }
 
 export default function TenantsListPage() {

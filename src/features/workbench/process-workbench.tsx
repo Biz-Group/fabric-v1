@@ -64,10 +64,17 @@ import {
   WorkspaceHome,
   type MyConversation,
 } from "@/features/home/workspace-home";
-import type {
-  HomeDepartmentEntry,
-  HomeProcessEntry,
+import {
+  interviewCountLabel,
+  type HomeDepartmentEntry,
+  type HomeProcessEntry,
 } from "@/features/home/home-view-model";
+import {
+  overviewRowStatus,
+  processPendingStatusMeta,
+  processRowStatus,
+  type StatusMeta,
+} from "@/features/status/status-meta";
 import {
   rememberRecentProcess,
   useRecentProcessIds,
@@ -456,6 +463,26 @@ export function ProcessWorkbench() {
     () => new Set(attentionProcessIds ?? []),
     [attentionProcessIds],
   );
+  // Phone rows read their status from the tree, so they flag exactly what the
+  // desktop tree does.
+  const treeRowInfo = useMemo(() => {
+    const byId = new Map<string, { status: StatusMeta | null; detail?: string }>();
+    for (const fn of hierarchyTree?.functions ?? []) {
+      byId.set(fn._id, { status: overviewRowStatus(fn.summaryOverview.state) });
+      for (const department of fn.departments) {
+        byId.set(department._id, {
+          status: overviewRowStatus(department.summaryOverview.state),
+        });
+        for (const process of department.processes) {
+          byId.set(process._id, {
+            status: processRowStatus(process.pendingWorkStatus),
+            detail: interviewCountLabel(process.conversationCount),
+          });
+        }
+      }
+    }
+    return byId;
+  }, [hierarchyTree]);
 
   // Display names sourced from the reactive docs so renames reflect immediately,
   // falling back to the snapshot captured at selection time while the doc loads.
@@ -1158,7 +1185,7 @@ export function ProcessWorkbench() {
                 selected={selectedFunctionId === fn._id}
                 indicator="arrow"
                 count={departmentCountByFunction.get(fn._id) ?? 0}
-                status={fn.summaryStale ? "stale" : undefined}
+                status={treeRowInfo.get(fn._id)?.status}
                 onClick={() =>
                   mobile
                     ? handlePreviewFunction(fn._id, fn.name)
@@ -1296,7 +1323,7 @@ export function ProcessWorkbench() {
                 selected={selectedDepartmentId === dept._id}
                 indicator="arrow"
                 count={processCountByDepartment.get(dept._id) ?? 0}
-                status={dept.summaryStale ? "stale" : undefined}
+                status={treeRowInfo.get(dept._id)?.status}
                 onClick={() =>
                   mobile
                     ? handlePreviewDepartment(dept._id, dept.name)
@@ -1393,15 +1420,14 @@ export function ProcessWorkbench() {
                 label={proc.name}
                 selected={selectedProcessId === proc._id}
                 indicator="dot"
+                detail={treeRowInfo.get(proc._id)?.detail}
                 status={
-                  attentionProcessIdSet.has(proc._id)
-                    ? "attention"
-                    : // Read the projection, not the legacy field: a V2-only
-                      // process still has knowledge even once `rollingSummary`
-                      // stops being written.
-                      proc.summaryOverview.format !== "none"
-                      ? "knowledge"
-                      : undefined
+                  treeRowInfo.get(proc._id)?.status ??
+                  // The tree is bounded; past its read limits, fall back to
+                  // the dedicated needs-labels query.
+                  (attentionProcessIdSet.has(proc._id)
+                    ? processPendingStatusMeta.needs_labels
+                    : null)
                 }
                 onClick={() =>
                   mobile

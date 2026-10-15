@@ -27,14 +27,7 @@ import {
   useAudioPlayerTime,
 } from "@/components/ui/audio-player";
 import { AudioScrubber } from "@/components/ui/waveform";
-import {
-  Mic,
-  ChevronRight,
-  Loader2,
-  AlertCircle,
-  ArrowDown,
-  Download,
-} from "lucide-react";
+import { ChevronRight, ArrowDown, Download } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -42,6 +35,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { SpeakerLabelReview } from "@/features/recording/speaker-label-review";
+import { StatusBadge } from "@/features/status/status-badge";
+import { conversationStatusMeta } from "@/features/status/status-meta";
 import { useConversationAudioUrl } from "@/features/conversations/use-conversation-audio-url";
 import { registerBottomDock } from "@/lib/bottom-dock";
 
@@ -1027,10 +1022,8 @@ export function FocusedConversationPlayback({
   conversation: Doc<"conversations">;
   canLabelSpeakers: boolean;
 }) {
-  const isProcessing = conversation.status === "processing";
   const isAwaitingSpeakerLabels =
     conversation.status === "needs_speaker_labels";
-  const isFailed = conversation.status === "failed";
   const isDone = conversation.status === "done";
   const audioUrl = useConversationAudioUrl(
     conversation.clerkOrgId,
@@ -1104,25 +1097,8 @@ export function FocusedConversationPlayback({
                 )}
               </div>
 
-              {isProcessing && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Processing conversation...
-                </div>
-              )}
-
-              {isAwaitingSpeakerLabels && (
-                <div className="flex items-center gap-2 text-xs text-amber-600">
-                  <Mic className="h-3 w-3" />
-                  Speaker labels needed
-                </div>
-              )}
-
-              {isFailed && (
-                <div className="flex items-center gap-2 text-xs text-destructive">
-                  <AlertCircle className="h-3 w-3" />
-                  Processing failed
-                </div>
+              {!isDone && (
+                <StatusBadge meta={conversationStatusMeta[conversation.status]} />
               )}
 
             </div>

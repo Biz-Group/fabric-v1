@@ -628,6 +628,39 @@ describe("Summary V2 compatibility reads", () => {
       }).state,
     ).toBe("current");
   });
+
+  test("lists don't flag 'nothing to build from' as a failure", () => {
+    const emptyRollup = {
+      lastRunState: "failed" as const,
+      lastRunCompletedAt: 1_000,
+      lastError: {
+        code: "no_current_children",
+        message: "No current child overview artifacts are available.",
+        retryable: true,
+      },
+    };
+    // A department with no readable child: undocumented, not failed.
+    expect(
+      getSummaryListMetadata({ ...emptyRollup, hasEligibleSource: false }).state,
+    ).toBe("missing");
+    // A readable child exists now, so the same code is a real failure.
+    expect(
+      getSummaryListMetadata({ ...emptyRollup, hasEligibleSource: true }).state,
+    ).toBe("failed");
+    // A list that can't check stays conservative on the ambiguous code.
+    expect(getSummaryListMetadata(emptyRollup).state).toBe("failed");
+    // The unambiguous empty code never reads as failed.
+    expect(
+      getSummaryListMetadata({
+        ...emptyRollup,
+        lastError: {
+          code: "no_readable_children",
+          message: "No child overview is readable.",
+          retryable: false,
+        },
+      }).state,
+    ).toBe("missing");
+  });
 });
 
 describe("Summary V2 clipboard and export projection", () => {

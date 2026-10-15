@@ -15,6 +15,7 @@ import {
   resolveRecentProcesses,
   treeHasProcesses,
 } from "./home-view-model";
+import { conversationStatusMeta } from "@/features/status/status-meta";
 import {
   MAX_RECENT_PROCESSES,
   parseRecentProcessIds,
@@ -111,8 +112,8 @@ describe("workspace home tree lookups", () => {
 
 describe("workspace home status rules", () => {
   it("flags only processes that need something", () => {
-    expect(describeProcessActivity(processRow("a"))).toEqual({
-      tone: "gap",
+    expect(describeProcessActivity(processRow("a"))).toMatchObject({
+      tone: "neutral",
       label: "No interviews yet",
     });
     expect(
@@ -121,12 +122,12 @@ describe("workspace home status rules", () => {
     expect(
       describeProcessActivity(
         processRow("c", { total: 1, needsSpeakerLabels: 1 }, "needs_labels"),
-      )?.tone,
-    ).toBe("attention");
+      ),
+    ).toBe(conversationStatusMeta.needs_speaker_labels);
     expect(
       describeProcessActivity(processRow("d", { total: 1, failed: 1 }, "failed"))
         ?.tone,
-    ).toBe("failed");
+    ).toBe("destructive");
   });
 
   it("labels interview statuses, leaving finished ones quiet", () => {
@@ -134,7 +135,7 @@ describe("workspace home status rules", () => {
     expect(describeConversationStatus("needs_speaker_labels")?.label).toBe(
       "Needs labels",
     );
-    expect(describeConversationStatus("processing")?.tone).toBe("processing");
+    expect(describeConversationStatus("processing")?.tone).toBe("info");
   });
 
   it("formats counts, names, and times", () => {

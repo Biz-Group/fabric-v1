@@ -31,6 +31,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusIcon } from "@/features/status/status-badge";
+import {
+  overviewRowStatus,
+  processRowStatus,
+  STATUS_TONE_TEXT,
+  type StatusMeta,
+} from "@/features/status/status-meta";
 import { cn } from "@/lib/utils";
 
 export type ProcessTreeData = FunctionReturnType<typeof api.hierarchy.getTree>;
@@ -90,56 +97,60 @@ type ActionItem = {
   destructive?: boolean;
 };
 
+// A hue per function, so its branch is easy to follow. In light mode every
+// level uses -700, the lightest shade that holds 3:1 for every hue on white
+// and on a selected row; the icon shape tells the levels apart. Dark mode has
+// room to step the shade by level.
 const FUNCTION_ICON_TONES = [
   {
     function: "text-rose-700 dark:text-rose-300",
-    department: "text-rose-500 dark:text-rose-400",
-    process: "text-rose-300 dark:text-rose-500",
+    department: "text-rose-700 dark:text-rose-400",
+    process: "text-rose-700 dark:text-rose-500",
   },
   {
     function: "text-orange-700 dark:text-orange-300",
-    department: "text-orange-500 dark:text-orange-400",
-    process: "text-orange-300 dark:text-orange-500",
+    department: "text-orange-700 dark:text-orange-400",
+    process: "text-orange-700 dark:text-orange-500",
   },
   {
     function: "text-amber-700 dark:text-amber-300",
-    department: "text-amber-500 dark:text-amber-400",
-    process: "text-amber-300 dark:text-amber-500",
+    department: "text-amber-700 dark:text-amber-400",
+    process: "text-amber-700 dark:text-amber-500",
   },
   {
     function: "text-lime-700 dark:text-lime-300",
-    department: "text-lime-500 dark:text-lime-400",
-    process: "text-lime-300 dark:text-lime-500",
+    department: "text-lime-700 dark:text-lime-400",
+    process: "text-lime-700 dark:text-lime-500",
   },
   {
     function: "text-emerald-700 dark:text-emerald-300",
-    department: "text-emerald-500 dark:text-emerald-400",
-    process: "text-emerald-300 dark:text-emerald-500",
+    department: "text-emerald-700 dark:text-emerald-400",
+    process: "text-emerald-700 dark:text-emerald-500",
   },
   {
     function: "text-cyan-700 dark:text-cyan-300",
-    department: "text-cyan-500 dark:text-cyan-400",
-    process: "text-cyan-300 dark:text-cyan-500",
+    department: "text-cyan-700 dark:text-cyan-400",
+    process: "text-cyan-700 dark:text-cyan-500",
   },
   {
     function: "text-sky-700 dark:text-sky-300",
-    department: "text-sky-500 dark:text-sky-400",
-    process: "text-sky-300 dark:text-sky-500",
+    department: "text-sky-700 dark:text-sky-400",
+    process: "text-sky-700 dark:text-sky-500",
   },
   {
     function: "text-indigo-700 dark:text-indigo-300",
-    department: "text-indigo-500 dark:text-indigo-400",
-    process: "text-indigo-300 dark:text-indigo-500",
+    department: "text-indigo-700 dark:text-indigo-400",
+    process: "text-indigo-700 dark:text-indigo-500",
   },
   {
     function: "text-violet-700 dark:text-violet-300",
-    department: "text-violet-500 dark:text-violet-400",
-    process: "text-violet-300 dark:text-violet-500",
+    department: "text-violet-700 dark:text-violet-400",
+    process: "text-violet-700 dark:text-violet-500",
   },
   {
     function: "text-fuchsia-700 dark:text-fuchsia-300",
-    department: "text-fuchsia-500 dark:text-fuchsia-400",
-    process: "text-fuchsia-300 dark:text-fuchsia-500",
+    department: "text-fuchsia-700 dark:text-fuchsia-400",
+    process: "text-fuchsia-700 dark:text-fuchsia-500",
   },
 ] as const;
 
@@ -345,6 +356,7 @@ function TreeRow({
   selected,
   count,
   countTitle,
+  status,
   expandable,
   expanded,
   actions,
@@ -358,6 +370,8 @@ function TreeRow({
   selected: boolean;
   count: number;
   countTitle: string;
+  /** Something on this row waiting on a person or still running. */
+  status?: StatusMeta | null;
   expandable?: boolean;
   expanded?: boolean;
   actions: ActionItem[];
@@ -430,6 +444,9 @@ function TreeRow({
         <span className="min-w-0 flex-1 truncate" title={label}>
           {label}
         </span>
+        {/* An icon, not a labelled badge: the tree is narrow, and a label here
+            would cut the name short. */}
+        {status && <StatusIcon meta={status} />}
         {count > 0 && <CountBadge count={count} label={countTitle} />}
       </button>
       <RowActions label={label} items={actions} />
@@ -624,6 +641,7 @@ export function ProcessTreeNavigator({
                     selected={selectedFunctionId === fn._id && !selectedDepartmentId}
                     count={fn.departmentCount}
                     countTitle={countLabel(fn.departmentCount, "department")}
+                    status={overviewRowStatus(fn.summaryOverview.state)}
                     expandable={fn.departmentCount > 0}
                     expanded={functionExpanded}
                     onToggle={() => toggleFunction(fn._id)}
@@ -677,6 +695,9 @@ export function ProcessTreeNavigator({
                               countTitle={countLabel(
                                 department.processCount,
                                 "process",
+                              )}
+                              status={overviewRowStatus(
+                                department.summaryOverview.state,
                               )}
                               expandable={department.processCount > 0}
                               expanded={departmentExpanded}
@@ -734,6 +755,9 @@ export function ProcessTreeNavigator({
                                           process.conversationCount,
                                           "conversation",
                                         )}
+                                        status={processRowStatus(
+                                          process.pendingWorkStatus,
+                                        )}
                                         onSelect={() => {
                                           setExpandedFunctionIds((ids) =>
                                             new Set(ids).add(fn._id),
@@ -789,7 +813,9 @@ export function ProcessTreeNavigator({
 
       {tree && Object.values(tree.truncated).some(Boolean) && (
         <div className="flex shrink-0 items-start gap-2 border-t bg-background px-4 py-3 text-xs text-muted-foreground">
-          <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
+          <AlertCircle
+            className={cn("mt-0.5 size-3.5 shrink-0", STATUS_TONE_TEXT.warning)}
+          />
           <span>Some hierarchy rows are hidden by the current read limits.</span>
         </div>
       )}

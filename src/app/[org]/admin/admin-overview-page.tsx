@@ -10,6 +10,8 @@ import { ConversationTranscriptDialog } from "@/features/admin/conversation-tran
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
+import { StatusBadge } from "@/features/status/status-badge";
+import { conversationStatusMeta } from "@/features/status/status-meta";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -22,27 +24,6 @@ function formatRelative(ts: number): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.round(h / 24);
   return `${d}d ago`;
-}
-
-function StatusDot({
-  status,
-}: {
-  status: "processing" | "needs_speaker_labels" | "done" | "failed";
-}) {
-  const color =
-    status === "done"
-      ? "bg-emerald-500"
-      : status === "failed"
-        ? "bg-destructive"
-        : status === "needs_speaker_labels"
-          ? "bg-sky-500"
-          : "bg-amber-500";
-  return (
-    <span
-      className={`inline-block size-2 shrink-0 rounded-full ${color}`}
-      aria-label={status}
-    />
-  );
 }
 
 export default function AdminOverviewPage() {
@@ -184,7 +165,6 @@ export default function AdminOverviewPage() {
                 onClick={() => setViewingId(r._id)}
                 className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/50"
               >
-                <StatusDot status={r.status} />
                 <div className="flex-1 min-w-0">
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="truncate font-medium">
@@ -202,6 +182,10 @@ export default function AdminOverviewPage() {
                     </p>
                   )}
                 </div>
+                <StatusBadge
+                  meta={conversationStatusMeta[r.status]}
+                  className="shrink-0"
+                />
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {formatRelative(r._creationTime)}
                 </span>

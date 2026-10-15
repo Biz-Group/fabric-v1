@@ -217,7 +217,7 @@ function WorkspaceNav({
           className={cn("flex flex-col gap-1", sectionIndex > 0 && "pt-3")}
         >
           {section.label && !collapsed && (
-            <p className="px-2.5 pb-1 text-[11px] font-medium uppercase text-sidebar-foreground/48">
+            <p className="px-2.5 pb-1 text-[11px] font-medium uppercase text-sidebar-foreground/60">
               {section.label}
             </p>
           )}

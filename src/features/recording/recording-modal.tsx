@@ -68,6 +68,7 @@ import {
   Keyboard,
   CheckCircle2,
   ChevronRight,
+  Loader2,
   RotateCcw,
   Upload,
 } from "lucide-react";
@@ -1305,7 +1306,7 @@ export function RecordingModal({
               </div>
 
               {isOnBehalf && (
-                <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-sm leading-relaxed">
+                <div className="flex items-start gap-2.5 rounded-lg border border-warning-border bg-warning-subtle p-4 text-sm leading-relaxed">
                   <Checkbox
                     id="consent-attestation"
                     checked={consentAttested}
@@ -1374,7 +1375,7 @@ export function RecordingModal({
               {micFailure && (
                 <div
                   role="alert"
-                  className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+                  className="flex items-start gap-2 rounded-lg border border-destructive-border bg-destructive-subtle p-3 text-sm text-destructive"
                 >
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   <div>
@@ -1575,7 +1576,7 @@ export function RecordingModal({
               )}
 
               {voiceRecordError && (
-                <div className="flex max-w-sm items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-left text-sm text-destructive">
+                <div className="flex max-w-sm items-start gap-2 rounded-lg border border-destructive-border bg-destructive-subtle p-3 text-left text-sm text-destructive">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   <p>{voiceRecordError}</p>
                 </div>
@@ -1777,7 +1778,7 @@ export function RecordingModal({
                           onClick={() => setIsMuted((prev) => !prev)}
                           className={cn(
                             "h-10 w-10 rounded-full",
-                            isMuted && "bg-destructive/10 text-destructive"
+                            isMuted && "bg-destructive-subtle text-destructive"
                           )}
                           aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
                         >
@@ -1825,7 +1826,7 @@ export function RecordingModal({
                   {/* Status indicator */}
                   {isConnected && (
                     <div className="mt-2 flex items-center justify-center gap-1.5">
-                      <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-success" />
                       <span className="text-xs text-muted-foreground">
                         {conversation.isSpeaking
                           ? "Fabric is speaking..."
@@ -1946,7 +1947,7 @@ export function RecordingModal({
               <DialogTitle className="flex items-center gap-2">
                 {postCallResult?.status === "done" ? (
                   <>
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    <CheckCircle2 className="h-5 w-5 text-success" />
                     {mode === "audioUpload"
                       ? "Audio Uploaded"
                       : mode === "voiceRecord"
@@ -1956,7 +1957,8 @@ export function RecordingModal({
                 ) : postCallResult?.status === "timeout" ||
                   postCallResult?.status === "processing" ? (
                   <>
-                    <AlertTriangle className="h-5 w-5 text-amber-500" />
+                    {/* Still running, not a problem: the in-progress tone. */}
+                    <Loader2 className="h-5 w-5 animate-spin text-info motion-reduce:animate-none" />
                     Still Processing
                   </>
                 ) : (

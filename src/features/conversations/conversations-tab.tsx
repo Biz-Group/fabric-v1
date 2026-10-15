@@ -5,9 +5,7 @@ import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import type { LucideIcon } from "lucide-react";
 import {
-  AlertCircle,
   Bot,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock,
@@ -22,7 +20,11 @@ import {
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { FocusedConversationPlayback } from "@/features/conversations/conversation-log";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/features/status/status-badge";
+import {
+  conversationStatusMeta,
+  STATUS_TONE_SURFACE,
+} from "@/features/status/status-meta";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -62,35 +64,6 @@ type ProcessConversationListProps = {
   focusConversationJumpKey?: number;
 };
 
-const STATUS_META: Record<
-  ConversationStatus,
-  { label: string; className: string; icon: LucideIcon }
-> = {
-  done: {
-    label: "Completed",
-    className:
-      "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200",
-    icon: CheckCircle2,
-  },
-  processing: {
-    label: "In progress",
-    className:
-      "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200",
-    icon: Loader2,
-  },
-  needs_speaker_labels: {
-    label: "Needs labels",
-    className:
-      "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200",
-    icon: Mic,
-  },
-  failed: {
-    label: "Failed",
-    className: "border-destructive/30 bg-destructive/10 text-destructive",
-    icon: AlertCircle,
-  },
-};
-
 const TYPE_META: Record<
   ConversationInputMode,
   { label: string; icon: LucideIcon }
@@ -102,10 +75,10 @@ const TYPE_META: Record<
 
 const STATUS_FILTER_ITEMS: Record<StatusFilter, string> = {
   all: "All conversations",
-  done: "Completed",
-  processing: "In progress",
-  needs_speaker_labels: "Needs labels",
-  failed: "Failed",
+  done: conversationStatusMeta.done.label,
+  processing: conversationStatusMeta.processing.label,
+  needs_speaker_labels: conversationStatusMeta.needs_speaker_labels.label,
+  failed: conversationStatusMeta.failed.label,
 };
 
 const TYPE_FILTER_ITEMS: Record<TypeFilter, string> = {
@@ -199,20 +172,20 @@ function ConversationRow({
   buttonRef?: Ref<HTMLButtonElement>;
 }) {
   const type = TYPE_META[conversation.inputMode];
-  const status = STATUS_META[conversation.status];
+  const status = conversationStatusMeta[conversation.status];
   const TypeIcon = type.icon;
-  const StatusIcon = status.icon;
   const title = conversationTitle(conversation);
-  const needsLabels = conversation.status === "needs_speaker_labels";
-  const failed = conversation.status === "failed";
+  // Rows that need something from someone are tinted in their status tone.
+  const highlighted =
+    conversation.status === "needs_speaker_labels" ||
+    conversation.status === "failed";
 
   return (
     <div
       className={cn(
         "group flex min-h-24 items-stretch rounded-lg border bg-background transition-colors",
         selected && "border-org-accent-border bg-org-accent-selected ring-1 ring-org-accent-border",
-        needsLabels && !selected && "border-amber-200 bg-amber-50/50 dark:border-amber-500/30 dark:bg-amber-500/10",
-        failed && !selected && "border-destructive/30 bg-destructive/5",
+        highlighted && !selected && STATUS_TONE_SURFACE[status.tone],
       )}
     >
       <div className="flex shrink-0 items-start p-3 pr-0">
@@ -257,16 +230,7 @@ function ConversationRow({
             <span className="min-w-0 max-w-full truncate text-sm font-medium text-foreground">
               {title}
             </span>
-            <Badge variant="outline" className={cn("gap-1.5", status.className)}>
-              <StatusIcon
-                className={cn(
-                  "size-3",
-                  conversation.status === "processing" && "animate-spin",
-                )}
-                aria-hidden="true"
-              />
-              {status.label}
-            </Badge>
+            <StatusBadge meta={status} />
           </span>
           <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             {/* The title now describes the conversation rather than naming the
@@ -498,11 +462,11 @@ export function ProcessConversationsTab({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All conversations</SelectItem>
-                  <SelectItem value="done">Completed</SelectItem>
-                  <SelectItem value="processing">In progress</SelectItem>
-                  <SelectItem value="needs_speaker_labels">Needs labels</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
+                  {Object.entries(STATUS_FILTER_ITEMS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <Select

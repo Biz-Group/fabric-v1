@@ -36,6 +36,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/features/status/status-badge";
+import { processPendingStatusMeta } from "@/features/status/status-meta";
 import { cn } from "@/lib/utils";
 import styles from "./process-header.module.css";
 
@@ -116,19 +118,6 @@ function getInitials(name: string | null | undefined) {
     .join("");
 }
 
-function statusClassName(status: ProcessWorkbench["pendingWork"]["status"]) {
-  if (status === "needs_labels") {
-    return "border-amber-500 bg-amber-500 text-white hover:bg-amber-500/90";
-  }
-  if (status === "failed") {
-    return "border-destructive/30 bg-destructive/10 text-destructive";
-  }
-  if (status === "processing") {
-    return "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200";
-  }
-  return "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200";
-}
-
 function ProcessStatusBadge({
   workbench,
   onJumpToLabeling,
@@ -142,9 +131,7 @@ function ProcessStatusBadge({
 
   if (workbench === null) {
     return (
-      <Badge variant="outline" className="border-muted-foreground/30 text-muted-foreground">
-        Unavailable
-      </Badge>
+      <Badge tone="neutral">Unavailable</Badge>
     );
   }
 
@@ -152,36 +139,25 @@ function ProcessStatusBadge({
     return null;
   }
 
+  const meta = processPendingStatusMeta[workbench.pendingWork.status];
+
   if (workbench.pendingWork.status === "needs_labels") {
     return (
-      <Badge
-        variant="outline"
+      <StatusBadge
+        meta={meta}
         render={
           <button
             type="button"
-            aria-label={`${workbench.pendingWork.label}, jump to labeling`}
+            aria-label={`${meta.label}, jump to labeling`}
           />
         }
-          className={cn(
-          "gap-1.5 focus-visible:ring-3 focus-visible:ring-org-accent-ring/35",
-          statusClassName(workbench.pendingWork.status),
-        )}
+        className="cursor-pointer hover:border-warning focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
         onClick={onJumpToLabeling}
-      >
-        {workbench.pendingWork.label}
-      </Badge>
+      />
     );
   }
 
-  return (
-    <Badge
-      variant="outline"
-      className={cn("gap-1.5", statusClassName(workbench.pendingWork.status))}
-    >
-      <span className="size-1.5 rounded-full bg-current" aria-hidden />
-      {workbench.pendingWork.label}
-    </Badge>
-  );
+  return <StatusBadge meta={meta} />;
 }
 
 function ProcessMetadata({
@@ -585,12 +561,7 @@ export function ProcessHeader({
             dateTime={lastUpdatedDateTime}
           />
           {workbench?.flow?.stale && (
-            <Badge
-              variant="outline"
-              className="border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200"
-            >
-              Flow stale
-            </Badge>
+            <Badge tone="warning">Flow out of date</Badge>
           )}
         </div>
 

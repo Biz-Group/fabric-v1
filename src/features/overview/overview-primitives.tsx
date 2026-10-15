@@ -2,12 +2,9 @@
 
 import { Fragment, useState, type ReactNode } from "react";
 import {
-  AlertTriangle,
   ArrowUpRight,
   Check,
-  CheckCircle2,
   ChevronDown,
-  CircleDashed,
   Clock3,
   Copy,
   Loader2,
@@ -19,6 +16,11 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { splitEmphasisRuns } from "@/lib/inline-emphasis";
 import { cn } from "@/lib/utils";
+import {
+  overviewStateMeta,
+  STATUS_TONE_CHIP,
+  type StatusTone,
+} from "@/features/status/status-meta";
 import {
   evidenceStrengthLabel,
   formatGeneratedTime,
@@ -55,28 +57,11 @@ export type OverviewFinding = {
 
 export type OverviewCopyState = "idle" | "copying" | "copied" | "failed";
 
-const STATE_STYLES: Record<OverviewState, string> = {
-  missing: "border-border bg-muted/60 text-muted-foreground",
-  current:
-    "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200",
-  stale:
-    "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200",
-  refreshing:
-    "border-org-accent-border bg-org-accent-subtle text-org-accent-selected-foreground",
-  partial:
-    "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200",
-  failed:
-    "border-destructive/30 bg-destructive/10 text-destructive dark:border-destructive/40",
+const EVIDENCE_TONE: Record<EvidenceLevel, StatusTone> = {
+  corroborated: "success",
+  single_source: "neutral",
+  inferred_gap: "warning",
 };
-
-const STATE_ICONS = {
-  missing: CircleDashed,
-  current: CheckCircle2,
-  stale: AlertTriangle,
-  refreshing: Loader2,
-  partial: AlertTriangle,
-  failed: AlertTriangle,
-} satisfies Record<OverviewState, typeof CircleDashed>;
 
 /**
  * The lifecycle chip. When the state carries an explanation it becomes a
@@ -96,18 +81,19 @@ export function OverviewStateBadge({
   controls?: string;
   onToggle?: () => void;
 }) {
-  const Icon = STATE_ICONS[state];
-  const label = OVERVIEW_STATE_META[state].label;
+  const meta = overviewStateMeta[state];
+  const Icon = meta.icon;
+  const label = meta.label;
   const chipClass = cn(
     "inline-flex min-h-6 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
-    STATE_STYLES[state],
+    STATUS_TONE_CHIP[meta.tone],
   );
   const body = (
     <>
       <Icon
         className={cn(
           "size-3.5 shrink-0",
-          state === "refreshing" && "animate-spin motion-reduce:animate-none",
+          meta.busy && "animate-spin motion-reduce:animate-none",
         )}
         aria-hidden="true"
       />
@@ -372,7 +358,7 @@ export function OverviewLead({
           hidden={!detailOpen}
           className={cn(
             "mt-3 max-w-2xl border-l-2 px-4 py-2 text-sm leading-6 text-muted-foreground",
-            state === "missing" ? "border-border" : "border-amber-500",
+            state === "missing" ? "border-border" : "border-warning",
           )}
         >
           {detail}
@@ -404,12 +390,7 @@ function EvidenceStrength({
     <span
       className={cn(
         "inline-flex min-h-6 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
-        level === "corroborated" &&
-          "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200",
-        level === "single_source" &&
-          "border-border bg-muted/50 text-muted-foreground",
-        level === "inferred_gap" &&
-          "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200",
+        STATUS_TONE_CHIP[EVIDENCE_TONE[level]],
       )}
     >
       <ShieldCheck className="size-3" aria-hidden="true" />

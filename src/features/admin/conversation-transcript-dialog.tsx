@@ -10,7 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/features/status/status-badge";
+import { conversationStatusMeta } from "@/features/status/status-meta";
 
 type TranscriptMessage = {
   role: string;
@@ -90,7 +91,7 @@ export function ConversationTranscriptDialog({
         {conversation && (
           <div className="space-y-4 max-h-[60vh] overflow-y-auto">
             <div className="flex items-center gap-2">
-              <StatusBadge status={conversation.status} />
+              <StatusBadge meta={conversationStatusMeta[conversation.status]} />
             </div>
 
             {conversation.summary && (
@@ -140,17 +141,4 @@ export function ConversationTranscriptDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-function StatusBadge({
-  status,
-}: {
-  status: "processing" | "needs_speaker_labels" | "done" | "failed";
-}) {
-  if (status === "done") return <Badge variant="secondary">Done</Badge>;
-  if (status === "failed") return <Badge variant="destructive">Failed</Badge>;
-  if (status === "needs_speaker_labels") {
-    return <Badge variant="outline">Needs Speaker Labels</Badge>;
-  }
-  return <Badge variant="outline">Processing</Badge>;
 }

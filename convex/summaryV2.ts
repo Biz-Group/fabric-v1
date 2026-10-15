@@ -1169,6 +1169,44 @@ export type SummaryListMetadata = {
   } | null;
 };
 
+/**
+ * Codes a scan records when it found nothing to read. Both levels reach this:
+ * a process with no completed conversation, a rollup with no child holding a
+ * readable overview. Neither is a failure — the run had nothing to work on.
+ */
+const EMPTY_SOURCE_CODES = new Set(["no_evidence_sources", "no_readable_children"]);
+
+/**
+ * The retryable codes those two outcomes used to share with real failures,
+ * before the scans told the cases apart. A live source check separates them on
+ * rows already carrying one.
+ */
+const AMBIGUOUS_EMPTY_SOURCE_CODES = new Set([
+  "no_current_evidence",
+  "no_current_children",
+]);
+
+/**
+ * Whether a recorded failure is really "nothing to build from" wearing a
+ * failure's clothes.
+ *
+ * A process with no completed conversation used to reach the source scan, find
+ * zero sources, and record a retryable failure; a department whose processes
+ * had no overviews yet did the same. The surface then read `failed` forever —
+ * "the previous overview remains available" over a row that never had one, plus
+ * an invitation to retry that could only fail the same way. Nothing failed
+ * there: the entity is simply undocumented, which `missing` already says, and
+ * which the empty state already explains.
+ */
+export function isEmptySourceFailure(
+  error: SummaryRunError | null,
+  hasEligibleSource: boolean,
+): boolean {
+  if (!error) return false;
+  if (EMPTY_SOURCE_CODES.has(error.code)) return true;
+  return AMBIGUOUS_EMPTY_SOURCE_CODES.has(error.code) && !hasEligibleSource;
+}
+
 export function getSummaryListMetadata(input: {
   summaryV2?: SummaryArtifactV2;
   legacyMarkdown?: string | null;
@@ -1177,6 +1215,13 @@ export function getSummaryListMetadata(input: {
   refreshScheduledAt?: number;
   lastRunState?: SummaryRunState;
   lastRunCompletedAt?: number;
+  lastError?: SummaryRunError | null;
+  /**
+   * Whether the entity has anything a run could read, as the overview surface
+   * judges it. Lists that can't answer cheaply leave it out, and an ambiguous
+   * empty-source failure then still reads as failed.
+   */
+  hasEligibleSource?: boolean;
   now?: number;
 }): SummaryListMetadata {
   const generatedAt = input.summaryV2?.provenance.generatedAt ??
@@ -1185,12 +1230,18 @@ export function getSummaryListMetadata(input: {
   const refreshing =
     input.refreshScheduledAt !== undefined &&
     now - input.refreshScheduledAt < 10 * 60_000;
+  // Same rule as the overview surface, so a list never flags a failure the
+  // entity's own page doesn't show.
   const failed =
     !refreshing &&
     input.lastRunState === "failed" &&
     (input.lastRunCompletedAt === undefined ||
       generatedAt === null ||
-      input.lastRunCompletedAt >= generatedAt);
+      input.lastRunCompletedAt >= generatedAt) &&
+    !isEmptySourceFailure(
+      input.lastError ?? null,
+      input.hasEligibleSource ?? true,
+    );
 
   if (input.summaryV2) {
     const coverage = input.summaryV2.coverage;
@@ -1241,6 +1292,7 @@ export function toLightweightSummaryListRow<
     summaryRegenScheduledAt?: number;
     summaryV2LastRunState?: SummaryRunState;
     summaryV2LastCompletedAt?: number;
+    summaryV2LastError?: SummaryRunError;
   },
 >(
   row: T,
@@ -1255,6 +1307,7 @@ export function toLightweightSummaryListRow<
       refreshScheduledAt: row.summaryRegenScheduledAt,
       lastRunState: row.summaryV2LastRunState,
       lastRunCompletedAt: row.summaryV2LastCompletedAt,
+      lastError: row.summaryV2LastError,
     }),
   };
 }

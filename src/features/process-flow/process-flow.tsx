@@ -850,12 +850,12 @@ function ProcessFlowInner({
             user asked for something and did not get it — but the flow below is
             their real previous version, not a broken one. */}
           {showingRetained && (
-            <div className="absolute top-3 left-3 right-12 z-10 md:right-auto">
-              <div className="flex max-w-full flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs dark:border-amber-800 dark:bg-amber-950">
-                <AlertCircle className="h-3 w-3 shrink-0 text-amber-700 dark:text-amber-400" />
-                <span className="text-amber-700 dark:text-amber-400">
-                  Couldn&apos;t refresh — showing the previous version
-                </span>
+            // The card underneath keeps the translucent dark-mode tint opaque
+            // over the canvas.
+            <div className="absolute top-3 left-3 right-12 z-10 rounded-lg bg-card md:right-auto">
+              <div className="flex max-w-full flex-wrap items-center gap-2 rounded-lg border border-warning-border bg-warning-subtle px-3 py-1.5 text-xs text-warning">
+                <AlertCircle className="h-3 w-3 shrink-0" />
+                <span>Couldn&apos;t refresh — showing the previous version</span>
                 {canEdit && (
                   <Button
                     variant="ghost"
@@ -880,11 +880,9 @@ function ProcessFlowInner({
           {stage !== "details" &&
             !showingRetained &&
             (isStale || hasNewerConversations) && (
-              <div className="absolute left-3 right-12 top-3 z-10 md:right-auto">
-                <div className="flex max-w-full flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs dark:border-amber-800 dark:bg-amber-950">
-                  <span className="text-amber-700 dark:text-amber-400">
-                    New data available
-                  </span>
+              <div className="absolute left-3 right-12 top-3 z-10 rounded-lg bg-card md:right-auto">
+                <div className="flex max-w-full flex-wrap items-center gap-2 rounded-lg border border-warning-border bg-warning-subtle px-3 py-1.5 text-xs text-warning">
+                  <span>New data available</span>
                   {canEdit && (
                     <Button
                       variant="ghost"
@@ -1570,9 +1568,7 @@ function InsightsBar({
             <span
               className={cn(
                 "flex items-center gap-1",
-                automationUnreviewed
-                  ? "text-muted-foreground"
-                  : "text-green-600 dark:text-green-400",
+                automationUnreviewed ? "text-muted-foreground" : "text-success",
               )}
               title={
                 automationUnreviewed
@@ -1615,15 +1611,12 @@ const SPOTLIGHT_TONE_CLASSES = {
   },
   danger: {
     inactive:
-      "text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:border-red-900 dark:hover:bg-red-950/50 dark:hover:text-red-300",
-    active:
-      "border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300",
+      "text-destructive hover:border-destructive-border hover:bg-destructive-subtle",
+    active: "border-destructive bg-destructive-subtle text-destructive",
   },
   success: {
-    inactive:
-      "text-green-600 hover:border-green-200 hover:bg-green-50 hover:text-green-700 dark:text-green-400 dark:hover:border-green-900 dark:hover:bg-green-950/50 dark:hover:text-green-300",
-    active:
-      "border-green-300 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950/60 dark:text-green-300",
+    inactive: "text-success hover:border-success-border hover:bg-success-subtle",
+    active: "border-success bg-success-subtle text-success",
   },
 } as const;
 

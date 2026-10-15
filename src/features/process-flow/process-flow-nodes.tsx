@@ -16,9 +16,15 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  automationPotentialTone,
+  confidenceTone,
+  STATUS_TONE_CHIP,
+} from "@/features/status/status-meta";
 import type { ProcessFlowNodeData } from "@/features/process-flow/use-process-flow-layout";
 
-// Category config: color, icon, label
+// Category config: color, icon, label. These hues name a kind of step, not a
+// status, so they stay on the raw palette rather than the status tones.
 const CATEGORY_CONFIG = {
   start: {
     color: "border-l-emerald-500",
@@ -43,7 +49,8 @@ const CATEGORY_CONFIG = {
   },
   decision: {
     color: "border-l-amber-500",
-    iconBg: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    // -700: amber-600 is under 3:1 on its own tint.
+    iconBg: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
     badgeClass: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
     Icon: GitBranch,
     label: "Decision",
@@ -62,13 +69,6 @@ const CATEGORY_CONFIG = {
     Icon: Clock,
     label: "Wait",
   },
-} as const;
-
-const AUTOMATION_COLORS = {
-  high: "bg-green-500/10 text-green-700 dark:text-green-400",
-  medium: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400",
-  low: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
-  none: "",
 } as const;
 
 function FlowNodeBase({
@@ -153,7 +153,12 @@ function FlowNodeBase({
             {config.label}
           </span>
           {isDetailed && data.confidence !== "high" && (
-            <span className="inline-flex items-center rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            <span
+              className={cn(
+                "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px]",
+                STATUS_TONE_CHIP[confidenceTone[data.confidence]],
+              )}
+            >
               {data.confidence} conf.
             </span>
           )}
@@ -161,7 +166,7 @@ function FlowNodeBase({
             <span
               className={cn(
                 "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                AUTOMATION_COLORS[data.automationPotential],
+                STATUS_TONE_CHIP[automationPotentialTone[data.automationPotential]],
               )}
             >
               <Bot className="h-2.5 w-2.5" />
@@ -215,13 +220,13 @@ function FlowNodeBase({
             data.estimatedDuration) && (
             <div className="flex items-center gap-2 border-t border-border/50 px-3 py-1.5">
               {data.isBottleneck && (
-                <span className="flex items-center gap-0.5 text-[10px] text-red-600 dark:text-red-400">
+                <span className="flex items-center gap-0.5 text-[10px] text-destructive">
                   <AlertTriangle className="h-2.5 w-2.5" />
                   bottleneck
                 </span>
               )}
               {data.isTribalKnowledge && (
-                <span className="flex items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400">
+                <span className="flex items-center gap-0.5 text-[10px] text-warning">
                   <KeyRound className="h-2.5 w-2.5" />
                   tribal
                 </span>

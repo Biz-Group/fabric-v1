@@ -32,6 +32,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import type { StatusTone } from "@/features/status/status-meta";
 import { describeError } from "@/lib/user-error-message";
 
 type ThemeTokens = {
@@ -117,13 +118,15 @@ function formatDate(ts?: number | null) {
   });
 }
 
-function statusVariant(
+function statusTone(
   status?: "pending" | "extracting" | "ready" | "failed" | "override",
-): "default" | "secondary" | "outline" | "destructive" {
-  if (status === "ready" || status === "override") return "default";
+): StatusTone {
+  if (status === "ready" || status === "override") return "success";
   if (status === "failed") return "destructive";
-  if (status === "extracting") return "secondary";
-  return "outline";
+  if (status === "extracting") return "info";
+  // A generated accent waits for an admin to approve it.
+  if (status === "pending") return "warning";
+  return "neutral";
 }
 
 function getRestrainedPreviewTokens(tokens: ThemeTokens): ThemeTokens {
@@ -562,7 +565,7 @@ export default function AdminAppearancePage() {
             Generate and approve a restrained workspace accent from your organization logo.
           </p>
         </div>
-        <Badge variant={statusVariant(theme?.status)}>{statusLabel}</Badge>
+        <Badge tone={statusTone(theme?.status)}>{statusLabel}</Badge>
       </div>
 
       <Card>

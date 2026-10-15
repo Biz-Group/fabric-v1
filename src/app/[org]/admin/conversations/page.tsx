@@ -58,6 +58,8 @@ import {
   downloadCsv,
 } from "@/features/admin/conversations-export";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
+import { StatusBadge } from "@/features/status/status-badge";
+import { conversationStatusMeta } from "@/features/status/status-meta";
 import { describeError } from "@/lib/user-error-message";
 
 type Status = "processing" | "needs_speaker_labels" | "done" | "failed";
@@ -80,14 +82,13 @@ function formatDuration(seconds: number | null | undefined): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function StatusBadge({ status }: { status: Status }) {
-  if (status === "done") return <Badge variant="secondary">Done</Badge>;
-  if (status === "failed") return <Badge variant="destructive">Failed</Badge>;
-  if (status === "needs_speaker_labels") {
-    return <Badge variant="outline">Needs Speaker Labels</Badge>;
-  }
-  return <Badge variant="outline">Processing</Badge>;
-}
+const STATUS_FILTER_ITEMS: Record<StatusFilter, string> = {
+  all: "All statuses",
+  done: conversationStatusMeta.done.label,
+  processing: conversationStatusMeta.processing.label,
+  needs_speaker_labels: conversationStatusMeta.needs_speaker_labels.label,
+  failed: conversationStatusMeta.failed.label,
+};
 
 function getConversationTypeLabel(inputMode: ConversationRow["inputMode"]) {
   if (inputMode === "voiceRecord") return "Voice Recording";
@@ -290,19 +291,18 @@ export default function AdminConversationsPage() {
         </div>
         <Select
           value={statusFilter}
+          items={STATUS_FILTER_ITEMS}
           onValueChange={(val) => setStatusFilter(val as StatusFilter)}
         >
-          <SelectTrigger size="sm" className="w-[160px]">
+          <SelectTrigger size="sm" className="w-[160px]" aria-label="Status filter">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="done">Done</SelectItem>
-            <SelectItem value="processing">Processing</SelectItem>
-            <SelectItem value="needs_speaker_labels">
-              Needs speaker labels
-            </SelectItem>
-            <SelectItem value="failed">Failed</SelectItem>
+            {Object.entries(STATUS_FILTER_ITEMS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         {processIdFilter && (
@@ -374,7 +374,7 @@ export default function AdminConversationsPage() {
                       {formatDuration(r.durationSeconds)}
                     </TableCell>
                     <TableCell>
-                      <StatusBadge status={r.status} />
+                      <StatusBadge meta={conversationStatusMeta[r.status]} />
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>

@@ -1,9 +1,16 @@
+import { CircleDashed } from "lucide-react";
 import type {
   ProcessTreeData,
   ProcessTreeDepartment,
   ProcessTreeFunction,
   ProcessTreeProcess,
 } from "@/features/hierarchy/process-tree-navigator";
+import {
+  conversationStatusMeta,
+  processRowStatus,
+  type ConversationStatus,
+  type StatusMeta,
+} from "@/features/status/status-meta";
 
 // Pure derivations for the workspace home. Everything here reads the hierarchy
 // tree the navigator already loaded, so the home adds no per-row queries.
@@ -17,9 +24,11 @@ export type HomeProcessEntry = HomeDepartmentEntry & {
   process: ProcessTreeProcess;
 };
 
-export type ActivityTone = "attention" | "processing" | "failed" | "gap";
-
-export type Activity = { tone: ActivityTone; label: string };
+const NO_INTERVIEWS_YET: StatusMeta = {
+  label: "No interviews yet",
+  tone: "neutral",
+  icon: CircleDashed,
+};
 
 export function findTreeDepartment(
   tree: ProcessTreeData,
@@ -76,34 +85,18 @@ export function departmentInterviewCoverage(
  * gap the home exists to surface. */
 export function describeProcessActivity(
   process: ProcessTreeProcess,
-): Activity | null {
-  switch (process.pendingWorkStatus) {
-    case "needs_labels":
-      return { tone: "attention", label: "Needs labels" };
-    case "processing":
-      return { tone: "processing", label: "Processing" };
-    case "failed":
-      return { tone: "failed", label: "Failed" };
-    case "current":
-      return process.conversationCounts.total === 0
-        ? { tone: "gap", label: "No interviews yet" }
-        : null;
-  }
+): StatusMeta | null {
+  return (
+    processRowStatus(process.pendingWorkStatus) ??
+    (process.conversationCounts.total === 0 ? NO_INTERVIEWS_YET : null)
+  );
 }
 
+/** Finished interviews stay quiet; the rest say what they're waiting on. */
 export function describeConversationStatus(
-  status: "processing" | "needs_speaker_labels" | "done" | "failed",
-): Activity | null {
-  switch (status) {
-    case "needs_speaker_labels":
-      return { tone: "attention", label: "Needs labels" };
-    case "processing":
-      return { tone: "processing", label: "Processing" };
-    case "failed":
-      return { tone: "failed", label: "Failed" };
-    case "done":
-      return null;
-  }
+  status: ConversationStatus,
+): StatusMeta | null {
+  return status === "done" ? null : conversationStatusMeta[status];
 }
 
 export function interviewCountLabel(count: number) {

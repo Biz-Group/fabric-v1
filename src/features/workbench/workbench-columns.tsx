@@ -1,6 +1,8 @@
 import type { ComponentType, ReactNode } from "react";
 import { ChevronRight, Plus, SquarePen, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/features/status/status-badge";
+import type { StatusMeta } from "@/features/status/status-meta";
 import { cn } from "@/lib/utils";
 
 // Presentational building blocks for the mobile process navigation columns
@@ -9,19 +11,12 @@ import { cn } from "@/lib/utils";
 
 // --- Column Item ---
 
-export type RowStatus = "attention" | "stale" | "knowledge";
-
-const ROW_STATUS_META: Record<RowStatus, { title: string; tone: string }> = {
-  attention: { title: "A conversation needs speaker labels", tone: "bg-amber-500" },
-  stale: { title: "Summary is out of date", tone: "bg-amber-500" },
-  knowledge: { title: "Has a summary", tone: "bg-emerald-500/70" },
-};
-
 export function ColumnItem({
   label,
   selected,
   indicator,
   count,
+  detail,
   status,
   onClick,
   onNavigate,
@@ -35,8 +30,10 @@ export function ColumnItem({
   indicator: "arrow" | "dot";
   /** Child count for parent rows; suppresses the drill chevron when 0. */
   count?: number;
-  /** Always-visible status dot conveying scent. */
-  status?: RowStatus;
+  /** Muted second line, e.g. "3 interviews". */
+  detail?: string;
+  /** Shown on the second line, as a badge with its label. */
+  status?: StatusMeta | null;
   onClick: () => void;
   onNavigate?: () => void;
   navigateLabel?: string;
@@ -77,8 +74,16 @@ export function ColumnItem({
           mobile ? "min-h-14 px-4 py-3 text-base" : "px-3 py-2.5 text-sm"
         )}
       >
-        <span className="truncate" title={label}>
-          {label}
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate" title={label}>
+            {label}
+          </span>
+          {(detail || status) && (
+            <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs font-normal text-muted-foreground">
+              {detail && <span className="truncate">{detail}</span>}
+              {status && <StatusBadge meta={status} />}
+            </span>
+          )}
         </span>
       </button>
       <div
@@ -114,17 +119,6 @@ export function ColumnItem({
           >
             <Trash2 className={mobile ? "h-4 w-4" : "h-3 w-3"} />
           </button>
-        )}
-        {/* Always-visible scent: status dot + child count */}
-        {status && (
-          <span
-            className={cn(
-              "inline-block h-2 w-2 shrink-0 rounded-full",
-              ROW_STATUS_META[status].tone
-            )}
-            title={ROW_STATUS_META[status].title}
-            aria-label={ROW_STATUS_META[status].title}
-          />
         )}
         {count !== undefined && count > 0 && (
           <span
@@ -224,7 +218,7 @@ export function EmptyState({
       </div>
       <div className="space-y-1">
         <p className="text-sm font-medium text-muted-foreground">{title}</p>
-        <p className="max-w-[200px] text-xs leading-relaxed text-muted-foreground/70">
+        <p className="max-w-[200px] text-xs leading-relaxed text-muted-foreground">
           {description}
         </p>
       </div>

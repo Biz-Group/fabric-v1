@@ -31,6 +31,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
+  automationPotentialTone,
+  confidenceTone,
+  STATUS_TONE_CHIP,
+  STATUS_TONE_SURFACE,
+  STATUS_TONE_TEXT,
+} from "@/features/status/status-meta";
+import {
   flowDetailProgress,
   flowHasIncompleteDetails,
   flowStage,
@@ -87,25 +94,22 @@ const AUTOMATION_LABELS: Record<
 > = {
   high: {
     label: "High",
-    className:
-      "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200",
+    className: STATUS_TONE_CHIP[automationPotentialTone.high],
     rank: 3,
   },
   medium: {
     label: "Medium",
-    className:
-      "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200",
+    className: STATUS_TONE_CHIP[automationPotentialTone.medium],
     rank: 2,
   },
   low: {
     label: "Low",
-    className:
-      "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-500/30 dark:bg-slate-500/10 dark:text-slate-200",
+    className: STATUS_TONE_CHIP[automationPotentialTone.low],
     rank: 1,
   },
   none: {
     label: "None",
-    className: "border-border bg-muted text-muted-foreground",
+    className: STATUS_TONE_CHIP[automationPotentialTone.none],
     rank: 0,
   },
 };
@@ -117,20 +121,17 @@ const CONFIDENCE_LABELS: Record<
   high: {
     label: "High",
     detail: "confirmed",
-    className:
-      "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200",
+    className: STATUS_TONE_CHIP[confidenceTone.high],
   },
   medium: {
     label: "Medium",
     detail: "single clear source",
-    className:
-      "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200",
+    className: STATUS_TONE_CHIP[confidenceTone.medium],
   },
   low: {
     label: "Low",
     detail: "inferred or weak",
-    className:
-      "border-red-200 bg-red-50 text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200",
+    className: STATUS_TONE_CHIP[confidenceTone.low],
   },
 };
 
@@ -202,30 +203,31 @@ function InlineNotice({
   title,
   children,
   action,
-  tone = "amber",
+  tone = "warning",
 }: {
   icon: LucideIcon;
   title: string;
   children: React.ReactNode;
   action?: React.ReactNode;
-  tone?: "amber" | "destructive";
+  tone?: "warning" | "destructive";
 }) {
   return (
     <div
       className={cn(
         "flex flex-col gap-3 rounded-lg border p-3 text-sm sm:flex-row sm:items-start sm:justify-between",
-        tone === "amber" &&
-          "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100",
-        tone === "destructive" &&
-          "border-destructive/30 bg-destructive/10 text-destructive",
+        STATUS_TONE_SURFACE[tone],
+        tone === "destructive" && STATUS_TONE_TEXT.destructive,
       )}
       role={tone === "destructive" ? "alert" : "status"}
     >
       <div className="flex min-w-0 items-start gap-2">
-        <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <Icon
+          className={cn("mt-0.5 size-4 shrink-0", STATUS_TONE_TEXT[tone])}
+          aria-hidden
+        />
         <div className="min-w-0">
           <p className="font-medium">{title}</p>
-          <div className="mt-1 text-xs leading-5 opacity-90">{children}</div>
+          <div className="mt-1 text-xs leading-5">{children}</div>
         </div>
       </div>
       {action && <div className="shrink-0">{action}</div>}
@@ -1221,14 +1223,7 @@ export function ProcessInsightsTab({
                 <Badge variant="outline" className="capitalize">
                   {flow.status}
                 </Badge>
-                {isStale && (
-                  <Badge
-                    variant="outline"
-                    className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
-                  >
-                    Stale
-                  </Badge>
-                )}
+                {isStale && <Badge tone="warning">Out of date</Badge>}
               </div>
               <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
                 <Clock className="size-3.5 shrink-0" aria-hidden />

@@ -11,6 +11,11 @@ import {
 } from "./readModelHelpers";
 import { getSummaryListMetadata } from "./summaryV2";
 import { readableSummaryV2 } from "./lib/summaryV2Feature";
+// Each level asks what the overview surface asks before calling a failed run
+// "nothing to build from": a process wants a completed conversation, a rollup
+// a child holding a readable overview.
+import { departmentState, processState } from "./hierarchySummaryV2";
+import { isUsableHierarchyChild } from "./lib/hierarchyOverviewV2";
 
 const MAX_FUNCTIONS = 200;
 const MAX_DEPARTMENTS = 1000;
@@ -125,6 +130,10 @@ export const getTree = query({
             refreshScheduledAt: fn.summaryRegenScheduledAt,
             lastRunState: fn.summaryV2LastRunState,
             lastRunCompletedAt: fn.summaryV2LastCompletedAt,
+            lastError: fn.summaryV2LastError,
+            hasEligibleSource: childDepartments.some((department) =>
+              isUsableHierarchyChild(departmentState(department)),
+            ),
           }),
           departmentCount: childDepartments.length,
           departments: childDepartments.map((department) => {
@@ -148,6 +157,10 @@ export const getTree = query({
                 refreshScheduledAt: department.summaryRegenScheduledAt,
                 lastRunState: department.summaryV2LastRunState,
                 lastRunCompletedAt: department.summaryV2LastCompletedAt,
+                lastError: department.summaryV2LastError,
+                hasEligibleSource: childProcesses.some((process) =>
+                  isUsableHierarchyChild(processState(process)),
+                ),
               }),
               processCount: childProcesses.length,
               processes: childProcesses.map((process) => {
@@ -185,6 +198,8 @@ export const getTree = query({
                     refreshScheduledAt: process.summaryRegenScheduledAt,
                     lastRunState: process.summaryV2LastRunState,
                     lastRunCompletedAt: process.summaryV2LastCompletedAt,
+                    lastError: process.summaryV2LastError,
+                    hasEligibleSource: counts.done > 0,
                   }),
                   conversationCounts: counts,
                   conversationCount: counts.total,

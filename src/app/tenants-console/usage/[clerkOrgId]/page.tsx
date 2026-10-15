@@ -44,9 +44,10 @@ import {
 const LOG_PAGE_SIZE = 50;
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "ok") return <Badge variant="secondary">OK</Badge>;
-  if (status === "failed") return <Badge variant="destructive">Failed</Badge>;
-  return <Badge variant="outline">Truncated</Badge>;
+  if (status === "ok") return <Badge tone="success">OK</Badge>;
+  if (status === "failed") return <Badge tone="destructive">Failed</Badge>;
+  // Billed but cut off at the token limit, so the output is unusable.
+  return <Badge tone="warning">Truncated</Badge>;
 }
 
 export default function TenantUsagePage() {

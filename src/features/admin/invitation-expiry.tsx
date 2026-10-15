@@ -28,7 +28,8 @@ export function InvitationExpiry({
   return (
     <span className="inline-flex items-center gap-2">
       {expiresAt ? formatDate(expiresAt) : "—"}
-      {expired && <Badge variant="destructive">Expired</Badge>}
+      {/* Waiting on an admin to resend, not failed for good. */}
+      {expired && <Badge tone="warning">Expired</Badge>}
     </span>
   );
 }

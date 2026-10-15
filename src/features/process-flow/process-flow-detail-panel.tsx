@@ -20,6 +20,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import {
+  automationPotentialTone,
+  confidenceTone,
+  STATUS_TONE_CHIP,
+  STATUS_TONE_TEXT,
+} from "@/features/status/status-meta";
 import { CATEGORY_CONFIG } from "./process-flow-nodes";
 import type { ReadFlowNode } from "./use-process-flow-layout";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
@@ -40,40 +46,16 @@ interface ProcessFlowDetailPanelProps {
 }
 
 const AUTOMATION_LABELS = {
-  high: {
-    label: "High",
-    className:
-      "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20",
-  },
-  medium: {
-    label: "Medium",
-    className:
-      "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20",
-  },
-  low: {
-    label: "Low",
-    className:
-      "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20",
-  },
-  none: {
-    label: "None",
-    className: "bg-muted text-muted-foreground border-border",
-  },
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  none: "None",
 } as const;
 
 const CONFIDENCE_LABELS = {
-  high: {
-    label: "High — confirmed by multiple sources",
-    className: "text-green-600 dark:text-green-400",
-  },
-  medium: {
-    label: "Medium — single clear source",
-    className: "text-yellow-600 dark:text-yellow-400",
-  },
-  low: {
-    label: "Low — inferred or vague",
-    className: "text-red-600 dark:text-red-400",
-  },
+  high: "High — confirmed by multiple sources",
+  medium: "Medium — single clear source",
+  low: "Low — inferred or vague",
 } as const;
 
 export function ProcessFlowDetailPanel({
@@ -108,8 +90,9 @@ export function ProcessFlowDetailPanel({
     (source) => !linkedSources.has(source),
   );
 
-  const automationInfo = AUTOMATION_LABELS[node.automationPotential];
-  const confidenceInfo = CONFIDENCE_LABELS[node.confidence];
+  const automationTone = automationPotentialTone[node.automationPotential];
+  const confidenceTextClass =
+    STATUS_TONE_TEXT[confidenceTone[node.confidence]];
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background md:w-full">
@@ -139,13 +122,13 @@ export function ProcessFlowDetailPanel({
             {/* Withheld until described: these flags are assessments, and a
                 node still being written carries defaults nobody assessed. */}
             {isDetailed && node.isBottleneck && (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-destructive-subtle px-1.5 py-0.5 text-[10px] font-medium text-destructive">
                 <AlertTriangle className="h-2.5 w-2.5" />
                 Bottleneck
               </span>
             )}
             {isDetailed && node.isTribalKnowledge && (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-warning-subtle px-1.5 py-0.5 text-[10px] font-medium text-warning">
                 <KeyRound className="h-2.5 w-2.5" />
                 Tribal Knowledge
               </span>
@@ -262,10 +245,10 @@ export function ProcessFlowDetailPanel({
               <span
                 className={cn(
                   "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
-                  automationInfo.className,
+                  STATUS_TONE_CHIP[automationTone],
                 )}
               >
-                {automationInfo.label}
+                {AUTOMATION_LABELS[node.automationPotential]}
               </span>
             </Section>
           )}
@@ -273,8 +256,8 @@ export function ProcessFlowDetailPanel({
           {/* Confidence */}
           {isDetailed && (
             <Section icon={Users} title="Confidence">
-              <p className={cn("text-xs", confidenceInfo.className)}>
-                {confidenceInfo.label}
+              <p className={cn("text-xs", confidenceTextClass)}>
+                {CONFIDENCE_LABELS[node.confidence]}
               </p>
             </Section>
           )}
@@ -288,7 +271,7 @@ export function ProcessFlowDetailPanel({
                     key={i}
                     className="flex min-w-0 items-start gap-1.5 text-xs text-muted-foreground"
                   >
-                    <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-400" />
+                    <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" />
                     <span className="min-w-0 break-words">{pp}</span>
                   </li>
                 ))}
@@ -305,7 +288,7 @@ export function ProcessFlowDetailPanel({
                     key={i}
                     className="flex min-w-0 items-start gap-1.5 text-xs text-muted-foreground"
                   >
-                    <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                    <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
                     <span className="min-w-0 break-words">{risk}</span>
                   </li>
                 ))}

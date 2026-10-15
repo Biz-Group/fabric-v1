@@ -193,11 +193,9 @@ function TenantHeader({ tenant }: { tenant: TenantView }) {
             </a>
             <span>Created {formatDate(tenant.createdAt)}</span>
             {tenant.status === "needsAttention" && (
-              <Badge variant="destructive">Needs attention</Badge>
+              <Badge tone="warning">Needs attention</Badge>
             )}
-            {tenant.status === "deleted" && (
-              <Badge variant="outline">Deleted</Badge>
-            )}
+            {tenant.status === "deleted" && <Badge tone="neutral">Deleted</Badge>}
           </div>
         </div>
       </div>
