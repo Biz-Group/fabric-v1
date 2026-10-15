@@ -36,6 +36,11 @@ const app = defineApp({
     USAGE_SINK_URL: v.optional(v.string()),
     // Shared bearer secret for the ingest route. Must match on both sides.
     USAGE_SINK_SECRET: v.optional(v.string()),
+    // First-run onboarding cutoff, in epoch milliseconds. Only memberships
+    // created at or after it are onboarded, and only users created after it
+    // must watch the tour before building. Unset or invalid turns onboarding
+    // off, which makes this the kill switch. See lib/onboarding.ts.
+    ONBOARDING_LAUNCHED_AT: v.optional(v.string()),
   },
 });
 app.use(migrations);

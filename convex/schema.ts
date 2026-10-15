@@ -198,6 +198,13 @@ export default defineSchema({
     platformRole: v.optional(v.literal("superAdmin")),
     lastSyncedFromClerkAt: v.optional(v.number()),
     deletedAt: v.optional(v.number()),
+    // When the person finished the 2-minute product tour, and how. Per person,
+    // not per org: it's the same product in every tenant. Builders must watch
+    // it before building (see lib/onboarding.ts); everyone else may skip it.
+    tourWatchedAt: v.optional(v.number()),
+    tourWatchedVia: v.optional(
+      v.union(v.literal("video"), v.literal("transcript")),
+    ),
   })
     .index("by_tokenIdentifier", ["tokenIdentifier"])
     .index("by_clerkUserId", ["clerkUserId"])
@@ -245,6 +252,22 @@ export default defineSchema({
     // Set when the member chose "Not sure" at the placement prompt, so they
     // aren't asked again. An admin can place them later.
     placementSkippedAt: v.optional(v.number()),
+    // First-run onboarding milestones in THIS org, since the path (build,
+    // explore or waiting) depends on this org's tree and the member's role
+    // here. Unset until the first milestone; nothing is written at insert.
+    // Each timestamp is set once, except checklistDismissedAt, which "Show
+    // Getting started" clears.
+    onboarding: v.optional(
+      v.object({
+        welcomedAt: v.optional(v.number()),
+        walkthroughCompletedAt: v.optional(v.number()),
+        walkthroughSkippedAt: v.optional(v.number()),
+        checklistDismissedAt: v.optional(v.number()),
+        checklistCompletedAt: v.optional(v.number()),
+        captureHintSeenAt: v.optional(v.number()),
+        firstMapSeenAt: v.optional(v.number()),
+      }),
+    ),
   })
     .index("by_tokenIdentifier_and_clerkOrgId", [
       "tokenIdentifier",

@@ -36,6 +36,7 @@ type Env = {
   readonly FOUNDRY_OPENAI_FALLBACK_DEPLOYMENT: string | undefined;
   readonly FOUNDRY_SAFETY_DEPLOYMENT: string | undefined;
   readonly FOUNDRY_SYNTHESIS_BACKEND: "claude" | "gpt5mini" | undefined;
+  readonly ONBOARDING_LAUNCHED_AT: string | undefined;
   readonly SUMMARY_V2: string | undefined;
   readonly USAGE_DEPLOYMENT_LABEL: "prod" | "dev" | undefined;
   readonly USAGE_SINK_SECRET: string | undefined;
