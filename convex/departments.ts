@@ -332,7 +332,16 @@ export const deleteEligibility = query({
   handler: async (ctx, args) => {
     const caller = await requireOrgMember(ctx);
     const dept = await ctx.db.get(args.departmentId);
-    assertOrgOwns(caller, dept);
+    // Not a throw: the open delete dialog re-runs this the moment its own
+    // delete commits, and a query error would throw in the client's render.
+    if (!dept || dept.clerkOrgId !== caller.orgId) {
+      return {
+        canDelete: false,
+        blocker: "missing" as const,
+        childKind: null,
+        canCleanUpChildren: false,
+      };
+    }
 
     if (caller.role === "viewer") {
       return {

@@ -68,6 +68,25 @@ export function treeHasProcesses(tree: ProcessTreeData) {
   );
 }
 
+export type BuildStep =
+  | { kind: "function" }
+  | { kind: "department"; fn: ProcessTreeFunction }
+  | ({ kind: "process" } & HomeDepartmentEntry);
+
+/** What an empty workspace needs next on the way to its first process, or
+ * null once one exists. It follows the furthest branch, so a department
+ * waiting for a process wins over a function waiting for a department; ties
+ * go to the first in tree order. */
+export function nextBuildStep(tree: ProcessTreeData): BuildStep | null {
+  if (treeHasProcesses(tree)) return null;
+  for (const fn of tree.functions) {
+    const department = fn.departments[0];
+    if (department) return { kind: "process", fn, department };
+  }
+  const fn = tree.functions[0];
+  return fn ? { kind: "department", fn } : { kind: "function" };
+}
+
 /** Processes with at least one completed interview, out of all of them. */
 export function departmentInterviewCoverage(
   department: ProcessTreeDepartment,

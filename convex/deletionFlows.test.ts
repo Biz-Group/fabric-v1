@@ -200,6 +200,46 @@ describe("deletion flow integrity", () => {
     expect(rows.fn?.summaryStale).toBe(true);
   });
 
+  test("delete eligibility reports a deleted target instead of throwing", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seedOrg(t);
+    const contributor = t.withIdentity(identityFor("contributor"));
+    const missing = {
+      canDelete: false,
+      blocker: "missing",
+      childKind: null,
+      canCleanUpChildren: false,
+    };
+
+    // The delete dialog's subscription re-runs as soon as its delete commits.
+    await contributor.mutation(api.processes.remove, {
+      processId: ids.processId,
+    });
+    expect(
+      await contributor.query(api.processes.deleteEligibility, {
+        processId: ids.processId,
+      }),
+    ).toEqual(missing);
+
+    await contributor.mutation(api.departments.remove, {
+      departmentId: ids.departmentId,
+    });
+    expect(
+      await contributor.query(api.departments.deleteEligibility, {
+        departmentId: ids.departmentId,
+      }),
+    ).toEqual(missing);
+
+    await contributor.mutation(api.functions.remove, {
+      functionId: ids.functionId,
+    });
+    expect(
+      await contributor.query(api.functions.deleteEligibility, {
+        functionId: ids.functionId,
+      }),
+    ).toEqual(missing);
+  });
+
   test("deleting the last done conversation clears summary and flow", async () => {
     const t = convexTest(schema, modules);
     const ids = await seedOrg(t);

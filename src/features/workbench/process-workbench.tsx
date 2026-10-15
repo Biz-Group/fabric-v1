@@ -121,6 +121,27 @@ type MobilePreview =
   | { type: "process"; id: Id<"processes">; name: string }
   | null;
 
+/** A node and every ancestor, for selectAndReveal. A blank name is filled in
+ * by the *DisplayName fallbacks once its query loads. */
+type RevealPath =
+  | { kind: "function"; functionId: Id<"functions">; functionName: string }
+  | {
+      kind: "department";
+      functionId: Id<"functions">;
+      functionName: string;
+      departmentId: Id<"departments">;
+      departmentName: string;
+    }
+  | {
+      kind: "process";
+      functionId: Id<"functions">;
+      functionName: string;
+      departmentId: Id<"departments">;
+      departmentName: string;
+      processId: Id<"processes">;
+      processName: string;
+    };
+
 function countLabel(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
@@ -302,91 +323,6 @@ export function ProcessWorkbench() {
       setCrudOpen(true);
     },
     [],
-  );
-
-  const handleCrudConfirm = useCallback(
-    async (name: string, newLocationId?: string, description?: string) => {
-      if (crudEntity === "Function") {
-        if (crudMode === "create") {
-          await createFunction({ name });
-        } else if (crudMode === "edit" && crudTargetId) {
-          await updateFunction({
-            functionId: crudTargetId as Id<"functions">,
-            name,
-          });
-        } else if (crudMode === "delete" && crudTargetId) {
-          await removeFunction({ functionId: crudTargetId as Id<"functions"> });
-          if (selectedFunctionId === crudTargetId) {
-            setSelectedFunctionId(null);
-            setSelectedDepartmentId(null);
-            setSelectedProcessId(null);
-          }
-        }
-      } else if (crudEntity === "Department") {
-        if (crudMode === "create" && selectedFunctionId) {
-          await createDepartment({
-            functionId: selectedFunctionId,
-            name,
-            description,
-          });
-        } else if (crudMode === "edit" && crudTargetId) {
-          const newFunctionId = newLocationId as Id<"functions"> | undefined;
-          await updateDepartment({
-            departmentId: crudTargetId as Id<"departments">,
-            name,
-            functionId: newFunctionId,
-            description,
-          });
-        } else if (crudMode === "delete" && crudTargetId) {
-          await removeDepartment({
-            departmentId: crudTargetId as Id<"departments">,
-          });
-          if (selectedDepartmentId === crudTargetId) {
-            setSelectedDepartmentId(null);
-            setSelectedProcessId(null);
-          }
-        }
-      } else if (crudEntity === "Process") {
-        if (crudMode === "create" && selectedDepartmentId) {
-          await createProcess({
-            departmentId: selectedDepartmentId,
-            name,
-            description,
-          });
-        } else if (crudMode === "edit" && crudTargetId) {
-          const newDepartmentId = newLocationId as
-            Id<"departments"> | undefined;
-          await updateProcess({
-            processId: crudTargetId as Id<"processes">,
-            name,
-            departmentId: newDepartmentId,
-            description,
-          });
-        } else if (crudMode === "delete" && crudTargetId) {
-          await removeProcess({ processId: crudTargetId as Id<"processes"> });
-          if (selectedProcessId === crudTargetId) {
-            setSelectedProcessId(null);
-          }
-        }
-      }
-    },
-    [
-      crudEntity,
-      crudMode,
-      crudTargetId,
-      selectedFunctionId,
-      selectedDepartmentId,
-      selectedProcessId,
-      createFunction,
-      updateFunction,
-      removeFunction,
-      createDepartment,
-      updateDepartment,
-      removeDepartment,
-      createProcess,
-      updateProcess,
-      removeProcess,
-    ],
   );
 
   // Convex queries
@@ -937,6 +873,149 @@ export function ProcessWorkbench() {
     [],
   );
 
+  // Selects a node and opens the way to it: the desktop tree expands its
+  // ancestors and phones drill into it. The caller passes the whole path, so
+  // this works for a node the hierarchy tree hasn't loaded yet, such as one
+  // just created by an action.
+  const selectAndReveal = useCallback(
+    (path: RevealPath) => {
+      setFlowNodeId(null);
+      if (path.kind === "function") {
+        handleSelectFunction(path.functionId, path.functionName);
+      } else if (path.kind === "department") {
+        jumpToDepartment(
+          path.functionId,
+          path.functionName,
+          path.departmentId,
+          path.departmentName,
+        );
+      } else {
+        jumpToProcess(
+          path.functionId,
+          path.functionName,
+          path.departmentId,
+          path.departmentName,
+          path.processId,
+          path.processName,
+        );
+      }
+    },
+    [handleSelectFunction, jumpToDepartment, jumpToProcess],
+  );
+
+  // Create, edit and delete from the CRUD dialog. A create lands on what it
+  // made, so the next level's Add button is ready. Creating under a row other
+  // than the current selection selects that row first (see the tree and home
+  // create handlers below), so the parent here is always the selection.
+  const handleCrudConfirm = useCallback(
+    async (name: string, newLocationId?: string, description?: string) => {
+      if (crudEntity === "Function") {
+        if (crudMode === "create") {
+          const functionId = await createFunction({ name });
+          selectAndReveal({ kind: "function", functionId, functionName: name });
+        } else if (crudMode === "edit" && crudTargetId) {
+          await updateFunction({
+            functionId: crudTargetId as Id<"functions">,
+            name,
+          });
+        } else if (crudMode === "delete" && crudTargetId) {
+          await removeFunction({ functionId: crudTargetId as Id<"functions"> });
+          if (selectedFunctionId === crudTargetId) {
+            setSelectedFunctionId(null);
+            setSelectedDepartmentId(null);
+            setSelectedProcessId(null);
+          }
+        }
+      } else if (crudEntity === "Department") {
+        if (crudMode === "create" && selectedFunctionId) {
+          const departmentId = await createDepartment({
+            functionId: selectedFunctionId,
+            name,
+            description,
+          });
+          selectAndReveal({
+            kind: "department",
+            functionId: selectedFunctionId,
+            functionName: selectedFunctionName,
+            departmentId,
+            departmentName: name,
+          });
+        } else if (crudMode === "edit" && crudTargetId) {
+          const newFunctionId = newLocationId as Id<"functions"> | undefined;
+          await updateDepartment({
+            departmentId: crudTargetId as Id<"departments">,
+            name,
+            functionId: newFunctionId,
+            description,
+          });
+        } else if (crudMode === "delete" && crudTargetId) {
+          await removeDepartment({
+            departmentId: crudTargetId as Id<"departments">,
+          });
+          if (selectedDepartmentId === crudTargetId) {
+            setSelectedDepartmentId(null);
+            setSelectedProcessId(null);
+          }
+        }
+      } else if (crudEntity === "Process") {
+        if (crudMode === "create" && selectedDepartmentId) {
+          const processId = await createProcess({
+            departmentId: selectedDepartmentId,
+            name,
+            description,
+          });
+          // The function is always known by now; a `dept`-only link fills it
+          // in as soon as the department loads.
+          if (selectedFunctionId) {
+            selectAndReveal({
+              kind: "process",
+              functionId: selectedFunctionId,
+              functionName: selectedFunctionName,
+              departmentId: selectedDepartmentId,
+              departmentName: selectedDepartmentName,
+              processId,
+              processName: name,
+            });
+          }
+        } else if (crudMode === "edit" && crudTargetId) {
+          const newDepartmentId = newLocationId as
+            Id<"departments"> | undefined;
+          await updateProcess({
+            processId: crudTargetId as Id<"processes">,
+            name,
+            departmentId: newDepartmentId,
+            description,
+          });
+        } else if (crudMode === "delete" && crudTargetId) {
+          await removeProcess({ processId: crudTargetId as Id<"processes"> });
+          if (selectedProcessId === crudTargetId) {
+            setSelectedProcessId(null);
+          }
+        }
+      }
+    },
+    [
+      crudEntity,
+      crudMode,
+      crudTargetId,
+      selectedFunctionId,
+      selectedFunctionName,
+      selectedDepartmentId,
+      selectedDepartmentName,
+      selectedProcessId,
+      selectAndReveal,
+      createFunction,
+      updateFunction,
+      removeFunction,
+      createDepartment,
+      updateDepartment,
+      removeDepartment,
+      createProcess,
+      updateProcess,
+      removeProcess,
+    ],
+  );
+
   const handleTreeSelectFunction = useCallback(
     (fn: ProcessTreeFunction) => {
       handleSelectFunction(fn._id, fn.name);
@@ -1325,6 +1404,7 @@ export function ProcessWorkbench() {
           onCapture={handleHomeCapture}
           onOpenConversation={handleHomeOpenConversation}
           onCreateProcess={handleHomeCreateProcess}
+          onCreateDepartment={handleTreeCreateDepartment}
           onCreateFunction={() => openCrud("create", "Function")}
         />
       </TabsContent>
@@ -1608,6 +1688,7 @@ export function ProcessWorkbench() {
               onCapture={handleHomeCapture}
               onOpenConversation={handleHomeOpenConversation}
               onCreateProcess={handleHomeCreateProcess}
+              onCreateDepartment={handleTreeCreateDepartment}
               onCreateFunction={() => openCrud("create", "Function")}
             />
           )}

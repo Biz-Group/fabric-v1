@@ -29,7 +29,8 @@ const SAVE_TIMEOUT_MS = 45000;
 
 type DeleteEligibility = {
   canDelete: boolean;
-  blocker: "role" | "children" | null;
+  /** "missing": already deleted, by this dialog or someone else. */
+  blocker: "role" | "children" | "missing" | null;
   childKind: "departments" | "processes" | "conversations" | null;
   canCleanUpChildren: boolean;
 };
@@ -159,6 +160,10 @@ export function CrudDialog({
   const deleteBlocked =
     mode === "delete" && deleteEligibility !== undefined && !deleteEligibility.canDelete;
   const deleteChildKind = deleteEligibility?.childKind;
+  // While this dialog's own delete is finishing, the target vanishes just
+  // before the dialog closes; keep the confirmation up instead of flashing
+  // "already deleted".
+  const deleteGone = deleteEligibility?.blocker === "missing" && !loading;
 
   const hasGroups = locationOptions?.some((opt) => opt.group);
   const groupedOptions = useMemo(() => {
@@ -217,6 +222,10 @@ export function CrudDialog({
                       ? "Delete those conversations from Admin > Conversations first, then try again."
                       : "Ask a workspace admin to delete those conversations first."
                     : "Remove all child items first."}
+                </>
+              ) : deleteGone ? (
+                <>
+                  <strong>{currentName}</strong> has already been deleted.
                 </>
               ) : (
                 <>

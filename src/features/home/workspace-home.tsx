@@ -9,6 +9,7 @@ import {
   Building2,
   ChevronDown,
   GitBranch,
+  Layers,
   Mic,
   Plus,
   Tag,
@@ -25,7 +26,10 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLastLoaded } from "@/hooks/use-last-loaded";
 import { cn } from "@/lib/utils";
-import type { ProcessTreeData } from "@/features/hierarchy/process-tree-navigator";
+import type {
+  ProcessTreeData,
+  ProcessTreeFunction,
+} from "@/features/hierarchy/process-tree-navigator";
 import type { RecordingMode } from "@/features/recording/recording-modal";
 import { StatusBadge } from "@/features/status/status-badge";
 import {
@@ -34,6 +38,7 @@ import {
   type StatusMeta,
 } from "@/features/status/status-meta";
 import {
+  type BuildStep,
   type HomeDepartmentEntry,
   type HomeProcessEntry,
   departmentInterviewCoverage,
@@ -43,8 +48,8 @@ import {
   firstName,
   formatRelativeTime,
   interviewCountLabel,
+  nextBuildStep,
   resolveRecentProcesses,
-  treeHasProcesses,
 } from "./home-view-model";
 
 export type MyConversation = FunctionReturnType<
@@ -67,6 +72,7 @@ type WorkspaceHomeProps = {
   onCapture: (entry: HomeProcessEntry, mode: RecordingMode) => void;
   onOpenConversation: (conversation: MyConversation) => void;
   onCreateProcess: (entry: HomeDepartmentEntry) => void;
+  onCreateDepartment: (fn: ProcessTreeFunction) => void;
   onCreateFunction: () => void;
 };
 
@@ -529,36 +535,89 @@ function LabelsCallout({
   );
 }
 
+/** Copy and action for each step towards the first process. */
+function buildStepContent(
+  step: BuildStep,
+  handlers: Pick<
+    WorkspaceHomeProps,
+    "onCreateFunction" | "onCreateDepartment" | "onCreateProcess"
+  >,
+) {
+  if (step.kind === "function") {
+    return {
+      icon: Building2,
+      title: "Start with a function",
+      description:
+        "Functions are the top level of your process tree, like Finance or Operations. Departments and processes go inside them.",
+      actionLabel: "Add function",
+      onAction: handlers.onCreateFunction,
+    };
+  }
+  if (step.kind === "department") {
+    return {
+      icon: Layers,
+      title: `Add a department to ${step.fn.name}`,
+      description:
+        "Departments are the teams inside a function. Each one holds the processes that team runs.",
+      actionLabel: "Add department",
+      onAction: () => handlers.onCreateDepartment(step.fn),
+    };
+  }
+  return {
+    icon: GitBranch,
+    title: `Add a process to ${step.department.name}`,
+    description:
+      "A process is a piece of work the team does, like approving invoices. Once it's added, your team can capture how it gets done.",
+    actionLabel: "Add process",
+    onAction: () => handlers.onCreateProcess(step),
+  };
+}
+
 function EmptyWorkspace({
+  step,
   canEdit,
   mobile,
   onCreateFunction,
+  onCreateDepartment,
+  onCreateProcess,
 }: {
+  step: BuildStep;
   canEdit: boolean;
   mobile: boolean;
-  onCreateFunction: () => void;
+  onCreateFunction: WorkspaceHomeProps["onCreateFunction"];
+  onCreateDepartment: WorkspaceHomeProps["onCreateDepartment"];
+  onCreateProcess: WorkspaceHomeProps["onCreateProcess"];
 }) {
+  const content = canEdit
+    ? buildStepContent(step, {
+        onCreateFunction,
+        onCreateDepartment,
+        onCreateProcess,
+      })
+    : null;
+  const Icon = content?.icon ?? Building2;
   return (
     <div className="mt-10 rounded-xl border border-dashed px-6 py-12 text-center">
-      <Building2
+      <Icon
         className="mx-auto size-7 text-muted-foreground"
         aria-hidden="true"
       />
-      <h2 className="mt-4 text-lg font-semibold">No processes yet</h2>
+      <h2 className="mt-4 break-words text-lg font-semibold">
+        {content?.title ?? "No processes yet"}
+      </h2>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-        {canEdit
-          ? "Start by adding a function, the top level of your organization's process tree. Departments and processes go inside it."
-          : "Nobody has added processes to this workspace yet. Once they do, you'll be able to explore them here."}
+        {content?.description ??
+          "Nobody has added processes to this workspace yet. Once they do, you'll be able to explore them here."}
       </p>
-      {canEdit && (
+      {content && (
         <Button
           type="button"
           variant="outline"
           className={cn("mt-6 gap-1.5", mobile && "h-11 px-4")}
-          onClick={onCreateFunction}
+          onClick={content.onAction}
         >
           <Plus className="size-4" aria-hidden="true" />
-          Add function
+          {content.actionLabel}
         </Button>
       )}
     </div>
@@ -595,6 +654,7 @@ export function WorkspaceHome({
   onCapture,
   onOpenConversation,
   onCreateProcess,
+  onCreateDepartment,
   onCreateFunction,
 }: WorkspaceHomeProps) {
   const me = useQuery(api.users.getMe);
@@ -624,6 +684,8 @@ export function WorkspaceHome({
     ? findTreeDepartment(tree, homePlacement.departmentId)
     : null;
   const recent = resolveRecentProcesses(tree, recentProcessIds);
+  // A placed member's department section has its own Add process.
+  const buildStep = home ? null : nextBuildStep(tree);
 
   return (
     <article
@@ -649,11 +711,14 @@ export function WorkspaceHome({
         )}
       </header>
 
-      {!home && !treeHasProcesses(tree) ? (
+      {buildStep ? (
         <EmptyWorkspace
+          step={buildStep}
           canEdit={canEdit}
           mobile={mobile}
           onCreateFunction={onCreateFunction}
+          onCreateDepartment={onCreateDepartment}
+          onCreateProcess={onCreateProcess}
         />
       ) : (
         <>

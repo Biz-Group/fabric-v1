@@ -1,15 +1,30 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import { ProcessWorkbench } from "@/features/workbench/process-workbench";
 import { ProfileOnboarding } from "@/features/profile/profile-onboarding";
+import {
+  livePlacementGate,
+  resolvePlacementGate,
+} from "@/features/profile/placement-gate";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 
 export default function OrgHomePage() {
   const user = useQuery(api.users.getMe);
   const placement = useQuery(api.users.getMyPlacement);
+
+  // Whether to ask "Where do you sit?" is decided once per mount: it can
+  // close but never opens mid-task (see resolvePlacementGate). Leaving for
+  // Admin or Release notes unmounts this page, so coming back asks again.
+  const [placementGate, setPlacementGate] = useState<boolean | null>(null);
+  const nextPlacementGate = resolvePlacementGate(
+    placementGate,
+    livePlacementGate(placement),
+  );
+  if (nextPlacementGate !== placementGate) setPlacementGate(nextPlacementGate);
+  const needsPlacement = nextPlacementGate === true;
 
   if (user === undefined || placement === undefined) {
     return <LoadingScreen message="Loading your workspace..." />;
@@ -21,16 +36,8 @@ export default function OrgHomePage() {
     return <LoadingScreen message="Setting up your workspace..." />;
   }
 
-  // The profile is global (once per person); placement is per org. A member
-  // who completed their profile in another org still owes this org a
-  // department, but only once this org has a hierarchy to choose from, and
-  // not after they said they don't know (an admin places them instead).
-  const needsPlacement =
-    placement !== null &&
-    placement.orgHasDepartments &&
-    !placement.placement &&
-    !placement.placementSkipped;
-
+  // The latched gate also decides the profile form's placement fields, so they
+  // don't appear in a half-filled form when someone adds the first department.
   if (!user.profileComplete) {
     return (
       <ProfileOnboarding mode="profile" askPlacement={needsPlacement} />

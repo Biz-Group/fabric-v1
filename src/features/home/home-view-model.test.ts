@@ -12,6 +12,7 @@ import {
   firstName,
   formatRelativeTime,
   interviewCountLabel,
+  nextBuildStep,
   resolveRecentProcesses,
   treeHasProcesses,
 } from "./home-view-model";
@@ -95,6 +96,36 @@ describe("workspace home tree lookups", () => {
     expect(
       treeHasProcesses(treeOf([{ id: "f", departments: [departmentRow("d", [])] }])),
     ).toBe(false);
+  });
+
+  it("names the next step towards the first process", () => {
+    expect(nextBuildStep(treeOf([]))).toEqual({ kind: "function" });
+
+    const functionsOnly = nextBuildStep(
+      treeOf([
+        { id: "f1", departments: [] },
+        { id: "f2", departments: [] },
+      ]),
+    );
+    expect(functionsOnly).toMatchObject({ kind: "department" });
+    expect(
+      functionsOnly?.kind === "department" && functionsOnly.fn._id,
+    ).toBe("f1");
+
+    // A department waiting for a process beats an earlier, emptier function.
+    const withDepartment = nextBuildStep(
+      treeOf([
+        { id: "f1", departments: [] },
+        { id: "f2", departments: [departmentRow("d1", [])] },
+      ]),
+    );
+    expect(withDepartment).toMatchObject({ kind: "process" });
+    expect(
+      withDepartment?.kind === "process" &&
+        [withDepartment.fn._id, withDepartment.department._id],
+    ).toEqual(["f2", "d1"]);
+
+    expect(nextBuildStep(tree)).toBeNull();
   });
 
   it("counts processes with a completed interview", () => {
