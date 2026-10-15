@@ -119,6 +119,7 @@
   font-size: 0.95rem;
   font-weight: 650;
   line-height: 1;
+  text-decoration: none;
   transition:
     transform 180ms ease,
     background-color 180ms ease,
@@ -162,6 +163,8 @@
 .wordmark:focus-visible,
 .mobileNavigation button:focus-visible,
 .mobileNavigationPanel a:focus-visible,
+.signInMenu > button:focus-visible,
+.signInSubmit:focus-visible,
 .journeyControls button:focus-visible {
   outline: 3px solid rgba(101, 114, 91, 0.38);
   outline-offset: 3px;
@@ -226,6 +229,110 @@
 
 .mobileNavigationPanel a:last-child {
   border-bottom: 0;
+}
+
+/* Hidden on phones, where the form sits in the navigation panel instead. */
+.signInMenu {
+  position: relative;
+  display: none;
+}
+
+.signInMenu > button {
+  min-height: 2.55rem;
+  cursor: pointer;
+  border: 0;
+  border-radius: 0.25rem;
+  background: none;
+  padding: 0 0.6rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 580;
+  transition: color 160ms ease;
+}
+
+.signInMenu > button:hover,
+.signInMenu > button[aria-expanded="true"] {
+  color: var(--ink);
+}
+
+.signInPanel {
+  position: absolute;
+  top: calc(100% + 0.8rem);
+  right: 0;
+  width: 20rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--paper);
+  padding: 1.1rem;
+  box-shadow: 0 24px 60px rgba(17, 22, 28, 0.14);
+}
+
+.mobileSignIn {
+  padding: 1rem 1.15rem 1.15rem;
+}
+
+.signInForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.signInForm label {
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 620;
+}
+
+.signInField {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--canvas);
+  padding: 0 0.8rem;
+}
+
+.signInField:focus-within {
+  outline: 3px solid rgba(101, 114, 91, 0.38);
+  outline-offset: 2px;
+}
+
+.signInField input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  /* 16px keeps iOS Safari from zooming in on focus. */
+  font-size: 1rem;
+  outline: none;
+}
+
+.signInField span {
+  flex: none;
+  color: var(--faint);
+  font-size: 0.9rem;
+}
+
+.signInError {
+  margin: 0;
+  color: #9b3426;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+/* Two classes deep to beat the `.site button { font: inherit }` reset. */
+.signInForm .signInSubmit {
+  min-height: 2.75rem;
+  cursor: pointer;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--canvas);
+  font-size: 0.9rem;
+  font-weight: 650;
 }
 
 .hero {
@@ -1824,6 +1931,10 @@
 
   .mobileNavigation {
     display: none;
+  }
+
+  .signInMenu {
+    display: block;
   }
 
   .hero {

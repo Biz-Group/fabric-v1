@@ -244,12 +244,15 @@ export function ColumnHeader({
   title,
   count,
   onAdd,
+  addLabel,
   mobile,
   actions,
 }: {
   title: string;
   count?: number;
   onAdd?: () => void;
+  /** Names the add button, e.g. "Add process". */
+  addLabel?: string;
   mobile?: boolean;
   /** Right-aligned action buttons (e.g. overview edit/delete). */
   actions?: ReactNode;
@@ -272,8 +275,8 @@ export function ColumnHeader({
               type="button"
               onClick={onAdd}
               className={cn("rounded-md p-1 text-muted-foreground transition-colors hover:bg-org-accent-subtle hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35", mobile && "flex size-9 items-center justify-center rounded-lg p-0")}
-              title={`Add ${title.slice(0, -1)}`}
-              aria-label={`Add ${title.slice(0, -1)}`}
+              title={addLabel}
+              aria-label={addLabel}
             >
               <Plus className={mobile ? "h-4 w-4" : "h-3.5 w-3.5"} />
             </button>

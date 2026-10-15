@@ -6,6 +6,7 @@ import type { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Clock, Loader2 } from "lucide-react";
 import type { FlowConversationForSources } from "./flow-sources";
+import type { PendingConversationCounts } from "./pending-conversations";
 
 const ProcessFlow = lazy(() =>
   import("@/features/process-flow/process-flow").then((module) => ({
@@ -21,6 +22,8 @@ type FlowSummary = ProcessWorkbench["flow"];
 type ProcessFlowTabProps = {
   processId: Id<"processes">;
   conversationCount: number;
+  pendingConversations: PendingConversationCounts;
+  canEdit: boolean;
   flow: FlowSummary | undefined;
   selectedNodeId: string | null;
   onSelectedNodeChange: (nodeId: string | null) => void;
@@ -53,6 +56,8 @@ function FlowCanvasFallback() {
 export function ProcessFlowTab({
   processId,
   conversationCount,
+  pendingConversations,
+  canEdit,
   flow,
   selectedNodeId,
   onSelectedNodeChange,
@@ -82,6 +87,8 @@ export function ProcessFlowTab({
             <ProcessFlow
               processId={processId}
               conversationCount={conversationCount}
+              pendingConversations={pendingConversations}
+              canEdit={canEdit}
               selectedNodeId={selectedNodeId}
               onSelectedNodeChange={onSelectedNodeChange}
               onOpenConversation={onOpenConversation}

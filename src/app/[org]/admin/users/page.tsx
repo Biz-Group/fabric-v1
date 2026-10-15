@@ -37,6 +37,10 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InviteMemberDialog } from "@/features/admin/invite-member-dialog";
 import { PendingInvitesList } from "@/features/admin/pending-invites-list";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useLastLoaded } from "@/hooks/use-last-loaded";
+import { describeError } from "@/lib/user-error-message";
+import { cn } from "@/lib/utils";
 import { MoreHorizontal, Search, UserPlus } from "lucide-react";
 
 const ROLE_OPTIONS = ["admin", "contributor", "viewer"] as const;
@@ -73,8 +77,7 @@ function RoleSelect({
       await setMembershipRole({ membershipId, role: nextRole });
       toast.success(`Role updated to ${nextRole}.`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to change role.";
-      toast.error(msg);
+      toast.error(describeError(err, "Failed to change role."));
     } finally {
       setBusy(false);
       setPendingRole(null);
@@ -158,8 +161,7 @@ function RowActions({
       await removeMember({ membershipId });
       toast.success(`Removed ${memberName} from the workspace.`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to remove member.";
-      toast.error(msg);
+      toast.error(describeError(err, "Failed to remove member."));
       throw err;
     }
   };
@@ -216,17 +218,19 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [invitesRefreshKey, setInvitesRefreshKey] = useState(0);
-  const {
-    results: members,
-    status,
-    loadMore,
-  } = usePaginatedQuery(
+  const debouncedSearch = useDebouncedValue(search.trim(), 250);
+  const { results, status, loadMore } = usePaginatedQuery(
     api.users.listOrgMembersPage,
-    { search: search.trim() || undefined },
+    { search: debouncedSearch || undefined },
     { initialNumItems: 50 },
   );
+  // A new search restarts pagination. Keep the previous rows on screen until
+  // it lands, so the table updates in place and the search box keeps focus.
+  const loadingFirstPage = status === "LoadingFirstPage";
+  const members = useLastLoaded(results, loadingFirstPage);
+  const refreshing = loadingFirstPage && members.length > 0;
 
-  if (status === "LoadingFirstPage" || me === undefined) {
+  if (me === undefined) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
@@ -254,6 +258,7 @@ export default function AdminUsersPage() {
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Search by name, email, job title..."
+          aria-label="Search members"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-9"
@@ -261,7 +266,10 @@ export default function AdminUsersPage() {
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border">
+      <div
+        className={cn("rounded-lg border transition-opacity", refreshing && "opacity-60")}
+        aria-busy={loadingFirstPage}
+      >
         <Table>
           <TableHeader>
             <TableRow>
@@ -283,7 +291,17 @@ export default function AdminUsersPage() {
                   colSpan={9}
                   className="h-24 text-center text-muted-foreground"
                 >
-                  {search ? "No members match your search." : "No members yet."}
+                  {loadingFirstPage ? (
+                    <div
+                      className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary"
+                      role="status"
+                      aria-label="Loading members"
+                    />
+                  ) : debouncedSearch ? (
+                    "No members match your search."
+                  ) : (
+                    "No members yet."
+                  )}
                 </TableCell>
               </TableRow>
             ) : (
@@ -364,7 +382,7 @@ export default function AdminUsersPage() {
         <p className="text-xs text-muted-foreground">
           Showing {members.length} member{members.length === 1 ? "" : "s"}
         </p>
-        {status !== "Exhausted" && (
+        {(status === "CanLoadMore" || status === "LoadingMore") && (
           <Button
             variant="outline"
             size="sm"

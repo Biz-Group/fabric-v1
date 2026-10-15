@@ -9,6 +9,7 @@ import { api } from "../../../../../convex/_generated/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { useLastLoaded } from "@/hooks/use-last-loaded";
 import {
   Table,
   TableBody,
@@ -65,12 +66,16 @@ export default function TenantUsagePage() {
 
   const deploymentArg = deployment === "all" ? {} : { deployment };
 
-  const data = useQuery(api.aiUsage.usageForTenant, {
+  const liveData = useQuery(api.aiUsage.usageForTenant, {
     clerkOrgId,
     from,
     to,
     ...deploymentArg,
   });
+  // A filter change reloads the query. Keep the last figures on screen until
+  // it lands, so the filters (and a half-typed custom date) stay mounted.
+  const data = useLastLoaded(liveData, liveData === undefined);
+  const refreshing = liveData === undefined && data !== undefined;
 
   const log = usePaginatedQuery(
     api.aiUsage.usageLog,
@@ -94,7 +99,7 @@ export default function TenantUsagePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={refreshing}>
       <Link
         href="/usage"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -111,6 +116,7 @@ export default function TenantUsagePage() {
           <p className="text-sm text-muted-foreground">
             {data.tenantName ? `${clerkOrgId} · ` : ""}
             {from} to {to} (UTC)
+            {refreshing && " · Updating…"}
           </p>
         </div>
         <UsageFilters

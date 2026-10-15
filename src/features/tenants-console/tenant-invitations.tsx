@@ -23,6 +23,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { InvitationExpiry } from "@/features/admin/invitation-expiry";
+import { describeError } from "@/lib/user-error-message";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ROLE_OPTIONS = ["admin", "contributor", "viewer"] as const;
@@ -55,6 +57,9 @@ export function TenantInvitations({ tenantId }: { tenantId: Id<"tenants"> }) {
   const [invites, setInvites] = useState<PendingInvite[] | undefined>(
     undefined,
   );
+  // Set when the list has never loaded. A failed load isn't an empty list.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [now] = useState(() => Date.now());
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("contributor");
   const [submitting, setSubmitting] = useState(false);
@@ -66,11 +71,11 @@ export function TenantInvitations({ tenantId }: { tenantId: Id<"tenants"> }) {
     try {
       const rows = await listInvitations({ tenantId });
       setInvites(rows);
+      setLoadError(null);
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to load invitations.",
-      );
-      setInvites([]);
+      const msg = describeError(err, "Failed to load invitations.");
+      toast.error(msg);
+      setLoadError(msg);
     }
   }, [listInvitations, tenantId]);
 
@@ -79,13 +84,13 @@ export function TenantInvitations({ tenantId }: { tenantId: Id<"tenants"> }) {
     void (async () => {
       try {
         const rows = await listInvitations({ tenantId });
-        if (!cancelled) setInvites(rows);
+        if (!cancelled) {
+          setInvites(rows);
+          setLoadError(null);
+        }
       } catch (err) {
         if (!cancelled) {
-          toast.error(
-            err instanceof Error ? err.message : "Failed to load invitations.",
-          );
-          setInvites([]);
+          setLoadError(describeError(err, "Failed to load invitations."));
         }
       }
     })();
@@ -108,9 +113,7 @@ export function TenantInvitations({ tenantId }: { tenantId: Id<"tenants"> }) {
       setRole("contributor");
       await refresh();
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to send invitation.",
-      );
+      toast.error(describeError(err, "Failed to send invitation."));
     } finally {
       setSubmitting(false);
     }
@@ -150,7 +153,21 @@ export function TenantInvitations({ tenantId }: { tenantId: Id<"tenants"> }) {
         </Button>
       </div>
 
-      {invites === undefined ? (
+      {invites === undefined && loadError ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-destructive">{loadError}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setLoadError(null);
+              void refresh();
+            }}
+          >
+            Try again
+          </Button>
+        </div>
+      ) : invites === undefined ? (
         <p className="text-sm text-muted-foreground">Loading invitations...</p>
       ) : invites.length === 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -176,7 +193,11 @@ export function TenantInvitations({ tenantId }: { tenantId: Id<"tenants"> }) {
                   {formatDate(invite.createdAt)}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {invite.expiresAt ? formatDate(invite.expiresAt) : "—"}
+                  <InvitationExpiry
+                    expiresAt={invite.expiresAt}
+                    status={invite.status}
+                    now={now}
+                  />
                 </TableCell>
                 <TableCell>
                   <Button
@@ -217,11 +238,7 @@ export function TenantInvitations({ tenantId }: { tenantId: Id<"tenants"> }) {
             setPendingRevoke(null);
             await refresh();
           } catch (err) {
-            toast.error(
-              err instanceof Error
-                ? err.message
-                : "Failed to revoke invitation.",
-            );
+            toast.error(describeError(err, "Failed to revoke invitation."));
             throw err;
           }
         }}

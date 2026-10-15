@@ -847,18 +847,60 @@ function SyncedTranscript({
 
 // --- Keyboard Shortcuts ---
 
+// Focused elements that use a key themselves, so the shortcut must leave it
+// alone. Text fields take every key; anything clickable takes Space; list
+// and tab widgets take the arrows. The waveform's slider isn't listed: these
+// shortcuts are its keyboard control.
+const TEXT_ENTRY_SELECTOR = [
+  "input",
+  "textarea",
+  "select",
+  "[contenteditable]:not([contenteditable='false'])",
+  '[role="textbox"]',
+  '[role="combobox"]',
+].join(",");
+const SPACE_SELECTOR = [
+  TEXT_ENTRY_SELECTOR,
+  "button",
+  "a[href]",
+  "summary",
+  '[role="button"]',
+  '[role="link"]',
+  '[role="checkbox"]',
+  '[role="radio"]',
+  '[role="switch"]',
+  '[role="tab"]',
+  '[role="menuitem"]',
+  '[role="option"]',
+  '[role="treeitem"]',
+].join(",");
+const ARROW_SELECTOR = [
+  TEXT_ENTRY_SELECTOR,
+  '[role="tablist"]',
+  '[role="radiogroup"]',
+  '[role="menu"]',
+  '[role="listbox"]',
+  '[role="tree"]',
+].join(",");
+
+function targetOwnsKey(target: EventTarget | null, key: string): boolean {
+  if (!(target instanceof Element)) return false;
+  const selector =
+    key === " "
+      ? SPACE_SELECTOR
+      : key === "ArrowLeft" || key === "ArrowRight"
+        ? ARROW_SELECTOR
+        : TEXT_ENTRY_SELECTOR;
+  return target.closest(selector) !== null;
+}
+
 function KeyboardShortcuts() {
   const player = useAudioPlayer();
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        (e.target as HTMLElement)?.isContentEditable
-      )
-        return;
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (targetOwnsKey(e.target, e.key)) return;
       if (!player.activeItem) return;
 
       switch (e.key) {

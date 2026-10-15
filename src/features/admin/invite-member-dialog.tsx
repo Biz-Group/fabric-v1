@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { describeError } from "@/lib/user-error-message";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ROLE_OPTIONS = ["admin", "contributor", "viewer"] as const;
@@ -67,8 +68,7 @@ export function InviteMemberDialog({
       onInvited?.();
       onOpenChange(false);
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to send invitation.";
+      const msg = describeError(err, "Failed to send invitation.");
       toast.error(msg);
     } finally {
       setSubmitting(false);

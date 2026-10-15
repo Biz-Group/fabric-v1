@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAction } from "convex/react";
-import { Mail } from "lucide-react";
+import { AlertTriangle, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import {
@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { InvitationExpiry } from "@/features/admin/invitation-expiry";
+import { describeError } from "@/lib/user-error-message";
 
 type PendingInvite = {
   id: string;
@@ -49,6 +51,9 @@ export function PendingInvitesList({
   const revokeInvite = useAction(api.invitations.revoke);
 
   const [invites, setInvites] = useState<PendingInvite[] | undefined>(undefined);
+  // Set when the list has never loaded. A failed load isn't an empty list.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [now] = useState(() => Date.now());
   const [pendingRevoke, setPendingRevoke] = useState<PendingInvite | null>(
     null,
   );
@@ -58,11 +63,11 @@ export function PendingInvitesList({
     try {
       const rows = await listInvites({});
       setInvites(rows);
+      setLoadError(null);
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to load invitations.";
+      const msg = describeError(err, "Failed to load invitations.");
       toast.error(msg);
-      setInvites([]);
+      setLoadError(msg);
     }
   }, [listInvites]);
 
@@ -71,12 +76,14 @@ export function PendingInvitesList({
     void (async () => {
       try {
         const rows = await listInvites({});
-        if (!cancelled) setInvites(rows);
+        if (!cancelled) {
+          setInvites(rows);
+          setLoadError(null);
+        }
       } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "Failed to load invitations.";
-        toast.error(msg);
-        if (!cancelled) setInvites([]);
+        if (!cancelled) {
+          setLoadError(describeError(err, "Failed to load invitations."));
+        }
       }
     })();
     return () => {
@@ -109,10 +116,7 @@ export function PendingInvitesList({
       toast.success(`Re-sent invitation to ${invite.email}.`);
       await refresh();
     } catch (err) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : "Failed to resend invitation.";
+      const msg = describeError(err, "Failed to resend invitation.");
       toast.error(`${msg} If the old invitation was revoked, invite them again.`);
     } finally {
       setMutatingId(null);
@@ -127,8 +131,7 @@ export function PendingInvitesList({
       toast.success(`Revoked invitation for ${pendingRevoke.email}.`);
       await refresh();
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to revoke invitation.";
+      const msg = describeError(err, "Failed to revoke invitation.");
       toast.error(msg);
       throw err;
     } finally {
@@ -137,6 +140,27 @@ export function PendingInvitesList({
   };
 
   if (invites === undefined) {
+    if (loadError) {
+      return (
+        <EmptyState
+          icon={AlertTriangle}
+          title="Couldn't load invitations"
+          description={loadError}
+          action={
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setLoadError(null);
+                void refresh();
+              }}
+            >
+              Try again
+            </Button>
+          }
+        />
+      );
+    }
     return (
       <LoadingScreen fullScreen={false} message="Loading invitations..." />
     );
@@ -176,7 +200,11 @@ export function PendingInvitesList({
                   {formatDate(invite.createdAt)}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {invite.expiresAt ? formatDate(invite.expiresAt) : "—"}
+                  <InvitationExpiry
+                    expiresAt={invite.expiresAt}
+                    status={invite.status}
+                    now={now}
+                  />
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">

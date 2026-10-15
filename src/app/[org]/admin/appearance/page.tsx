@@ -32,6 +32,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { describeError } from "@/lib/user-error-message";
 
 type ThemeTokens = {
   accent: string;
@@ -371,8 +372,21 @@ export default function AdminAppearancePage() {
   const colorInputValue = normalizeHex(accentHex) ?? initialAccentHex;
 
   const statusLabel = useMemo(() => {
-    if (!theme) return "neutral";
-    return theme.status;
+    switch (theme?.status) {
+      case undefined:
+        return "Neutral";
+      case "extracting":
+        return "Generating";
+      case "pending":
+        // Also the state after a reset or a rejection with nothing active.
+        return theme.candidateLightTokens ? "Awaiting approval" : "Neutral";
+      case "ready":
+        return "Logo accent active";
+      case "override":
+        return "Custom accent active";
+      case "failed":
+        return "Generation failed";
+    }
   }, [theme]);
 
   const handleGenerate = async () => {
@@ -388,8 +402,7 @@ export default function AdminAppearancePage() {
       await saveGeneratedCandidate({ sourceLogoUrl: logoUrl, accentRgb });
       toast.success("Generated a theme candidate from the organization logo.");
     } catch (error) {
-      const reason =
-        error instanceof Error ? error.message : "Theme generation failed.";
+      const reason = describeError(error, "Theme generation failed.");
       try {
         await markThemeGenerationFailed({ sourceLogoUrl: logoUrl, reason });
       } catch {
@@ -422,7 +435,7 @@ export default function AdminAppearancePage() {
       setIsEditingAccent(false);
       toast.success("Theme candidate saved from the selected accent color.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save color.");
+      toast.error(describeError(error, "Failed to save color."));
     } finally {
       setBusyAction(null);
     }
@@ -434,7 +447,7 @@ export default function AdminAppearancePage() {
       await approveCandidateTheme({});
       toast.success("Theme approved and applied to the workspace.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to approve theme.");
+      toast.error(describeError(error, "Failed to approve theme."));
     } finally {
       setBusyAction(null);
     }
@@ -446,7 +459,7 @@ export default function AdminAppearancePage() {
       await rejectCandidateTheme({});
       toast.success("Theme candidate rejected.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to reject theme.");
+      toast.error(describeError(error, "Failed to reject theme."));
     } finally {
       setBusyAction(null);
     }
@@ -458,7 +471,7 @@ export default function AdminAppearancePage() {
       await resetToNeutral({});
       toast.success("Workspace theme reset to neutral.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to reset theme.");
+      toast.error(describeError(error, "Failed to reset theme."));
     } finally {
       setBusyAction(null);
     }
@@ -549,9 +562,7 @@ export default function AdminAppearancePage() {
             Generate and approve a restrained workspace accent from your organization logo.
           </p>
         </div>
-        <Badge variant={statusVariant(theme?.status)} className="capitalize">
-          {statusLabel}
-        </Badge>
+        <Badge variant={statusVariant(theme?.status)}>{statusLabel}</Badge>
       </div>
 
       <Card>

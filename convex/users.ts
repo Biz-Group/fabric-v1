@@ -23,6 +23,7 @@ import {
   resolveOrgForAction,
 } from "./lib/orgAuth";
 import { authError } from "./lib/authErrors";
+import { userError } from "./lib/userError";
 import {
   ClerkApiError,
   clerkFetch,
@@ -1158,6 +1159,14 @@ export const getOrgMembershipStats = query({
   },
 });
 
+/** Same answer whether the row is gone or belongs to another org. */
+function memberNotFoundError() {
+  return userError(
+    "MEMBER_NOT_FOUND",
+    "Membership not found. They may already have been removed.",
+  );
+}
+
 async function hasOtherAdmin(
   ctx: QueryCtx | MutationCtx,
   clerkOrgId: string,
@@ -1183,14 +1192,17 @@ export const setMembershipRole = mutation({
     const caller = await requireOrgAdmin(ctx);
     const target = await ctx.db.get(args.membershipId);
     if (!target || target.clerkOrgId !== caller.orgId) {
-      throw new Error("Membership not found");
+      throw memberNotFoundError();
     }
     if (target.role === args.role) return;
 
     if (target.role === "admin" && args.role !== "admin") {
       const otherAdmin = await hasOtherAdmin(ctx, caller.orgId, target._id);
       if (!otherAdmin) {
-        throw new Error("Cannot demote the last admin in this org.");
+        throw userError(
+          "LAST_ADMIN",
+          "You can't demote the last admin. Make someone else an admin first.",
+        );
       }
     }
 
@@ -1252,15 +1264,21 @@ export const beginMemberRemoval = internalMutation({
 
     const target = await ctx.db.get(args.membershipId);
     if (!target || target.clerkOrgId !== args.orgId) {
-      throw new Error("Membership not found");
+      throw memberNotFoundError();
     }
     if (target.userId === callerMembership.userId) {
-      throw new Error("Cannot remove your own membership.");
+      throw userError(
+        "SELF_REMOVAL",
+        "You can't remove yourself from the workspace.",
+      );
     }
     if (target.role === "admin") {
       const otherAdmin = await hasOtherAdmin(ctx, args.orgId, target._id);
       if (!otherAdmin) {
-        throw new Error("Cannot remove the last admin from this org.");
+        throw userError(
+          "LAST_ADMIN",
+          "You can't remove the last admin. Make someone else an admin first.",
+        );
       }
     }
 
@@ -1374,7 +1392,11 @@ export const removeMemberFromOrg = action({
           membershipId: args.membershipId,
           blockId: removal.blockId,
         });
-        throw err;
+        console.error("Clerk refused a member removal", err);
+        throw userError(
+          "MEMBER_REMOVAL_FAILED",
+          "The member couldn't be removed just now, so they still have access. Try again in a moment.",
+        );
       }
     }
 

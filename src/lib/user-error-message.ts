@@ -29,3 +29,22 @@ export function userErrorMessage(error: unknown): string | null {
   }
   return null;
 }
+
+/**
+ * The text to show for a failed call: the message the function sent, else
+ * the thrown message without Convex's request framing, else `fallback`. A
+ * plain `Error` from a function reads "Server Error" in production, which
+ * falls through to `fallback`.
+ */
+export function describeError(error: unknown, fallback: string): string {
+  const sent = userErrorMessage(error);
+  if (sent) return sent;
+
+  const message = error instanceof Error ? error.message : "";
+  const uncaught = message.match(/Uncaught (?:Error|ConvexError): ([^\n]+)/);
+  if (uncaught?.[1]) return uncaught[1].trim();
+  if (!message.trim() || message.startsWith("[CONVEX") || message.includes("Server Error")) {
+    return fallback;
+  }
+  return message;
+}

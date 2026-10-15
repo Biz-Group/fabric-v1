@@ -381,9 +381,8 @@ export function HierarchyOverviewContent({
         ) : hasContent ? (
           <div className="max-w-3xl">
             <p className="mb-5 text-xs leading-5 text-muted-foreground">
-              Compatibility view · This overview predates structured child
-              coverage and evidence links. It remains readable while Fabric
-              transitions to the evidence-backed format.
+              This overview is from an earlier version of Fabric and
+              doesn&apos;t link to its sources.
             </p>
             <div className="border-l-2 border-border pl-5 sm:pl-7">
               <MarkdownSummary content={overview.content.markdown ?? ""} />

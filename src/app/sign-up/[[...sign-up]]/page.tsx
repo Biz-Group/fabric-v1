@@ -1,6 +1,11 @@
+import type { Metadata } from "next";
 import { SignUp } from "@clerk/nextjs";
 import { AuthShell, clerkAuthAppearance } from "@/features/auth/auth-shell";
 import { RememberReturnPath } from "@/features/auth/remember-return-path";
+
+export const metadata: Metadata = {
+  title: "Sign up",
+};
 
 export default function SignUpPage() {
   return (

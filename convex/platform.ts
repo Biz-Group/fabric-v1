@@ -12,6 +12,7 @@ import {
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { requireSuperAdmin, type Role } from "./lib/orgAuth";
+import { userError } from "./lib/userError";
 import {
   assertClerkId,
   ClerkApiError,
@@ -385,7 +386,9 @@ export const setPlatformRole = mutation({
     const caller = await requireSuperAdmin(ctx);
 
     const target = await ctx.db.get(args.targetUserId);
-    if (!target) throw new Error("Target user not found");
+    if (!target) {
+      throw userError("USER_NOT_FOUND", "User not found. They may have been deleted.");
+    }
 
     // Prevent self-demotion
     if (
@@ -393,7 +396,10 @@ export const setPlatformRole = mutation({
       args.platformRole === null &&
       caller.platformRole === "superAdmin"
     ) {
-      throw new Error("Cannot demote yourself from super-admin");
+      throw userError(
+        "SELF_DEMOTION",
+        "You can't remove your own super-admin access. Ask another super-admin.",
+      );
     }
 
     if (args.platformRole === null) {

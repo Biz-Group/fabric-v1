@@ -1,5 +1,10 @@
+import type { Metadata } from "next";
 import { AuthShell } from "@/features/auth/auth-shell";
 import { JoinSubdomainOrganization } from "@/features/auth/join-subdomain-organization";
+
+export const metadata: Metadata = {
+  title: "Joining your workspace",
+};
 
 export default function JoinOrganizationPage() {
   return (

@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { LogoFileButton } from "@/features/tenants-console/logo-file-button";
 import { tenantHostname } from "@/features/tenants-console/tenant-url";
+import { describeError } from "@/lib/user-error-message";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ROLE_OPTIONS = ["admin", "contributor", "viewer"] as const;
@@ -129,7 +130,7 @@ export default function NewTenantPage() {
       router.push(`/${result.tenantId}`);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to create the tenant.",
+        describeError(err, "Failed to create the tenant."),
       );
       setSubmitting(false);
     }

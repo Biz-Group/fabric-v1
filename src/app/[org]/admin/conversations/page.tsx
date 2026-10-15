@@ -58,6 +58,7 @@ import {
   downloadCsv,
 } from "@/features/admin/conversations-export";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
+import { describeError } from "@/lib/user-error-message";
 
 type Status = "processing" | "needs_speaker_labels" | "done" | "failed";
 type StatusFilter = "all" | Status;
@@ -193,9 +194,7 @@ export default function AdminConversationsPage() {
       await deleteConversation({ conversationId: pendingDelete });
       toast.success("Conversation deleted.");
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to delete conversation.";
-      toast.error(msg);
+      toast.error(describeError(err, "Failed to delete conversation."));
       throw err;
     }
   };
@@ -222,9 +221,7 @@ export default function AdminConversationsPage() {
       else if (result.status === "failed") toast.error("Retry failed again.");
       else toast.info(`Retry queued (status: ${result.status}).`);
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to retry conversation.";
-      toast.error(msg);
+      toast.error(describeError(err, "Failed to retry conversation."));
     } finally {
       setRetryingId(null);
     }
@@ -252,8 +249,7 @@ export default function AdminConversationsPage() {
       downloadCsv(`conversations-${slug}-${date}.csv`, csv);
       toast.success(`Exported ${rows.length} conversations.`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Export failed.";
-      toast.error(msg);
+      toast.error(describeError(err, "Export failed."));
     } finally {
       setExporting(false);
     }
@@ -347,7 +343,9 @@ export default function AdminConversationsPage() {
                   >
                     {search
                       ? "No conversations match your search."
-                      : "No conversations yet."}
+                      : statusFilter !== "all" || processIdFilter
+                        ? "No contributions match these filters."
+                        : "No conversations yet."}
                   </TableCell>
                 </TableRow>
               ) : (

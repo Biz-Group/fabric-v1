@@ -19,6 +19,20 @@ type ErrorResponse = {
   error?: string;
 };
 
+/** A refusal from the join API. 403 and 404 are decisions about this account
+ * (domain not allowed, removed by an admin, no such workspace) that retrying
+ * won't change, so the way out is another account. */
+class JoinRefusedError extends Error {
+  readonly permanent: boolean;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.permanent = status === 403 || status === 404;
+  }
+}
+
+type JoinError = { message: string; permanent: boolean };
+
 async function getErrorMessage(response: Response): Promise<string> {
   try {
     const data = (await response.json()) as ErrorResponse;
@@ -41,7 +55,7 @@ const CONVEX_ORG_READY_TIMEOUT_MS = 20_000;
 
 export function JoinSubdomainOrganization() {
   const router = useRouter();
-  const { setActive } = useClerk();
+  const { setActive, signOut } = useClerk();
   const { isLoaded, orgId, userId } = useAuth({
     treatPendingAsSignedOut: false,
   });
@@ -52,7 +66,7 @@ export function JoinSubdomainOrganization() {
   const convexActiveOrg = useQuery(api.users.getActiveOrg);
   const hasStarted = useRef(false);
   const hasSynced = useRef(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<JoinError | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [targetOrganizationId, setTargetOrganizationId] = useState<
     string | null
@@ -104,7 +118,10 @@ export function JoinSubdomainOrganization() {
       });
 
       if (!response.ok) {
-        throw new Error(await getErrorMessage(response));
+        throw new JoinRefusedError(
+          await getErrorMessage(response),
+          response.status,
+        );
       }
 
       const data = (await response.json()) as JoinResponse;
@@ -113,11 +130,14 @@ export function JoinSubdomainOrganization() {
     }
 
     void joinOrganization().catch((joinError: unknown) => {
-      setError(
-        joinError instanceof Error
-          ? joinError.message
-          : "We could not join this workspace. Please try again.",
-      );
+      setError({
+        message:
+          joinError instanceof Error
+            ? joinError.message
+            : "We could not join this workspace. Please try again.",
+        permanent:
+          joinError instanceof JoinRefusedError && joinError.permanent,
+      });
     });
   }, [
     isLoaded,
@@ -141,7 +161,7 @@ export function JoinSubdomainOrganization() {
     if (!targetOrganizationId || hasSynced.current || convexOrgReady) return;
     const timer = window.setTimeout(() => {
       if (hasSynced.current) return;
-      setError(FABRIC_UNREACHABLE_ERROR);
+      setError({ message: FABRIC_UNREACHABLE_ERROR, permanent: false });
     }, CONVEX_ORG_READY_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
   }, [targetOrganizationId, convexOrgReady]);
@@ -175,11 +195,13 @@ export function JoinSubdomainOrganization() {
 
     void syncProfile().catch((syncError: unknown) => {
       console.error("Failed to finish Fabric profile setup", syncError);
-      setError(
-        syncError instanceof Error
-          ? FABRIC_PROFILE_SYNC_ERROR
-          : "We could not join this workspace. Please try again.",
-      );
+      setError({
+        message:
+          syncError instanceof Error
+            ? FABRIC_PROFILE_SYNC_ERROR
+            : "We could not join this workspace. Please try again.",
+        permanent: false,
+      });
     });
   }, [
     isLoaded,
@@ -194,20 +216,32 @@ export function JoinSubdomainOrganization() {
   if (error) {
     return (
       <div className="space-y-4 text-center">
-        <p className="text-sm leading-6 text-destructive">{error}</p>
-        <button
-          type="button"
-          onClick={() => {
-            hasStarted.current = false;
-            hasSynced.current = false;
-            setError(null);
-            setTargetOrganizationId(null);
-            setRetryKey((key) => key + 1);
-          }}
-          className="h-11 rounded-xl bg-foreground px-4 text-sm font-medium text-background hover:bg-foreground/90"
-        >
-          Try again
-        </button>
+        <p className="text-sm leading-6 text-destructive">{error.message}</p>
+        {error.permanent ? (
+          <button
+            type="button"
+            onClick={() =>
+              void signOut({ redirectUrl: signInUrlFor(readReturnPath()) })
+            }
+            className="h-11 rounded-xl bg-foreground px-4 text-sm font-medium text-background hover:bg-foreground/90"
+          >
+            Sign out and use another account
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              hasStarted.current = false;
+              hasSynced.current = false;
+              setError(null);
+              setTargetOrganizationId(null);
+              setRetryKey((key) => key + 1);
+            }}
+            className="h-11 rounded-xl bg-foreground px-4 text-sm font-medium text-background hover:bg-foreground/90"
+          >
+            Try again
+          </button>
+        )}
       </div>
     );
   }

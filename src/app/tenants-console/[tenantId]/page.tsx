@@ -35,6 +35,7 @@ import {
   tenantHostname,
   tenantWorkspaceUrl,
 } from "@/features/tenants-console/tenant-url";
+import { describeError } from "@/lib/user-error-message";
 
 function formatDate(ts: number) {
   return new Date(ts).toLocaleDateString("en-US", {
@@ -130,7 +131,7 @@ function TenantHeader({ tenant }: { tenant: TenantView }) {
       toast.success("Tenant renamed.");
       setEditing(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Rename failed.");
+      toast.error(describeError(err, "Rename failed."));
     } finally {
       setSaving(false);
     }
@@ -234,7 +235,7 @@ function ProvisioningErrors({ tenant }: { tenant: TenantView }) {
         );
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Retry failed.");
+      toast.error(describeError(err, "Retry failed."));
     } finally {
       setRetrying(false);
     }
@@ -284,7 +285,7 @@ function DomainsCard({ tenant }: { tenant: TenantView }) {
       toast.success("Allowed domains updated.");
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to update domains.",
+        describeError(err, "Failed to update domains."),
       );
     } finally {
       setSaving(false);
@@ -351,7 +352,7 @@ function LogoCard({ tenant }: { tenant: TenantView }) {
       toast.success("Logo updated.");
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to update the logo.",
+        describeError(err, "Failed to update the logo."),
       );
     } finally {
       setUploading(false);

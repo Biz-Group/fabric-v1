@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { useLastLoaded } from "@/hooks/use-last-loaded";
 import { UsageBreakdownTable } from "@/features/tenants-console/usage-breakdown-table";
 import { UsageCostChart } from "@/features/tenants-console/usage-cost-chart";
 import {
@@ -35,11 +36,15 @@ export default function UsageOverviewPage() {
     [range, custom, availability],
   );
 
-  const data = useQuery(api.aiUsage.usageOverview, {
+  const liveData = useQuery(api.aiUsage.usageOverview, {
     from,
     to,
     ...(deployment === "all" ? {} : { deployment }),
   });
+  // A filter change reloads the query. Keep the last figures on screen until
+  // it lands, so the filters (and a half-typed custom date) stay mounted.
+  const data = useLastLoaded(liveData, liveData === undefined);
+  const refreshing = liveData === undefined && data !== undefined;
 
   // Both charts read the same day series — the cumulative one folds it itself —
   // so it is shaped once, above the loading gate to keep the hook order stable.
@@ -58,12 +63,13 @@ export default function UsageOverviewPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={refreshing}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Usage</h1>
           <p className="text-sm text-muted-foreground">
             AI and voice spend across every tenant, {from} to {to} (UTC).
+            {refreshing && " Updating…"}
           </p>
         </div>
         <UsageFilters

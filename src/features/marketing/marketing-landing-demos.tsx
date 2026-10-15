@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 
 import styles from "@/features/marketing/marketing-landing-page.module.css";
+import { WorkspaceSignInForm } from "@/features/marketing/workspace-sign-in";
 
 const stages = [
   {
@@ -108,6 +109,9 @@ export function MobileNavigation() {
             <a href="#use-cases" onClick={() => setOpen(false)}>
               Use cases
             </a>
+            <div className={styles.mobileSignIn}>
+              <WorkspaceSignInForm />
+            </div>
           </motion.nav>
         )}
       </AnimatePresence>

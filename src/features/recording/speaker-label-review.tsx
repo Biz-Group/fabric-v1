@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useConversationAudioUrl } from "@/features/conversations/use-conversation-audio-url";
+import { describeError } from "@/lib/user-error-message";
 
 type TranscriptMessage = {
   role: string;
@@ -193,8 +194,7 @@ function SpeakerLabelEditor({
       toast.success("Speaker labels saved. Analysis is running.");
       onSubmitted?.();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to save labels.";
+      const message = describeError(error, "Failed to save labels.");
       toast.error(message);
     } finally {
       setSubmitting(false);

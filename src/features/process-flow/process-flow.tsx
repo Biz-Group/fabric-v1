@@ -92,6 +92,10 @@ import {
   resolveConnectedNodeInDirection,
 } from "./flow-keyboard-navigation";
 import hoverStyles from "./process-flow-hover.module.css";
+import {
+  noConversationsMessage,
+  type PendingConversationCounts,
+} from "./pending-conversations";
 
 const DETAIL_PANEL_MIN_WIDTH = 288;
 const DETAIL_PANEL_DEFAULT_WIDTH = 320;
@@ -100,6 +104,10 @@ const DETAIL_PANEL_MAX_WIDTH = 480;
 interface ProcessFlowProps {
   processId: Id<"processes">;
   conversationCount: number;
+  /** Contributions not yet usable: still processing, or awaiting labels. */
+  pendingConversations: PendingConversationCounts;
+  /** Contributors and admins can generate, refresh and retry; viewers can't. */
+  canEdit: boolean;
   selectedNodeId: string | null;
   onSelectedNodeChange: (nodeId: string | null) => void;
   onOpenConversation: (conversationId: Id<"conversations">) => void;
@@ -110,6 +118,8 @@ interface ProcessFlowProps {
 function ProcessFlowInner({
   processId,
   conversationCount,
+  pendingConversations,
+  canEdit,
   selectedNodeId,
   onSelectedNodeChange,
   onOpenConversation,
@@ -729,9 +739,10 @@ function ProcessFlowInner({
   if (flow === null) {
     return (
       <EmptyState
-        onGenerate={handleGenerate}
+        onGenerate={canEdit ? handleGenerate : undefined}
         isGenerating={isGenerating}
         hasConversations={conversationCount > 0}
+        pendingConversations={pendingConversations}
         actionError={actionError}
       />
     );
@@ -784,19 +795,21 @@ function ProcessFlowInner({
               {actionError}
             </p>
           )}
-          <Button
-            size="sm"
-            onClick={handleGenerate}
-            disabled={isGenerating}
-            className="gap-2"
-          >
-            {isGenerating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Try Again
-          </Button>
+          {canEdit && (
+            <Button
+              size="sm"
+              onClick={handleGenerate}
+              disabled={isGenerating}
+              className="gap-2"
+            >
+              {isGenerating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Try Again
+            </Button>
+          )}
         </div>
       </div>
     );
@@ -843,20 +856,22 @@ function ProcessFlowInner({
                 <span className="text-amber-700 dark:text-amber-400">
                   Couldn&apos;t refresh — showing the previous version
                 </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 gap-1 px-2 text-xs"
-                  onClick={handleGenerate}
-                  disabled={isGenerating}
-                >
-                  {isGenerating ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3 w-3" />
-                  )}
-                  Try Again
-                </Button>
+                {canEdit && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 px-2 text-xs"
+                    onClick={handleGenerate}
+                    disabled={isGenerating}
+                  >
+                    {isGenerating ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3 w-3" />
+                    )}
+                    Try Again
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -870,20 +885,22 @@ function ProcessFlowInner({
                   <span className="text-amber-700 dark:text-amber-400">
                     New data available
                   </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 gap-1 px-2 text-xs"
-                    onClick={handleGenerate}
-                    disabled={isGenerating}
-                  >
-                    {isGenerating ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-3 w-3" />
-                    )}
-                    Refresh
-                  </Button>
+                  {canEdit && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 gap-1 px-2 text-xs"
+                      onClick={handleGenerate}
+                      disabled={isGenerating}
+                    >
+                      {isGenerating ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3 w-3" />
+                      )}
+                      Refresh
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -1079,7 +1096,11 @@ function ProcessFlowInner({
                   allNodes={flow.nodes}
                   onClose={handleCloseDetails}
                   onNavigate={handleNavigateToNode}
-                  onRetryDetail={() => handleRetryNodeDetail(selectedNode.id)}
+                  onRetryDetail={
+                    canEdit
+                      ? () => handleRetryNodeDetail(selectedNode.id)
+                      : undefined
+                  }
                   isRetryingDetail={retryingNodeId === selectedNode.id}
                   onOpenConversation={onOpenConversation}
                 />
@@ -1108,7 +1129,11 @@ function ProcessFlowInner({
                     allNodes={flow.nodes}
                     onClose={handleCloseDetails}
                     onNavigate={handleNavigateToNode}
-                    onRetryDetail={() => handleRetryNodeDetail(selectedNode.id)}
+                    onRetryDetail={
+                    canEdit
+                      ? () => handleRetryNodeDetail(selectedNode.id)
+                      : undefined
+                  }
                     isRetryingDetail={retryingNodeId === selectedNode.id}
                     onOpenConversation={onOpenConversation}
                   />
@@ -1394,11 +1419,14 @@ function EmptyState({
   onGenerate,
   isGenerating,
   hasConversations,
+  pendingConversations,
   actionError,
 }: {
-  onGenerate: () => void;
+  /** Absent for viewers, who can't generate. */
+  onGenerate?: () => void;
   isGenerating: boolean;
   hasConversations: boolean;
+  pendingConversations: PendingConversationCounts;
   actionError: string | null;
 }) {
   return (
@@ -1409,35 +1437,44 @@ function EmptyState({
       <div className="text-center">
         <p className="text-sm font-medium">No process flow yet</p>
         <p className="mt-1 max-w-[280px] text-xs text-muted-foreground">
-          Generate a visual flow diagram from this process&apos;s conversations.
+          {onGenerate ? (
+            <>Generate a visual flow diagram from this process&apos;s conversations.</>
+          ) : (
+            <>
+              A contributor or admin can generate a flow diagram from this
+              process&apos;s contributions.
+            </>
+          )}
         </p>
       </div>
-      <Button
-        size="sm"
-        onClick={onGenerate}
-        disabled={isGenerating || !hasConversations}
-        className="gap-2"
-      >
-        {isGenerating ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Generating...
-          </>
-        ) : (
-          <>
-            <Sparkles className="h-4 w-4" />
-            Generate Process Flow
-          </>
-        )}
-      </Button>
+      {onGenerate && (
+        <Button
+          size="sm"
+          onClick={onGenerate}
+          disabled={isGenerating || !hasConversations}
+          className="gap-2"
+        >
+          {isGenerating ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Generating...
+            </>
+          ) : (
+            <>
+              <Sparkles className="h-4 w-4" />
+              Generate Process Flow
+            </>
+          )}
+        </Button>
+      )}
       {actionError && (
         <p className="max-w-sm text-xs text-destructive" role="alert">
           {actionError}
         </p>
       )}
       {!hasConversations && (
-        <p className="text-[11px] text-muted-foreground">
-          Record at least one conversation first.
+        <p className="max-w-[280px] text-center text-[11px] text-muted-foreground">
+          {noConversationsMessage(pendingConversations)}
         </p>
       )}
     </div>

@@ -63,7 +63,8 @@ const developmentServiceWorkerCleanup = `
 export const metadata: Metadata = {
   metadataBase: new URL("https://bizfabric.ai"),
   applicationName: "Fabric",
-  title: "Fabric.",
+  // Pages set `title` to their own name; the template adds the product.
+  title: { default: "Fabric", template: "%s | Fabric" },
   description: "Capture how your organization works through conversations",
   appleWebApp: {
     capable: true,

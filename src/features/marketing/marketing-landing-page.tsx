@@ -18,6 +18,9 @@ import {
   ProductJourneyDemo,
 } from "@/features/marketing/marketing-landing-demos";
 import styles from "@/features/marketing/marketing-landing-page.module.css";
+import { SignInMenu } from "@/features/marketing/workspace-sign-in";
+
+const BOOK_DEMO_URL = "https://forms.cloud.microsoft/r/s4Jc3zvXjK";
 
 const captureModes = [
   {
@@ -143,17 +146,17 @@ const faqs = [
 
 function BookDemoButton({ inverted = false }: { inverted?: boolean }) {
   return (
-    <>
-      {/* TODO(book-demo): Connect to the approved scheduling or contact destination. */}
-      <button
-        type="button"
-        className={inverted ? styles.demoButtonInverted : styles.demoButton}
-        data-book-demo
-      >
-        Book a demo
-        <ArrowRight aria-hidden="true" />
-      </button>
-    </>
+    <a
+      href={BOOK_DEMO_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={inverted ? styles.demoButtonInverted : styles.demoButton}
+      data-book-demo
+    >
+      Book a demo
+      <span className={styles.srOnly}> (opens in a new tab)</span>
+      <ArrowRight aria-hidden="true" />
+    </a>
   );
 }
 
@@ -182,6 +185,7 @@ export function MarketingLandingPage() {
           </nav>
 
           <div className={styles.navigationActions}>
+            <SignInMenu />
             <BookDemoButton />
             <MobileNavigation />
           </div>

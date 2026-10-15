@@ -25,6 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { describeError } from "@/lib/user-error-message";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -127,9 +128,7 @@ function SuperAdminRow({
                 description: describeDemotion(result),
               });
             } catch (err) {
-              toast.error(
-                err instanceof Error ? err.message : "Failed to demote.",
-              );
+              toast.error(describeError(err, "Failed to demote."));
               throw err;
             }
           }}
@@ -165,6 +164,13 @@ function PromoteCard() {
   const setPlatformRole = useMutation(api.platform.setPlatformRole);
   const fanOutToAllTenants = useAction(api.tenants.fanOutToAllTenants);
   const [promoting, setPromoting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const canPromote = candidate != null && candidate.platformRole !== "superAdmin";
+  // Promotion fans out to the same tenants (every one not deleted), so the
+  // confirmation can say how far the access reaches.
+  const tenants = useQuery(api.tenants.list, canPromote ? {} : "skip");
+  const tenantCount = tenants?.filter((tenant) => tenant.status !== "deleted")
+    .length;
 
   const handlePromote = async () => {
     if (!candidate) return;
@@ -190,7 +196,7 @@ function PromoteCard() {
       setEmail("");
       setLookupEmail(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to promote.");
+      toast.error(describeError(err, "Failed to promote."));
     } finally {
       setPromoting(false);
     }
@@ -241,11 +247,25 @@ function PromoteCard() {
             {candidate.platformRole === "superAdmin" ? (
               <Badge variant="secondary">Already a super-admin</Badge>
             ) : (
-              <Button onClick={handlePromote} disabled={promoting}>
+              <Button onClick={() => setConfirmOpen(true)} disabled={promoting}>
                 {promoting ? "Promoting..." : "Promote"}
               </Button>
             )}
           </div>
+        )}
+        {candidate && (
+          <ConfirmDialog
+            open={confirmOpen}
+            onOpenChange={setConfirmOpen}
+            title={`Make ${candidate.name} a super-admin?`}
+            description={`They get admin access to ${
+              tenantCount === undefined
+                ? "every tenant"
+                : `all ${tenantCount} tenant${tenantCount === 1 ? "" : "s"}`
+            }, including every member and contribution, and to this console. Demote them here to take it back.`}
+            confirmLabel="Make super-admin"
+            onConfirm={handlePromote}
+          />
         )}
       </CardContent>
     </Card>
@@ -268,7 +288,7 @@ function StaffSyncCard() {
         toast.success(`All super-admins synced across ${result.tenantsProcessed} tenant(s).`);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Sync failed.");
+      toast.error(describeError(err, "Sync failed."));
     } finally {
       setSyncing(false);
     }

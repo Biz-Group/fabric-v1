@@ -46,6 +46,7 @@ import type * as lib_summaryEvaluation from "../lib/summaryEvaluation.js";
 import type * as lib_summaryV2Feature from "../lib/summaryV2Feature.js";
 import type * as lib_textNormalization from "../lib/textNormalization.js";
 import type * as lib_transcriptHash from "../lib/transcriptHash.js";
+import type * as lib_userError from "../lib/userError.js";
 import type * as migrations from "../migrations.js";
 import type * as orgIntegrity from "../orgIntegrity.js";
 import type * as orgThemes from "../orgThemes.js";
@@ -112,6 +113,7 @@ declare const fullApi: ApiFromModules<{
   "lib/summaryV2Feature": typeof lib_summaryV2Feature;
   "lib/textNormalization": typeof lib_textNormalization;
   "lib/transcriptHash": typeof lib_transcriptHash;
+  "lib/userError": typeof lib_userError;
   migrations: typeof migrations;
   orgIntegrity: typeof orgIntegrity;
   orgThemes: typeof orgThemes;

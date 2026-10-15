@@ -17,6 +17,7 @@ import {
   resolveOrgForAction,
 } from "./lib/orgAuth";
 import { authError } from "./lib/authErrors";
+import { userError } from "./lib/userError";
 import { conversationTitle } from "./lib/conversationTitle";
 
 const DEFAULT_COMPACT_CONVERSATION_LIMIT = 50;
@@ -550,16 +551,22 @@ export const getFailedForRetry = internalQuery({
 
     const conv = await ctx.db.get(args.conversationId);
     if (!conv || conv.clerkOrgId !== args.orgId) {
-      throw new Error("Not found");
+      throw userError("NOT_FOUND", "Not found. It may already have been deleted.");
     }
     if (conv.status !== "failed") {
-      throw new Error("Only failed conversations can be retried");
+      throw userError(
+        "NOT_RETRYABLE",
+        "Only failed contributions can be retried.",
+      );
     }
     if (
       (conv.inputMode ?? "agent") !== "agent" ||
       !conv.elevenlabsConversationId
     ) {
-      throw new Error("Only failed AI interview conversations can be retried");
+      throw userError(
+        "NOT_RETRYABLE",
+        "Only failed AI interviews can be retried this way.",
+      );
     }
 
     return {

@@ -3,7 +3,7 @@ import { LegalPage } from "@/features/legal/legal-page";
 import { privacyPolicy } from "@/features/legal/legal-documents";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Fabric",
+  title: "Privacy Policy",
   description: "How Biz Group handles personal information when you use Fabric.",
   alternates: { canonical: "https://bizfabric.ai/privacy" },
 };

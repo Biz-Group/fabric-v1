@@ -856,6 +856,6 @@ describe("audio retry", () => {
       t
         .withIdentity(identityForOrgAUser("user_admin", "Admin"))
         .mutation(api.voiceRecordings.retryAudioProcessing, { conversationId }),
-    ).rejects.toThrow(/Only failed audio conversations/);
+    ).rejects.toThrow(/Only failed recordings/);
   });
 });

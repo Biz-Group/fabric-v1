@@ -22,6 +22,7 @@ import {
   SelectLabel,
   SelectValue,
 } from "@/components/ui/select";
+import { describeError, userErrorMessage } from "@/lib/user-error-message";
 
 type CrudMode = "create" | "edit" | "delete";
 const SAVE_TIMEOUT_MS = 45000;
@@ -59,26 +60,9 @@ interface CrudDialogProps {
   ) => Promise<void>;
 }
 
-function getErrorData(err: unknown): Record<string, unknown> | null {
-  if (!err || typeof err !== "object" || !("data" in err)) return null;
-  const data = (err as { data?: unknown }).data;
-  if (typeof data === "string") {
-    try {
-      const parsed = JSON.parse(data);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-    } catch {
-      return null;
-    }
-  }
-  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
-  return data as Record<string, unknown>;
-}
-
 function getCrudErrorMessage(err: unknown): string {
-  const data = getErrorData(err);
-  if (typeof data?.userMessage === "string") return data.userMessage;
+  const sent = userErrorMessage(err);
+  if (sent) return sent;
 
   const message = err instanceof Error ? err.message : "";
 
@@ -98,10 +82,7 @@ function getCrudErrorMessage(err: unknown): string {
     return "This description could not be saved because it appears to contain instructions for the AI interviewer, policy changes, or sensitive-data requests. Remove those parts and try again.";
   }
 
-  const uncaughtMessage = message.match(/Uncaught (?:Error|ConvexError): ([^\n]+)/);
-  if (uncaughtMessage?.[1]) return uncaughtMessage[1];
-
-  return message || "Something went wrong.";
+  return describeError(err, "Something went wrong.");
 }
 
 function withSaveTimeout<T>(promise: Promise<T>): Promise<T> {
@@ -152,6 +133,8 @@ export function CrudDialog({
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
+    // Enter in the name field bypasses the disabled button.
+    if (loading) return;
     if (mode !== "delete" && !name.trim()) return;
     if (description.length > 2000) return;
     setLoading(true);
@@ -387,7 +370,9 @@ export function CrudDialog({
             onClick={handleSubmit}
           >
             {loading
-              ? "Saving..."
+              ? mode === "delete"
+                ? "Deleting…"
+                : "Saving…"
               : mode === "create"
                 ? "Create"
                 : mode === "edit"

@@ -92,6 +92,23 @@ function subscribeToSidebarCollapsed(onStoreChange: () => void) {
   };
 }
 
+function getApplePlatformSnapshot(): boolean {
+  const { userAgentData } = navigator as Navigator & {
+    userAgentData?: { platform?: string };
+  };
+  return /mac|iphone|ipad|ipod/i.test(
+    userAgentData?.platform || navigator.platform,
+  );
+}
+
+function getServerApplePlatformSnapshot(): boolean {
+  return false;
+}
+
+function subscribeToNothing() {
+  return () => {};
+}
+
 function SearchTrigger({
   onSearch,
   compact = false,
@@ -99,6 +116,12 @@ function SearchTrigger({
   onSearch: () => void;
   compact?: boolean;
 }) {
+  // The palette opens on Cmd+K or Ctrl+K; show the one this keyboard has.
+  const isApple = useSyncExternalStore(
+    subscribeToNothing,
+    getApplePlatformSnapshot,
+    getServerApplePlatformSnapshot,
+  );
   return (
     <button
       type="button"
@@ -120,7 +143,7 @@ function SearchTrigger({
             aria-hidden="true"
           >
             <kbd className="rounded border bg-muted px-1.5 py-0.5 font-sans">
-              Ctrl
+              {isApple ? "⌘" : "Ctrl"}
             </kbd>
             <kbd className="rounded border bg-muted px-1.5 py-0.5 font-sans">
               K

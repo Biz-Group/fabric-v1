@@ -388,7 +388,7 @@ describe("HierarchyOverviewContent", () => {
     };
     const html = renderDepartment(value, []);
 
-    expect(html).toContain("Compatibility view");
+    expect(html).toContain("from an earlier version of Fabric");
     expect(html).toContain("Existing department narrative");
     expect(html).toContain("does not record exact child inclusion");
     expect(html).toContain("No processes are currently defined");

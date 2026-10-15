@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { SignIn } from "@clerk/nextjs";
 import { headers } from "next/headers";
 import { AuthShell, clerkAuthAppearance } from "@/features/auth/auth-shell";
@@ -6,6 +7,10 @@ import { toSafeReturnPath } from "@/features/auth/return-path";
 import { isTenantsConsoleHost } from "@/lib/subdomain";
 
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "";
+
+export const metadata: Metadata = {
+  title: "Sign in",
+};
 
 export default async function SignInPage({
   searchParams,

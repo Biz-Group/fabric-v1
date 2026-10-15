@@ -1912,7 +1912,7 @@ describe("removeMemberFromOrg — admin gating + Clerk coordination", () => {
       t.withIdentity(identityForOrgA()).action(api.users.removeMemberFromOrg, {
         membershipId: targetId,
       }),
-    ).rejects.toThrow(/500/);
+    ).rejects.toThrow(/MEMBER_REMOVAL_FAILED/);
 
     const stored = await t.run(async (ctx) => ({
       row: await ctx.db.get(targetId),
@@ -2621,7 +2621,7 @@ describe("conversations admin — cross-tenant scoping", () => {
       t
         .withIdentity(identityForOrgA())
         .action(api.conversations.retryFetch, { conversationId: doneConv }),
-    ).rejects.toThrow(/Only failed conversations/);
+    ).rejects.toThrow(/Only failed contributions/);
   });
 
   test("retryFetch requires admin role", async () => {

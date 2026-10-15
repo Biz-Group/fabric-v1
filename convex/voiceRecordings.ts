@@ -19,6 +19,7 @@ import {
   resolveOrgForAction,
 } from "./lib/orgAuth";
 import { authError } from "./lib/authErrors";
+import { userError } from "./lib/userError";
 import {
   isAIConfigured,
   isTokenLimitFinishReason,
@@ -1194,12 +1195,18 @@ export const retryAudioProcessing = mutation({
     assertOrgOwns(caller, conv);
 
     if (conv.status !== "failed") {
-      throw new Error("Only failed audio conversations can be retried");
+      throw userError(
+        "NOT_RETRYABLE",
+        "Only failed recordings can be retried.",
+      );
     }
 
     const mode = conv.inputMode ?? "agent";
     if (mode !== "voiceRecord" && mode !== "audioUpload") {
-      throw new Error("Only failed audio conversations can be retried");
+      throw userError(
+        "NOT_RETRYABLE",
+        "Only failed recordings can be retried.",
+      );
     }
 
     const hasTranscript = Boolean(conv.transcript?.length);
@@ -1220,7 +1227,10 @@ export const retryAudioProcessing = mutation({
     }
 
     if (!conv.audioStorageId) {
-      throw new Error("Audio file is no longer available for retry");
+      throw userError(
+        "AUDIO_MISSING",
+        "The audio file is no longer available, so this recording can't be retried.",
+      );
     }
 
     await ctx.db.patch(args.conversationId, {

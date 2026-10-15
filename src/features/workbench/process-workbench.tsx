@@ -73,6 +73,11 @@ import {
   useRecentProcessIds,
 } from "@/features/home/recent-processes";
 import { CrudDialog } from "@/features/hierarchy/crud-dialog";
+import {
+  clampMobileLevel,
+  deepestMobileLevel,
+  type MobileLevel,
+} from "@/features/workbench/mobile-level";
 import { CommandPalette } from "@/features/hierarchy/command-palette";
 import { useProcessPdfDownload } from "@/features/workbench/process-pdf/use-process-pdf-download";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -88,23 +93,11 @@ import { GitBranch } from "lucide-react";
 
 // --- Types ---
 
-type MobileLevel = 1 | 2 | 3 | 4;
 type MobilePreview =
   | { type: "function"; id: Id<"functions">; name: string }
   | { type: "department"; id: Id<"departments">; name: string }
   | { type: "process"; id: Id<"processes">; name: string }
   | null;
-
-function deepestMobileLevel(sel: {
-  fn: Id<"functions"> | null;
-  dept: Id<"departments"> | null;
-  proc: Id<"processes"> | null;
-}): MobileLevel {
-  if (sel.proc) return 4;
-  if (sel.dept) return 3;
-  if (sel.fn) return 2;
-  return 1;
-}
 
 // --- Main Component ---
 
@@ -147,6 +140,15 @@ export function ProcessWorkbench() {
   const [mobileLevel, setMobileLevel] = useState<MobileLevel>(
     deepestMobileLevel(initialSelection),
   );
+  // Deleting the open item, here or by another member, clears part of the
+  // selection; step the phone back up to a screen the selection still fills.
+  const clampedMobileLevel = clampMobileLevel(mobileLevel, {
+    fn: selectedFunctionId,
+    dept: selectedDepartmentId,
+    proc: selectedProcessId,
+  });
+  if (clampedMobileLevel !== mobileLevel) setMobileLevel(clampedMobileLevel);
+
   const [mobilePreview, setMobilePreview] = useState<MobilePreview>(null);
   // Which half of the phone landing screen is showing. Session-only: it is
   // remembered while drilling in and back out, and resets to Home on reload.
@@ -298,10 +300,6 @@ export function ProcessWorkbench() {
             functionId: newFunctionId,
             description,
           });
-          if (newFunctionId && newFunctionId !== selectedFunctionId) {
-            setSelectedDepartmentId(null);
-            setSelectedProcessId(null);
-          }
         } else if (crudMode === "delete" && crudTargetId) {
           await removeDepartment({
             departmentId: crudTargetId as Id<"departments">,
@@ -327,9 +325,6 @@ export function ProcessWorkbench() {
             departmentId: newDepartmentId,
             description,
           });
-          if (newDepartmentId && newDepartmentId !== selectedDepartmentId) {
-            setSelectedProcessId(null);
-          }
         } else if (crudMode === "delete" && crudTargetId) {
           await removeProcess({ processId: crudTargetId as Id<"processes"> });
           if (selectedProcessId === crudTargetId) {
@@ -397,6 +392,19 @@ export function ProcessWorkbench() {
     processConversations?.filter(
       (conversation) => conversation.status === "done",
     ).length ?? 0;
+  const pendingProcessConversations = useMemo(
+    () => ({
+      processing:
+        processConversations?.filter(
+          (conversation) => conversation.status === "processing",
+        ).length ?? 0,
+      needsLabels:
+        processConversations?.filter(
+          (conversation) => conversation.status === "needs_speaker_labels",
+        ).length ?? 0,
+    }),
+    [processConversations],
+  );
   const departmentOverviewChildren = useMemo<
     HierarchyChildSummary[] | undefined
   >(
@@ -572,6 +580,24 @@ export function ProcessWorkbench() {
     selectedDepartmentId,
     selectedDepartmentName,
     selectedProcessName,
+  ]);
+
+  // The same for a selected department moved to another function: the
+  // selection follows it rather than closing. (A selected process is followed
+  // by the effect above.)
+  useEffect(() => {
+    if (selectedProcessId || !selectedDepartmentId || !selectedDepartment) {
+      return;
+    }
+    if (selectedFunctionId !== selectedDepartment.functionId) {
+      setSelectedFunctionId(selectedDepartment.functionId);
+      setSelectedFunctionName("");
+    }
+  }, [
+    selectedProcessId,
+    selectedDepartmentId,
+    selectedDepartment,
+    selectedFunctionId,
   ]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -1107,6 +1133,7 @@ export function ProcessWorkbench() {
         title="Functions"
         count={functions?.length}
         onAdd={canEdit ? () => openCrud("create", "Function") : undefined}
+        addLabel="Add function"
         mobile={mobile}
       />
       <div className="flex-1 overflow-y-auto scrollbar-hide">
@@ -1212,7 +1239,7 @@ export function ProcessWorkbench() {
 
   const departmentsColumn = (mobile?: boolean) => (
     <div className="flex h-full flex-col">
-      {mobile && selectedFunctionId && (
+      {mobile && (
         <div className="shrink-0 border-b bg-background px-2 py-2">
           <Button
             variant="ghost"
@@ -1236,6 +1263,7 @@ export function ProcessWorkbench() {
             ? () => openCrud("create", "Department")
             : undefined
         }
+        addLabel="Add department"
         mobile={mobile}
       />
       <div className="flex-1 overflow-y-auto scrollbar-hide">
@@ -1310,7 +1338,7 @@ export function ProcessWorkbench() {
 
   const processesColumn = (mobile?: boolean) => (
     <div className="flex h-full flex-col">
-      {mobile && selectedDepartmentId && (
+      {mobile && (
         <div className="shrink-0 border-b bg-background px-2 py-2">
           <Button
             variant="ghost"
@@ -1333,6 +1361,7 @@ export function ProcessWorkbench() {
             ? () => openCrud("create", "Process")
             : undefined
         }
+        addLabel="Add process"
         mobile={mobile}
       />
       <div className="flex-1 overflow-y-auto scrollbar-hide">
@@ -1420,7 +1449,7 @@ export function ProcessWorkbench() {
 
   const detailPanel = (mobile?: boolean) => (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
-      {mobile && selectedProcessId && (
+      {mobile && (
         <div className="shrink-0 border-b bg-background px-2 py-2">
           <Button
             variant="ghost"
@@ -1656,6 +1685,8 @@ export function ProcessWorkbench() {
                 key={selectedProcessId}
                 processId={selectedProcessId!}
                 conversationCount={completedProcessConversationCount}
+                pendingConversations={pendingProcessConversations}
+                canEdit={canEdit}
                 flow={
                   processWorkbench === undefined
                     ? undefined

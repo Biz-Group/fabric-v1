@@ -18,7 +18,7 @@ const releaseSerif = Newsreader({
 });
 
 export const metadata: Metadata = {
-  title: "Release notes | Fabric",
+  title: "Release notes",
   description: "Monthly product updates from Fabric.",
 };
 
