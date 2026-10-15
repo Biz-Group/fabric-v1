@@ -19,13 +19,6 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,6 +31,10 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/features/status/status-badge";
 import { processPendingStatusMeta } from "@/features/status/status-meta";
+import {
+  WorkbenchBreadcrumb,
+  type WorkbenchCrumb,
+} from "@/features/workbench/workbench-breadcrumb";
 import { cn } from "@/lib/utils";
 import styles from "./process-header.module.css";
 
@@ -47,17 +44,13 @@ type ProcessWorkbench = NonNullable<
 
 type ProcessHeaderProps = {
   processName: string;
-  functionName: string;
-  departmentName: string;
   workbench: ProcessWorkbench | null | undefined;
   canEdit: boolean;
   /** Phone layout: capture actions move to a floating button so the overview
    * starts near the top of the screen, and the "more" menu joins the title. */
   mobile?: boolean;
-  functionHref: string;
-  departmentHref: string;
-  onSelectFunction: () => void;
-  onSelectDepartment: () => void;
+  /** Home, the function and the department, above the title. */
+  breadcrumb: WorkbenchCrumb[];
   onCopyLink: () => Promise<boolean>;
   onJumpToLabeling: () => void;
   onEditProcess: () => void;
@@ -234,15 +227,15 @@ function CaptureActions({
   onUploadAudio: () => void;
 }) {
   const actionClassName =
-    "h-13 w-full min-w-0 justify-start gap-2.5 px-3.5 text-sm lg:h-10 lg:w-auto lg:px-3 transition-[background-color,border-color,color,box-shadow,transform] motion-reduce:transition-none";
+    "h-10 min-w-0 justify-start gap-2.5 px-3 text-sm transition-[background-color,border-color,color,box-shadow,transform] motion-reduce:transition-none";
 
   return (
     <div
-      className="grid w-full min-w-0 grid-cols-1 gap-2 lg:w-auto lg:grid-cols-[auto_auto_auto]"
+      className="flex min-w-0 flex-wrap gap-2"
       role="group"
       aria-label="Add information"
     >
-      <span className={cn(styles.aiButtonGlow, "w-full lg:w-auto")}>
+      <span className={styles.aiButtonGlow}>
         <Button
           type="button"
           variant="outline"
@@ -358,15 +351,10 @@ function CaptureFab({
 
 export function ProcessHeader({
   processName,
-  functionName,
-  departmentName,
   workbench,
   canEdit,
   mobile = false,
-  functionHref,
-  departmentHref,
-  onSelectFunction,
-  onSelectDepartment,
+  breadcrumb,
   onCopyLink,
   onJumpToLabeling,
   onEditProcess,
@@ -435,21 +423,25 @@ export function ProcessHeader({
         <MoreHorizontal className="size-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent role="menu" align="end" className="w-48">
-        <DropdownMenuItem
-          className="md:hidden"
-          disabled={copyState === "copying"}
-          onClick={handleCopyLink}
-        >
-          {copyState === "copying" ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : copyState === "copied" ? (
-            <Check className="size-4" />
-          ) : (
-            <Share2 className="size-4" />
-          )}
-          {copyLabel}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator className="md:hidden" />
+        {/* Phones have no room for the Share button beside the title. */}
+        {mobile && (
+          <>
+            <DropdownMenuItem
+              disabled={copyState === "copying"}
+              onClick={handleCopyLink}
+            >
+              {copyState === "copying" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : copyState === "copied" ? (
+                <Check className="size-4" />
+              ) : (
+                <Share2 className="size-4" />
+              )}
+              {copyLabel}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuItem
           disabled={isDownloading}
           onClick={onDownloadProcess}
@@ -486,58 +478,24 @@ export function ProcessHeader({
     </DropdownMenu>
   );
 
+  // The layout follows the panel's width, not the viewport's: beside the
+  // sidebar and tree, the panel is narrow even on a wide screen. Only a panel
+  // wide enough for the title and the whole action row puts them side by side.
   return (
-    <header className="shrink-0 border-b bg-background">
-      <div className="grid min-w-0 gap-y-3 px-4 py-4 md:px-6 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center xl:gap-x-6">
+    <header className="@container shrink-0 border-b bg-background">
+      <div className="grid min-w-0 gap-y-3 px-4 py-4 md:px-6 @5xl:grid-cols-[minmax(0,1fr)_auto] @5xl:items-center @5xl:gap-x-6">
         {/* Phones drop the breadcrumb: the back button above already names
             the department, and the title below names the process. */}
         {!mobile && (
-          <div className="min-w-0 xl:col-span-2 xl:row-start-1">
-            <Breadcrumb>
-              <BreadcrumbList className="text-xs">
-                <BreadcrumbItem>
-                  <BreadcrumbLink
-                    href={functionHref}
-                    title={functionName || "Function"}
-                    className="block max-w-40 truncate rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      onSelectFunction();
-                    }}
-                  >
-                    {functionName || "Function"}
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbLink
-                    href={departmentHref}
-                    title={departmentName || "Department"}
-                    className="block max-w-48 truncate rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      onSelectDepartment();
-                    }}
-                  >
-                    {departmentName || "Department"}
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem className="min-w-0">
-                  <span
-                    aria-current="page"
-                    title={processName || "Process"}
-                    className="block max-w-72 truncate text-xs text-foreground"
-                  >
-                    {processName || "Process"}
-                  </span>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+          <div className="min-w-0 @5xl:col-span-2 @5xl:row-start-1">
+            <WorkbenchBreadcrumb
+              crumbs={breadcrumb}
+              current={processName || "Process"}
+            />
           </div>
         )}
 
-        <div className="flex min-w-0 items-start gap-2 xl:col-start-1 xl:row-start-2">
+        <div className="flex min-w-0 items-start gap-2 @5xl:col-start-1 @5xl:row-start-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <h1 className="min-w-0 max-w-full break-words text-2xl font-semibold tracking-normal md:text-3xl">
               {processName || "Untitled process"}
@@ -550,7 +508,7 @@ export function ProcessHeader({
           {mobile && <div className="-mr-2 shrink-0">{moreMenu}</div>}
         </div>
 
-        <div className="flex min-w-0 flex-wrap items-center gap-2 xl:col-start-1 xl:row-start-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 @5xl:col-start-1 @5xl:row-start-3">
           <ProcessMetadata
             contributorName={latestContributor?.name}
             submittedByName={latestContributor?.submittedByName}
@@ -566,7 +524,7 @@ export function ProcessHeader({
         </div>
 
         {!mobile && (
-          <div className="flex w-full shrink-0 flex-col gap-3 lg:flex-row lg:items-center xl:col-start-2 xl:row-start-2 xl:w-auto xl:flex-nowrap xl:justify-end">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 @5xl:col-start-2 @5xl:row-start-2 @5xl:flex-nowrap @5xl:justify-end">
             {canEdit && (
               <CaptureActions
                 disabled={captureDisabled}
@@ -575,16 +533,18 @@ export function ProcessHeader({
                 onUploadAudio={onUploadAudio}
               />
             )}
+            {/* The divider only shows where the row fits on one line; a
+                wrapped Share would start its line with it. */}
             <div
               className={cn(
-                "flex shrink-0 items-center justify-end gap-1.5",
-                canEdit && "lg:border-l lg:pl-3",
+                "flex shrink-0 items-center gap-1.5",
+                canEdit && "@3xl:border-l @3xl:pl-3",
               )}
             >
               <Button
                 type="button"
                 variant="ghost"
-                className="hidden min-h-10 justify-start gap-2 px-2.5 text-muted-foreground hover:text-foreground md:inline-flex"
+                className="min-h-10 justify-start gap-2 px-2.5 text-muted-foreground hover:text-foreground"
                 onClick={handleCopyLink}
                 disabled={copyState === "copying"}
               >

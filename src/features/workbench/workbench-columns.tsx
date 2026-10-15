@@ -1,83 +1,82 @@
-import type { ComponentType, ReactNode } from "react";
-import { ChevronRight, Plus, SquarePen, Trash2 } from "lucide-react";
+import { Fragment, type ComponentType, type ReactNode } from "react";
+import { ChevronLeft, Info, MoreHorizontal, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "@/features/status/status-badge";
 import type { StatusMeta } from "@/features/status/status-meta";
 import { cn } from "@/lib/utils";
 
-// Presentational building blocks for the mobile process navigation columns
-// (functions → departments → processes) and the workbench detail surface.
-// These are pure, prop-driven components with no app/query state.
+// Presentational building blocks for the phone drill-down (functions →
+// departments → processes → detail), used below `lg`. These are pure,
+// prop-driven components with no app/query state. Lists stay readable on a
+// portrait tablet by centring in a column the width of a large phone.
+
+const COLUMN_WIDTH = "mx-auto w-full max-w-3xl";
+
+export type ColumnItemAction = {
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  onSelect: () => void;
+  destructive?: boolean;
+};
 
 // --- Column Item ---
 
 export function ColumnItem({
   label,
   selected,
-  indicator,
   count,
+  countLabel,
   detail,
   status,
-  onClick,
-  onNavigate,
-  navigateLabel,
-  onEdit,
-  onDelete,
-  mobile,
+  onOpen,
+  onPreview,
+  actions = [],
 }: {
   label: string;
   selected: boolean;
-  indicator: "arrow" | "dot";
-  /** Child count for parent rows; suppresses the drill chevron when 0. */
+  /** Child count for parent rows. */
   count?: number;
+  /** Spoken in place of the bare count, e.g. "3 departments". */
+  countLabel?: string;
   /** Muted second line, e.g. "3 interviews". */
   detail?: string;
   /** Shown on the second line, as a badge with its label. */
   status?: StatusMeta | null;
-  onClick: () => void;
-  onNavigate?: () => void;
-  navigateLabel?: string;
-  onEdit?: () => void;
-  onDelete?: () => void;
-  mobile?: boolean;
+  /** Tapping the row drills in. */
+  onOpen: () => void;
+  /** The info button: the item's overview in a sheet, without drilling in. */
+  onPreview: () => void;
+  /** Edit, Delete and the like, in the row's "…" menu. */
+  actions?: ColumnItemAction[];
 }) {
-  const actionButtonClass = cn(
-    "inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35",
-    mobile ? "size-10" : "size-6",
-    "hover:bg-org-accent-subtle"
-  );
-  // Edit/Delete reveal on hover/focus (desktop); always shown on mobile.
-  const revealClass = mobile
-    ? undefined
-    : selected
-      ? "opacity-100"
-      : "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100";
-  // Parent rows show a chevron only when they actually have children.
-  const showChevron = indicator === "arrow" && (count === undefined || count > 0);
+  const iconButtonClass =
+    "inline-flex size-10 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-org-accent-subtle focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35";
 
   return (
     <div
       className={cn(
-        "group flex w-full items-center overflow-hidden rounded-lg border border-transparent transition-all",
-        mobile && "min-h-14",
+        "flex min-h-14 w-full items-center rounded-lg border border-transparent transition-all",
         selected
           ? "border border-org-accent-border bg-org-accent-selected text-org-accent-selected-foreground shadow-sm ring-1 ring-org-accent-border"
-          : "text-foreground hover:bg-org-accent-subtle hover:text-foreground"
+          : "text-foreground hover:bg-org-accent-subtle hover:text-foreground",
       )}
     >
       <button
         type="button"
-        onClick={onClick}
-        className={cn(
-          "flex min-w-0 flex-1 items-center text-left font-medium outline-none",
-          "focus-visible:ring-3 focus-visible:ring-org-accent-ring/35",
-          mobile ? "min-h-14 px-4 py-3 text-base" : "px-3 py-2.5 text-sm"
-        )}
+        onClick={onOpen}
+        className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-l-lg px-4 py-3 text-left text-base font-medium outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
       >
-        <span className="flex min-w-0 flex-col">
-          <span className="truncate" title={label}>
-            {label}
-          </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          {/* Wraps rather than truncating: a touch screen can't show a
+              tooltip with the rest of the name. */}
+          <span className="line-clamp-2 break-words">{label}</span>
           {(detail || status) && (
             <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs font-normal text-muted-foreground">
               {detail && <span className="truncate">{detail}</span>}
@@ -85,113 +84,106 @@ export function ColumnItem({
             </span>
           )}
         </span>
-      </button>
-      <div
-        className={cn(
-          "flex shrink-0 items-center",
-          mobile ? "gap-1.5 px-1.5" : "gap-0.5 pr-2"
-        )}
-      >
-        {onEdit && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit();
-            }}
-            className={cn(actionButtonClass, revealClass)}
-            title={`Edit ${label}`}
-            aria-label={`Edit ${label}`}
-          >
-            <SquarePen className={mobile ? "h-4 w-4" : "h-3 w-3"} />
-          </button>
-        )}
-        {onDelete && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            className={cn(actionButtonClass, revealClass)}
-            title="Delete"
-            aria-label={`Delete ${label}`}
-          >
-            <Trash2 className={mobile ? "h-4 w-4" : "h-3 w-3"} />
-          </button>
-        )}
         {count !== undefined && count > 0 && (
           <span
             className={cn(
-              "ml-0.5 tabular-nums",
-              mobile ? "text-sm" : "text-[11px]",
-              selected ? "text-org-accent-selected-foreground/70" : "text-muted-foreground"
+              "shrink-0 text-sm tabular-nums",
+              selected
+                ? "text-org-accent-selected-foreground/70"
+                : "text-muted-foreground",
             )}
           >
-            {count}
+            <span aria-hidden="true">{count}</span>
+            <span className="sr-only">{countLabel ?? count}</span>
           </span>
         )}
-        {onNavigate ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onNavigate();
-            }}
-            className={cn(
-              actionButtonClass,
-              mobile && "ml-1 border-l border-current/10 pl-1"
-            )}
-            aria-label={navigateLabel ?? `Open ${label}`}
-            title={navigateLabel ?? `Open ${label}`}
-          >
-            <ChevronRight className={mobile ? "h-5 w-5" : "h-4 w-4"} />
-          </button>
-        ) : showChevron ? (
-          <ChevronRight
-            className={cn(
-              "h-4 w-4 shrink-0",
-              selected ? "opacity-80" : "opacity-40"
-            )}
-          />
-        ) : null}
+      </button>
+      <div className="flex shrink-0 items-center gap-0.5 pr-1.5">
+        {actions.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  className={iconButtonClass}
+                  aria-label={`Actions for ${label}`}
+                />
+              }
+            >
+              <MoreHorizontal className="size-5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-auto min-w-44">
+              {actions.map((action, index) => {
+                const Icon = action.icon;
+                const previous = actions[index - 1];
+                return (
+                  <Fragment key={action.label}>
+                    {action.destructive && previous && !previous.destructive && (
+                      <DropdownMenuSeparator />
+                    )}
+                    <DropdownMenuItem
+                      variant={action.destructive ? "destructive" : "default"}
+                      className="min-h-10"
+                      onClick={action.onSelect}
+                    >
+                      <Icon className="size-4" />
+                      {action.label}
+                    </DropdownMenuItem>
+                  </Fragment>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        <button
+          type="button"
+          onClick={onPreview}
+          className={iconButtonClass}
+          aria-label={`Preview ${label}`}
+        >
+          <Info className="size-5" />
+        </button>
       </div>
     </div>
   );
 }
 
-// --- Overview Actions ---
-// Edit/Delete were moved off the column rows (where they crowded and truncated
-// long names) onto the function/department/process overview headers.
-export function OverviewActions({
-  entityLabel,
-  onEdit,
-  onDelete,
+// --- Back Bar ---
+
+/** The phone drill-down's way up a level, named for where it goes. */
+export function BackBar({
+  label,
+  onBack,
+  contained = true,
 }: {
-  entityLabel: string;
-  onEdit: () => void;
-  onDelete: () => void;
+  label: string;
+  onBack: () => void;
+  /** Centre the button over a column list; the process detail is full width. */
+  contained?: boolean;
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-1">
-      <button
-        type="button"
-        onClick={onEdit}
-        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-org-accent-subtle hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
-        title={`Edit ${entityLabel}`}
-        aria-label={`Edit ${entityLabel}`}
-      >
-        <SquarePen className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        onClick={onDelete}
-        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
-        title={`Delete ${entityLabel}`}
-        aria-label={`Delete ${entityLabel}`}
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
+    <div className="shrink-0 border-b bg-background px-2 py-2">
+      <div className={cn(contained && COLUMN_WIDTH)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onBack}
+          className="min-h-10 max-w-full gap-2 px-3 text-sm"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          <span className="truncate">{label}</span>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// --- Column List ---
+
+export function ColumnList({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex-1 overflow-y-auto scrollbar-hide">
+      <div className={cn(COLUMN_WIDTH, "space-y-2 p-3")}>{children}</div>
     </div>
   );
 }
@@ -239,28 +231,22 @@ export function ColumnHeader({
   count,
   onAdd,
   addLabel,
-  mobile,
-  actions,
 }: {
   title: string;
   count?: number;
   onAdd?: () => void;
   /** Names the add button, e.g. "Add process". */
   addLabel?: string;
-  mobile?: boolean;
-  /** Right-aligned action buttons (e.g. overview edit/delete). */
-  actions?: ReactNode;
 }) {
   return (
-    <div className={cn("shrink-0 border-b bg-muted/30 px-4 py-3", mobile && "bg-background py-3.5")}>
-      <div className="flex items-center justify-between">
-        <h2 className={cn("text-xs font-semibold uppercase tracking-wider text-muted-foreground", mobile && "text-[0.8rem] tracking-[0.16em]")}>
+    <div className="shrink-0 border-b bg-background px-4 py-3.5">
+      <div className={cn(COLUMN_WIDTH, "flex items-center justify-between")}>
+        <h2 className="text-[0.8rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           {title}
         </h2>
-        <div className={cn("flex items-center gap-1 min-h-[1.625rem]", mobile && "min-h-9 gap-2")}>
-          {actions}
+        <div className="flex min-h-9 items-center gap-2">
           {count !== undefined && (
-            <span className={cn("rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground", mobile && "flex h-8 min-w-8 items-center justify-center px-2 text-xs")}>
+            <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-muted px-2 text-xs font-medium text-muted-foreground">
               {count}
             </span>
           )}
@@ -268,11 +254,11 @@ export function ColumnHeader({
             <button
               type="button"
               onClick={onAdd}
-              className={cn("rounded-md p-1 text-muted-foreground transition-colors hover:bg-org-accent-subtle hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35", mobile && "flex size-9 items-center justify-center rounded-lg p-0")}
+              className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-org-accent-subtle hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
               title={addLabel}
               aria-label={addLabel}
             >
-              <Plus className={mobile ? "h-4 w-4" : "h-3.5 w-3.5"} />
+              <Plus className="h-4 w-4" />
             </button>
           )}
         </div>

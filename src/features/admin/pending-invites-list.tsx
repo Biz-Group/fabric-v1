@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { InvitationExpiry } from "@/features/admin/invitation-expiry";
 import { describeError } from "@/lib/user-error-message";
+import { cn } from "@/lib/utils";
 
 type PendingInvite = {
   id: string;
@@ -27,6 +28,15 @@ type PendingInvite = {
   status: string;
   createdAt: number;
   expiresAt: number | null;
+};
+
+// Secondary columns drop out on narrower screens so the email and actions
+// always fit. Header and cells share these, so a hidden column never leaves
+// its header behind.
+const COLUMN_CLASS = {
+  role: "hidden sm:table-cell",
+  invited: "hidden md:table-cell",
+  expires: "hidden sm:table-cell",
 };
 
 function formatDate(ts: number) {
@@ -183,23 +193,43 @@ export function PendingInvitesList({
           <TableHeader>
             <TableRow>
               <TableHead>Email</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Invited</TableHead>
-              <TableHead>Expires</TableHead>
+              <TableHead className={COLUMN_CLASS.role}>Role</TableHead>
+              <TableHead className={COLUMN_CLASS.invited}>Invited</TableHead>
+              <TableHead className={COLUMN_CLASS.expires}>Expires</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {invites.map((invite) => (
               <TableRow key={invite.id}>
-                <TableCell className="font-medium">{invite.email}</TableCell>
-                <TableCell className="capitalize text-muted-foreground">
+                <TableCell className="whitespace-normal">
+                  <span className="font-medium wrap-anywhere">
+                    {invite.email}
+                  </span>
+                  {/* Stands in for the Role and Expires columns, which are
+                      hidden below sm. */}
+                  <span className="block text-xs text-muted-foreground sm:hidden">
+                    <span className="capitalize">{invite.role}</span> · Expires{" "}
+                    <InvitationExpiry
+                      expiresAt={invite.expiresAt}
+                      status={invite.status}
+                      now={now}
+                    />
+                  </span>
+                </TableCell>
+                <TableCell
+                  className={cn(COLUMN_CLASS.role, "capitalize text-muted-foreground")}
+                >
                   {invite.role}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell
+                  className={cn(COLUMN_CLASS.invited, "text-muted-foreground")}
+                >
                   {formatDate(invite.createdAt)}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell
+                  className={cn(COLUMN_CLASS.expires, "text-muted-foreground")}
+                >
                   <InvitationExpiry
                     expiresAt={invite.expiresAt}
                     status={invite.status}

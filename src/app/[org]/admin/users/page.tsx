@@ -70,6 +70,17 @@ const ROLE_FILTERS: { value: RoleFilter; label: string }[] = [
   { value: "viewer", label: "Viewers" },
 ];
 
+// Secondary columns drop out on narrower screens so the name, role and row
+// actions always fit. Header and cells share these, so a hidden column never
+// leaves its header behind.
+const COLUMN_CLASS = {
+  jobTitle: "hidden xl:table-cell",
+  department: "hidden md:table-cell",
+  platform: "hidden xl:table-cell",
+  profile: "hidden sm:table-cell",
+  joined: "hidden xl:table-cell",
+};
+
 const roleBadgeVariant: Record<Role, "default" | "secondary" | "outline"> = {
   admin: "default",
   contributor: "secondary",
@@ -579,13 +590,14 @@ export default function AdminUsersPage() {
                 />
               </TableHead>
               <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
               <TableHead>Role</TableHead>
-              <TableHead>Job Title</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead>Platform</TableHead>
-              <TableHead>Profile</TableHead>
-              <TableHead>Joined Org</TableHead>
+              <TableHead className={COLUMN_CLASS.jobTitle}>Job Title</TableHead>
+              <TableHead className={COLUMN_CLASS.department}>
+                Department
+              </TableHead>
+              <TableHead className={COLUMN_CLASS.platform}>Platform</TableHead>
+              <TableHead className={COLUMN_CLASS.profile}>Profile</TableHead>
+              <TableHead className={COLUMN_CLASS.joined}>Joined Org</TableHead>
               <TableHead className="w-10"></TableHead>
             </TableRow>
           </TableHeader>
@@ -593,7 +605,7 @@ export default function AdminUsersPage() {
             {members.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={10}
+                  colSpan={9}
                   className="h-24 text-center text-muted-foreground"
                 >
                   {loadingFirstPage ? (
@@ -631,16 +643,27 @@ export default function AdminUsersPage() {
                         />
                       )}
                     </TableCell>
-                    <TableCell className="font-medium">
-                      {m.name}
-                      {isSelf && (
-                        <span className="ml-1.5 text-xs text-muted-foreground">
-                          (you)
+                    {/* Name is the only column that wraps, so on a phone it
+                        takes whatever width the others leave. From sm it
+                        keeps a floor, so a crowded table scrolls instead of
+                        squeezing it. */}
+                    <TableCell className="whitespace-normal">
+                      <div className="wrap-anywhere sm:min-w-40">
+                        <span className="font-medium">{m.name}</span>
+                        {isSelf && (
+                          <span className="ml-1.5 text-xs text-muted-foreground">
+                            (you)
+                          </span>
+                        )}
+                        <span className="block text-xs text-muted-foreground">
+                          {m.email}
                         </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {m.email}
+                        {!m.profileComplete && (
+                          <span className="block text-xs text-muted-foreground sm:hidden">
+                            Profile incomplete
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <RoleSelect
@@ -650,12 +673,12 @@ export default function AdminUsersPage() {
                         memberName={m.name}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={COLUMN_CLASS.jobTitle}>
                       {m.jobTitle ?? (
                         <span className="text-muted-foreground">--</span>
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={COLUMN_CLASS.department}>
                       {m.departmentName ? (
                         <>
                           {m.departmentName}
@@ -667,21 +690,23 @@ export default function AdminUsersPage() {
                         <span className="text-muted-foreground">--</span>
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={COLUMN_CLASS.platform}>
                       {m.platformRole === "superAdmin" ? (
                         <Badge variant="default">Super Admin</Badge>
                       ) : (
                         <span className="text-muted-foreground">--</span>
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={COLUMN_CLASS.profile}>
                       <Badge
                         variant={m.profileComplete ? "secondary" : "outline"}
                       >
                         {m.profileComplete ? "Complete" : "Incomplete"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell
+                      className={cn(COLUMN_CLASS.joined, "text-muted-foreground")}
+                    >
                       {formatDate(m.createdAt)}
                     </TableCell>
                     <TableCell>

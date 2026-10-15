@@ -10,13 +10,13 @@ import {
   type ReactNode,
 } from "react";
 import {
+  House,
   Menu,
   Megaphone,
   PanelLeft,
   PanelLeftClose,
   Search,
   Settings,
-  Workflow,
 } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -58,6 +58,11 @@ type WorkspaceAppShellProps = {
 };
 
 const SIDEBAR_COLLAPSED_KEY = "fabric:sidebar-collapsed";
+// Between `lg` and `xl` the sidebar starts as the icon rail, so the tree and
+// detail panel keep their room. That range keeps its own preference, so
+// expanding the rail there doesn't expand the sidebar on wide screens.
+const SIDEBAR_COLLAPSED_COMPACT_KEY = "fabric:sidebar-collapsed:compact";
+const COMPACT_DESKTOP_QUERY = "(min-width: 1024px) and (max-width: 1279px)";
 const SIDEBAR_COLLAPSED_EVENT = "fabric:sidebar-collapsed-change";
 
 export type WorkspaceNavItem = {
@@ -74,8 +79,23 @@ export type WorkspaceNavSection = {
   visible?: boolean;
 };
 
+function isCompactDesktop(): boolean {
+  return window.matchMedia(COMPACT_DESKTOP_QUERY).matches;
+}
+
 function getSidebarCollapsedSnapshot(): boolean {
+  if (isCompactDesktop()) {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_COMPACT_KEY) !== "false";
+  }
   return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+}
+
+function setSidebarCollapsed(collapsed: boolean) {
+  window.localStorage.setItem(
+    isCompactDesktop() ? SIDEBAR_COLLAPSED_COMPACT_KEY : SIDEBAR_COLLAPSED_KEY,
+    String(collapsed),
+  );
+  window.dispatchEvent(new Event(SIDEBAR_COLLAPSED_EVENT));
 }
 
 function getServerSidebarCollapsedSnapshot(): boolean {
@@ -83,12 +103,15 @@ function getServerSidebarCollapsedSnapshot(): boolean {
 }
 
 function subscribeToSidebarCollapsed(onStoreChange: () => void) {
+  const compactQuery = window.matchMedia(COMPACT_DESKTOP_QUERY);
   window.addEventListener("storage", onStoreChange);
   window.addEventListener(SIDEBAR_COLLAPSED_EVENT, onStoreChange);
+  compactQuery.addEventListener("change", onStoreChange);
 
   return () => {
     window.removeEventListener("storage", onStoreChange);
     window.removeEventListener(SIDEBAR_COLLAPSED_EVENT, onStoreChange);
+    compactQuery.removeEventListener("change", onStoreChange);
   };
 }
 
@@ -290,7 +313,7 @@ function DesktopSidebar({
   return (
     <aside
       className={cn(
-        "hidden shrink-0 border-r bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-in-out md:flex md:flex-col",
+        "hidden shrink-0 border-r bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-in-out lg:flex lg:flex-col",
         collapsed ? "w-[68px]" : "w-[252px]",
       )}
     >
@@ -399,7 +422,7 @@ function TopBar({
               type="button"
               variant="ghost"
               size="icon"
-              className="md:hidden"
+              className="lg:hidden"
               onClick={onOpenNav}
               aria-label="Open navigation"
             />
@@ -444,19 +467,15 @@ export function WorkspaceAppShell({
   const orgName = organization?.name ?? "Workspace";
   const canAccessAdmin = membership?.role === "admin";
 
-  const toggleSidebar = () => {
-    const next = !sidebarCollapsed;
-    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
-    window.dispatchEvent(new Event(SIDEBAR_COLLAPSED_EVENT));
-  };
+  const toggleSidebar = () => setSidebarCollapsed(!sidebarCollapsed);
 
   const workspaceNavSections: WorkspaceNavSection[] = [
     {
       items: [
         {
           href: routes.appHref,
-          icon: Workflow,
-          label: "Processes",
+          icon: House,
+          label: "Home",
           active: routes.isActivePath("/", { exact: true }),
         },
         {

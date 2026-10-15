@@ -16,6 +16,7 @@ import {
   CircleDot,
   Cog,
   GitBranch,
+  House,
   Layers,
   MoreHorizontal,
   Pencil,
@@ -52,6 +53,7 @@ type ProcessTreeNavigatorProps = {
   selectedFunctionId: Id<"functions"> | null;
   selectedDepartmentId: Id<"departments"> | null;
   selectedProcessId: Id<"processes"> | null;
+  onSelectHome: () => void;
   onSelectFunction: (fn: ProcessTreeFunction) => void;
   onSelectDepartment: (
     fn: ProcessTreeFunction,
@@ -169,8 +171,8 @@ function getFunctionIconTone(id: Id<"functions">) {
   return FUNCTION_ICON_TONES[hash % FUNCTION_ICON_TONES.length];
 }
 
-function countLabel(count: number, singular: string) {
-  return `${count} ${singular}${count === 1 ? "" : "s"}`;
+function countLabel(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function getCreateContext(
@@ -460,6 +462,7 @@ export function ProcessTreeNavigator({
   selectedFunctionId,
   selectedDepartmentId,
   selectedProcessId,
+  onSelectHome,
   onSelectFunction,
   onSelectDepartment,
   onSelectProcess,
@@ -523,6 +526,8 @@ export function ProcessTreeNavigator({
     }
   }
 
+  const homeSelected = !selectedFunctionId;
+
   const toggleFunction = (id: Id<"functions">) => {
     setExpandedFunctionIds((ids) => cloneWithToggledId(ids, id));
   };
@@ -544,7 +549,7 @@ export function ProcessTreeNavigator({
   return (
     <aside
       aria-label="Process tree"
-      className="flex h-full w-[320px] shrink-0 flex-col border-r bg-muted/10 lg:w-[360px]"
+      className="flex h-full w-[320px] shrink-0 flex-col border-r bg-muted/10 xl:w-[360px]"
     >
       <div className="shrink-0 border-b bg-background px-4 py-3">
         <div className="flex items-center justify-between gap-3">
@@ -605,6 +610,26 @@ export function ProcessTreeNavigator({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto py-2 scrollbar-hide">
+        {/* The workspace home, above the hierarchy rather than in it: it
+            isn't a function. With no functions yet, Home is all there is. */}
+        {tree && tree.functions.length > 0 && (
+          <div className="px-2 pb-0.5">
+            <button
+              type="button"
+              onClick={onSelectHome}
+              aria-current={homeSelected ? "page" : undefined}
+              className={cn(
+                "flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-transparent px-2 text-left text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-org-accent-ring/35",
+                homeSelected
+                  ? "border-org-accent-border bg-org-accent-selected text-org-accent-selected-foreground shadow-xs"
+                  : "text-foreground hover:bg-org-accent-subtle",
+              )}
+            >
+              <House className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate">Home</span>
+            </button>
+          </div>
+        )}
         {tree === undefined ? (
           <TreeSkeleton />
         ) : tree.functions.length === 0 ? (
@@ -695,6 +720,7 @@ export function ProcessTreeNavigator({
                               countTitle={countLabel(
                                 department.processCount,
                                 "process",
+                                "processes",
                               )}
                               status={overviewRowStatus(
                                 department.summaryOverview.state,

@@ -290,8 +290,10 @@ export function CommandPalette({
                     <span className="min-w-0 flex-1 truncate font-medium">
                       {result.label}
                     </span>
+                    {/* Capped below half the row, so on a phone a long path
+                        truncates before it can squeeze the name away. */}
                     {result.context && (
-                      <span className="shrink-0 truncate text-xs text-muted-foreground">
+                      <span className="min-w-0 max-w-[45%] truncate text-xs text-muted-foreground">
                         {result.context}
                       </span>
                     )}

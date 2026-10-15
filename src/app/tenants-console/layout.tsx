@@ -69,7 +69,7 @@ export default function TenantsConsoleLayout({
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <ConsoleHeader email={me.email} />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
         {children}
       </main>
       <ThemeToaster />
@@ -92,32 +92,34 @@ function ConsoleHeader({ email }: { email: string }) {
 
   return (
     <header className="border-b border-border bg-card">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-3">
-        <div className="flex items-center gap-8">
-          <div className="flex items-baseline gap-2">
-            <span className="text-base font-semibold">Fabric</span>
-            <span className="text-sm text-muted-foreground">
-              Tenant console
-            </span>
-          </div>
-          <nav className="flex items-center gap-1">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={
-                  item.active
-                    ? "rounded-md bg-muted px-3 py-1.5 text-sm font-medium"
-                    : "rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-                }
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+      {/* One row from lg. Below that the nav drops to a second row under the
+          brand and account controls, and the email hides on phones, so
+          nothing overflows at 360px. */}
+      <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-6 lg:gap-x-8">
+        <div className="flex items-baseline gap-2">
+          <span className="text-base font-semibold">Fabric</span>
+          <span className="text-sm text-muted-foreground">Tenant console</span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-muted-foreground">{email}</span>
+        <nav className="order-last flex w-full items-center gap-1 lg:order-none lg:w-auto">
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={item.active ? "page" : undefined}
+              className={
+                item.active
+                  ? "rounded-md bg-muted px-3 py-1.5 text-sm font-medium"
+                  : "rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+              }
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+        <div className="ml-auto flex min-w-0 items-center gap-3">
+          <span className="hidden min-w-0 truncate text-xs text-muted-foreground sm:block">
+            {email}
+          </span>
           <ThemeToggle />
           <Button
             variant="outline"

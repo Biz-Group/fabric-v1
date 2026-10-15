@@ -39,9 +39,19 @@ import {
   ArrowDown,
   Network,
   UsersRound,
+  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -100,6 +110,19 @@ import {
 const DETAIL_PANEL_MIN_WIDTH = 288;
 const DETAIL_PANEL_DEFAULT_WIDTH = 320;
 const DETAIL_PANEL_MAX_WIDTH = 480;
+
+const POPUP_SELECTOR =
+  '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
+
+/**
+ * Whether a key event comes from inside an open menu, dialog or sheet, which
+ * owns its own Escape. A popup that wraps the flow itself doesn't count.
+ */
+function isInsideOtherPopup(target: EventTarget | null, flow: Element | null) {
+  if (!(target instanceof Element)) return false;
+  const popup = target.closest(POPUP_SELECTOR);
+  return popup !== null && !(flow && popup.contains(flow));
+}
 
 interface ProcessFlowProps {
   processId: Id<"processes">;
@@ -183,6 +206,8 @@ function ProcessFlowInner({
   const spotlightFitTimeout = useRef<number | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
+  const fullscreenToggleRef = useRef<HTMLButtonElement | null>(null);
+  const wasFullscreen = useRef(isFullscreen);
 
   const maxDetailPanelWidth =
     viewerWidth > 0
@@ -246,7 +271,7 @@ function ProcessFlowInner({
     const observer = new ResizeObserver(updateWidth);
     observer.observe(viewer);
     return () => observer.disconnect();
-  }, [flow?.status, isFullscreen]);
+  }, [flow?.status]);
 
   const focusFlowNode = useCallback((nodeId: string) => {
     window.requestAnimationFrame(() => {
@@ -441,6 +466,13 @@ function ProcessFlowInner({
         return;
 
       if (event.key === "Escape") {
+        // Portaled popups (the step sheet, the layout menu) still bubble
+        // through the viewer in React; they close themselves first.
+        if (
+          !(event.target instanceof Node) ||
+          !viewerRef.current?.contains(event.target)
+        )
+          return;
         clearTransientHover();
         if (selectedNodeId) {
           event.preventDefault();
@@ -448,6 +480,7 @@ function ProcessFlowInner({
           handleCloseDetails();
           setKeyboardAnnouncement("Step details closed.");
         }
+        // Otherwise it bubbles on, and leaves fullscreen if that's open.
         return;
       }
 
@@ -509,6 +542,44 @@ function ProcessFlowInner({
       selectedNodeId,
     ],
   );
+
+  // Fullscreen covers the whole workbench, so Escape leaves it wherever focus
+  // is, including the insights bar or nowhere after a pane click. Step details
+  // close first. Listening on window lets menus, tooltips and dialogs, which
+  // handle Escape on document, claim it before this sees it.
+  useEffect(() => {
+    if (!isFullscreen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        event.isComposing ||
+        isInsideOtherPopup(event.target, viewerRef.current)
+      )
+        return;
+
+      event.preventDefault();
+      clearTransientHover();
+      if (selectedNodeId) {
+        handleCloseDetails();
+        setKeyboardAnnouncement("Step details closed.");
+        return;
+      }
+      setIsFullscreen(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [clearTransientHover, handleCloseDetails, isFullscreen, selectedNodeId]);
+
+  // Entering or leaving fullscreen keeps focus on the toggle, wherever the
+  // switch came from, so keyboard users don't land back at the page start.
+  useEffect(() => {
+    if (wasFullscreen.current === isFullscreen) return;
+    wasFullscreen.current = isFullscreen;
+    fullscreenToggleRef.current?.focus();
+  }, [isFullscreen]);
 
   const handleDetailPanelResizeStart = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -820,11 +891,18 @@ function ProcessFlowInner({
   // derives these controls. The fallback is unreachable at runtime, but keeps
   // this render boundary honest if the query shape changes later.
   const visibleSpotlights = spotlights ?? deriveFlowSpotlights(flow);
-  const Wrapper = isFullscreen ? FullscreenWrapper : PassthroughWrapper;
 
   return (
     <TooltipProvider delay={250}>
-      <Wrapper>
+      {/* One element for both modes: swapping wrapper components remounted the
+          canvas, which reset the viewport and dropped focus from the toggle. */}
+      <div
+        className={
+          isFullscreen
+            ? "fixed inset-0 z-50 flex flex-col bg-background"
+            : "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        }
+      >
         <div
           ref={viewerRef}
           className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
@@ -912,10 +990,12 @@ function ProcessFlowInner({
             </div>
           )}
 
-          {/* React Flow canvas */}
+          {/* React Flow canvas. A size container, so the controls inside fit
+              the canvas: full width on phones, beside the tree on desktop, and
+              narrower again while the step panel is open. */}
           <div
             ref={canvasRef}
-            className="h-full min-h-0 min-w-0 flex-1 transition-[margin-right] duration-200 ease-out motion-reduce:transition-none"
+            className="@container h-full min-h-0 min-w-0 flex-1 transition-[margin-right] duration-200 ease-out motion-reduce:transition-none"
             style={
               !isMobile
                 ? {
@@ -986,7 +1066,7 @@ function ProcessFlowInner({
                     <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
                       A reading aid, not ownership data. Multi-actor steps
                       appear in Shared; unfinished steps stay in Awaiting
-                      details. Select Owner lanes again to turn it off.
+                      details. Choose Process view to turn it off.
                     </p>
                   </div>
                 </Panel>
@@ -1017,6 +1097,7 @@ function ProcessFlowInner({
                 onFitAll={handleFitAll}
                 onCenterSelected={handleCenterSelected}
                 onToggleMinimap={() => setShowMinimap((visible) => !visible)}
+                fullscreenToggleRef={fullscreenToggleRef}
                 onToggleFullscreen={() => setIsFullscreen((value) => !value)}
                 onDirectionChange={handleDirectionChange}
                 onGroupingChange={handleGroupingChange}
@@ -1054,7 +1135,9 @@ function ProcessFlowInner({
                   // smaller visible frame.
                   style={{ width: 144, height: 96 }}
                   ariaLabel="Process map overview. Drag to pan or scroll to zoom."
-                  className="!m-3 !overflow-hidden !rounded-xl !border !border-border !bg-card/95 !shadow-lg"
+                  // Where the toolbar and the minimap can't sit side by side
+                  // (toolbar + 176px), lift the minimap clear of the toolbar.
+                  className="!m-3 !overflow-hidden !rounded-xl !border !border-border !bg-card/95 !shadow-lg @max-xl:!mb-18 pointer-coarse:@max-3xl:!mb-18"
                   bgColor="var(--color-card)"
                   maskColor="color-mix(in oklch, var(--background) 34%, transparent)"
                   maskStrokeColor="var(--org-accent)"
@@ -1150,7 +1233,7 @@ function ProcessFlowInner({
           onSpotlightChange={handleSpotlightChange}
           onOpenInsights={onOpenInsights}
         />
-      </Wrapper>
+      </div>
     </TooltipProvider>
   );
 }
@@ -1203,16 +1286,25 @@ function OwnerLaneBackdrop({
   );
 }
 
+// 28px under a mouse, 40px under a finger.
+const TOOLBAR_BUTTON_CLASS =
+  "org-focus-ring rounded-lg text-muted-foreground hover:bg-org-accent-subtle hover:text-foreground pointer-coarse:size-10";
+
 function ToolbarButton({
   label,
+  shortcut,
   pressed,
   disabled,
+  buttonRef,
   onClick,
   children,
 }: {
   label: string;
+  /** A key that does the same thing: announced, and shown in the tooltip. */
+  shortcut?: { key: string; label: string };
   pressed?: boolean;
   disabled?: boolean;
+  buttonRef?: React.Ref<HTMLButtonElement>;
   onClick: () => void;
   children: React.ReactNode;
 }) {
@@ -1221,15 +1313,17 @@ function ToolbarButton({
       <TooltipTrigger
         render={
           <Button
+            ref={buttonRef}
             type="button"
             variant="ghost"
             size="icon-sm"
             className={cn(
-              "org-focus-ring rounded-lg text-muted-foreground hover:bg-org-accent-subtle hover:text-foreground",
+              TOOLBAR_BUTTON_CLASS,
               pressed &&
                 "bg-org-accent-selected text-org-accent-selected-foreground",
             )}
             aria-label={label}
+            aria-keyshortcuts={shortcut?.key}
             aria-pressed={pressed}
             disabled={disabled}
             onClick={onClick}
@@ -1238,8 +1332,109 @@ function ToolbarButton({
           </Button>
         }
       />
-      <TooltipContent side="top">{label}</TooltipContent>
+      <TooltipContent side="top">
+        {label}
+        {shortcut && <span className="opacity-70">{shortcut.label}</span>}
+      </TooltipContent>
     </Tooltip>
+  );
+}
+
+const LAYOUT_MENU_ITEM_CLASS = "pointer-coarse:min-h-10";
+
+/**
+ * Direction and grouping as one menu, for canvases too narrow to show them
+ * inline. Each choice closes the menu, like the toolbar buttons it stands in
+ * for.
+ */
+function LayoutMenu({
+  direction,
+  grouping,
+  className,
+  onDirectionChange,
+  onGroupingChange,
+}: {
+  direction: FlowDirection;
+  grouping: FlowGrouping;
+  className?: string;
+  onDirectionChange: (direction: FlowDirection) => void;
+  onGroupingChange: (grouping: FlowGrouping) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className={cn(TOOLBAR_BUTTON_CLASS, className)}
+                  aria-label="Layout options"
+                >
+                  <SlidersHorizontal aria-hidden />
+                </Button>
+              }
+            />
+          }
+        />
+        <TooltipContent side="top">Layout options</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent
+        side="top"
+        align="start"
+        sideOffset={8}
+        className="w-auto min-w-52"
+      >
+        <DropdownMenuRadioGroup
+          value={direction}
+          onValueChange={(value: FlowDirection) => onDirectionChange(value)}
+        >
+          <DropdownMenuLabel>Direction</DropdownMenuLabel>
+          <DropdownMenuRadioItem
+            value="horizontal"
+            closeOnClick
+            className={LAYOUT_MENU_ITEM_CLASS}
+          >
+            <ArrowRight aria-hidden />
+            Horizontal layout
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem
+            value="vertical"
+            closeOnClick
+            className={LAYOUT_MENU_ITEM_CLASS}
+          >
+            <ArrowDown aria-hidden />
+            Vertical layout
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuRadioGroup
+          value={grouping}
+          onValueChange={(value: FlowGrouping) => onGroupingChange(value)}
+        >
+          <DropdownMenuLabel>Grouping</DropdownMenuLabel>
+          <DropdownMenuRadioItem
+            value="process"
+            closeOnClick
+            className={LAYOUT_MENU_ITEM_CLASS}
+          >
+            <Network aria-hidden />
+            Process view
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem
+            value="owner"
+            closeOnClick
+            className={LAYOUT_MENU_ITEM_CLASS}
+          >
+            <UsersRound aria-hidden />
+            Owner lanes
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -1256,6 +1451,7 @@ function ViewportToolbar({
   onFitAll,
   onCenterSelected,
   onToggleMinimap,
+  fullscreenToggleRef,
   onToggleFullscreen,
   onDirectionChange,
   onGroupingChange,
@@ -1272,14 +1468,21 @@ function ViewportToolbar({
   onFitAll: () => void;
   onCenterSelected: () => void;
   onToggleMinimap: () => void;
+  fullscreenToggleRef: React.Ref<HTMLButtonElement>;
   onToggleFullscreen: () => void;
   onDirectionChange: (direction: FlowDirection) => void;
   onGroupingChange: (grouping: FlowGrouping) => void;
 }) {
+  // Sized to the canvas container, not the viewport. Inline, everything is
+  // about 390px wide with a mouse and 510px with 40px touch targets, so
+  // direction and grouping fold into the layout menu below 28rem (mouse) or
+  // 36rem (touch). Touch also drops the zoom readout below 28rem, which keeps
+  // one row at about 295px for a 360px phone's 334px canvas. Wrapping is only
+  // the last resort for anything narrower.
   return (
     <Panel position="bottom-left" className="!m-3">
       <div
-        className="flex items-center gap-0.5 rounded-xl border border-border bg-card/95 p-1 shadow-lg backdrop-blur-md"
+        className="flex flex-wrap items-center gap-0.5 rounded-xl border border-border bg-card/95 p-1 shadow-lg backdrop-blur-md"
         role="toolbar"
         aria-label="Process map viewport"
       >
@@ -1287,7 +1490,7 @@ function ViewportToolbar({
           <Minus aria-hidden />
         </ToolbarButton>
         <output
-          className="min-w-11 px-1 text-center text-[11px] font-medium tabular-nums text-muted-foreground"
+          className="min-w-11 px-1 text-center text-[11px] font-medium tabular-nums text-muted-foreground @max-xs:hidden pointer-coarse:@max-md:hidden"
           aria-label={`Current zoom ${Math.round(zoom * 100)} percent`}
         >
           {Math.round(zoom * 100)}%
@@ -1312,7 +1515,7 @@ function ViewportToolbar({
         <div className="mx-1 h-5 w-px bg-border" aria-hidden />
 
         <div
-          className="flex items-center gap-0.5"
+          className="hidden items-center gap-0.5 @md:flex pointer-coarse:@max-xl:hidden"
           role="group"
           aria-label="Flow direction"
         >
@@ -1333,7 +1536,7 @@ function ViewportToolbar({
         </div>
 
         <div
-          className="flex items-center gap-0.5"
+          className="hidden items-center gap-0.5 @md:flex pointer-coarse:@max-xl:hidden"
           role="group"
           aria-label="Flow grouping"
         >
@@ -1357,6 +1560,14 @@ function ViewportToolbar({
           </ToolbarButton>
         </div>
 
+        <LayoutMenu
+          direction={direction}
+          grouping={grouping}
+          className="@md:hidden pointer-coarse:@max-xl:inline-flex"
+          onDirectionChange={onDirectionChange}
+          onGroupingChange={onGroupingChange}
+        />
+
         {canShowMinimap && (
           <ToolbarButton
             label={showMinimap ? "Hide minimap" : "Show minimap"}
@@ -1371,7 +1582,9 @@ function ViewportToolbar({
 
         <ToolbarButton
           label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          shortcut={isFullscreen ? { key: "Escape", label: "Esc" } : undefined}
           pressed={isFullscreen}
+          buttonRef={fullscreenToggleRef}
           onClick={onToggleFullscreen}
         >
           {isFullscreen ? <Minimize2 aria-hidden /> : <Maximize2 aria-hidden />}
@@ -1666,22 +1879,6 @@ function SpotlightButton({
           : `${active ? "Clear" : "Locate"} ${matchCount} matching ${matchCount === 1 ? "step" : "steps"}`}
       </TooltipContent>
     </Tooltip>
-  );
-}
-
-function FullscreenWrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      {children}
-    </div>
-  );
-}
-
-function PassthroughWrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      {children}
-    </div>
   );
 }
 

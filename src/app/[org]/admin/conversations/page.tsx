@@ -97,6 +97,16 @@ function formatDuration(seconds: number | null | undefined): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// Secondary columns drop out on narrower screens so the contributor, status
+// and row actions always fit. Header and cells share these, so a hidden column
+// never leaves its header behind.
+const COLUMN_CLASS = {
+  created: "hidden sm:table-cell",
+  type: "hidden xl:table-cell",
+  process: "hidden sm:table-cell",
+  duration: "hidden xl:table-cell",
+};
+
 const STATUS_FILTER_ITEMS: Record<StatusFilter, string> = {
   all: "All statuses",
   done: conversationStatusMeta.done.label,
@@ -274,7 +284,7 @@ export default function AdminConversationsPage() {
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative max-w-sm flex-1">
+        <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search contributor, process, title, or summary…"
@@ -321,11 +331,11 @@ export default function AdminConversationsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Created</TableHead>
+              <TableHead className={COLUMN_CLASS.created}>Created</TableHead>
               <TableHead>Contributor</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Process</TableHead>
-              <TableHead>Duration</TableHead>
+              <TableHead className={COLUMN_CLASS.type}>Type</TableHead>
+              <TableHead className={COLUMN_CLASS.process}>Process</TableHead>
+              <TableHead className={COLUMN_CLASS.duration}>Duration</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="w-10"></TableHead>
             </TableRow>
@@ -381,10 +391,12 @@ export default function AdminConversationsPage() {
                       setViewingId(r._id);
                     }}
                   >
-                    <TableCell className="text-muted-foreground">
+                    <TableCell
+                      className={cn(COLUMN_CLASS.created, "text-muted-foreground")}
+                    >
                       {formatDate(r._creationTime)}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="whitespace-normal">
                       <button
                         type="button"
                         className="rounded-sm text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -392,11 +404,20 @@ export default function AdminConversationsPage() {
                       >
                         {r.contributorName}
                       </button>
+                      {/* Stands in for the Process and Created columns,
+                          which are hidden below sm. */}
+                      <span className="block text-xs text-muted-foreground sm:hidden">
+                        {[r.processName, formatDate(r._creationTime)]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={COLUMN_CLASS.type}>
                       <ConversationTypeBadge inputMode={r.inputMode} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell
+                      className={cn(COLUMN_CLASS.process, "whitespace-normal")}
+                    >
                       <div className="flex flex-col">
                         {href ? (
                           <Link
@@ -415,7 +436,9 @@ export default function AdminConversationsPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell
+                      className={cn(COLUMN_CLASS.duration, "text-muted-foreground")}
+                    >
                       {formatDuration(r.durationSeconds)}
                     </TableCell>
                     <TableCell>

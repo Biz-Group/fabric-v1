@@ -20,6 +20,10 @@ import {
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { FocusedConversationPlayback } from "@/features/conversations/conversation-log";
+import {
+  isStackedBelow,
+  scrollIntoNearestScroller,
+} from "@/features/conversations/playback-layout";
 import { StatusBadge } from "@/features/status/status-badge";
 import {
   conversationStatusMeta,
@@ -335,6 +339,33 @@ function ConversationPlaybackPanel({
   );
 }
 
+/**
+ * Below `md` the columns stack and the playback sits under the whole list, so
+ * picking a conversation would change nothing on screen. This brings the
+ * playback up and moves focus to it. Returns false, doing nothing, when the
+ * columns sit side by side or the tab isn't rendered (the workbench also
+ * mounts a hidden copy for its other layout).
+ */
+function revealPlaybackIfStacked(
+  list: HTMLElement | null,
+  playback: HTMLElement | null,
+) {
+  if (!list || !playback || playback.getClientRects().length === 0) {
+    return false;
+  }
+  if (
+    !isStackedBelow(
+      list.getBoundingClientRect(),
+      playback.getBoundingClientRect(),
+    )
+  ) {
+    return false;
+  }
+  scrollIntoNearestScroller(playback, "start");
+  playback.focus({ preventScroll: true });
+  return true;
+}
+
 export function ProcessConversationsTab({
   processId,
   canLabelSpeakers,
@@ -354,6 +385,8 @@ export function ProcessConversationsTab({
   const conversationButtonRefs = useRef(
     new Map<Id<"conversations">, HTMLButtonElement>(),
   );
+  const listRef = useRef<HTMLElement>(null);
+  const playbackRef = useRef<HTMLElement>(null);
   const conversations = useQuery(api.conversations.listCompactByProcess, {
     processId,
     limit: COMPACT_QUERY_LIMIT,
@@ -431,12 +464,13 @@ export function ProcessConversationsTab({
   const hasMoreConversations =
     filteredConversations.length > visibleConversations.length;
   const hasFilters = statusFilter !== "all" || typeFilter !== "all";
-  const activeConversationId =
+  const activeConversation =
     visibleConversations.find(
       (conversation) => conversation._id === selectedConversationId,
-    )?._id ??
-    visibleConversations[0]?._id ??
+    ) ??
+    visibleConversations[0] ??
     null;
+  const activeConversationId = activeConversation?._id ?? null;
 
   useEffect(() => {
     if (
@@ -448,15 +482,27 @@ export function ProcessConversationsTab({
       return;
     }
 
+    // Stacked, the conversation the link points at is the playback, not the
+    // row above it.
+    if (revealPlaybackIfStacked(listRef.current, playbackRef.current)) return;
+
     const target = conversationButtonRefs.current.get(focusConversationId);
     target?.scrollIntoView({ block: "nearest" });
     target?.focus({ preventScroll: true });
   }, [activeConversationId, focusConversationId, focusConversationJumpKey]);
 
+  const selectConversation = (conversationId: Id<"conversations">) => {
+    setSelectedConversationId(conversationId);
+    revealPlaybackIfStacked(listRef.current, playbackRef.current);
+  };
+
   return (
     <TooltipProvider>
       <div className="grid min-h-full min-w-0 gap-0 md:h-full md:min-h-0 md:grid-cols-2">
-        <section className="min-w-0 p-4 md:min-h-0 md:overflow-y-auto md:p-6">
+        <section
+          ref={listRef}
+          className="min-w-0 p-4 md:min-h-0 md:overflow-y-auto md:p-6"
+        >
           <div className="space-y-4">
             <div className="grid w-full min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]">
               <Select
@@ -528,7 +574,7 @@ export function ProcessConversationsTab({
                     key={conversation._id}
                     conversation={conversation}
                     selected={activeConversationId === conversation._id}
-                    onSelect={() => setSelectedConversationId(conversation._id)}
+                    onSelect={() => selectConversation(conversation._id)}
                     buttonRef={(node) => {
                       if (node) {
                         conversationButtonRefs.current.set(
@@ -573,7 +619,17 @@ export function ProcessConversationsTab({
           </div>
         </section>
 
-        <aside className="min-w-0 border-t p-4 md:min-h-0 md:overflow-hidden md:border-l md:border-t-0 md:p-6">
+        {/* Focusable so a tap on a stacked layout can move focus here. */}
+        <aside
+          ref={playbackRef}
+          tabIndex={-1}
+          aria-label={
+            activeConversation
+              ? `Playback: ${conversationTitle(activeConversation)}`
+              : "Conversation playback"
+          }
+          className="min-w-0 border-t p-4 outline-none md:min-h-0 md:overflow-hidden md:border-l md:border-t-0 md:p-6"
+        >
           <ConversationPlaybackPanel
             processId={processId}
             conversationId={activeConversationId}

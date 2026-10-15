@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import {
@@ -27,7 +19,7 @@ import {
   useAudioPlayerTime,
 } from "@/components/ui/audio-player";
 import { AudioScrubber } from "@/components/ui/waveform";
-import { ChevronRight, ArrowDown, Download } from "lucide-react";
+import { ChevronRight, ArrowDown, ArrowUp, Download } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -39,6 +31,12 @@ import { StatusBadge } from "@/features/status/status-badge";
 import { conversationStatusMeta } from "@/features/status/status-meta";
 import { useConversationAudioUrl } from "@/features/conversations/use-conversation-audio-url";
 import { ConversationFailureNotice } from "@/features/conversations/conversation-failure-notice";
+import {
+  controlsPositionFrom,
+  scrollIntoNearestScroller,
+  shouldDockMiniPlayer,
+  type ControlsPosition,
+} from "@/features/conversations/playback-layout";
 import { registerBottomDock } from "@/lib/bottom-dock";
 
 // --- Helpers ---
@@ -115,15 +113,6 @@ function usePlaybackPosition(id: string) {
 
   return { save, restore, clear };
 }
-
-// --- Active Card Ref Context ---
-
-interface ActiveCardContextValue {
-  registerRef: (id: string, el: HTMLDivElement | null) => void;
-  cardRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
-}
-
-const ActiveCardContext = createContext<ActiveCardContextValue | null>(null);
 
 // --- Types ---
 
@@ -599,11 +588,13 @@ function ConversationAudioControls({
           if (!isActive) player.play(item);
         }}
       />
+      {/* The mini-player's "Show playback controls" hands focus here. */}
       <AudioPlayerButton
         item={item}
         variant="ghost"
         size="icon"
         className="h-8 w-8 shrink-0"
+        data-playback-toggle
       />
       <AudioPlayerSkipButton
         seconds={10}
@@ -948,41 +939,50 @@ function KeyboardShortcuts() {
 
 // --- Sticky Mini-Player ---
 
-function StickyMiniPlayer() {
+// Docks to the bottom of the screen once the panel's own controls scroll out
+// of view. It watches the controls row, not the whole panel: on a phone the
+// panel runs the full transcript's length, so it stays on screen long after
+// the controls have gone.
+function StickyMiniPlayer({
+  conversationId,
+  controls,
+}: {
+  conversationId: Id<"conversations">;
+  controls: HTMLElement | null;
+}) {
   const player = useAudioPlayer<{ contributorName: string }>();
   const time = useAudioPlayerTime();
-  const activeCardCtx = useContext(ActiveCardContext);
-  const activeItemId = player.activeItem ? String(player.activeItem.id) : null;
-  const [cardVisibility, setCardVisibility] = useState<{
-    itemId: string | null;
-    outOfView: boolean;
-  }>({ itemId: null, outOfView: false });
+  const [controlsPosition, setControlsPosition] =
+    useState<ControlsPosition>("visible");
 
   useEffect(() => {
-    if (!activeItemId || !activeCardCtx) return;
+    if (!controls) return;
 
-    const cardEl = activeCardCtx.cardRefs.current.get(
-      activeItemId
+    const observer = new IntersectionObserver(([entry]) =>
+      setControlsPosition(
+        controlsPositionFrom(
+          entry,
+          entry.rootBounds?.height ?? window.innerHeight,
+        ),
+      ),
     );
-    if (!cardEl) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) =>
-        setCardVisibility({
-          itemId: activeItemId,
-          outOfView: !entry.isIntersecting,
-        }),
-      { threshold: 0 }
-    );
-    observer.observe(cardEl);
+    observer.observe(controls);
     return () => observer.disconnect();
-  }, [activeItemId, activeCardCtx]);
+  }, [controls]);
 
-  const cardOutOfView =
-    cardVisibility.itemId === activeItemId && cardVisibility.outOfView;
-  if (!player.activeItem || !player.isPlaying || !cardOutOfView) return null;
+  if (
+    !player.activeItem ||
+    !shouldDockMiniPlayer({
+      controls: controlsPosition,
+      isPlaying: player.isPlaying,
+      activeItemIsShown: player.isItemActive(conversationId),
+    })
+  ) {
+    return null;
+  }
 
   const name = player.activeItem.data?.contributorName ?? "Playing";
+  const JumpIcon = controlsPosition === "above" ? ArrowUp : ArrowDown;
 
   return (
     <div
@@ -990,7 +990,11 @@ function StickyMiniPlayer() {
       className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 px-4 py-2 shadow-lg backdrop-blur-sm"
     >
       <div className="mx-auto flex max-w-3xl items-center gap-3">
-        <AudioPlayerButton variant="ghost" size="icon" className="h-8 w-8 shrink-0" />
+        <AudioPlayerButton
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 pointer-coarse:size-10"
+        />
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-medium">{name}</p>
           <AudioPlayerProgress className="mt-1" />
@@ -1001,15 +1005,18 @@ function StickyMiniPlayer() {
         <button
           type="button"
           onClick={() => {
-            const cardEl = activeCardCtx?.cardRefs.current.get(
-              String(player.activeItem?.id)
-            );
-            cardEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+            if (!controls) return;
+            scrollIntoNearestScroller(controls, "center");
+            // The bar unmounts once the controls are back on screen, so hand
+            // focus to their play button rather than dropping it on the page.
+            controls
+              .querySelector<HTMLElement>("[data-playback-toggle]")
+              ?.focus({ preventScroll: true });
           }}
-          className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label="Scroll to conversation"
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:size-10"
+          aria-label="Show playback controls"
         >
-          <ArrowDown className="h-3.5 w-3.5" />
+          <JumpIcon className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>
@@ -1038,136 +1045,129 @@ export function FocusedConversationPlayback({
     | undefined;
   const [, markListened] = useListenedState(String(conversation._id));
   const canExportPdf = Boolean(conversation.summary || transcript?.length);
-  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-
-  const registerRef = useCallback(
-    (id: string, el: HTMLDivElement | null) => {
-      if (el) cardRefs.current.set(id, el);
-      else cardRefs.current.delete(id);
-    },
-    []
-  );
-
-  const ctxValue = useMemo(
-    () => ({ registerRef, cardRefs }),
-    [registerRef]
-  );
+  // Held in state so the mini-player's observer starts once the row mounts.
+  const [controlsElement, setControlsElement] =
+    useState<HTMLDivElement | null>(null);
 
   return (
     <AudioPlayerProvider>
       <TooltipProvider>
-        <ActiveCardContext.Provider value={ctxValue}>
-          <KeyboardShortcuts />
-          <div
-            ref={(el) => registerRef(String(conversation._id), el)}
-            className="flex h-full min-h-0 w-full flex-col bg-background"
-          >
-            <div className="shrink-0 space-y-3 border-b p-4">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="min-w-0 flex-1">
-                  {isDone ? (
-                    audioUrl ? (
-                      <ConversationAudioControls
-                        conversationId={conversation._id}
-                        audioUrl={audioUrl}
-                        durationSeconds={conversation.durationSeconds ?? undefined}
-                        transcript={transcript}
-                        contributorName={conversation.contributorName}
-                        onListened={markListened}
-                      />
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        Audio is loading or unavailable.
-                      </p>
-                    )
+        <KeyboardShortcuts />
+        {/* The bottom padding is room for the docked mini-player, so it never
+            covers the last transcript lines. Below `md` the tab scrolls as one
+            column and this panel ends it. */}
+        <div className="flex h-full min-h-0 w-full flex-col bg-background pb-[var(--bottom-dock-height,0px)]">
+          <div className="shrink-0 space-y-3 border-b p-4">
+            <div
+              ref={setControlsElement}
+              className="flex min-w-0 items-center gap-3"
+            >
+              <div className="min-w-0 flex-1">
+                {isDone ? (
+                  audioUrl ? (
+                    <ConversationAudioControls
+                      conversationId={conversation._id}
+                      audioUrl={audioUrl}
+                      durationSeconds={conversation.durationSeconds ?? undefined}
+                      transcript={transcript}
+                      contributorName={conversation.contributorName}
+                      onListened={markListened}
+                    />
                   ) : (
                     <p className="text-sm text-muted-foreground">
-                      Playback will be available when processing is complete.
+                      Audio is loading or unavailable.
                     </p>
-                  )}
-                </div>
-                {canExportPdf && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      type="button"
-                      onClick={() => downloadConversationPdf(conversation, transcript)}
-                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-label="Export conversation PDF"
-                    >
-                      <Download className="h-4 w-4" />
-                    </TooltipTrigger>
-                    <TooltipContent>Export PDF</TooltipContent>
-                  </Tooltip>
+                  )
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Playback will be available when processing is complete.
+                  </p>
                 )}
               </div>
-
-              {!isDone && (
-                <StatusBadge meta={conversationStatusMeta[conversation.status]} />
+              {canExportPdf && (
+                <Tooltip>
+                  <TooltipTrigger
+                    type="button"
+                    onClick={() => downloadConversationPdf(conversation, transcript)}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label="Export conversation PDF"
+                  >
+                    <Download className="h-4 w-4" />
+                  </TooltipTrigger>
+                  <TooltipContent>Export PDF</TooltipContent>
+                </Tooltip>
               )}
-
-              {conversation.status === "failed" && (
-                <ConversationFailureNotice
-                  conversation={conversation}
-                  canRetry={canRetry}
-                />
-              )}
-
             </div>
 
-            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
-              {isAwaitingSpeakerLabels && canLabelSpeakers && (
-                <section className="space-y-3">
-                  <h3 className="text-sm font-semibold">Speaker Labels</h3>
-                  <SpeakerLabelReview conversation={conversation} />
-                </section>
-              )}
+            {!isDone && (
+              <StatusBadge meta={conversationStatusMeta[conversation.status]} />
+            )}
 
-              {isAwaitingSpeakerLabels && !canLabelSpeakers && (
+            {conversation.status === "failed" && (
+              <ConversationFailureNotice
+                conversation={conversation}
+                canRetry={canRetry}
+              />
+            )}
+
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
+            {isAwaitingSpeakerLabels && canLabelSpeakers && (
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold">Speaker Labels</h3>
+                <SpeakerLabelReview conversation={conversation} />
+              </section>
+            )}
+
+            {isAwaitingSpeakerLabels && !canLabelSpeakers && (
+              <p className="text-sm text-muted-foreground">
+                Waiting for a contributor to name speakers before analysis runs.
+              </p>
+            )}
+
+            <section className="space-y-3">
+              <h3 className="text-sm font-semibold">Summary</h3>
+              {conversation.summary ? (
+                <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                  {conversation.summary}
+                </p>
+              ) : (
                 <p className="text-sm text-muted-foreground">
-                  Waiting for a contributor to name speakers before analysis runs.
+                  No conversation summary is available yet.
                 </p>
               )}
+            </section>
 
-              <section className="space-y-3">
-                <h3 className="text-sm font-semibold">Summary</h3>
-                {conversation.summary ? (
-                  <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                    {conversation.summary}
-                  </p>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No conversation summary is available yet.
-                  </p>
+            <section className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold">Transcript</h3>
+                {transcript && transcript.length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {transcript.length} entries
+                  </span>
                 )}
-              </section>
-
-              <section className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-semibold">Transcript</h3>
-                  {transcript && transcript.length > 0 && (
-                    <span className="text-xs text-muted-foreground">
-                      {transcript.length} entries
-                    </span>
-                  )}
-                </div>
-                {transcript && transcript.length > 0 ? (
-                  <SyncedTranscript
-                    conversationId={conversation._id}
-                    transcript={transcript}
-                    contributorName={conversation.contributorName}
-                    audioUrl={audioUrl}
-                    expanded
-                  />
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No transcript is available yet.
-                  </p>
-                )}
-              </section>
-            </div>
+              </div>
+              {transcript && transcript.length > 0 ? (
+                <SyncedTranscript
+                  conversationId={conversation._id}
+                  transcript={transcript}
+                  contributorName={conversation.contributorName}
+                  audioUrl={audioUrl}
+                  expanded
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No transcript is available yet.
+                </p>
+              )}
+            </section>
           </div>
-          <StickyMiniPlayer />
-        </ActiveCardContext.Provider>
+        </div>
+        <StickyMiniPlayer
+          conversationId={conversation._id}
+          controls={controlsElement}
+        />
       </TooltipProvider>
     </AudioPlayerProvider>
   );

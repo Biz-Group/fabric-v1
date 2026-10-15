@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useQuery, useAction, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -12,7 +12,6 @@ import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   BarChart3,
   Bot,
-  ChevronLeft,
   ChevronRight,
   Building2,
   Layers,
@@ -20,6 +19,8 @@ import {
   FileText,
   House,
   Mic,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ProcessHeader } from "@/features/workbench/process-header";
@@ -51,12 +52,25 @@ import {
   readConversationParam,
 } from "@/features/workbench/use-selection-params";
 import {
+  applyHistoryMove,
+  followUrlChange,
+  planHistoryMove,
+  startTrail,
+} from "@/features/workbench/history-move";
+import {
+  BackBar,
   ColumnItem,
   ColumnHeader,
+  ColumnList,
   EmptyState,
   LoadingSpinner,
-  OverviewActions,
+  type ColumnItemAction,
 } from "@/features/workbench/workbench-columns";
+import {
+  OverviewActions,
+  OverviewHeader,
+} from "@/features/workbench/overview-header";
+import type { WorkbenchCrumb } from "@/features/workbench/workbench-breadcrumb";
 import {
   RecordingModal,
   type RecordingMode,
@@ -107,6 +121,10 @@ type MobilePreview =
   | { type: "process"; id: Id<"processes">; name: string }
   | null;
 
+function countLabel(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 // --- Main Component ---
 
 export function ProcessWorkbench() {
@@ -129,6 +147,10 @@ export function ProcessWorkbench() {
   // Seed once from the URL (the initializer runs on first render only); later
   // external URL changes (Back/Forward) are reconciled by the read effect below.
   const [initialSelection] = useState(() => readSelectionParams(searchParams));
+  // Where the URL sits among the history entries this visit created, so moving
+  // up can return to an earlier entry (see history-move.ts).
+  const [initialTrail] = useState(() => startTrail(searchParams.toString()));
+  const historyTrail = useRef(initialTrail);
 
   // Column collapse state
 
@@ -159,7 +181,8 @@ export function ProcessWorkbench() {
 
   const [mobilePreview, setMobilePreview] = useState<MobilePreview>(null);
   // Which half of the phone landing screen is showing. Session-only: it is
-  // remembered while drilling in and back out, and resets to Home on reload.
+  // remembered while drilling in and back out, so the way back up returns to
+  // whichever the user came from, and it resets to Home on reload.
   const [mobileHomeView, setMobileHomeView] = useState<"home" | "browse">(
     "home",
   );
@@ -523,6 +546,16 @@ export function ProcessWorkbench() {
   const departmentBreadcrumbHref = `${pathname}${
     departmentBreadcrumbQuery ? `?${departmentBreadcrumbQuery}` : ""
   }`;
+  const homeBreadcrumbQuery = buildSelectionQuery(searchParams, {
+    fn: null,
+    dept: null,
+    proc: null,
+    tab: detailTab,
+    node: null,
+  });
+  const homeBreadcrumbHref = `${pathname}${
+    homeBreadcrumbQuery ? `?${homeBreadcrumbQuery}` : ""
+  }`;
   const safeDepartmentDescription =
     (selectedDepartment?.descriptionSafetyStatus ??
       processWorkbench?.department.descriptionSafetyStatus) === "safe"
@@ -668,27 +701,31 @@ export function ProcessWorkbench() {
     flowNodeId,
   ]);
 
-  // Write: mirror the committed selection into the URL (push, so Back walks up
-  // the hierarchy). Keyed on `committed` ONLY — deliberately NOT on
-  // `searchParams` — so that an inbound URL change (Back/Forward, applied by the
-  // read effect below) can't race this effect into re-pushing the
-  // pre-navigation selection.
+  // Write: mirror the committed selection into the URL so that Back, in the
+  // app or the browser, walks up the hierarchy: moving deeper pushes, a tab,
+  // flow step or tidy-up (a consumed `conv` link) at the same place replaces,
+  // and moving up returns to the entry the user came down from. Keyed on
+  // `committed` ONLY — deliberately NOT on `searchParams` — so that an inbound
+  // URL change (Back/Forward, applied by the read effect below) can't race
+  // this effect into re-pushing the pre-navigation selection.
   useEffect(() => {
     if (committed.proc && (!committed.fn || !committed.dept)) {
       return;
     }
 
     const target = buildSelectionQuery(searchParams, committed);
-    if (target !== searchParams.toString()) {
-      const href = target ? `${pathname}?${target}` : pathname;
-      // When the URL already names this selection, the write only tidies it
-      // (e.g. drops a consumed `conv` link) and mustn't add a history entry.
-      const tidyOnly =
-        target ===
-        buildSelectionQuery(searchParams, readSelectionParams(searchParams));
-      if (tidyOnly) router.replace(href, { scroll: false });
-      else router.push(href, { scroll: false });
-    }
+    if (target === searchParams.toString()) return;
+
+    const href = target ? `${pathname}?${target}` : pathname;
+    const move = planHistoryMove(
+      historyTrail.current,
+      readSelectionParams(searchParams),
+      committed,
+    );
+    historyTrail.current = applyHistoryMove(historyTrail.current, move, target);
+    if (move.kind === "back") window.history.go(-move.steps);
+    else if (move.kind === "replace") router.replace(href, { scroll: false });
+    else router.push(href, { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- excludes `searchParams` by design; see note above
   }, [committed, pathname, router]);
 
@@ -698,6 +735,10 @@ export function ProcessWorkbench() {
   // effect runs. Names reset to "" and re-resolve via the *DisplayName fallbacks.
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- reacting to external URL changes; deps limited to `searchParams` by design */
   useEffect(() => {
+    historyTrail.current = followUrlChange(
+      historyTrail.current,
+      searchParams.toString(),
+    );
     const next = readSelectionParams(searchParams);
     if (
       next.fn !== selectedFunctionId ||
@@ -815,6 +856,30 @@ export function ProcessWorkbench() {
     },
     [],
   );
+
+  const handleSelectHome = useCallback(() => {
+    setSelectedFunctionId(null);
+    setSelectedFunctionName("");
+    setSelectedDepartmentId(null);
+    setSelectedDepartmentName("");
+    setSelectedProcessId(null);
+    setSelectedProcessName("");
+    setFlowNodeId(null);
+    setMobilePreview(null);
+    setMobileLevel(1);
+  }, []);
+
+  // Breadcrumbs move up, keeping the ancestors selected.
+  const handleBreadcrumbFunction = useCallback(() => {
+    setSelectedDepartmentId(null);
+    setSelectedProcessId(null);
+    setMobileLevel(2);
+  }, []);
+
+  const handleBreadcrumbDepartment = useCallback(() => {
+    setSelectedProcessId(null);
+    setMobileLevel(3);
+  }, []);
 
   // --- Command palette (⌘K jump-to-anything) ---
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -1159,72 +1224,65 @@ export function ProcessWorkbench() {
     completedProcessConversationCount,
   ]);
 
-  // --- Mobile navigation columns ---
-  // On desktop the hierarchy is the nested ProcessTreeNavigator. These single
-  // columns are the mobile-only drill-down (functions → departments →
-  // processes → detail), driven by `mobileLevel`; `detailPanel` is shared with
-  // desktop. The `mobile` flag is always set when these are rendered (see the
-  // `md:hidden` block below).
+  // --- Phone navigation columns ---
+  // From `lg` up the hierarchy is the nested ProcessTreeNavigator. Below it,
+  // these single columns are the drill-down (functions → departments →
+  // processes → detail), driven by `mobileLevel`; `detailPanel` is shared by
+  // both layouts. Tapping a row drills in, and its info button previews the
+  // item in a sheet without leaving the list.
 
-  const functionsColumn = (mobile?: boolean) => (
+  const rowActions = (
+    onEdit: () => void,
+    onDelete: () => void,
+  ): ColumnItemAction[] =>
+    canEdit
+      ? [
+          { label: "Edit", icon: Pencil, onSelect: onEdit },
+          { label: "Delete", icon: Trash2, onSelect: onDelete, destructive: true },
+        ]
+      : [];
+
+  const functionsColumn = () => (
     <div className="flex h-full flex-col">
       <ColumnHeader
         title="Functions"
         count={functions?.length}
         onAdd={canEdit ? () => openCrud("create", "Function") : undefined}
         addLabel="Add function"
-        mobile={mobile}
       />
-      <div className="flex-1 overflow-y-auto scrollbar-hide">
-        <div className={cn("space-y-0.5 p-2", mobile && "space-y-2 p-3")}>
-          {functions === undefined ? (
-            <LoadingSpinner />
-          ) : functions.length === 0 ? (
-            <EmptyState
-              icon={Building2}
-              title="No functions yet"
-              description="Organizational functions will appear here."
-              actionLabel={canEdit ? "Add function" : undefined}
-              onAction={
-                canEdit ? () => openCrud("create", "Function") : undefined
-              }
-            />
-          ) : (
-            functions.map((fn) => (
+      <ColumnList>
+        {functions === undefined ? (
+          <LoadingSpinner />
+        ) : functions.length === 0 ? (
+          <EmptyState
+            icon={Building2}
+            title="No functions yet"
+            description="Organizational functions will appear here."
+            actionLabel={canEdit ? "Add function" : undefined}
+            onAction={canEdit ? () => openCrud("create", "Function") : undefined}
+          />
+        ) : (
+          functions.map((fn) => {
+            const departmentCount = departmentCountByFunction.get(fn._id) ?? 0;
+            return (
               <ColumnItem
                 key={fn._id}
                 label={fn.name}
                 selected={selectedFunctionId === fn._id}
-                indicator="arrow"
-                count={departmentCountByFunction.get(fn._id) ?? 0}
+                count={departmentCount}
+                countLabel={countLabel(departmentCount, "department")}
                 status={treeRowInfo.get(fn._id)?.status}
-                onClick={() =>
-                  mobile
-                    ? handlePreviewFunction(fn._id, fn.name)
-                    : handleSelectFunction(fn._id, fn.name)
-                }
-                onNavigate={
-                  mobile
-                    ? () => handleSelectFunction(fn._id, fn.name)
-                    : undefined
-                }
-                navigateLabel={`View departments in ${fn.name}`}
-                onEdit={
-                  canEdit && mobile
-                    ? () => openCrud("edit", "Function", fn.name, fn._id)
-                    : undefined
-                }
-                onDelete={
-                  canEdit && mobile
-                    ? () => openCrud("delete", "Function", fn.name, fn._id)
-                    : undefined
-                }
-                mobile={mobile}
+                onOpen={() => handleSelectFunction(fn._id, fn.name)}
+                onPreview={() => handlePreviewFunction(fn._id, fn.name)}
+                actions={rowActions(
+                  () => openCrud("edit", "Function", fn.name, fn._id),
+                  () => openCrud("delete", "Function", fn.name, fn._id),
+                )}
               />
-            ))
-          )}
-        </div>
-      </div>
+            );
+          })
+        )}
+      </ColumnList>
     </div>
   );
 
@@ -1240,7 +1298,7 @@ export function ProcessWorkbench() {
     >
       <div className="shrink-0 border-b bg-background px-3 py-2.5">
         <TabsList
-          className="w-full group-data-horizontal/tabs:h-11"
+          className="mx-auto w-full max-w-3xl group-data-horizontal/tabs:h-11"
           aria-label="Workspace views"
         >
           <TabsTrigger value="home" className="gap-2 text-sm">
@@ -1271,29 +1329,18 @@ export function ProcessWorkbench() {
         />
       </TabsContent>
       <TabsContent value="browse" className="min-h-0 flex-1 overflow-hidden">
-        {functionsColumn(true)}
+        {functionsColumn()}
       </TabsContent>
     </Tabs>
   );
 
-  const departmentsColumn = (mobile?: boolean) => (
+  const departmentsColumn = () => (
     <div className="flex h-full flex-col">
-      {mobile && (
-        <div className="shrink-0 border-b bg-background px-2 py-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setMobileHomeView("browse");
-              setMobileLevel(1);
-            }}
-            className="min-h-10 gap-2 px-3 text-sm"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Functions
-          </Button>
-        </div>
-      )}
+      {/* Back to whichever landing view the user came from. */}
+      <BackBar
+        label={mobileHomeView === "home" ? "Home" : "Functions"}
+        onBack={() => setMobileLevel(1)}
+      />
       <ColumnHeader
         title="Departments"
         count={departments?.length}
@@ -1303,95 +1350,67 @@ export function ProcessWorkbench() {
             : undefined
         }
         addLabel="Add department"
-        mobile={mobile}
       />
-      <div className="flex-1 overflow-y-auto scrollbar-hide">
-        <div className={cn("space-y-0.5 p-2", mobile && "space-y-2 p-3")}>
-          {!selectedFunctionId ? (
-            <EmptyState
-              icon={Layers}
-              title="Select a function"
-              description="Choose a function from the list to see its departments."
-            />
-          ) : departments === undefined ? (
-            <LoadingSpinner />
-          ) : departments.length === 0 ? (
-            <EmptyState
-              icon={Layers}
-              title="No departments"
-              description="This function has no departments defined yet."
-              actionLabel={canEdit ? "Add department" : undefined}
-              onAction={
-                canEdit && selectedFunctionId
-                  ? () => openCrud("create", "Department")
-                  : undefined
-              }
-            />
-          ) : (
-            departments.map((dept) => (
+      <ColumnList>
+        {!selectedFunctionId ? (
+          <EmptyState
+            icon={Layers}
+            title="Select a function"
+            description="Choose a function from the list to see its departments."
+          />
+        ) : departments === undefined ? (
+          <LoadingSpinner />
+        ) : departments.length === 0 ? (
+          <EmptyState
+            icon={Layers}
+            title="No departments"
+            description="This function has no departments defined yet."
+            actionLabel={canEdit ? "Add department" : undefined}
+            onAction={
+              canEdit && selectedFunctionId
+                ? () => openCrud("create", "Department")
+                : undefined
+            }
+          />
+        ) : (
+          departments.map((dept) => {
+            const processCount = processCountByDepartment.get(dept._id) ?? 0;
+            return (
               <ColumnItem
                 key={dept._id}
                 label={dept.name}
                 selected={selectedDepartmentId === dept._id}
-                indicator="arrow"
-                count={processCountByDepartment.get(dept._id) ?? 0}
+                count={processCount}
+                countLabel={countLabel(processCount, "process", "processes")}
                 status={treeRowInfo.get(dept._id)?.status}
-                onClick={() =>
-                  mobile
-                    ? handlePreviewDepartment(dept._id, dept.name)
-                    : handleSelectDepartment(dept._id, dept.name)
-                }
-                onNavigate={
-                  mobile
-                    ? () => handleSelectDepartment(dept._id, dept.name)
-                    : undefined
-                }
-                navigateLabel={`View processes in ${dept.name}`}
-                onEdit={
-                  canEdit && mobile
-                    ? () =>
-                        openCrud(
-                          "edit",
-                          "Department",
-                          dept.name,
-                          dept._id,
-                          dept.functionId,
-                          dept.description,
-                        )
-                    : undefined
-                }
-                onDelete={
-                  canEdit && mobile
-                    ? () =>
-                        openCrud("delete", "Department", dept.name, dept._id)
-                    : undefined
-                }
-                mobile={mobile}
+                onOpen={() => handleSelectDepartment(dept._id, dept.name)}
+                onPreview={() => handlePreviewDepartment(dept._id, dept.name)}
+                actions={rowActions(
+                  () =>
+                    openCrud(
+                      "edit",
+                      "Department",
+                      dept.name,
+                      dept._id,
+                      dept.functionId,
+                      dept.description,
+                    ),
+                  () => openCrud("delete", "Department", dept.name, dept._id),
+                )}
               />
-            ))
-          )}
-        </div>
-      </div>
+            );
+          })
+        )}
+      </ColumnList>
     </div>
   );
 
-  const processesColumn = (mobile?: boolean) => (
+  const processesColumn = () => (
     <div className="flex h-full flex-col">
-      {mobile && (
-        <div className="shrink-0 border-b bg-background px-2 py-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setMobileLevel(2)}
-            className="min-h-10 max-w-full gap-2 px-3 text-sm"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            <span className="truncate">
-              {functionDisplayName || "Departments"}
-            </span>
-          </Button>
-        </div>
-      )}
+      <BackBar
+        label={functionDisplayName || "Departments"}
+        onBack={() => setMobileLevel(2)}
+      />
       <ColumnHeader
         title="Processes"
         count={processes?.length}
@@ -1401,81 +1420,61 @@ export function ProcessWorkbench() {
             : undefined
         }
         addLabel="Add process"
-        mobile={mobile}
       />
-      <div className="flex-1 overflow-y-auto scrollbar-hide">
-        <div className={cn("space-y-0.5 p-2", mobile && "space-y-2 p-3")}>
-          {!selectedDepartmentId ? (
-            <EmptyState
-              icon={Cog}
-              title="Select a department"
-              description="Choose a department to see its processes."
-            />
-          ) : processes === undefined ? (
-            <LoadingSpinner />
-          ) : processes.length === 0 ? (
-            <EmptyState
-              icon={Cog}
-              title="No processes"
-              description="No processes defined yet for this department."
-              actionLabel={canEdit ? "Add process" : undefined}
-              onAction={
-                canEdit && selectedDepartmentId
-                  ? () => openCrud("create", "Process")
-                  : undefined
+      <ColumnList>
+        {!selectedDepartmentId ? (
+          <EmptyState
+            icon={Cog}
+            title="Select a department"
+            description="Choose a department to see its processes."
+          />
+        ) : processes === undefined ? (
+          <LoadingSpinner />
+        ) : processes.length === 0 ? (
+          <EmptyState
+            icon={Cog}
+            title="No processes"
+            description="No processes defined yet for this department."
+            actionLabel={canEdit ? "Add process" : undefined}
+            onAction={
+              canEdit && selectedDepartmentId
+                ? () => openCrud("create", "Process")
+                : undefined
+            }
+          />
+        ) : (
+          processes.map((proc) => (
+            <ColumnItem
+              key={proc._id}
+              label={proc.name}
+              selected={selectedProcessId === proc._id}
+              detail={treeRowInfo.get(proc._id)?.detail}
+              status={
+                treeRowInfo.get(proc._id)?.status ??
+                // The tree is bounded; past its read limits, fall back to
+                // the dedicated needs-labels query.
+                (attentionProcessIdSet.has(proc._id)
+                  ? processPendingStatusMeta.needs_labels
+                  : null)
               }
+              onOpen={() => handleSelectProcess(proc._id, proc.name)}
+              onPreview={() => handlePreviewProcess(proc._id, proc.name)}
+              actions={rowActions(
+                () =>
+                  openCrud(
+                    "edit",
+                    "Process",
+                    proc.name,
+                    proc._id,
+                    proc.departmentId,
+                    proc.description,
+                  ),
+                () => openCrud("delete", "Process", proc.name, proc._id),
+              )}
             />
-          ) : (
-            processes.map((proc) => (
-              <ColumnItem
-                key={proc._id}
-                label={proc.name}
-                selected={selectedProcessId === proc._id}
-                indicator="dot"
-                detail={treeRowInfo.get(proc._id)?.detail}
-                status={
-                  treeRowInfo.get(proc._id)?.status ??
-                  // The tree is bounded; past its read limits, fall back to
-                  // the dedicated needs-labels query.
-                  (attentionProcessIdSet.has(proc._id)
-                    ? processPendingStatusMeta.needs_labels
-                    : null)
-                }
-                onClick={() =>
-                  mobile
-                    ? handlePreviewProcess(proc._id, proc.name)
-                    : handleSelectProcess(proc._id, proc.name)
-                }
-                onNavigate={
-                  mobile
-                    ? () => handleSelectProcess(proc._id, proc.name)
-                    : undefined
-                }
-                navigateLabel={`Open ${proc.name}`}
-                onEdit={
-                  canEdit && mobile
-                    ? () =>
-                        openCrud(
-                          "edit",
-                          "Process",
-                          proc.name,
-                          proc._id,
-                          proc.departmentId,
-                          proc.description,
-                        )
-                    : undefined
-                }
-                onDelete={
-                  canEdit && mobile
-                    ? () => openCrud("delete", "Process", proc.name, proc._id)
-                    : undefined
-                }
-                mobile={mobile}
-              />
-            ))
-          )}
-        </div>
-      </div>
+          ))
+        )}
+      </ColumnList>
     </div>
   );
 
@@ -1485,84 +1484,97 @@ export function ProcessWorkbench() {
   const fabClearance = (mobile?: boolean) =>
     mobile && canEdit ? "pb-24" : undefined;
 
+  const homeCrumb: WorkbenchCrumb = {
+    label: "Home",
+    href: homeBreadcrumbHref,
+    onSelect: handleSelectHome,
+  };
+
   const detailPanel = (mobile?: boolean) => (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
       {mobile && (
-        <div className="shrink-0 border-b bg-background px-2 py-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setMobileLevel(3)}
-            className="min-h-10 max-w-full gap-2 px-3 text-sm"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            <span className="truncate">
-              {departmentDisplayName || "Processes"}
-            </span>
-          </Button>
-        </div>
+        <BackBar
+          label={departmentDisplayName || "Processes"}
+          onBack={() => setMobileLevel(3)}
+          contained={false}
+        />
       )}
       {!selectedProcessId ? (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto scrollbar-hide">
-          <ColumnHeader
-            title={
-              selectedDepartmentId
-                ? departmentDisplayName || "Department Overview"
-                : selectedFunctionId
-                  ? functionDisplayName || "Function Overview"
-                  : "Home"
-            }
-            mobile={mobile}
-            actions={
-              canEdit && selectedDepartmentId ? (
-                <OverviewActions
-                  entityLabel={departmentDisplayName}
-                  onEdit={() =>
-                    selectedDepartmentId &&
-                    openCrud(
-                      "edit",
-                      "Department",
-                      departmentDisplayName,
-                      selectedDepartmentId,
-                      selectedDepartment?.functionId,
-                      selectedDepartment?.description,
-                    )
-                  }
-                  onDelete={() =>
-                    selectedDepartmentId &&
-                    openCrud(
-                      "delete",
-                      "Department",
-                      departmentDisplayName,
-                      selectedDepartmentId,
-                    )
-                  }
-                />
-              ) : canEdit && selectedFunctionId ? (
-                <OverviewActions
-                  entityLabel={functionDisplayName}
-                  onEdit={() =>
-                    selectedFunctionId &&
-                    openCrud(
-                      "edit",
-                      "Function",
-                      functionDisplayName,
-                      selectedFunctionId,
-                    )
-                  }
-                  onDelete={() =>
-                    selectedFunctionId &&
-                    openCrud(
-                      "delete",
-                      "Function",
-                      functionDisplayName,
-                      selectedFunctionId,
-                    )
-                  }
-                />
-              ) : undefined
-            }
-          />
+          {/* Home brings its own heading; a function or department overview
+              gets its name and where it sits. Only reached from `lg` up:
+              phones preview these in a sheet. */}
+          {selectedFunctionId && (
+            <OverviewHeader
+              name={
+                (selectedDepartmentId
+                  ? departmentDisplayName
+                  : functionDisplayName) ||
+                (selectedDepartmentId ? "Department" : "Function")
+              }
+              breadcrumb={
+                selectedDepartmentId
+                  ? [
+                      homeCrumb,
+                      {
+                        label: functionDisplayName || "Function",
+                        href: functionBreadcrumbHref,
+                        onSelect: handleBreadcrumbFunction,
+                      },
+                    ]
+                  : [homeCrumb]
+              }
+              actions={
+                canEdit && selectedDepartmentId ? (
+                  <OverviewActions
+                    entityLabel={departmentDisplayName}
+                    onEdit={() =>
+                      selectedDepartmentId &&
+                      openCrud(
+                        "edit",
+                        "Department",
+                        departmentDisplayName,
+                        selectedDepartmentId,
+                        selectedDepartment?.functionId,
+                        selectedDepartment?.description,
+                      )
+                    }
+                    onDelete={() =>
+                      selectedDepartmentId &&
+                      openCrud(
+                        "delete",
+                        "Department",
+                        departmentDisplayName,
+                        selectedDepartmentId,
+                      )
+                    }
+                  />
+                ) : canEdit && selectedFunctionId ? (
+                  <OverviewActions
+                    entityLabel={functionDisplayName}
+                    onEdit={() =>
+                      selectedFunctionId &&
+                      openCrud(
+                        "edit",
+                        "Function",
+                        functionDisplayName,
+                        selectedFunctionId,
+                      )
+                    }
+                    onDelete={() =>
+                      selectedFunctionId &&
+                      openCrud(
+                        "delete",
+                        "Function",
+                        functionDisplayName,
+                        selectedFunctionId,
+                      )
+                    }
+                  />
+                ) : undefined
+              }
+            />
+          )}
 
           {/* Unified Department Overview */}
           {selectedDepartmentId && !selectedProcessId && (
@@ -1604,22 +1616,22 @@ export function ProcessWorkbench() {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <ProcessHeader
             processName={workbenchProcessName}
-            functionName={workbenchFunctionName}
-            departmentName={workbenchDepartmentName}
             workbench={processWorkbench}
             canEdit={canEdit}
             mobile={mobile}
-            functionHref={functionBreadcrumbHref}
-            departmentHref={departmentBreadcrumbHref}
-            onSelectFunction={() => {
-              setSelectedDepartmentId(null);
-              setSelectedProcessId(null);
-              setMobileLevel(2);
-            }}
-            onSelectDepartment={() => {
-              setSelectedProcessId(null);
-              setMobileLevel(3);
-            }}
+            breadcrumb={[
+              homeCrumb,
+              {
+                label: workbenchFunctionName || "Function",
+                href: functionBreadcrumbHref,
+                onSelect: handleBreadcrumbFunction,
+              },
+              {
+                label: workbenchDepartmentName || "Department",
+                href: departmentBreadcrumbHref,
+                onSelect: handleBreadcrumbDepartment,
+              },
+            ]}
             onCopyLink={handleCopyProcessLink}
             onJumpToLabeling={handleJumpToLabeling}
             onEditProcess={handleEditSelectedProcess}
@@ -1835,14 +1847,18 @@ export function ProcessWorkbench() {
     <TooltipProvider>
       <div className="h-full bg-background">
         <ProcessAppShell onSearch={() => setPaletteOpen(true)}>
-          {/* Desktop: nested process tree + current workbench/detail surface */}
-          <div className="hidden min-w-0 flex-1 overflow-hidden md:flex">
+          {/* From `lg`: nested process tree + current workbench/detail
+              surface. Below it, tablets join phones on the drill-down: the
+              tree would leave the detail panel too little room, and its
+              hover-only row actions don't work on touch. */}
+          <div className="hidden min-w-0 flex-1 overflow-hidden lg:flex">
             <ProcessTreeNavigator
               tree={hierarchyTree}
               canEdit={canEdit}
               selectedFunctionId={selectedFunctionId}
               selectedDepartmentId={selectedDepartmentId}
               selectedProcessId={selectedProcessId}
+              onSelectHome={handleSelectHome}
               onSelectFunction={handleTreeSelectFunction}
               onSelectDepartment={handleTreeSelectDepartment}
               onSelectProcess={handleTreeSelectProcess}
@@ -1861,11 +1877,11 @@ export function ProcessWorkbench() {
             </div>
           </div>
 
-          {/* Mobile: stacked single column */}
-          <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:hidden">
+          {/* Below `lg`: stacked single column */}
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden lg:hidden">
             {mobileLevel === 1 && mobileLandingColumn()}
-            {mobileLevel === 2 && departmentsColumn(true)}
-            {mobileLevel === 3 && processesColumn(true)}
+            {mobileLevel === 2 && departmentsColumn()}
+            {mobileLevel === 3 && processesColumn()}
             {mobileLevel === 4 && detailPanel(true)}
           </div>
         </ProcessAppShell>
@@ -1878,7 +1894,7 @@ export function ProcessWorkbench() {
         >
           <SheetContent
             side="bottom"
-            className="max-h-[82dvh] gap-0 overflow-hidden rounded-t-2xl p-0"
+            className="max-h-[82dvh] gap-0 overflow-hidden rounded-t-2xl p-0 sm:mx-auto sm:max-w-2xl"
           >
             <SheetHeader className="border-b p-5 pr-14">
               <div className="flex items-center gap-3">

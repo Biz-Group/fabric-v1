@@ -92,7 +92,7 @@ export default function AdminLayout({
           navSections={adminNavSections}
           mainClassName="overflow-auto"
         >
-          <div className="min-w-0 flex-1 p-6">{children}</div>
+          <div className="min-w-0 flex-1 p-4 sm:p-6">{children}</div>
         </WorkspaceAppShell>
       </div>
     </TooltipProvider>
