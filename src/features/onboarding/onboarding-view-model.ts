@@ -16,7 +16,7 @@ export type MyOnboarding = NonNullable<
 export type OnboardingPath = NonNullable<MyOnboarding["path"]>;
 
 /** The share of the tour that must actually be played to count as watched. */
-export const TOUR_WATCHED_FRACTION = 0.9;
+export const TOUR_WATCHED_FRACTION = 0.75;
 
 /** What a `<video>`'s `played` ranges look like, so tests can fake them. */
 export type TimeRangesLike = {

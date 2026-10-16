@@ -7,7 +7,7 @@ import {
   useOrganizationList,
   useUser,
 } from "@clerk/nextjs";
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useParams } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 import { api } from "../../../convex/_generated/api";
@@ -230,6 +230,7 @@ function WorkspaceAccess({
     membership === null ? { clerkOrgId } : "skip",
   );
   const storeUser = useMutation(api.users.store);
+  const syncProfile = useAction(api.users.syncCurrentUserFromClerk);
   const [attempt, setAttempt] = useState(0);
   const [outcome, setOutcome] = useState<{
     attempt: number;
@@ -237,10 +238,30 @@ function WorkspaceAccess({
   } | null>(null);
   const setup =
     outcome?.attempt === attempt ? (outcome.ok ? "done" : "failed") : "running";
+  const membershipLoaded = membership !== undefined;
+  const isNewMember = membership === null;
 
   useEffect(() => {
+    if (!membershipLoaded) return;
     let cancelled = false;
-    storeUser().then(
+    async function provision() {
+      // An invite's role is matched by verified email, which the session
+      // token may not carry. A first visit reads it from Clerk instead, so an
+      // invited admin doesn't land as the default contributor.
+      if (isNewMember) {
+        try {
+          await syncProfile();
+        } catch (error) {
+          console.error(
+            "Failed to sync Fabric profile from Clerk; falling back to the session token",
+            error,
+          );
+        }
+      }
+      // Resolves only once Convex queries reflect it, and so the sync too.
+      await storeUser();
+    }
+    provision().then(
       () => {
         if (!cancelled) setOutcome({ attempt, ok: true });
       },
@@ -252,7 +273,7 @@ function WorkspaceAccess({
     return () => {
       cancelled = true;
     };
-  }, [storeUser, attempt]);
+  }, [membershipLoaded, isNewMember, storeUser, syncProfile, attempt]);
 
   const hasMembership = !!membership;
   useEffect(() => {

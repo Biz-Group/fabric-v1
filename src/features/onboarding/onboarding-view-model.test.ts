@@ -36,9 +36,10 @@ describe("tour progress", () => {
     expect(playedSeconds(ranges([0, 30], [118, 123]))).toBe(35);
   });
 
-  it("knows how much is left before 90%", () => {
-    expect(tourSecondsLeft(0, 100)).toBe(90);
-    expect(tourSecondsLeft(95, 100)).toBe(0);
+  it("knows how much is left before 75%", () => {
+    expect(tourSecondsLeft(0, 100)).toBe(75);
+    expect(tourSecondsLeft(70, 100)).toBe(5);
+    expect(tourSecondsLeft(80, 100)).toBe(0);
     expect(tourSecondsLeft(10, Number.NaN)).toBeNull();
     expect(tourSecondsLeft(10, 0)).toBeNull();
   });

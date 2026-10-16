@@ -70,6 +70,9 @@ type UpsertUserAndMembershipArgs = {
   clerkUserId?: string | null;
   name?: string | null;
   email?: string | null;
+  /** True only when `email` was read as verified from Clerk's Backend API.
+   * Only a verified email can claim a pending invite's role. */
+  emailVerified?: boolean | null;
   orgId?: string | null;
   source?: MembershipSource | null;
   requestedRole?: Role | null;
@@ -551,12 +554,11 @@ async function upsertUserAndMembership(
     source = "superAdminFanOut";
   } else if (args.requestedRole) {
     role = args.requestedRole;
-  } else {
-    matchedIntent = await findInviteIntentForMembership(
-      ctx,
-      orgId,
-      display.emailLower,
-    );
+  } else if (args.emailVerified && emailLower) {
+    // The session token's and the membership webhook's emails carry no
+    // verification status, so they never claim an invite; their joiners get
+    // the default role, which an admin can raise.
+    matchedIntent = await findInviteIntentForMembership(ctx, orgId, emailLower);
     if (matchedIntent) {
       role = matchedIntent.requestedRole;
       source = "adminInvite";
@@ -636,6 +638,7 @@ export const upsertCurrentUserInternal = internalMutation({
     clerkUserId: v.optional(v.string()),
     name: v.optional(v.string()),
     email: v.optional(v.string()),
+    emailVerified: v.optional(v.boolean()),
     orgId: v.optional(v.string()),
     source: v.optional(membershipSourceValidator),
     requestedRole: v.optional(roleValidator),
@@ -676,6 +679,7 @@ export const syncCurrentUserFromClerk = action({
       clerkUserId: string;
       name?: string;
       email?: string;
+      emailVerified?: boolean;
       orgId?: string;
       source: MembershipSource;
     } = {
@@ -684,8 +688,11 @@ export const syncCurrentUserFromClerk = action({
       source: "selfSignup",
     };
     if (profile.name ?? identity.name) upsertArgs.name = profile.name ?? identity.name;
-    if (profile.email ?? identity.email) {
-      upsertArgs.email = profile.email ?? identity.email;
+    if (profile.email) {
+      upsertArgs.email = profile.email;
+      upsertArgs.emailVerified = true;
+    } else if (identity.email) {
+      upsertArgs.email = identity.email;
     }
     if (orgId) upsertArgs.orgId = orgId;
 
@@ -740,6 +747,7 @@ export const reconcileOrgMembersFromClerk = internalAction({
           clerkUserId: string;
           name?: string;
           email?: string;
+          emailVerified?: boolean;
           orgId: string;
           source: MembershipSource;
         } = {
@@ -749,7 +757,10 @@ export const reconcileOrgMembersFromClerk = internalAction({
           source: "reconcile",
         };
         if (name) upsertArgs.name = name;
-        if (email) upsertArgs.email = email;
+        if (email) {
+          upsertArgs.email = email;
+          upsertArgs.emailVerified = true;
+        }
 
         await ctx.runMutation(internal.users.upsertCurrentUserInternal, upsertArgs);
         processed++;

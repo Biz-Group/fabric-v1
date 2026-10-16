@@ -22,7 +22,7 @@ export type TourWatchedVia = "video" | "transcript";
 type TourPlayerProps = {
   /** "gate" waits for the member to press play; "replay" starts at once. */
   mode: "gate" | "replay";
-  /** Fires once: when 90% has actually been played, or the transcript has
+  /** Fires once: when 75% has actually been played, or the transcript has
    * been read to the end. */
   onWatched: (via: TourWatchedVia) => void;
   /** Seconds still to play before it counts, or null until the duration is

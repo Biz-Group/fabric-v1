@@ -635,6 +635,17 @@ function stubClerkFetchStatus(status: number, body: unknown = {}) {
   return { calls };
 }
 
+/** A Clerk Backend API user whose only email is verified. */
+function verifiedClerkUser(id: string, email: string) {
+  return {
+    id,
+    primary_email_address_id: "email_1",
+    email_addresses: [
+      { id: "email_1", email_address: email, verification: { status: "verified" } },
+    ],
+  };
+}
+
 function stubClerkFetchSequence(
   responses: Array<{ status: number; body?: unknown }>,
 ) {
@@ -725,6 +736,61 @@ describe("user provisioning sync", () => {
     expect(stored.membership?.emailLower).toBe("new.member@a.test");
     expect(stored.membership?.searchText).toContain("new member");
     expect(stored.membership?.clerkOrgId).toBe(ORG_A);
+  });
+
+  test("an email Clerk hasn't verified can't claim an invite's role", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("membershipIntents", {
+        clerkOrgId: ORG_A,
+        email: "target.admin@a.test",
+        emailLower: "target.admin@a.test",
+        requestedRole: "admin",
+        source: "adminInvite",
+        status: "pending",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    });
+    const identity = (subject: string) => ({
+      tokenIdentifier: `${ISSUER}|${subject}`,
+      subject,
+      issuer: ISSUER,
+      email: "target.admin@a.test",
+      orgId: ORG_A,
+      orgSlug: "org-a",
+    });
+
+    // The session token's email alone…
+    await t.withIdentity(identity("user_token")).mutation(api.users.store, {});
+    // …and a Clerk profile whose matching address is unverified.
+    stubClerkFetch([
+      {
+        id: "user_unverified",
+        primary_email_address_id: "email_1",
+        email_addresses: [
+          {
+            id: "email_1",
+            email_address: "target.admin@a.test",
+            verification: { status: "unverified" },
+          },
+        ],
+      },
+    ]);
+    await t
+      .withIdentity(identity("user_unverified"))
+      .action(api.users.syncCurrentUserFromClerk, {});
+
+    const stored = await t.run(async (ctx) => ({
+      memberships: await ctx.db.query("memberships").collect(),
+      intent: await ctx.db.query("membershipIntents").unique(),
+    }));
+    expect(stored.memberships).toHaveLength(2);
+    for (const membership of stored.memberships) {
+      expect(membership.role).toBe("contributor");
+      expect(membership.source).toBe("selfSignup");
+    }
+    expect(stored.intent?.status).toBe("pending");
   });
 
   test("pending invite intent controls accepted member role", async () => {
@@ -991,6 +1057,7 @@ describe("user provisioning sync", () => {
         });
       });
       const { calls } = stubClerkFetchSequence([
+        { status: 200, body: verifiedClerkUser("user_invitee", "invitee@a.test") },
         {
           status: 200,
           body: {
@@ -1007,18 +1074,18 @@ describe("user provisioning sync", () => {
           tokenIdentifier: `${ISSUER}|user_invitee`,
           subject: "user_invitee",
           issuer: ISSUER,
-          email: "invitee@a.test",
           orgId: ORG_A,
           orgSlug: "org-a",
         })
-        .mutation(api.users.store, {});
+        .action(api.users.syncCurrentUserFromClerk, {});
       await t.finishAllScheduledFunctions(vi.runAllTimers);
 
       expect(calls.map((c) => [c.init?.method ?? "GET", new URL(c.url).pathname])).toEqual([
+        ["GET", "/v1/users/user_invitee"],
         ["GET", `/v1/organizations/${ORG_A}/invitations/orginv_left_pending`],
         ["POST", `/v1/organizations/${ORG_A}/invitations/orginv_left_pending/revoke`],
       ]);
-      expect(JSON.parse(String(calls[1].init?.body))).toEqual({
+      expect(JSON.parse(String(calls[2].init?.body))).toEqual({
         requesting_user_id: "user_super",
       });
       const intent = await t.run(async (ctx) =>
@@ -1054,6 +1121,7 @@ describe("user provisioning sync", () => {
         });
       });
       const { calls } = stubClerkFetchSequence([
+        { status: 200, body: verifiedClerkUser("user_linked", "linked@a.test") },
         { status: 200, body: { id: "orginv_used_link", status: "accepted" } },
       ]);
 
@@ -1062,15 +1130,14 @@ describe("user provisioning sync", () => {
           tokenIdentifier: `${ISSUER}|user_linked`,
           subject: "user_linked",
           issuer: ISSUER,
-          email: "linked@a.test",
           orgId: ORG_A,
           orgSlug: "org-a",
         })
-        .mutation(api.users.store, {});
+        .action(api.users.syncCurrentUserFromClerk, {});
       await t.finishAllScheduledFunctions(vi.runAllTimers);
 
-      expect(calls).toHaveLength(1);
-      expect(calls[0].init?.method ?? "GET").toBe("GET");
+      expect(calls).toHaveLength(2);
+      expect(calls.every((c) => (c.init?.method ?? "GET") === "GET")).toBe(true);
     } finally {
       vi.useRealTimers();
     }
@@ -2175,7 +2242,10 @@ describe("member removal is durable", () => {
       source: "adminInvite",
       invitedBy: userAId,
     });
-    await t.withIdentity(carolIdentity()).mutation(api.users.store, {});
+    stubClerkFetch([verifiedClerkUser("user_c", "carol@a.test")]);
+    await t
+      .withIdentity(carolIdentity())
+      .action(api.users.syncCurrentUserFromClerk, {});
 
     const membership = await carolMembership(t);
     expect(membership?.role).toBe("viewer");

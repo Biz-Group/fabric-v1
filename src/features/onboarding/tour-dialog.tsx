@@ -12,7 +12,7 @@ import {
 import { TourPlayer, type TourWatchedVia } from "./tour-player";
 
 /** The two-minute tour in a dialog, for replays (Help, Getting started, the
- * waiting card). Watching 90% of it, or reading the transcript, records the
+ * waiting card). Watching 75% of it, or reading the transcript, records the
  * tour as watched for this person in every workspace. */
 export function TourDialog({
   open,
