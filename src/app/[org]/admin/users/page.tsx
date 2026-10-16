@@ -132,11 +132,23 @@ function RoleSelect({
     await applyChange(value);
   };
 
+  // Your own role shows as a static badge, not a disabled Select, so it
+  // says why it can't be changed: a tooltip for the mouse and screen-reader
+  // text in the cell.
   if (isSelf) {
     return (
-      <Badge variant={roleBadgeVariant[currentRole]} className="capitalize">
-        {currentRole}
-      </Badge>
+      <>
+        <Badge
+          variant={roleBadgeVariant[currentRole]}
+          className="capitalize"
+          title="You can't change your own role"
+        >
+          {currentRole}
+        </Badge>
+        <span className="sr-only">
+          (your role; you can&apos;t change your own role)
+        </span>
+      </>
     );
   }
 
@@ -598,7 +610,9 @@ export default function AdminUsersPage() {
               <TableHead className={COLUMN_CLASS.platform}>Platform</TableHead>
               <TableHead className={COLUMN_CLASS.profile}>Profile</TableHead>
               <TableHead className={COLUMN_CLASS.joined}>Joined Org</TableHead>
-              <TableHead className="w-10"></TableHead>
+              <TableHead className="w-10">
+                <span className="sr-only">Actions</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

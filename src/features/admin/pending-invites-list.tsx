@@ -238,19 +238,22 @@ export function PendingInvitesList({
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
+                    {/* sm, not xs: 28px with a mouse and 40px on touch. */}
                     <Button
-                      size="xs"
+                      size="sm"
                       variant="outline"
                       disabled={mutatingId === invite.id}
                       onClick={() => handleResend(invite)}
+                      aria-label={`Resend invitation to ${invite.email}`}
                     >
                       Resend
                     </Button>
                     <Button
-                      size="xs"
+                      size="sm"
                       variant="destructive"
                       disabled={mutatingId === invite.id}
                       onClick={() => setPendingRevoke(invite)}
+                      aria-label={`Revoke invitation for ${invite.email}`}
                     >
                       Revoke
                     </Button>

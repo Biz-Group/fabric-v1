@@ -261,7 +261,7 @@ function ChildCoverageLedger({
                 <button
                   type="button"
                   onClick={open}
-                  className="org-focus-ring grid min-h-16 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-2 py-3 text-left transition-colors hover:bg-org-accent-subtle"
+                  className="focus-ring-inset grid min-h-16 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-2 py-3 text-left transition-colors hover:bg-org-accent-subtle"
                   aria-label={`Open ${child.kind}: ${child.name}`}
                 >
                   {content}

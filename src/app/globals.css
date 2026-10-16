@@ -31,6 +31,7 @@
   --color-org-accent-selected: var(--org-accent-selected);
   --color-org-accent-selected-foreground: var(--org-accent-selected-foreground);
   --color-ring: var(--ring);
+  --color-focus: var(--focus);
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
@@ -118,6 +119,10 @@
   --org-accent-subtle: oklch(0.97 0 0);
   --org-accent-border: oklch(0.8 0 0);
   --org-accent-ring: var(--ring);
+  /* The one focus colour. The accent is opaque and holds 4.5:1 against its
+     own text, so it clears 3:1 against the page in both modes, tenant
+     themes included. */
+  --focus: var(--org-accent);
   --org-accent-selected: oklch(0.96 0 0);
   --org-accent-selected-foreground: var(--foreground);
   --motion-fast: 100ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -179,6 +184,7 @@
   --org-accent-subtle: oklch(0.265 0.007 255);
   --org-accent-border: oklch(0.76 0.008 255 / 22%);
   --org-accent-ring: var(--ring);
+  --focus: var(--org-accent);
   --org-accent-selected: oklch(0.76 0.008 255 / 10%);
   --org-accent-selected-foreground: var(--foreground);
   --sidebar: oklch(0.16 0.005 255);
@@ -193,7 +199,7 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-focus;
   }
   body {
     @apply bg-background text-foreground;
@@ -209,6 +215,24 @@
 @media (prefers-reduced-motion: reduce) {
   body {
     transition: none;
+  }
+
+  /* Near-zero rather than none, so animationend and transitionend still fire
+     and base-ui popups finish opening and closing. */
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* A spinner frozen mid-turn reads as a stuck control. A slow spin is small,
+     contained motion, so it keeps going. */
+  .animate-spin {
+    animation-duration: 1.5s !important;
+    animation-iteration-count: infinite !important;
   }
 }
 
@@ -228,12 +252,15 @@
 }
 
 @layer utilities {
+  /* The one focus style. An outline rather than a box-shadow ring, so it
+     survives forced-colors mode. Use focus-ring-inset where an overflow
+     container would clip the offset. */
   .focus-ring {
-    @apply outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50;
+    @apply outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus;
   }
 
-  .org-focus-ring {
-    @apply outline-none focus-visible:border-org-accent-ring focus-visible:ring-3 focus-visible:ring-org-accent-ring/35;
+  .focus-ring-inset {
+    @apply outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus;
   }
 
   .org-selected-surface {

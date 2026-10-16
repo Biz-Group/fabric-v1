@@ -7,6 +7,8 @@ import {
   useState,
   type ComponentType,
   type KeyboardEvent,
+  type MouseEvent,
+  type RefObject,
 } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import type { FunctionReturnType } from "convex/server";
@@ -43,6 +45,13 @@ import {
   type StatusMeta,
 } from "@/features/status/status-meta";
 import { cn } from "@/lib/utils";
+import {
+  findTypeaheadMatch,
+  getTreeKeyAction,
+  isTypeaheadKey,
+  pickTabStop,
+  type TreeNavRow,
+} from "@/features/hierarchy/tree-keyboard";
 
 export type ProcessTreeData = FunctionReturnType<typeof api.hierarchy.getTree>;
 export type ProcessTreeFunction = ProcessTreeData["functions"][number];
@@ -62,6 +71,9 @@ export type TreeReveal = {
 
 /** How long a revealed row stays highlighted. */
 const REVEAL_HIGHLIGHT_MS = 2400;
+
+/** A pause longer than this starts a new type-ahead search. */
+const TYPEAHEAD_RESET_MS = 500;
 
 function collectNodeIds(tree: ProcessTreeData) {
   const ids = new Set<string>();
@@ -335,30 +347,52 @@ function CountBadge({
 function RowActions({
   label,
   items,
+  itemRef,
 }: {
   label: string;
   items: ActionItem[];
+  /** The row's treeitem, where focus returns after a keyboard close. */
+  itemRef: RefObject<HTMLButtonElement | null>;
 }) {
   if (items.length === 0) {
-    return <span className="size-7 shrink-0" aria-hidden />;
+    return (
+      <span className="size-7 shrink-0 pointer-coarse:size-10" aria-hidden />
+    );
   }
 
   return (
     <DropdownMenu>
+      {/* Not a tab stop: the tree has one, on the focused row. Keyboard users
+          open this menu from the row with Shift+F10 or the ContextMenu key.
+          It stays in the accessibility tree so touch screen readers can
+          reach it. Always shown on touch, where there's no hover. */}
       <DropdownMenuTrigger
         render={
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="opacity-0 group-hover/tree-row:opacity-100 group-focus-within/tree-row:opacity-100"
+            tabIndex={-1}
+            data-tree-actions=""
+            className="opacity-0 group-hover/tree-row:opacity-100 group-focus-within/tree-row:opacity-100 data-popup-open:opacity-100 pointer-coarse:size-10 pointer-coarse:opacity-100"
             aria-label={`Actions for ${label}`}
           />
         }
       >
         <MoreHorizontal className="size-4" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-auto min-w-52 max-w-72">
+      <DropdownMenuContent
+        align="end"
+        className="w-auto min-w-52 max-w-72"
+        // Back to the row after Esc or a keyboard choice; pointer closes keep
+        // the default (the trigger).
+        finalFocus={(closeType) =>
+          closeType === "keyboard" ? (itemRef.current ?? true) : true
+        }
+        // The ContextMenu key fires `contextmenu` on key up, by which time
+        // focus is in this menu; don't stack the browser's menu on top.
+        onContextMenu={(event) => event.preventDefault()}
+      >
         {items.map((item, index) => {
           const Icon = item.icon;
           const previous = items[index - 1];
@@ -389,6 +423,9 @@ function TreeRow({
   icon: Icon,
   iconClassName,
   level,
+  setSize,
+  posInSet,
+  tabbable,
   selected,
   count,
   countTitle,
@@ -398,6 +435,8 @@ function TreeRow({
   actions,
   onSelect,
   onToggle,
+  onItemKeyDown,
+  onItemFocus,
 }: {
   nodeId: string;
   /** Created since the tree first loaded: animates in (unless reduced motion
@@ -408,6 +447,13 @@ function TreeRow({
   icon: ComponentType<{ className?: string }>;
   iconClassName?: string;
   level: 1 | 2 | 3;
+  /** Siblings at this level, and this row's 1-based place among them. The
+   * child groups are siblings of the row rather than inside it, so assistive
+   * tech can't derive these. */
+  setSize: number;
+  posInSet: number;
+  /** Holds the tree's single tab stop (roving tabindex). */
+  tabbable: boolean;
   selected: boolean;
   count: number;
   countTitle: string;
@@ -418,17 +464,18 @@ function TreeRow({
   actions: ActionItem[];
   onSelect: () => void;
   onToggle?: () => void;
+  onItemKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
+  onItemFocus: () => void;
 }) {
-  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (!expandable || !onToggle) return;
+  const itemRef = useRef<HTMLButtonElement>(null);
+  const hasActions = actions.length > 0;
 
-    if (event.key === "ArrowRight" && !expanded) {
-      event.preventDefault();
-      onToggle();
-    } else if (event.key === "ArrowLeft" && expanded) {
-      event.preventDefault();
-      onToggle();
-    }
+  // Right-click, Shift+F10 and the ContextMenu key all land here; each opens
+  // the row's actions menu instead of the browser's.
+  const handleContextMenu = (event: MouseEvent<HTMLButtonElement>) => {
+    if (!hasActions) return;
+    event.preventDefault();
+    openRowActions(event.currentTarget);
   };
 
   return (
@@ -439,19 +486,28 @@ function TreeRow({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
       className={cn(
-        "group/tree-row mx-1 flex h-9 min-w-0 items-center gap-1 rounded-md px-1 transition-colors duration-500 motion-reduce:transition-none",
+        "group/tree-row mx-1 flex h-9 min-w-0 items-center gap-1 rounded-md px-1 transition-colors duration-500 motion-reduce:transition-none pointer-coarse:h-11",
         level === 2 && "pl-5",
         level === 3 && "pl-9",
         highlighted && "bg-org-accent-subtle",
       )}
     >
       {expandable ? (
+        // A pointer affordance: keyboard users expand and collapse with
+        // Right/Left on the row, so this isn't a tab stop. A click moves the
+        // tree's focus to its row (it would otherwise be lost if the focused
+        // row was inside the branch being collapsed).
         <Button
           type="button"
           variant="ghost"
           size="icon-xs"
-          className="size-6"
-          onClick={onToggle}
+          tabIndex={-1}
+          className="size-6 pointer-coarse:size-10"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            onToggle?.();
+            itemRef.current?.focus({ preventScroll: true });
+          }}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${label}`}
         >
           <ChevronRight
@@ -462,22 +518,32 @@ function TreeRow({
           />
         </Button>
       ) : (
-        <span className="flex size-6 shrink-0 items-center justify-center" aria-hidden>
+        <span
+          className="flex size-6 shrink-0 items-center justify-center pointer-coarse:size-10"
+          aria-hidden
+        >
           <CircleDot className="size-2 text-muted-foreground/35" />
         </span>
       )}
       <button
+        ref={itemRef}
         type="button"
         role="treeitem"
         data-tour="tree-node"
         data-tour-node={nodeId}
+        tabIndex={tabbable ? 0 : -1}
         aria-level={level}
+        aria-setsize={setSize}
+        aria-posinset={posInSet}
         aria-selected={selected}
         aria-expanded={expandable ? expanded : undefined}
+        aria-keyshortcuts={hasActions ? "Shift+F10 ContextMenu" : undefined}
         onClick={onSelect}
-        onKeyDown={handleKeyDown}
+        onKeyDown={onItemKeyDown}
+        onFocus={onItemFocus}
+        onContextMenu={handleContextMenu}
         className={cn(
-          "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-transparent px-2 text-left text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-org-accent-ring/35",
+          "focus-ring-inset flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-transparent px-2 text-left text-sm font-medium transition-colors pointer-coarse:h-10",
           selected
             ? "border-org-accent-border bg-org-accent-selected text-org-accent-selected-foreground shadow-xs"
             : "text-foreground hover:bg-org-accent-subtle",
@@ -497,9 +563,21 @@ function TreeRow({
         {status && <StatusIcon meta={status} />}
         {count > 0 && <CountBadge count={count} label={countTitle} />}
       </button>
-      <RowActions label={label} items={actions} />
+      <RowActions label={label} items={actions} itemRef={itemRef} />
     </motion.div>
   );
+}
+
+/** Opens the actions menu of the row containing `item`. A synthetic click
+ * reads as a keyboard open to Base UI, so the first item is highlighted. It's
+ * a no-op while the menu is already open, since right-click, Shift+F10 and
+ * the ContextMenu key can each fire both a keydown and a `contextmenu`. */
+function openRowActions(item: HTMLElement) {
+  const trigger = item
+    .closest("[data-tree-id]")
+    ?.querySelector<HTMLElement>("[data-tree-actions]");
+  if (!trigger || trigger.hasAttribute("data-popup-open")) return;
+  trigger.click();
 }
 
 export function ProcessTreeNavigator({
@@ -635,6 +713,101 @@ export function ProcessTreeNavigator({
     setExpandedDepartmentIds((ids) => cloneWithToggledId(ids, id));
   };
 
+  // --- Keyboard (WAI-ARIA tree view, roving tabindex) ---
+  // The rows on screen, in order, for arrow-key navigation.
+  const visibleRows: TreeNavRow[] = [];
+  const functionRowIds = new Set<string>();
+  for (const fn of tree?.functions ?? []) {
+    const functionExpanded = expandedFunctionIds.has(fn._id);
+    functionRowIds.add(fn._id);
+    visibleRows.push({
+      id: fn._id,
+      parentId: null,
+      label: fn.name,
+      expandable: fn.departmentCount > 0,
+      expanded: functionExpanded,
+    });
+    if (!functionExpanded) continue;
+    for (const department of fn.departments) {
+      const departmentExpanded = expandedDepartmentIds.has(department._id);
+      visibleRows.push({
+        id: department._id,
+        parentId: fn._id,
+        label: department.name,
+        expandable: department.processCount > 0,
+        expanded: departmentExpanded,
+      });
+      if (!departmentExpanded) continue;
+      for (const process of department.processes) {
+        visibleRows.push({
+          id: process._id,
+          parentId: department._id,
+          label: process.name,
+          expandable: false,
+          expanded: false,
+        });
+      }
+    }
+  }
+
+  // One tab stop: the focused row while focus is in the tree; otherwise the
+  // selection (or its nearest visible ancestor), else the first row.
+  const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
+  const tabStopId = pickTabStop(visibleRows, [
+    focusedRowId,
+    selectedProcessId ?? selectedDepartmentId ?? selectedFunctionId,
+    selectedAncestorIds.departmentId,
+    selectedAncestorIds.functionId,
+  ]);
+
+  const focusRow = (id: string) => {
+    treeScrollRef.current
+      ?.querySelector<HTMLElement>(
+        `[data-tree-id="${CSS.escape(id)}"] [role="treeitem"]`,
+      )
+      ?.focus();
+  };
+
+  const setRowExpanded = (id: string, expanded: boolean) => {
+    const update = <T extends string>(ids: Set<T>) => {
+      if (ids.has(id as T) === expanded) return ids;
+      const next = new Set(ids);
+      if (expanded) next.add(id as T);
+      else next.delete(id as T);
+      return next;
+    };
+    if (functionRowIds.has(id)) setExpandedFunctionIds(update);
+    else setExpandedDepartmentIds(update);
+  };
+
+  const typeahead = useRef({ query: "", at: 0 });
+  const handleItemKeyDown =
+    (id: string) => (event: KeyboardEvent<HTMLButtonElement>) => {
+      const action = getTreeKeyAction(visibleRows, id, event);
+      if (action) {
+        event.preventDefault();
+        if (action.type === "focus") focusRow(action.id);
+        else if (action.type === "expand") setRowExpanded(action.id, true);
+        else if (action.type === "collapse") setRowExpanded(action.id, false);
+        else if (action.type === "openActions") {
+          openRowActions(event.currentTarget);
+        }
+        return;
+      }
+      if (!isTypeaheadKey(event)) return;
+      // The tree owns printable keys even without a match, so the
+      // Conversations tab's j/k/l playback shortcuts don't fire from here.
+      event.preventDefault();
+      const now = Date.now();
+      const query =
+        now - typeahead.current.at < TYPEAHEAD_RESET_MS
+          ? typeahead.current.query + event.key
+          : event.key;
+      typeahead.current = { query, at: now };
+      const match = findTypeaheadMatch(visibleRows, id, query);
+      if (match) focusRow(match);
+    };
+
   const {
     functionNode: selectedFunctionForCreate,
     departmentNode: selectedDepartmentForCreate,
@@ -722,7 +895,7 @@ export function ProcessTreeNavigator({
               onClick={onSelectHome}
               aria-current={homeSelected ? "page" : undefined}
               className={cn(
-                "flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-transparent px-2 text-left text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-org-accent-ring/35",
+                "focus-ring-inset flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-transparent px-2 text-left text-sm font-medium transition-colors pointer-coarse:h-10",
                 homeSelected
                   ? "border-org-accent-border bg-org-accent-selected text-org-accent-selected-foreground shadow-xs"
                   : "text-foreground hover:bg-org-accent-subtle",
@@ -754,8 +927,20 @@ export function ProcessTreeNavigator({
             )}
           </div>
         ) : (
-          <div role="tree" aria-label="Process hierarchy" className="space-y-0.5">
-            {tree.functions.map((fn) => {
+          <div
+            role="tree"
+            aria-label="Process hierarchy"
+            className="space-y-0.5"
+            onBlur={(event) => {
+              // Leaving the tree hands the tab stop back to the selection.
+              // (React bubbles blur from the portaled row menus here too.)
+              const next = event.relatedTarget;
+              if (!(next instanceof Node) || !event.currentTarget.contains(next)) {
+                setFocusedRowId(null);
+              }
+            }}
+          >
+            {tree.functions.map((fn, functionIndex) => {
               const functionExpanded = expandedFunctionIds.has(fn._id);
               const iconTone = getFunctionIconTone(fn._id);
 
@@ -769,6 +954,11 @@ export function ProcessTreeNavigator({
                     icon={Building2}
                     iconClassName={iconTone.function}
                     level={1}
+                    setSize={tree.functions.length}
+                    posInSet={functionIndex + 1}
+                    tabbable={tabStopId === fn._id}
+                    onItemKeyDown={handleItemKeyDown(fn._id)}
+                    onItemFocus={() => setFocusedRowId(fn._id)}
                     selected={selectedFunctionId === fn._id && !selectedDepartmentId}
                     count={fn.departmentCount}
                     countTitle={countLabel(fn.departmentCount, "department")}
@@ -806,7 +996,7 @@ export function ProcessTreeNavigator({
 
                   {functionExpanded && fn.departments.length > 0 && (
                     <div role="group" className="space-y-0.5">
-                      {fn.departments.map((department) => {
+                      {fn.departments.map((department, departmentIndex) => {
                         const departmentExpanded = expandedDepartmentIds.has(
                           department._id,
                         );
@@ -821,6 +1011,11 @@ export function ProcessTreeNavigator({
                               icon={Layers}
                               iconClassName={iconTone.department}
                               level={2}
+                              setSize={fn.departments.length}
+                              posInSet={departmentIndex + 1}
+                              tabbable={tabStopId === department._id}
+                              onItemKeyDown={handleItemKeyDown(department._id)}
+                              onItemFocus={() => setFocusedRowId(department._id)}
                               selected={
                                 selectedDepartmentId === department._id &&
                                 !selectedProcessId
@@ -876,7 +1071,7 @@ export function ProcessTreeNavigator({
                             {departmentExpanded &&
                               department.processes.length > 0 && (
                                 <div role="group" className="space-y-0.5">
-                                  {department.processes.map((process) => {
+                                  {department.processes.map((process, processIndex) => {
                                     return (
                                       <TreeRow
                                         key={process._id}
@@ -887,6 +1082,11 @@ export function ProcessTreeNavigator({
                                         icon={Cog}
                                         iconClassName={iconTone.process}
                                         level={3}
+                                        setSize={department.processes.length}
+                                        posInSet={processIndex + 1}
+                                        tabbable={tabStopId === process._id}
+                                        onItemKeyDown={handleItemKeyDown(process._id)}
+                                        onItemFocus={() => setFocusedRowId(process._id)}
                                         selected={selectedProcessId === process._id}
                                         count={process.conversationCount}
                                         countTitle={countLabel(

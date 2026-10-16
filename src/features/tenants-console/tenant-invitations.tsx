@@ -121,9 +121,14 @@ export function TenantInvitations({ tenantId }: { tenantId: Id<"tenants"> }) {
 
   return (
     <div className="space-y-4">
+      {/* A compact inline row with no visible labels: the card title names
+          the section and the placeholder shows the format, so each control
+          carries its own accessible name. */}
       <div className="grid gap-2 sm:grid-cols-[1fr_150px_auto]">
         <Input
           type="email"
+          aria-label="Email address to invite"
+          autoComplete="off"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => {
@@ -137,7 +142,7 @@ export function TenantInvitations({ tenantId }: { tenantId: Id<"tenants"> }) {
           onValueChange={(value) => setRole(value as Role)}
           disabled={submitting}
         >
-          <SelectTrigger>
+          <SelectTrigger aria-label="Role for the invitation" className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -181,7 +186,9 @@ export function TenantInvitations({ tenantId }: { tenantId: Id<"tenants"> }) {
               <TableHead>Role</TableHead>
               <TableHead>Sent</TableHead>
               <TableHead>Expires</TableHead>
-              <TableHead className="w-20" />
+              <TableHead className="w-20">
+                <span className="sr-only">Actions</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -204,6 +211,7 @@ export function TenantInvitations({ tenantId }: { tenantId: Id<"tenants"> }) {
                     variant="ghost"
                     size="sm"
                     onClick={() => setPendingRevoke(invite)}
+                    aria-label={`Revoke invitation for ${invite.email}`}
                   >
                     Revoke
                   </Button>

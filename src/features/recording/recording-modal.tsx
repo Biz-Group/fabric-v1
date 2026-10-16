@@ -43,6 +43,7 @@ import {
 import { Message, MessageContent } from "@/components/ui/message";
 import { Orb } from "@/components/ui/orb";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
+import { useOrgAccentOrbColors } from "@/features/theming/use-org-accent-orb-colors";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -425,6 +426,7 @@ export function RecordingModal({
   const [textMode, setTextMode] = useState(false);
   const [textInput, setTextInput] = useState("");
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const orbColors = useOrgAccentOrbColors();
   const messageIdRef = useRef(0);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -1685,7 +1687,7 @@ export function RecordingModal({
                 <div className="h-32 w-32">
                   <Orb
                     agentState="thinking"
-                    colors={["#6366f1", "#8b5cf6"]}
+                    colors={orbColors}
                   />
                 </div>
                 <ShimmeringText
@@ -1710,7 +1712,7 @@ export function RecordingModal({
                             ? "listening"
                             : null
                       }
-                      colors={["#6366f1", "#8b5cf6"]}
+                      colors={orbColors}
                       getInputVolume={conversation.getInputVolume}
                       getOutputVolume={conversation.getOutputVolume}
                     />
@@ -1900,7 +1902,7 @@ export function RecordingModal({
             <div className="h-32 w-32">
               <Orb
                 agentState="thinking"
-                colors={["#6366f1", "#8b5cf6"]}
+                colors={orbColors}
               />
             </div>
             {isUploading ? (

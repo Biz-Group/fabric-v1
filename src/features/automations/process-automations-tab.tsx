@@ -291,7 +291,7 @@ export function ProcessAutomationsTab({
                     }}
                     aria-current={isSelected ? "true" : undefined}
                     className={cn(
-                      "flex w-full items-start gap-2 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                      "flex w-full items-start gap-2 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-ring-inset",
                       isSelected && "bg-muted/70",
                     )}
                   >

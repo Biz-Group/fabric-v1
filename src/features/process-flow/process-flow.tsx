@@ -1288,7 +1288,7 @@ function OwnerLaneBackdrop({
 
 // 28px under a mouse, 40px under a finger.
 const TOOLBAR_BUTTON_CLASS =
-  "org-focus-ring rounded-lg text-muted-foreground hover:bg-org-accent-subtle hover:text-foreground pointer-coarse:size-10";
+  "rounded-lg text-muted-foreground hover:bg-org-accent-subtle hover:text-foreground";
 
 function ToolbarButton({
   label,
@@ -1339,8 +1339,6 @@ function ToolbarButton({
     </Tooltip>
   );
 }
-
-const LAYOUT_MENU_ITEM_CLASS = "pointer-coarse:min-h-10";
 
 /**
  * Direction and grouping as one menu, for canvases too narrow to show them
@@ -1396,7 +1394,6 @@ function LayoutMenu({
           <DropdownMenuRadioItem
             value="horizontal"
             closeOnClick
-            className={LAYOUT_MENU_ITEM_CLASS}
           >
             <ArrowRight aria-hidden />
             Horizontal layout
@@ -1404,7 +1401,6 @@ function LayoutMenu({
           <DropdownMenuRadioItem
             value="vertical"
             closeOnClick
-            className={LAYOUT_MENU_ITEM_CLASS}
           >
             <ArrowDown aria-hidden />
             Vertical layout
@@ -1419,7 +1415,6 @@ function LayoutMenu({
           <DropdownMenuRadioItem
             value="process"
             closeOnClick
-            className={LAYOUT_MENU_ITEM_CLASS}
           >
             <Network aria-hidden />
             Process view
@@ -1427,7 +1422,6 @@ function LayoutMenu({
           <DropdownMenuRadioItem
             value="owner"
             closeOnClick
-            className={LAYOUT_MENU_ITEM_CLASS}
           >
             <UsersRound aria-hidden />
             Owner lanes
@@ -1616,7 +1610,7 @@ function DesktopPanelResizeHandle({
       aria-valuemax={Math.round(maxWidth)}
       aria-valuenow={Math.round(width)}
       aria-valuetext={`${Math.round(width)} pixels wide`}
-      className="group org-focus-ring absolute inset-y-0 -left-2 z-30 flex w-4 touch-none cursor-col-resize items-center justify-center rounded-sm"
+      className="group focus-ring absolute inset-y-0 -left-2 z-30 flex w-4 touch-none cursor-col-resize items-center justify-center rounded-sm"
       title="Drag to resize. Use Left and Right arrow keys for precise control."
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
@@ -1800,7 +1794,7 @@ function InsightsBar({
           type="button"
           variant="ghost"
           size="sm"
-          className="org-focus-ring h-7 shrink-0 px-2 text-xs"
+          className="focus-ring h-7 shrink-0 px-2 text-xs"
           onClick={onOpenInsights}
         >
           Open Insights
@@ -1859,7 +1853,7 @@ function SpotlightButton({
             variant="ghost"
             size="sm"
             className={cn(
-              "org-focus-ring h-7 gap-1 rounded-full border border-transparent px-2 text-xs",
+              "focus-ring h-7 gap-1 rounded-full border border-transparent px-2 text-xs",
               SPOTLIGHT_TONE_CLASSES[tone][active ? "active" : "inactive"],
             )}
             aria-pressed={active}

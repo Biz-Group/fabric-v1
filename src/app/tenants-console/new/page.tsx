@@ -2,7 +2,7 @@
 
 import { useAction, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -65,6 +65,18 @@ export default function NewTenantPage() {
   const [firstUserEmail, setFirstUserEmail] = useState("");
   const [firstUserRole, setFirstUserRole] = useState<Role>("admin");
   const [submitting, setSubmitting] = useState(false);
+  const fieldId = useId();
+  const ids = {
+    name: `${fieldId}-name`,
+    slug: `${fieldId}-slug`,
+    slugHint: `${fieldId}-slug-hint`,
+    logo: `${fieldId}-logo`,
+    domains: `${fieldId}-domains`,
+    domainsHint: `${fieldId}-domains-hint`,
+    firstEmail: `${fieldId}-first-email`,
+    firstRoleLabel: `${fieldId}-first-role-label`,
+    firstRole: `${fieldId}-first-role`,
+  };
 
   const effectiveSlug = slugTouched ? slug : slugify(name);
   const slugValid = effectiveSlug.length > 0 && isValidTenantSlug(effectiveSlug);
@@ -156,10 +168,14 @@ export default function NewTenantPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
+            <label
+              htmlFor={ids.name}
+              className="text-xs font-medium text-muted-foreground"
+            >
               Client name
             </label>
             <Input
+              id={ids.name}
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Acme Industries"
@@ -168,10 +184,16 @@ export default function NewTenantPage() {
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
+            <label
+              htmlFor={ids.slug}
+              className="text-xs font-medium text-muted-foreground"
+            >
               Slug
             </label>
             <Input
+              id={ids.slug}
+              aria-describedby={ids.slugHint}
+              aria-invalid={effectiveSlug.length > 0 && !slugValid}
               value={effectiveSlug}
               onChange={(e) => {
                 setSlugTouched(true);
@@ -180,7 +202,7 @@ export default function NewTenantPage() {
               placeholder="acme"
               disabled={submitting}
             />
-            <p className="text-xs text-muted-foreground">
+            <p id={ids.slugHint} className="text-xs text-muted-foreground">
               {effectiveSlug ? (
                 slugValid ? (
                   <>
@@ -200,10 +222,16 @@ export default function NewTenantPage() {
             </p>
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
+            {/* The picker is a button, which a <label> can't name with
+                context, so the row is a group named by this heading. */}
+            <p id={ids.logo} className="text-xs font-medium text-muted-foreground">
               Logo (optional)
-            </label>
-            <div className="flex items-center gap-3">
+            </p>
+            <div
+              role="group"
+              aria-labelledby={ids.logo}
+              className="flex items-center gap-3"
+            >
               {logoPreview && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -227,6 +255,7 @@ export default function NewTenantPage() {
                     size="sm"
                     disabled={submitting}
                     onClick={() => setLogoFile(null)}
+                    aria-label="Remove logo"
                   >
                     Remove
                   </Button>
@@ -248,10 +277,15 @@ export default function NewTenantPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
+            <label
+              htmlFor={ids.domains}
+              className="text-xs font-medium text-muted-foreground"
+            >
               Allowed email domains
             </label>
             <Input
+              id={ids.domains}
+              aria-describedby={domains.length === 0 ? ids.domainsHint : undefined}
               value={domainsInput}
               onChange={(e) => setDomainsInput(e.target.value)}
               placeholder="acme.com, acme.ae"
@@ -267,7 +301,7 @@ export default function NewTenantPage() {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">
+            <p id={ids.domainsHint} className="text-xs text-muted-foreground">
               Leave empty to keep this workspace invite-only (plus Biz Group
               staff).
             </p>
@@ -296,29 +330,52 @@ export default function NewTenantPage() {
           </label>
           {inviteFirstUser && (
             <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
-              <Input
-                type="email"
-                value={firstUserEmail}
-                onChange={(e) => setFirstUserEmail(e.target.value)}
-                placeholder="owner@acme.com"
-                disabled={submitting}
-              />
-              <Select
-                value={firstUserRole}
-                onValueChange={(value) => setFirstUserRole(value as Role)}
-                disabled={submitting}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLE_OPTIONS.map((role) => (
-                    <SelectItem key={role} value={role} className="capitalize">
-                      {role}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-1.5">
+                <label
+                  htmlFor={ids.firstEmail}
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  Email
+                </label>
+                <Input
+                  id={ids.firstEmail}
+                  type="email"
+                  autoComplete="off"
+                  value={firstUserEmail}
+                  onChange={(e) => setFirstUserEmail(e.target.value)}
+                  placeholder="owner@acme.com"
+                  disabled={submitting}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label
+                  id={ids.firstRoleLabel}
+                  htmlFor={ids.firstRole}
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  Role
+                </label>
+                <Select
+                  value={firstUserRole}
+                  onValueChange={(value) => setFirstUserRole(value as Role)}
+                  disabled={submitting}
+                >
+                  <SelectTrigger
+                    id={ids.firstRole}
+                    aria-labelledby={ids.firstRoleLabel}
+                    className="w-full"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ROLE_OPTIONS.map((role) => (
+                      <SelectItem key={role} value={role} className="capitalize">
+                        {role}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
         </CardContent>

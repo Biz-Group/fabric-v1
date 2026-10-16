@@ -190,7 +190,7 @@ export function TourPlayer({
         {transcriptOpen ? (
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-sm text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex items-center gap-1.5 rounded-sm text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-ring"
             onClick={() => setTranscript({ status: "closed" })}
           >
             <PlayCircle className="size-3.5" aria-hidden="true" />
@@ -199,7 +199,7 @@ export function TourPlayer({
         ) : (
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-sm text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex items-center gap-1.5 rounded-sm text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-ring"
             onClick={() => void openTranscript()}
           >
             <FileText className="size-3.5" aria-hidden="true" />

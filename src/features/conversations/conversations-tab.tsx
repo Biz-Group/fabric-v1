@@ -225,7 +225,7 @@ function ConversationRow({
       <button
         ref={buttonRef}
         type="button"
-        className="flex min-w-0 flex-1 items-start p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
+        className="flex min-w-0 flex-1 items-start p-3 text-left focus-ring-inset"
         aria-expanded={selected}
         aria-current={selected ? "true" : undefined}
         aria-label={`${selected ? "Selected conversation" : "Open conversation"}: ${title}`}

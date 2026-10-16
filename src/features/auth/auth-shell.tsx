@@ -152,7 +152,7 @@ export const clerkAuthAppearance = {
     formField: "!w-full !min-w-0 !max-w-full",
     formFieldLabel: "text-sm font-medium text-foreground",
     formFieldInput:
-      "h-11 !w-full !min-w-0 !max-w-full rounded-xl border-border bg-background text-sm shadow-none focus:ring-2 focus:ring-ring",
+      "h-11 !w-full !min-w-0 !max-w-full rounded-xl border-border bg-background text-sm shadow-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
     formButtonPrimary:
       "h-11 !w-full !min-w-0 !max-w-full rounded-xl bg-foreground text-sm font-medium text-background hover:bg-foreground/90",
     socialButtonsBlockButton:
@@ -164,6 +164,6 @@ export const clerkAuthAppearance = {
     formFieldWarningText: "text-xs",
     formFieldSuccessText: "text-xs",
     otpCodeFieldInput:
-      "h-11 !min-w-0 !max-w-full rounded-xl border-border bg-background text-sm shadow-none focus:ring-2 focus:ring-ring",
+      "h-11 !min-w-0 !max-w-full rounded-xl border-border bg-background text-sm shadow-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
   },
 };

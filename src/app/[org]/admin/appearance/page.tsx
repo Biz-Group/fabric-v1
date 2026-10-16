@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useOrganization } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import {
@@ -423,6 +423,9 @@ export default function AdminAppearancePage() {
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [accentHex, setAccentHex] = useState(DEFAULT_ACCENT_HEX);
+  const accentFieldId = useId();
+  const accentHexId = `${accentFieldId}-hex`;
+  const accentHexErrorId = `${accentFieldId}-hex-error`;
   // Every preview follows one switch, starting from the admin's own mode, so
   // the candidate and the active theme compare in the same mode.
   const [chosenPreviewMode, setPreviewMode] = useState<ResolvedTheme | null>(null);
@@ -610,25 +613,34 @@ export default function AdminAppearancePage() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-          <label className="space-y-2">
-            <span className="text-sm font-medium">Accent color</span>
+          {/* A wrapping <label> only names its first control, which left the
+              hex field unnamed. The visible label names the hex field; the
+              swatch picker carries its own name. */}
+          <div className="space-y-2">
+            <label htmlFor={accentHexId} className="block text-sm font-medium">
+              Accent color
+            </label>
             <div className="flex gap-2">
               <Input
                 type="color"
                 value={colorInputValue}
                 onChange={(event) => setAccentHex(event.target.value.toUpperCase())}
-                aria-label="Accent color"
+                aria-label="Accent color picker"
                 className="h-9 w-12 shrink-0 cursor-pointer p-1"
               />
               <Input
+                id={accentHexId}
                 value={accentHex}
                 onChange={(event) => setAccentHex(event.target.value)}
                 placeholder={DEFAULT_ACCENT_HEX}
+                spellCheck={false}
+                autoComplete="off"
                 aria-invalid={!manualAccentRgb}
+                aria-describedby={manualAccentRgb ? undefined : accentHexErrorId}
                 className="h-9 font-mono uppercase"
               />
             </div>
-          </label>
+          </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
             <Button
               type="button"
@@ -651,7 +663,9 @@ export default function AdminAppearancePage() {
         {draft ? (
           <AccentAdjustmentNote adjustment={draft.adjustment} />
         ) : (
-          <p className="text-xs text-destructive">Enter a valid hex color.</p>
+          <p id={accentHexErrorId} className="text-xs text-destructive">
+            Enter a valid hex color.
+          </p>
         )}
         {draft && (
           <div className="space-y-3">

@@ -150,8 +150,10 @@ function SearchTrigger({
       type="button"
       onClick={onSearch}
       className={cn(
-        "group flex min-w-0 items-center rounded-lg border border-border bg-background text-left text-sm text-muted-foreground shadow-xs transition-colors hover:border-org-accent-border hover:bg-org-accent-subtle hover:text-foreground focus-visible:border-org-accent-ring focus-visible:ring-3 focus-visible:ring-org-accent-ring/35",
-        compact ? "size-9 justify-center" : "h-9 w-full max-w-xl gap-2 px-3",
+        "group flex min-w-0 items-center rounded-lg border border-border bg-background text-left text-sm text-muted-foreground shadow-xs transition-colors hover:border-org-accent-border hover:bg-org-accent-subtle hover:text-foreground focus-ring",
+        compact
+          ? "size-9 justify-center pointer-coarse:size-10"
+          : "h-9 w-full max-w-xl gap-2 px-3 pointer-coarse:h-10",
       )}
       aria-label="Search functions, departments, or processes"
       data-tour="search"
@@ -251,8 +253,10 @@ function WorkspaceNav({
           {section.items.map((item) => {
             const Icon = item.icon;
             const className = cn(
-              "flex items-center rounded-lg border border-transparent text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-sidebar-ring/40",
-              collapsed ? "size-9 justify-center" : "h-9 gap-2 px-2.5",
+              "flex items-center rounded-lg border border-transparent text-sm font-medium transition-colors focus-ring",
+              collapsed
+                ? "size-9 justify-center pointer-coarse:size-10"
+                : "h-9 gap-2 px-2.5 pointer-coarse:h-10",
               item.active
                 ? "border-org-accent-border bg-org-accent-selected text-org-accent-selected-foreground"
                 : "text-sidebar-foreground/72 hover:bg-org-accent-subtle hover:text-sidebar-accent-foreground",

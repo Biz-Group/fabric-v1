@@ -88,7 +88,7 @@ function DropdownMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/dropdown-menu-item relative flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden select-none data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:data-highlighted:bg-destructive-subtle data-[variant=destructive]:data-highlighted:text-destructive data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
+        "group/dropdown-menu-item relative flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden pointer-coarse:min-h-10 select-none data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:data-highlighted:bg-destructive-subtle data-[variant=destructive]:data-highlighted:text-destructive data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
         "not-data-[variant=destructive]:data-highlighted:bg-org-accent-selected not-data-[variant=destructive]:data-highlighted:text-org-accent-selected-foreground not-data-[variant=destructive]:data-highlighted:**:text-org-accent-selected-foreground",
         className
       )}
@@ -114,7 +114,7 @@ function DropdownMenuSubTrigger({
       data-slot="dropdown-menu-sub-trigger"
       data-inset={inset}
       className={cn(
-        "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden select-none data-highlighted:bg-org-accent-selected data-highlighted:text-org-accent-selected-foreground data-highlighted:**:text-org-accent-selected-foreground data-inset:pl-7 data-popup-open:bg-org-accent-selected data-popup-open:text-org-accent-selected-foreground data-open:bg-org-accent-selected data-open:text-org-accent-selected-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden pointer-coarse:min-h-10 select-none data-highlighted:bg-org-accent-selected data-highlighted:text-org-accent-selected-foreground data-highlighted:**:text-org-accent-selected-foreground data-inset:pl-7 data-popup-open:bg-org-accent-selected data-popup-open:text-org-accent-selected-foreground data-open:bg-org-accent-selected data-open:text-org-accent-selected-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -160,7 +160,7 @@ function DropdownMenuCheckboxItem({
       data-slot="dropdown-menu-checkbox-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-default items-center gap-2 rounded-md py-1.5 pr-8 pl-2 text-sm outline-hidden select-none data-highlighted:bg-org-accent-selected data-highlighted:text-org-accent-selected-foreground data-highlighted:**:text-org-accent-selected-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-default items-center gap-2 rounded-md py-1.5 pr-8 pl-2 text-sm outline-hidden pointer-coarse:min-h-10 select-none data-highlighted:bg-org-accent-selected data-highlighted:text-org-accent-selected-foreground data-highlighted:**:text-org-accent-selected-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       checked={checked}
@@ -202,7 +202,7 @@ function DropdownMenuRadioItem({
       data-slot="dropdown-menu-radio-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-default items-center gap-2 rounded-md py-1.5 pr-8 pl-2 text-sm outline-hidden select-none data-highlighted:bg-org-accent-selected data-highlighted:text-org-accent-selected-foreground data-highlighted:**:text-org-accent-selected-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-default items-center gap-2 rounded-md py-1.5 pr-8 pl-2 text-sm outline-hidden pointer-coarse:min-h-10 select-none data-highlighted:bg-org-accent-selected data-highlighted:text-org-accent-selected-foreground data-highlighted:**:text-org-accent-selected-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}

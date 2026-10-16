@@ -62,8 +62,8 @@ export function UserMenu({ compact = false }: { compact?: boolean }) {
           aria-label="Admin settings"
           className={
             compact
-              ? "flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              : "flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              ? "flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring pointer-coarse:size-10"
+              : "flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring pointer-coarse:h-10"
           }
         >
           <Settings className="size-3.5" />

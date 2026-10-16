@@ -128,7 +128,7 @@ export function OverviewStateBadge({
       title={expanded ? "Hide status detail" : "Show status detail"}
       className={cn(
         chipClass,
-        "org-focus-ring min-h-8 cursor-pointer transition-opacity hover:opacity-80 sm:min-h-7",
+        "focus-ring min-h-8 cursor-pointer transition-opacity hover:opacity-80 sm:min-h-7",
       )}
     >
       {body}
@@ -270,7 +270,7 @@ export function OverviewLead({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="org-focus-ring h-9 px-3 sm:h-7 sm:px-2.5"
+                className="focus-ring h-9 px-3 sm:h-7 sm:px-2.5"
                 disabled={copyState === "copying"}
                 onClick={onCopy}
                 aria-label={
@@ -296,7 +296,7 @@ export function OverviewLead({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="org-focus-ring h-9 px-3 sm:h-7 sm:px-2.5"
+                className="focus-ring h-9 px-3 sm:h-7 sm:px-2.5"
                 disabled={refreshPending || !refreshAvailable}
                 onClick={onRefresh}
                 title={unavailableReason ?? undefined}
@@ -440,7 +440,7 @@ export function SourceChips({
           <button
             type="button"
             key={key}
-            className="org-focus-ring inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-full border border-org-accent-border bg-org-accent-subtle px-3 py-1.5 text-left text-xs font-medium text-org-accent-selected-foreground transition-colors hover:bg-org-accent-selected"
+            className="focus-ring inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-full border border-org-accent-border bg-org-accent-subtle px-3 py-1.5 text-left text-xs font-medium text-org-accent-selected-foreground transition-colors hover:bg-org-accent-selected"
             onClick={open}
             aria-label={`Open ${source.kind}: ${source.label}`}
             title={source.label}

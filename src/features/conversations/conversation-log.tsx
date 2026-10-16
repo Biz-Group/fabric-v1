@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import {
@@ -37,6 +44,10 @@ import {
   shouldDockMiniPlayer,
   type ControlsPosition,
 } from "@/features/conversations/playback-layout";
+import {
+  transcriptKeyTarget,
+  transcriptTabStop,
+} from "@/features/conversations/transcript-navigation";
 import { registerBottomDock } from "@/lib/bottom-dock";
 
 // --- Helpers ---
@@ -705,6 +716,39 @@ function SyncedTranscript({
     }
   }, [isActive, userToggled]);
 
+  // The transcript is one tab stop: only one line's "Play from" button is in
+  // the tab order, and Up/Down move between lines (transcript-navigation.ts).
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const [lastFocusedIndex, setLastFocusedIndex] = useState(0);
+  const seekButtonRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
+  const lineIdPrefix = useId();
+  const tabStop = transcriptTabStop({
+    focused: focusedIndex,
+    playing: activeIndex,
+    lastFocused: lastFocusedIndex,
+    count: transcript.length,
+  });
+
+  const seekToLine = async (seconds: number) => {
+    if (isActive) {
+      player.seek(seconds);
+      if (!player.isPlaying) player.play();
+    } else if (audioUrl) {
+      await player.play({
+        id: conversationId,
+        src: audioUrl,
+        data: { contributorName },
+      });
+      player.seek(seconds);
+    }
+  };
+
+  const seekButtonIndex = (target: EventTarget | null): number | null => {
+    if (!(target instanceof HTMLElement)) return null;
+    const raw = target.dataset.transcriptSeek;
+    return raw === undefined ? null : Number(raw);
+  };
+
   // Scroll active line to center of the fixed-height container
   useEffect(() => {
     if (activeIndex !== prevIndexRef.current && activeIndex >= 0) {
@@ -738,44 +782,62 @@ function SyncedTranscript({
         )}
         style={{ scrollbarWidth: "none" }}
       >
-        <div className={cn("space-y-1", expanded ? "px-0" : "px-2")}>
+        <div
+          role="list"
+          aria-label="Transcript"
+          className={cn("space-y-1", expanded ? "px-0" : "px-2")}
+          onFocus={(e) => {
+            const index = seekButtonIndex(e.target);
+            if (index === null) return;
+            setFocusedIndex(index);
+            setLastFocusedIndex(index);
+          }}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+              setFocusedIndex(null);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+            const index = seekButtonIndex(e.target);
+            if (index === null) return;
+            const next = transcriptKeyTarget(e.key, index, transcript.length);
+            if (next === null) return;
+            e.preventDefault();
+            seekButtonRefs.current.get(next)?.focus();
+          }}
+        >
           {transcript.map((msg, i) => {
             const isCurrent = i === activeIndex;
             const isPast = activeIndex >= 0 && i < activeIndex;
             const isFuture = activeIndex >= 0 && i > activeIndex;
+            const lineTextId = `${lineIdPrefix}-line-${i}`;
 
             return (
+              // The whole line seeks on click or tap; the timestamp button is
+              // the keyboard and screen-reader control for the same seek.
               <div
                 key={i}
+                role="listitem"
                 ref={(el) => {
                   if (el) lineRefs.current.set(i, el);
                   else lineRefs.current.delete(i);
                 }}
-                onClick={async () => {
-                  if (isActive) {
-                    player.seek(msg.time_in_call_secs);
-                    if (!player.isPlaying) player.play();
-                  } else if (audioUrl) {
-                    await player.play({
-                      id: conversationId,
-                      src: audioUrl,
-                      data: { contributorName },
-                    });
-                    player.seek(msg.time_in_call_secs);
-                  }
-                }}
+                onClick={() => void seekToLine(msg.time_in_call_secs)}
                 className={cn(
-                  "group/msg cursor-pointer rounded-md px-3 py-2 text-sm leading-relaxed transition-all duration-300",
+                  "group/msg cursor-pointer rounded-md px-3 py-2 text-sm leading-relaxed transition-all duration-300 pointer-coarse:min-h-10",
                   isCurrent && "bg-org-accent-selected text-foreground ring-1 ring-org-accent-border",
                   !isCurrent && msg.role === "ai" && "bg-muted/90",
                   !isCurrent && msg.role !== "ai" && "bg-muted/55",
                   isPast && "opacity-40",
                   isFuture && "opacity-50",
                   !isCurrent && "hover:opacity-80 hover:bg-muted/70",
+                  // A faded line would fade its focus outline with it.
+                  "has-[:focus-visible]:opacity-100",
                 )}
               >
                 <div className="flex items-baseline justify-between gap-2">
-                  <div className="min-w-0 flex-1">
+                  <div id={lineTextId} className="min-w-0 flex-1">
                     <span
                       className={cn(
                         "font-medium transition-all duration-300",
@@ -797,9 +859,28 @@ function SyncedTranscript({
                       {msg.content}
                     </span>
                   </div>
-                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground opacity-0 transition-opacity group-hover/msg:opacity-100">
+                  {/* Hidden until hover for mouse users, but always shown on
+                      touch, and shown whenever it has keyboard focus. */}
+                  <button
+                    type="button"
+                    ref={(el) => {
+                      if (el) seekButtonRefs.current.set(i, el);
+                      else seekButtonRefs.current.delete(i);
+                    }}
+                    data-transcript-seek={i}
+                    tabIndex={i === tabStop ? 0 : -1}
+                    aria-label={`Play from ${formatDuration(msg.time_in_call_secs)}`}
+                    aria-describedby={lineTextId}
+                    aria-current={isCurrent ? "true" : undefined}
+                    onClick={(e) => {
+                      // The line's own click would seek a second time.
+                      e.stopPropagation();
+                      void seekToLine(msg.time_in_call_secs);
+                    }}
+                    className="focus-ring shrink-0 rounded-sm px-1 text-[10px] tabular-nums text-muted-foreground opacity-0 transition-opacity group-hover/msg:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+                  >
                     {formatDuration(msg.time_in_call_secs)}
-                  </span>
+                  </button>
                 </div>
               </div>
             );
@@ -835,9 +916,10 @@ function SyncedTranscript({
 // --- Keyboard Shortcuts ---
 
 // Focused elements that use a key themselves, so the shortcut must leave it
-// alone. Text fields take every key; anything clickable takes Space; list
-// and tab widgets take the arrows. The waveform's slider isn't listed: these
-// shortcuts are its keyboard control.
+// alone. Text fields take every key; anything clickable takes Space; list,
+// tab and slider widgets take the arrows. The waveform slider also consumes
+// its own keys (prevented, so the check above skips them); it's listed so an
+// arrow it lets through never seeks a different conversation.
 const TEXT_ENTRY_SELECTOR = [
   "input",
   "textarea",
@@ -868,6 +950,7 @@ const ARROW_SELECTOR = [
   '[role="menu"]',
   '[role="listbox"]',
   '[role="tree"]',
+  '[role="slider"]',
 ].join(",");
 
 function targetOwnsKey(target: EventTarget | null, key: string): boolean {
@@ -1013,7 +1096,7 @@ function StickyMiniPlayer({
               .querySelector<HTMLElement>("[data-playback-toggle]")
               ?.focus({ preventScroll: true });
           }}
-          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:size-10"
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring pointer-coarse:size-10"
           aria-label="Show playback controls"
         >
           <JumpIcon className="h-3.5 w-3.5" />
@@ -1089,7 +1172,7 @@ export function FocusedConversationPlayback({
                   <TooltipTrigger
                     type="button"
                     onClick={() => downloadConversationPdf(conversation, transcript)}
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring"
                     aria-label="Export conversation PDF"
                   >
                     <Download className="h-4 w-4" />

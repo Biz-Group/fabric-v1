@@ -5,6 +5,8 @@ import { useTexture } from "@react-three/drei"
 import { Canvas, useFrame, useThree } from "@react-three/fiber"
 import * as THREE from "three"
 
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion"
+
 export type AgentState = null | "thinking" | "listening" | "talking"
 
 type OrbProps = {
@@ -38,6 +40,10 @@ export function Orb({
   getOutputVolume,
   className,
 }: OrbProps) {
+  // Under reduced motion the canvas renders on demand: one still frame per
+  // state or colour change instead of a frame every tick.
+  const reducedMotion = usePrefersReducedMotion()
+
   return (
     <div className={className ?? "relative h-full w-full"}>
       {/* Scene suspends while its noise texture downloads, and Canvas rethrows
@@ -47,6 +53,7 @@ export function Orb({
       <Suspense fallback={null}>
         <Canvas
           resize={{ debounce: resizeDebounce }}
+          frameloop={reducedMotion ? "demand" : "always"}
           gl={{
             alpha: true,
             antialias: true,
@@ -65,6 +72,7 @@ export function Orb({
             outputVolumeRef={outputVolumeRef}
             getInputVolume={getInputVolume}
             getOutputVolume={getOutputVolume}
+            reducedMotion={reducedMotion}
           />
         </Canvas>
       </Suspense>
@@ -84,6 +92,7 @@ function Scene({
   outputVolumeRef,
   getInputVolume,
   getOutputVolume,
+  reducedMotion,
 }: {
   colors: [string, string]
   colorsRef?: React.RefObject<[string, string]>
@@ -96,8 +105,9 @@ function Scene({
   outputVolumeRef?: React.RefObject<number>
   getInputVolume?: () => number
   getOutputVolume?: () => number
+  reducedMotion: boolean
 }) {
-  const { gl } = useThree()
+  const { gl, invalidate } = useThree()
   const circleRef =
     useRef<THREE.Mesh<THREE.CircleGeometry, THREE.ShaderMaterial>>(null)
   const [initialColors] = useState<[string, string]>(() => colors)
@@ -120,10 +130,26 @@ function Scene({
   const manualOutRef = useRef<number>(manualOutput ?? 0)
   const curInRef = useRef(0)
   const curOutRef = useRef(0)
+  const reducedRef = useRef(reducedMotion)
 
   useEffect(() => {
     agentRef.current = agentState
   }, [agentState])
+
+  // On demand, nothing draws until asked: redraw the still frame whenever
+  // what it shows changes.
+  useEffect(() => {
+    reducedRef.current = reducedMotion
+    invalidate()
+  }, [
+    invalidate,
+    reducedMotion,
+    agentState,
+    volumeMode,
+    manualInput,
+    manualOutput,
+    colors,
+  ])
 
   useEffect(() => {
     modeRef.current = volumeMode
@@ -162,6 +188,7 @@ function Scene({
       if (!circleRef.current) return
       const isDark = document.documentElement.classList.contains("dark")
       circleRef.current.material.uniforms.uInverted.value = isDark ? 1 : 0
+      invalidate()
     }
 
     apply()
@@ -172,7 +199,7 @@ function Scene({
       attributeFilter: ["class"],
     })
     return () => observer.disconnect()
-  }, [])
+  }, [invalidate])
 
   /* eslint-disable react-hooks/immutability -- Three shader uniforms are mutable render-loop state, not React state. */
   useFrame((_, delta: number) => {
@@ -184,6 +211,24 @@ function Scene({
       if (live[1]) targetColor2Ref.current.set(live[1])
     }
     const u = mat.uniforms
+
+    if (reducedRef.current) {
+      // A still frame: time stays frozen, and the state shows as a fixed
+      // volume (a fuller, brighter ring while talking) instead of a pulse.
+      const [stillIn, stillOut] =
+        modeRef.current === "manual"
+          ? [clamp01(manualInput ?? 0), clamp01(manualOutput ?? 0)]
+          : STILL_VOLUMES[agentRef.current ?? "idle"]
+      curInRef.current = stillIn
+      curOutRef.current = stillOut
+      u.uOpacity.value = 1
+      u.uInputVolume.value = stillIn
+      u.uOutputVolume.value = stillOut
+      u.uColor1.value.copy(targetColor1Ref.current)
+      u.uColor2.value.copy(targetColor2Ref.current)
+      return
+    }
+
     u.uTime.value += delta * 0.5
 
     if (u.uOpacity.value < 1) {
@@ -271,6 +316,17 @@ function Scene({
       />
     </mesh>
   )
+}
+
+/** Input and output volume per state for the reduced-motion still frame. */
+const STILL_VOLUMES: Record<
+  NonNullable<AgentState> | "idle",
+  [number, number]
+> = {
+  idle: [0, 0.3],
+  thinking: [0.38, 0.48],
+  listening: [0.55, 0.45],
+  talking: [0.85, 0.9],
 }
 
 function splitmix32(a: number) {

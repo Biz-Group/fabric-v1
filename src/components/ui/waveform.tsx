@@ -10,6 +10,7 @@ import {
 } from "react"
 
 import { cn } from "@/lib/utils"
+import { scrubberKeyTarget, scrubberValueText } from "./waveform-keys"
 
 export type WaveformProps = HTMLAttributes<HTMLDivElement> & {
   data?: number[]
@@ -184,11 +185,16 @@ export const AudioScrubber = ({
   barColor,
   height = 128,
   className,
+  onKeyDown,
   ...props
 }: AudioScrubberProps) => {
   const [isDragging, setIsDragging] = useState(false)
   const [localProgress, setLocalProgress] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
+  // The last keyboard seek. A held key repeats faster than the player reports
+  // its new time, and a scrubber that isn't playing yet reports none, so a
+  // quick run of presses builds on this instead of a stale currentTime.
+  const keySeekRef = useRef<{ time: number; at: number } | null>(null)
   const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0
   const safeCurrentTime =
     Number.isFinite(currentTime) && safeDuration > 0
@@ -224,6 +230,7 @@ export const AudioScrubber = ({
       const progress = x / rect.width
       const newTime = progress * safeDuration
 
+      keySeekRef.current = null
       setLocalProgress(progress)
       onSeek?.(newTime)
     },
@@ -232,8 +239,31 @@ export const AudioScrubber = ({
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault()
+    // preventDefault stops the text selection a drag would start, and also the
+    // focus a click gives a native slider, so focus it by hand. The arrow keys
+    // then move this scrubber, as they would on an <input type="range">.
+    e.currentTarget.focus({ preventScroll: true })
     setIsDragging(true)
     handleScrub(e.clientX)
+  }
+
+  // The ARIA slider keys, through the same onSeek as the pointer. Handled keys
+  // are consumed here, so the page's audio shortcuts (which skip prevented
+  // events) don't seek a second time, or seek another conversation.
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    onKeyDown?.(e)
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+
+    const now = performance.now()
+    const last = keySeekRef.current
+    const base = last && now - last.at < 600 ? last.time : safeCurrentTime
+    const target = scrubberKeyTarget(e.key, base, safeDuration)
+    if (target === null) return
+
+    e.preventDefault()
+    e.stopPropagation()
+    keySeekRef.current = { time: target, at: now }
+    onSeek?.(target)
   }
 
   useEffect(() => {
@@ -260,17 +290,22 @@ export const AudioScrubber = ({
 
   return (
     <div
-      aria-label="Audio waveform scrubber"
-      aria-valuemax={safeDuration}
+      aria-label="Playback position"
+      aria-valuemax={Math.round(safeDuration)}
       aria-valuemin={0}
-      aria-valuenow={safeCurrentTime}
-      className={cn("relative min-w-0 cursor-pointer select-none", className)}
+      aria-valuenow={Math.floor(safeCurrentTime)}
+      aria-valuetext={scrubberValueText(safeCurrentTime, safeDuration)}
+      className={cn(
+        "focus-ring relative min-w-0 cursor-pointer select-none rounded-sm",
+        className
+      )}
       onMouseDown={handleMouseDown}
       ref={containerRef}
       role="slider"
       style={{ height: heightStyle }}
       tabIndex={0}
       {...props}
+      onKeyDown={handleKeyDown}
     >
       <Waveform
         barColor={barColor}

@@ -327,7 +327,7 @@ export function BuilderStep({
               key={suggestion}
               type="button"
               className={cn(
-                "org-focus-ring rounded-full border px-2.5 py-1 text-xs transition-colors hover:bg-org-accent-subtle motion-reduce:transition-none",
+                "focus-ring rounded-full border px-2.5 py-1 text-xs transition-colors hover:bg-org-accent-subtle motion-reduce:transition-none",
                 name === suggestion && "border-org-accent-border bg-org-accent-subtle",
               )}
               aria-pressed={name === suggestion}
@@ -346,7 +346,7 @@ export function BuilderStep({
         <div>
           <button
             type="button"
-            className="org-focus-ring inline-flex items-center gap-1 rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground"
+            className="focus-ring inline-flex items-center gap-1 rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground"
             aria-expanded={contextOpen}
             onClick={() => setContextOpen((open) => !open)}
           >

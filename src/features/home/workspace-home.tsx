@@ -84,7 +84,7 @@ type WorkspaceHomeProps = {
 };
 
 const ROW_CLASS =
-  "org-focus-ring flex min-h-14 w-full min-w-0 items-center gap-3 rounded-md px-2 py-2.5 text-left transition-colors hover:bg-org-accent-subtle";
+  "focus-ring-inset flex min-h-14 w-full min-w-0 items-center gap-3 rounded-md px-2 py-2.5 text-left transition-colors hover:bg-org-accent-subtle";
 
 function rowTitleClass(mobile: boolean) {
   return cn("block truncate font-medium", mobile ? "text-base" : "text-sm");

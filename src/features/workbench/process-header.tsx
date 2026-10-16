@@ -144,7 +144,7 @@ function ProcessStatusBadge({
             aria-label={`${meta.label}, jump to labeling`}
           />
         }
-        className="cursor-pointer hover:border-warning focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
+        className="cursor-pointer hover:border-warning focus-ring pointer-coarse:h-8 pointer-coarse:px-3"
         onClick={onJumpToLabeling}
       />
     );
@@ -307,7 +307,7 @@ function CaptureFab({
         disabled={disabled}
         aria-label="Add information"
         data-tour="capture"
-        className="group/fab org-focus-ring fixed right-4 bottom-[calc(1rem+var(--bottom-dock-height,0px)+env(safe-area-inset-bottom))] z-40 flex size-14 items-center justify-center rounded-full bg-org-accent text-org-accent-foreground shadow-lg shadow-black/20 transition-transform active:scale-95 disabled:opacity-50 motion-reduce:transition-none"
+        className="group/fab focus-ring fixed right-4 bottom-[calc(1rem+var(--bottom-dock-height,0px)+env(safe-area-inset-bottom))] z-40 flex size-14 items-center justify-center rounded-full bg-org-accent text-org-accent-foreground shadow-lg shadow-black/20 transition-transform active:scale-95 disabled:opacity-50 motion-reduce:transition-none"
       >
         <Plus
           className="size-6 transition-transform duration-200 group-data-popup-open/fab:rotate-45 motion-reduce:transition-none"
@@ -334,7 +334,7 @@ function CaptureFab({
                 </span>
                 <span
                   className={cn(
-                    "flex size-12 items-center justify-center rounded-full shadow-md group-data-highlighted/fab-item:ring-3 group-data-highlighted/fab-item:ring-org-accent-ring/35",
+                    "flex size-12 items-center justify-center rounded-full shadow-md group-data-highlighted/fab-item:outline-solid group-data-highlighted/fab-item:outline-2 group-data-highlighted/fab-item:outline-offset-2 group-data-highlighted/fab-item:outline-focus",
                     primary
                       ? "bg-org-accent text-org-accent-foreground"
                       : "border bg-background text-foreground",

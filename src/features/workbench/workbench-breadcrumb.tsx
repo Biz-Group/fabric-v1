@@ -51,7 +51,7 @@ export function WorkbenchBreadcrumb({
               <BreadcrumbLink
                 href={crumb.href}
                 title={crumb.label}
-                className="block max-w-48 truncate rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
+                className="block max-w-48 truncate rounded-sm focus-ring"
                 onClick={(event) => handleCrumbClick(event, crumb.onSelect)}
               >
                 {crumb.label}

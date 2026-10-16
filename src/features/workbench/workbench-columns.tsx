@@ -57,7 +57,7 @@ export function ColumnItem({
   actions?: ColumnItemAction[];
 }) {
   const iconButtonClass =
-    "inline-flex size-10 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-org-accent-subtle focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35";
+"inline-flex size-10 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-org-accent-subtle focus-ring";
 
   return (
     <div
@@ -71,7 +71,7 @@ export function ColumnItem({
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-l-lg px-4 py-3 text-left text-base font-medium outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
+        className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-l-lg px-4 py-3 text-left text-base font-medium focus-ring-inset"
       >
         <span className="flex min-w-0 flex-1 flex-col">
           {/* Wraps rather than truncating: a touch screen can't show a
@@ -254,7 +254,7 @@ export function ColumnHeader({
             <button
               type="button"
               onClick={onAdd}
-              className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-org-accent-subtle hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
+              className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-org-accent-subtle hover:text-foreground focus-ring pointer-coarse:size-10"
               title={addLabel}
               aria-label={addLabel}
             >

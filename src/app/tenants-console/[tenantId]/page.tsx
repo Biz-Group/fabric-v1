@@ -5,7 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -167,6 +167,7 @@ function TenantHeader({ tenant }: { tenant: TenantView }) {
                 }}
                 autoFocus
                 disabled={saving}
+                aria-label="Tenant name"
                 className="h-8 w-64"
               />
               <Button size="sm" onClick={handleRename} disabled={saving}>
@@ -268,6 +269,10 @@ function DomainsCard({ tenant }: { tenant: TenantView }) {
   const updateDomains = useAction(api.tenants.updateAllowedEmailDomains);
   const [input, setInput] = useState(tenant.allowedEmailDomains.join(", "));
   const [saving, setSaving] = useState(false);
+  const fieldId = useId();
+  const titleId = `${fieldId}-title`;
+  const descriptionId = `${fieldId}-description`;
+  const hintId = `${fieldId}-hint`;
   const parsed = useMemo(() => parseDomains(input), [input]);
   const dirty =
     parsed.join(",") !== tenant.allowedEmailDomains.join(",");
@@ -293,14 +298,19 @@ function DomainsCard({ tenant }: { tenant: TenantView }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Allowed email domains</CardTitle>
-        <CardDescription>
+        <CardTitle id={titleId}>Allowed email domains</CardTitle>
+        <CardDescription id={descriptionId}>
           Verified emails on these domains can self-join at the workspace
           subdomain. Platform super-admins are added automatically.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        {/* The card title is the field's visible label. */}
         <Input
+          aria-labelledby={titleId}
+          aria-describedby={
+            parsed.length > 0 ? descriptionId : `${descriptionId} ${hintId}`
+          }
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="client.com, client.ae"
@@ -315,7 +325,7 @@ function DomainsCard({ tenant }: { tenant: TenantView }) {
             ))}
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">
+          <p id={hintId} className="text-xs text-muted-foreground">
             Empty list = invite-only.
           </p>
         )}

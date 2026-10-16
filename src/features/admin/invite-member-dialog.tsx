@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useAction } from "convex/react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
@@ -43,6 +43,11 @@ export function InviteMemberDialog({
   onInvited?: () => void;
 }) {
   const invite = useAction(api.invitations.invite);
+  const fieldId = useId();
+  const emailsId = `${fieldId}-emails`;
+  const emailsHintId = `${fieldId}-emails-hint`;
+  const roleLabelId = `${fieldId}-role-label`;
+  const roleTriggerId = `${fieldId}-role`;
   const [emails, setEmails] = useState("");
   const [role, setRole] = useState<Role>("contributor");
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(
@@ -144,13 +149,14 @@ export function InviteMemberDialog({
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
             <label
-              htmlFor="invite-member-emails"
+              htmlFor={emailsId}
               className="text-xs font-medium text-muted-foreground"
             >
               Email addresses
             </label>
             <Textarea
-              id="invite-member-emails"
+              id={emailsId}
+              aria-describedby={emailsHintId}
               placeholder="name@company.com, another@company.com"
               value={emails}
               onChange={(e) => setEmails(e.target.value)}
@@ -164,13 +170,14 @@ export function InviteMemberDialog({
               autoFocus
               disabled={submitting}
             />
-            <p className="text-xs text-muted-foreground">
+            <p id={emailsHintId} className="text-xs text-muted-foreground">
               Paste one address or a list, separated by commas or new lines.
             </p>
           </div>
           <div className="space-y-1.5">
             <label
-              htmlFor="invite-member-role"
+              id={roleLabelId}
+              htmlFor={roleTriggerId}
               className="text-xs font-medium text-muted-foreground"
             >
               Role
@@ -180,7 +187,13 @@ export function InviteMemberDialog({
               onValueChange={(value) => setRole(value as Role)}
               disabled={submitting}
             >
-              <SelectTrigger id="invite-member-role" className="w-full">
+              {/* Base UI only wires aria-labelledby from its own Select.Label,
+                  so point the trigger at this label explicitly. */}
+              <SelectTrigger
+                id={roleTriggerId}
+                aria-labelledby={roleLabelId}
+                className="w-full"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

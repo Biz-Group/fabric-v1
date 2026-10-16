@@ -1,9 +1,9 @@
 "use client";
 
 import {
-  Fragment,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -13,6 +13,11 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Building2, Layers, Cog, Search } from "lucide-react";
 import type { Id } from "../../../convex/_generated/dataModel";
+import {
+  groupConsecutive,
+  moveHighlight,
+  resultCountMessage,
+} from "./command-palette-a11y";
 
 type FunctionItem = { _id: Id<"functions">; name: string };
 type DepartmentItem = {
@@ -62,6 +67,9 @@ const GROUP_META = {
 // Per-group result cap so the list stays scannable on broad queries.
 const GROUP_LIMIT = 8;
 
+// How long the result count waits for typing to settle before it is announced.
+const COUNT_ANNOUNCE_DELAY_MS = 500;
+
 // startsWith matches rank above plain substring matches.
 function rankAndLimit<T extends { name: string }>(
   items: T[],
@@ -110,7 +118,15 @@ export function CommandPalette({
 }) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  // What the polite live region says. Trails the results by a short delay so a
+  // screen reader hears the settled count, not one announcement per keystroke.
+  const [announcement, setAnnouncement] = useState("");
   const rowRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
+
+  const baseId = useId();
+  const listboxId = `${baseId}-listbox`;
+  const optionId = (key: string) => `${baseId}-option-${key}`;
+  const groupLabelId = (kind: Result["kind"]) => `${baseId}-group-${kind}`;
 
   // Reset on close (in the event handler, not an effect) so the palette always
   // reopens fresh. All close paths — Esc/backdrop and row selection — route here.
@@ -119,6 +135,9 @@ export function CommandPalette({
       if (!next) {
         setQuery("");
         setActiveIndex(0);
+        // Cleared so reopening announces the count again: a live region only
+        // speaks when its text changes.
+        setAnnouncement("");
       }
       onOpenChange(next);
     },
@@ -203,6 +222,10 @@ export function CommandPalette({
   // reset to 0 on every keystroke, this just guards reactive list shrinkage.
   const activeRow = results.length ? Math.min(activeIndex, results.length - 1) : -1;
 
+  const activeResult = activeRow >= 0 ? results[activeRow] : undefined;
+  const groups = useMemo(() => groupConsecutive(results), [results]);
+  const expanded = results.length > 0;
+
   // Scroll the active row into view as the user arrows through.
   useEffect(() => {
     if (activeRow >= 0) {
@@ -210,14 +233,27 @@ export function CommandPalette({
     }
   }, [activeRow]);
 
+  // Debounced count for the live region. Setting the same text again is a
+  // no-op, so an unchanged count is not re-announced. While closed it settles
+  // to "", which also covers a parent closing the palette without going
+  // through handleOpenChange.
+  const countMessage = open ? resultCountMessage(results.length) : "";
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setAnnouncement(countMessage),
+      COUNT_ANNOUNCE_DELAY_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [countMessage]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (results.length === 0) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActiveIndex((activeRow + 1) % results.length);
+      setActiveIndex(moveHighlight(activeRow, 1, results.length));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setActiveIndex((activeRow - 1 + results.length) % results.length);
+      setActiveIndex(moveHighlight(activeRow, -1, results.length));
     } else if (e.key === "Enter") {
       e.preventDefault();
       results[activeRow]?.select();
@@ -232,9 +268,24 @@ export function CommandPalette({
       >
         <DialogTitle className="sr-only">Search the organization</DialogTitle>
         <div className="flex items-center gap-2 border-b px-3">
-          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <Search
+            aria-hidden="true"
+            className="h-4 w-4 shrink-0 text-muted-foreground"
+          />
+          {/* ARIA 1.2 combobox: focus never leaves the input; the highlighted
+              option is exposed through aria-activedescendant instead. */}
           <Input
             autoFocus
+            role="combobox"
+            aria-label="Search functions, departments and processes"
+            aria-expanded={expanded}
+            aria-controls={expanded ? listboxId : undefined}
+            aria-autocomplete="list"
+            aria-activedescendant={
+              activeResult ? optionId(activeResult.key) : undefined
+            }
+            autoComplete="off"
+            spellCheck={false}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -242,7 +293,7 @@ export function CommandPalette({
             }}
             onKeyDown={handleKeyDown}
             placeholder="Search functions, departments, processes…"
-            className="h-11 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+            className="h-11 border-0 bg-transparent px-0 shadow-none focus-visible:outline-none"
           />
         </div>
 
@@ -254,54 +305,83 @@ export function CommandPalette({
                 : "Start typing to search functions, departments, and processes."}
             </p>
           ) : (
-            results.map((result, index) => {
-              const prev = results[index - 1];
-              const showHeader = !prev || prev.kind !== result.kind;
-              const GroupIcon = GROUP_META[result.kind].icon;
-              const isActive = index === activeRow;
-              return (
-                <Fragment key={result.key}>
-                  {showHeader && (
-                    <p className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      {GROUP_META[result.kind].label}
+            <div id={listboxId} role="listbox" aria-label="Search results">
+              {groups.map((group) => {
+                const GroupIcon = GROUP_META[group.kind].icon;
+                const labelId = groupLabelId(group.kind);
+                // The heading sits beside the group, not inside it, so the
+                // listbox owns only groups and options. It names the group
+                // through aria-labelledby and is hidden from the reading order.
+                return (
+                  <div key={group.kind} role="presentation">
+                    <p
+                      id={labelId}
+                      aria-hidden="true"
+                      className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                    >
+                      {GROUP_META[group.kind].label}
                     </p>
-                  )}
-                  <button
-                    type="button"
-                    ref={(el) => {
-                      if (el) rowRefs.current.set(index, el);
-                      else rowRefs.current.delete(index);
-                    }}
-                    onClick={result.select}
-                    onMouseMove={() => setActiveIndex(index)}
-                    className={cn(
-                      "flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm outline-none transition-colors",
-                      isActive
-                        ? "border border-org-accent-border bg-org-accent-selected text-org-accent-selected-foreground"
-                        : "text-foreground",
-                    )}
-                  >
-                    <GroupIcon
-                      className={cn(
-                        "h-4 w-4 shrink-0",
-                        isActive ? "text-org-accent" : "text-muted-foreground",
-                      )}
-                    />
-                    <span className="min-w-0 flex-1 truncate font-medium">
-                      {result.label}
-                    </span>
-                    {/* Capped below half the row, so on a phone a long path
-                        truncates before it can squeeze the name away. */}
-                    {result.context && (
-                      <span className="min-w-0 max-w-[45%] truncate text-xs text-muted-foreground">
-                        {result.context}
-                      </span>
-                    )}
-                  </button>
-                </Fragment>
-              );
-            })
+                    <div role="group" aria-labelledby={labelId}>
+                      {group.entries.map(({ item: result, index }) => {
+                        const isActive = index === activeRow;
+                        return (
+                          <button
+                            key={result.key}
+                            id={optionId(result.key)}
+                            type="button"
+                            role="option"
+                            aria-selected={isActive}
+                            // Not a tab stop: the arrows move the highlight
+                            // from the input. Mouse and touch still click it.
+                            tabIndex={-1}
+                            ref={(el) => {
+                              if (el) rowRefs.current.set(index, el);
+                              else rowRefs.current.delete(index);
+                            }}
+                            // Keeps focus (and the caret) in the input.
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={result.select}
+                            onMouseMove={() => setActiveIndex(index)}
+                            className={cn(
+                              "flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm outline-none transition-colors pointer-coarse:min-h-10",
+                              isActive
+                                ? "border border-org-accent-border bg-org-accent-selected text-org-accent-selected-foreground"
+                                : "text-foreground",
+                            )}
+                          >
+                            <GroupIcon
+                              aria-hidden="true"
+                              className={cn(
+                                "h-4 w-4 shrink-0",
+                                isActive
+                                  ? "text-org-accent"
+                                  : "text-muted-foreground",
+                              )}
+                            />
+                            <span className="min-w-0 flex-1 truncate font-medium">
+                              {result.label}
+                            </span>
+                            {/* Capped below half the row, so on a phone a long
+                                path truncates before it can squeeze the name
+                                away. */}
+                            {result.context && (
+                              <span className="min-w-0 max-w-[45%] truncate text-xs text-muted-foreground">
+                                {result.context}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
+        </div>
+
+        <div role="status" aria-live="polite" className="sr-only">
+          {announcement}
         </div>
 
         <div className="border-t px-3 py-2 text-[11px] text-muted-foreground">

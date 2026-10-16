@@ -399,7 +399,7 @@ export default function AdminConversationsPage() {
                     <TableCell className="whitespace-normal">
                       <button
                         type="button"
-                        className="rounded-sm text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="rounded-sm text-left font-medium hover:underline focus-ring"
                         onClick={() => setViewingId(r._id)}
                       >
                         {r.contributorName}
@@ -422,7 +422,7 @@ export default function AdminConversationsPage() {
                         {href ? (
                           <Link
                             href={href}
-                            className="w-fit rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="w-fit rounded-sm hover:underline focus-ring"
                           >
                             {r.processName}
                           </Link>

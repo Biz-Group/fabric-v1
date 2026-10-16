@@ -321,7 +321,7 @@ export const AudioPlayerProgress = ({
         otherProps.onPointerUp?.(e)
       }}
       className={cn(
-        "group/player relative flex h-4 touch-none items-center select-none data-[disabled]:opacity-50 data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-44 data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col",
+        "group/player relative flex h-4 touch-none items-center select-none pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-3 data-[disabled]:opacity-50 data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-44 data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col",
         otherProps.className
       )}
       onKeyDown={(e) => {
@@ -345,10 +345,10 @@ export const AudioPlayerProgress = ({
         <SliderPrimitive.Range className="bg-org-accent absolute h-full" />
       </SliderPrimitive.Track>
       <SliderPrimitive.Thumb
-        className="relative flex h-0 w-0 items-center justify-center opacity-0 group-hover/player:opacity-100 focus-visible:opacity-100 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+        className="relative flex h-0 w-0 items-center justify-center opacity-0 outline-none group-hover/player:opacity-100 has-[:focus-visible]:opacity-100 pointer-coarse:opacity-100 disabled:pointer-events-none disabled:opacity-50"
         data-slot="slider-thumb"
       >
-        <div className="bg-org-accent absolute size-3 rounded-full" />
+        <div className="bg-org-accent absolute size-3 rounded-full outline-offset-2 outline-focus group-has-[:focus-visible]/player:outline-2 group-has-[:focus-visible]/player:outline-solid" />
       </SliderPrimitive.Thumb>
     </SliderPrimitive.Root>
   )

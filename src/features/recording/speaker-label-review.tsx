@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { AudioLines, CheckCircle2, Loader2, UserRound } from "lucide-react";
 import { toast } from "sonner";
@@ -172,6 +172,9 @@ function SpeakerLabelEditor({
     initialDraftsFor(speakerRows, speakerLabels),
   );
   const [submitting, setSubmitting] = useState(false);
+  // Unique per mount, so two copies of the review never share ids.
+  const fieldId = useId();
+  const audioLabelId = `${fieldId}-audio`;
 
   const canSubmit =
     speakerRows.length > 0 &&
@@ -218,32 +221,46 @@ function SpeakerLabelEditor({
 
       {audioUrl && (
         <div className="space-y-2 rounded-md bg-muted/35 p-3">
-          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <div
+            id={audioLabelId}
+            className="flex items-center gap-2 text-xs font-medium text-muted-foreground"
+          >
             <AudioLines className="h-3.5 w-3.5" />
             Recording audio
           </div>
-          <audio controls src={audioUrl} className="h-9 w-full" />
+          <audio
+            controls
+            src={audioUrl}
+            aria-labelledby={audioLabelId}
+            className="h-9 w-full"
+          />
         </div>
       )}
 
       <div className="space-y-3">
-        {speakerRows.map((row) => {
+        {speakerRows.map((row, index) => {
           const draft = drafts[row.speakerId] ?? {
             displayName: row.defaultName,
             userId: null,
           };
+          const nameId = `${fieldId}-${index}-name`;
+          const memberLabelId = `${fieldId}-${index}-member-label`;
+          const memberId = `${fieldId}-${index}-member`;
           return (
             <div key={row.speakerId} className="rounded-md border p-3">
               <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_220px]">
                 <div className="space-y-1.5">
+                  {/* Names read "Name for Speaker 2" and "Member for
+                      Speaker 2", so each row's pair is distinct. */}
                   <label
-                    htmlFor={`speaker-${conversation._id}-${row.speakerId}`}
+                    htmlFor={nameId}
                     className="text-xs font-medium text-muted-foreground"
                   >
+                    <span className="sr-only">Name for </span>
                     {row.defaultName}
                   </label>
                   <Input
-                    id={`speaker-${conversation._id}-${row.speakerId}`}
+                    id={nameId}
                     value={draft.displayName}
                     onChange={(event) =>
                       setDrafts((prev) => ({
@@ -258,9 +275,14 @@ function SpeakerLabelEditor({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">
+                  <label
+                    id={memberLabelId}
+                    htmlFor={memberId}
+                    className="block text-xs font-medium text-muted-foreground"
+                  >
                     Member
-                  </span>
+                    <span className="sr-only"> for {row.defaultName}</span>
+                  </label>
                   <Select
                     value={draft.userId ?? "none"}
                     onValueChange={(value) => {
@@ -281,7 +303,11 @@ function SpeakerLabelEditor({
                       }));
                     }}
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger
+                      id={memberId}
+                      aria-labelledby={memberLabelId}
+                      className="w-full"
+                    >
                       <SelectValue placeholder="Optional" />
                     </SelectTrigger>
                     <SelectContent>

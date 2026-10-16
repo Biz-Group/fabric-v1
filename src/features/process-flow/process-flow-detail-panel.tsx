@@ -137,8 +137,8 @@ export function ProcessFlowDetailPanel({
         </div>
         <Button
           variant="ghost"
-          size="sm"
-          className="h-6 w-6 shrink-0 p-0"
+          size="icon-sm"
+          className="shrink-0"
           onClick={onClose}
           aria-label="Close node details"
         >
@@ -305,7 +305,7 @@ export function ProcessFlowDetailPanel({
                     <button
                       type="button"
                       key={source.conversationId}
-                      className="org-focus-ring group flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-org-accent-subtle hover:text-foreground"
+                      className="focus-ring-inset group flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-org-accent-subtle hover:text-foreground"
                       onClick={() => onOpenConversation(source.conversationId)}
                       aria-label={`Open source conversation: ${source.source}`}
                     >
@@ -347,7 +347,7 @@ export function ProcessFlowDetailPanel({
                   <button
                     key={edge.id}
                     onClick={() => onNavigate(edge.source)}
-                    className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-org-accent-subtle focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
+                    className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-org-accent-subtle focus-ring-inset"
                     aria-label={`Navigate to source node ${sourceNode.label}`}
                   >
                     <ArrowLeft className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -369,7 +369,7 @@ export function ProcessFlowDetailPanel({
                   <button
                     key={edge.id}
                     onClick={() => onNavigate(edge.target)}
-                    className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-org-accent-subtle focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
+                    className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-org-accent-subtle focus-ring-inset"
                     aria-label={`Navigate to target node ${targetNode.label}`}
                   >
                     <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />

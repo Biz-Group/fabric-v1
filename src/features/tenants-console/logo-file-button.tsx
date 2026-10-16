@@ -27,6 +27,7 @@ export function LogoFileButton({
         accept={LOGO_ACCEPT}
         className="sr-only"
         tabIndex={-1}
+        aria-hidden="true"
         onChange={(e) => {
           const file = e.target.files?.[0];
           // Reset so picking the same file again still fires onChange.

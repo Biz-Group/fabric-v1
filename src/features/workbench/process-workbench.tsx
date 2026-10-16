@@ -1509,7 +1509,7 @@ export function ProcessWorkbench() {
     >
       <div className="shrink-0 border-b bg-background px-3 py-2.5">
         <TabsList
-          className="mx-auto w-full max-w-3xl group-data-horizontal/tabs:h-11"
+          className="mx-auto w-full max-w-3xl group-data-horizontal/tabs:h-11 group-data-horizontal/tabs:pointer-coarse:h-11"
           aria-label="Workspace views"
         >
           <TabsTrigger value="home" className="gap-2 text-sm">

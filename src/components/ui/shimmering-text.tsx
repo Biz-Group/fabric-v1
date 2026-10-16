@@ -3,6 +3,7 @@
 import React, { useMemo, useRef } from "react"
 import { motion, useInView, UseInViewOptions } from "motion/react"
 
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion"
 import { cn } from "@/lib/utils"
 
 interface ShimmeringTextProps {
@@ -48,6 +49,7 @@ export function ShimmeringText({
 }: ShimmeringTextProps) {
   const ref = useRef<HTMLSpanElement>(null)
   const isInView = useInView(ref, { once, margin: inViewMargin })
+  const reducedMotion = usePrefersReducedMotion()
 
   // Calculate dynamic spread based on text length
   const dynamicSpread = useMemo(() => {
@@ -56,6 +58,20 @@ export function ShimmeringText({
 
   // Determine if we should start animation
   const shouldAnimate = !startOnView || isInView
+
+  // The shimmer sweeps forever, so reduced motion gets the plain text in its
+  // base colour.
+  if (reducedMotion) {
+    return (
+      <span
+        ref={ref}
+        className={cn("relative inline-block text-muted-foreground", className)}
+        style={color ? { color } : undefined}
+      >
+        {text}
+      </span>
+    )
+  }
 
   return (
     <motion.span

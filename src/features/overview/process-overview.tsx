@@ -161,7 +161,7 @@ function ScopeAndParticipants({
           <button
             type="button"
             onClick={onOpenFlow}
-            className="org-focus-ring rounded font-medium text-org-accent underline decoration-org-accent-border underline-offset-4 hover:decoration-current"
+            className="focus-ring rounded font-medium text-org-accent underline decoration-org-accent-border underline-offset-4 hover:decoration-current"
           >
             open the Process Flow
           </button>
@@ -211,7 +211,7 @@ function ReadinessFooter({
               type="button"
               key={destination.label}
               onClick={destination.onOpen}
-              className="org-focus-ring group flex min-h-20 min-w-0 items-center gap-3 rounded-xl border bg-background p-4 text-left transition-colors hover:border-org-accent-border hover:bg-org-accent-subtle"
+              className="focus-ring group flex min-h-20 min-w-0 items-center gap-3 rounded-xl border bg-background p-4 text-left transition-colors hover:border-org-accent-border hover:bg-org-accent-subtle"
             >
               <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-background group-hover:text-org-accent">
                 <Icon className="size-4" aria-hidden="true" />

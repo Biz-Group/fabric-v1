@@ -21,7 +21,7 @@ export function OverviewActions({
       <button
         type="button"
         onClick={onEdit}
-        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-org-accent-subtle hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
+        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-org-accent-subtle hover:text-foreground focus-ring"
         title={`Edit ${entityLabel}`}
         aria-label={`Edit ${entityLabel}`}
       >
@@ -30,7 +30,7 @@ export function OverviewActions({
       <button
         type="button"
         onClick={onDelete}
-        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-org-accent-ring/35"
+        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-ring"
         title={`Delete ${entityLabel}`}
         aria-label={`Delete ${entityLabel}`}
       >

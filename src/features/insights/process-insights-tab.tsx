@@ -374,7 +374,7 @@ export function FlowNodeLink({
     <button
       type="button"
       className={cn(
-        "org-focus-ring group inline-flex max-w-full items-center gap-1.5 text-left font-medium text-foreground transition-colors hover:text-org-accent",
+        "focus-ring group inline-flex max-w-full items-center gap-1.5 text-left font-medium text-foreground transition-colors hover:text-org-accent",
         compact
           ? "min-h-7 rounded-full border px-2.5 py-1 text-xs"
           : "min-h-8 rounded-md -ml-1 px-1 text-sm",
