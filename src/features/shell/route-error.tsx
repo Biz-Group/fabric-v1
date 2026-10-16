@@ -3,6 +3,9 @@
 import { useClerk } from "@clerk/nextjs";
 import Link from "next/link";
 import { type ReactNode, useEffect } from "react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { PageTitle } from "@/components/ui/page-title";
+import { cn } from "@/lib/utils";
 import {
   type AuthErrorCode,
   authErrorCode,
@@ -37,10 +40,8 @@ const COPY: Record<AuthErrorCode | "UNKNOWN", Copy> = {
   },
 };
 
-const primaryButton =
-  "h-10 rounded-xl bg-foreground px-4 text-sm font-medium text-background hover:bg-foreground/90";
-const secondaryButton =
-  "h-10 rounded-xl border border-border bg-background px-4 text-sm font-medium hover:bg-muted";
+/** The error screens' actions sit alone on the page, so they're a step up from `lg`. */
+const actionSize = "h-10 px-4";
 
 /**
  * Fallback for an error thrown while rendering a route. Auth failures from
@@ -66,63 +67,74 @@ export function RouteError({
   switch (code) {
     case "NOT_AUTHENTICATED":
       actions = (
-        <button
-          type="button"
-          className={primaryButton}
+        <Button
+          size="lg"
+          className={actionSize}
           onClick={() =>
             void redirectToSignIn({ redirectUrl: window.location.href })
           }
         >
           Sign in again
-        </button>
+        </Button>
       );
       break;
     case "NOT_MEMBER":
     case "REMOVED":
       actions = (
         <>
-          <button
-            type="button"
-            className={secondaryButton}
+          <Button
+            variant="outline"
+            size="lg"
+            className={actionSize}
             onClick={() => window.location.reload()}
           >
             Reload
-          </button>
-          <button
-            type="button"
-            className={secondaryButton}
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            className={actionSize}
             onClick={() => void signOut({ redirectUrl: "/sign-in" })}
           >
             Sign out
-          </button>
+          </Button>
         </>
       );
       break;
     case "INSUFFICIENT_ROLE":
       actions = (
         <>
-          <Link href="/" className={`${primaryButton} inline-flex items-center`}>
+          <Link
+            href="/"
+            className={cn(buttonVariants({ size: "lg" }), actionSize)}
+          >
             Go to workspace home
           </Link>
-          <button type="button" className={secondaryButton} onClick={retry}>
+          <Button
+            variant="outline"
+            size="lg"
+            className={actionSize}
+            onClick={retry}
+          >
             Try again
-          </button>
+          </Button>
         </>
       );
       break;
     default:
       actions = (
         <>
-          <button type="button" className={primaryButton} onClick={retry}>
+          <Button size="lg" className={actionSize} onClick={retry}>
             Try again
-          </button>
-          <button
-            type="button"
-            className={secondaryButton}
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            className={actionSize}
             onClick={() => window.location.reload()}
           >
             Reload
-          </button>
+          </Button>
         </>
       );
   }
@@ -132,7 +144,7 @@ export function RouteError({
       role="alert"
       className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-6 text-center"
     >
-      <h2 className="text-xl font-semibold">{title}</h2>
+      <PageTitle>{title}</PageTitle>
       <p className="max-w-md text-sm text-muted-foreground">{body}</p>
       <div className="flex flex-wrap items-center justify-center gap-3">
         {actions}

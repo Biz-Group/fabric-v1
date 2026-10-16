@@ -12,11 +12,12 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableSkeletonRows,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
-import { LoadingScreen } from "@/components/ui/loading-screen";
 import { InvitationExpiry } from "@/features/admin/invitation-expiry";
 import { describeError } from "@/lib/user-error-message";
 import { cn } from "@/lib/utils";
@@ -172,7 +173,13 @@ export function PendingInvitesList({
       );
     }
     return (
-      <LoadingScreen fullScreen={false} message="Loading invitations..." />
+      <Card padding="none" className="overflow-hidden">
+        <Table>
+          <TableBody>
+            <TableSkeletonRows columns={5} rows={3} label="Loading invitations" />
+          </TableBody>
+        </Table>
+      </Card>
     );
   }
 
@@ -188,7 +195,7 @@ export function PendingInvitesList({
 
   return (
     <>
-      <div className="rounded-lg border">
+      <Card padding="none" className="overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
@@ -263,7 +270,7 @@ export function PendingInvitesList({
             ))}
           </TableBody>
         </Table>
-      </div>
+      </Card>
       <ConfirmDialog
         open={pendingRevoke !== null}
         onOpenChange={(open) => {

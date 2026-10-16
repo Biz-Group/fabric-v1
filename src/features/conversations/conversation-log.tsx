@@ -258,7 +258,7 @@ function sanitizeFilenamePart(value: string): string {
       .trim()
       .replace(/[^a-z0-9]+/gi, "-")
       .replace(/^-+|-+$/g, "")
-      .slice(0, 48) || "conversation"
+      .slice(0, 48) || "contribution"
   );
 }
 
@@ -352,9 +352,9 @@ function buildConversationPdfPages(
     addLine(title, { size: 12, font: "F2", lineHeight: 16, gapBefore: 12 });
   };
 
-  addLine("Conversation Export", { size: 18, font: "F2", lineHeight: 24 });
+  addLine("Contribution Export", { size: 18, font: "F2", lineHeight: 24 });
   // The analysis title, when there is one. The export is read outside the app,
-  // where "Conversation Export" on its own names nothing.
+  // where "Contribution Export" on its own names nothing.
   if (conversation.title?.trim()) {
     addLine(conversation.title.trim(), {
       size: 11,
@@ -479,7 +479,7 @@ function downloadConversationPdf(
   const date = new Date(conversation._creationTime).toISOString().slice(0, 10);
   const filename = `${sanitizeFilenamePart(
     conversation.contributorName
-  )}-${date}-conversation.pdf`;
+  )}-${date}-contribution.pdf`;
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -604,7 +604,7 @@ function ConversationAudioControls({
         item={item}
         variant="ghost"
         size="icon"
-        className="h-8 w-8 shrink-0"
+        className="size-8 shrink-0"
         data-playback-toggle
       />
       <AudioPlayerSkipButton
@@ -877,7 +877,7 @@ function SyncedTranscript({
                       e.stopPropagation();
                       void seekToLine(msg.time_in_call_secs);
                     }}
-                    className="focus-ring shrink-0 rounded-sm px-1 text-[10px] tabular-nums text-muted-foreground opacity-0 transition-opacity group-hover/msg:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+                    className="focus-ring shrink-0 rounded-sm px-1 text-2xs tabular-nums text-muted-foreground opacity-0 transition-opacity group-hover/msg:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
                   >
                     {formatDuration(msg.time_in_call_secs)}
                   </button>
@@ -903,7 +903,7 @@ function SyncedTranscript({
       }}
     >
       <CollapsibleTrigger className="group flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
-        <ChevronRight className="h-3 w-3 transition-transform group-data-[panel-open]:rotate-90" />
+        <ChevronRight className="size-3 transition-transform group-data-[panel-open]:rotate-90" />
         Full Transcript
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -1070,19 +1070,19 @@ function StickyMiniPlayer({
   return (
     <div
       ref={registerBottomDock}
-      className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 px-4 py-2 shadow-lg backdrop-blur-sm"
+      className="fixed inset-x-0 bottom-0 z-dock border-t bg-background/95 px-4 py-2 shadow-lg backdrop-blur-sm"
     >
       <div className="mx-auto flex max-w-3xl items-center gap-3">
         <AudioPlayerButton
           variant="ghost"
           size="icon"
-          className="h-8 w-8 shrink-0 pointer-coarse:size-10"
+          className="size-8 shrink-0 pointer-coarse:size-10"
         />
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-medium">{name}</p>
           <AudioPlayerProgress className="mt-1" />
         </div>
-        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+        <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
           {formatDuration(time)}
         </span>
         <button
@@ -1099,7 +1099,7 @@ function StickyMiniPlayer({
           className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring pointer-coarse:size-10"
           aria-label="Show playback controls"
         >
-          <JumpIcon className="h-3.5 w-3.5" />
+          <JumpIcon className="size-3.5" />
         </button>
       </div>
     </div>
@@ -1172,10 +1172,10 @@ export function FocusedConversationPlayback({
                   <TooltipTrigger
                     type="button"
                     onClick={() => downloadConversationPdf(conversation, transcript)}
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring"
-                    aria-label="Export conversation PDF"
+                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring"
+                    aria-label="Export contribution PDF"
                   >
-                    <Download className="h-4 w-4" />
+                    <Download className="size-4" />
                   </TooltipTrigger>
                   <TooltipContent>Export PDF</TooltipContent>
                 </Tooltip>
@@ -1217,7 +1217,7 @@ export function FocusedConversationPlayback({
                 </p>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  No conversation summary is available yet.
+                  No summary is available yet.
                 </p>
               )}
             </section>

@@ -154,7 +154,7 @@ export function TenantInvitations({ tenantId }: { tenantId: Id<"tenants"> }) {
           </SelectContent>
         </Select>
         <Button onClick={handleInvite} disabled={submitting || !email.trim()}>
-          {submitting ? "Sending..." : "Send invite"}
+          {submitting ? "Sending…" : "Send invite"}
         </Button>
       </div>
 
@@ -173,7 +173,7 @@ export function TenantInvitations({ tenantId }: { tenantId: Id<"tenants"> }) {
           </Button>
         </div>
       ) : invites === undefined ? (
-        <p className="text-sm text-muted-foreground">Loading invitations...</p>
+        <p className="text-sm text-muted-foreground">Loading invitations…</p>
       ) : invites.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No pending invitations.

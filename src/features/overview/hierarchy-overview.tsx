@@ -6,6 +6,8 @@ import type { FunctionReturnType } from "convex/server";
 import { ArrowUpRight, Building2, FileText, GitBranch } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { Card, cardVariants } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   EmphasizedText,
@@ -389,22 +391,22 @@ export function HierarchyOverviewContent({
             </div>
           </div>
         ) : (
-          <div className="border-y py-14 text-center">
-            <FileText
-              className="mx-auto size-7 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <h3 className="mt-4 text-lg font-semibold">
-              {overview.state === "refreshing"
+          <EmptyState
+            variant="plain"
+            size="lg"
+            className="border-y py-14"
+            icon={FileText}
+            title={
+              overview.state === "refreshing"
                 ? `Building the first ${entityLabel} overview`
-                : `No ${entityLabel} overview yet`}
-            </h3>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-              {overview.state === "refreshing"
+                : `No ${entityLabel} overview yet`
+            }
+            description={
+              overview.state === "refreshing"
                 ? `Fabric is rolling up the available ${childLabel}. You can leave this page while it runs.`
-                : `Current child overviews will be combined here when sufficient ${childLabel} are documented.`}
-            </p>
-          </div>
+                : `Current child overviews will be combined here when sufficient ${childLabel} are documented.`
+            }
+          />
         )}
       </OverviewLead>
 
@@ -574,11 +576,11 @@ export function HierarchyOverviewCompactPreview({
 
   if (overview === undefined) {
     return (
-      <div className="space-y-3 rounded-xl border p-4">
+      <Card padding="md" className="space-y-3">
         <Skeleton className="h-5 w-28" />
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-3/4" />
-      </div>
+      </Card>
     );
   }
 
@@ -607,7 +609,7 @@ export function HierarchyOverviewCompactContent({
 
   return (
     <section
-      className="rounded-xl border bg-background p-4"
+      className={cardVariants({ padding: "md" })}
       aria-label={`${entityKind} overview preview`}
     >
       <div className="flex flex-wrap items-center gap-2">

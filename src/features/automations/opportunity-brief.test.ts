@@ -190,7 +190,7 @@ describe("composeOpportunityBrief", () => {
     expect(body).toContain(
       "Build an automated workflow that supports the **Product Building** process (AI Transformation department).",
     );
-    expect(body).toContain("1 recorded conversation with 1 contributor");
+    expect(body).toContain("1 recorded contribution with 1 contributor");
     expect(body).toContain("Evidence confidence for this opportunity: **high**");
   });
 
@@ -309,7 +309,7 @@ describe("composeOpportunityBrief", () => {
       }),
     );
     expect(body).toContain("Handoff owner: Nobody named who approves.");
-    expect(body).toContain("Evidence is partial — 2 of 5 eligible conversations are included.");
+    expect(body).toContain("Evidence is partial — 2 of 5 eligible contributions are included.");
     expect(body).toContain("identified with low confidence");
   });
 
@@ -328,7 +328,7 @@ describe("composeOpportunityBrief", () => {
       input({ overview: null, coverage: null }),
     );
     expect(body).toContain("## What to build");
-    expect(body).not.toContain("recorded conversation");
+    expect(body).not.toContain("recorded contribution");
   });
 
   test("puts who-does-this and the unknowns above the process context", () => {

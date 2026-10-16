@@ -1,6 +1,8 @@
 import { Fragment, type ComponentType, type ReactNode } from "react";
 import { ChevronLeft, Info, MoreHorizontal, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SectionLabel } from "@/components/ui/section-label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,7 +47,7 @@ export function ColumnItem({
   count?: number;
   /** Spoken in place of the bare count, e.g. "3 departments". */
   countLabel?: string;
-  /** Muted second line, e.g. "3 interviews". */
+  /** Muted second line, e.g. "3 contributions". */
   detail?: string;
   /** Shown on the second line, as a badge with its label. */
   status?: StatusMeta | null;
@@ -170,7 +172,7 @@ export function BackBar({
           onClick={onBack}
           className="min-h-10 max-w-full gap-2 px-3 text-sm"
         >
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="size-4" />
           <span className="truncate">{label}</span>
         </Button>
       </div>
@@ -184,42 +186,6 @@ export function ColumnList({ children }: { children: ReactNode }) {
   return (
     <div className="flex-1 overflow-y-auto scrollbar-hide">
       <div className={cn(COLUMN_WIDTH, "space-y-2 p-3")}>{children}</div>
-    </div>
-  );
-}
-
-// --- Empty State ---
-
-export function EmptyState({
-  icon: Icon,
-  title,
-  description,
-  actionLabel,
-  onAction,
-}: {
-  icon: ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-  actionLabel?: string;
-  onAction?: () => void;
-}) {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
-      <div className="rounded-xl bg-muted/60 p-4">
-        <Icon className="h-7 w-7 text-muted-foreground/70" />
-      </div>
-      <div className="space-y-1">
-        <p className="text-sm font-medium text-muted-foreground">{title}</p>
-        <p className="max-w-[200px] text-xs leading-relaxed text-muted-foreground">
-          {description}
-        </p>
-      </div>
-      {actionLabel && onAction && (
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={onAction}>
-          <Plus className="h-3.5 w-3.5" />
-          {actionLabel}
-        </Button>
-      )}
     </div>
   );
 }
@@ -241,9 +207,7 @@ export function ColumnHeader({
   return (
     <div className="shrink-0 border-b bg-background px-4 py-3.5">
       <div className={cn(COLUMN_WIDTH, "flex items-center justify-between")}>
-        <h2 className="text-[0.8rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          {title}
-        </h2>
+        <SectionLabel render={<h2 />}>{title}</SectionLabel>
         <div className="flex min-h-9 items-center gap-2">
           {count !== undefined && (
             <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-muted px-2 text-xs font-medium text-muted-foreground">
@@ -258,7 +222,7 @@ export function ColumnHeader({
               title={addLabel}
               aria-label={addLabel}
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="size-4" />
             </button>
           )}
         </div>
@@ -267,12 +231,18 @@ export function ColumnHeader({
   );
 }
 
-// --- Loading Spinner ---
+// --- Loading ---
 
-export function LoadingSpinner() {
+/** A column's first load: placeholder rows the height of a `ColumnItem`. */
+export function ColumnListSkeleton({ label }: { label: string }) {
   return (
-    <div className="flex items-center justify-center py-12">
-      <div className="h-5 w-5 animate-spin rounded-full border-2 border-org-accent/30 border-t-org-accent" />
+    <div role="status">
+      <span className="sr-only">{label}</span>
+      <div className="space-y-2" aria-hidden="true">
+        {[0, 1, 2].map((row) => (
+          <Skeleton key={row} className="h-14 rounded-lg" />
+        ))}
+      </div>
     </div>
   );
 }

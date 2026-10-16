@@ -141,7 +141,7 @@ export function FirstRunFlow({
   };
 
   if (step === null) {
-    if (!finishError) return <LoadingScreen message="Opening your workspace..." />;
+    if (!finishError) return <LoadingScreen message="Loading workspace…" />;
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-4 text-center">
         <p role="alert" className="max-w-sm text-sm text-destructive">

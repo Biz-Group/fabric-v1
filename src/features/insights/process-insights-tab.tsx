@@ -14,7 +14,6 @@ import {
   FileWarning,
   GitBranch,
   KeyRound,
-  Loader2,
   Monitor,
   RefreshCw,
   ShieldAlert,
@@ -27,8 +26,11 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cardVariants } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SectionLabel } from "@/components/ui/section-label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingState, Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import {
   automationPotentialTone,
@@ -135,6 +137,9 @@ const CONFIDENCE_LABELS: Record<
   },
 };
 
+/** A nested item inside an insight section. */
+const INSET_ITEM = cardVariants({ variant: "inset", padding: "sm" });
+
 function formatGeneratedAt(epochMs: number | null | undefined) {
   if (!epochMs) return "Not generated";
   return new Date(epochMs).toLocaleString("en-US", {
@@ -162,14 +167,14 @@ function MetricTile({
   return (
     <div
       className={cn(
-        "min-h-24 rounded-lg border bg-background p-4",
+        cardVariants({ padding: "md", className: "min-h-24" }),
         accent && "border-org-accent-border bg-org-accent-selected",
       )}
     >
-      <div className="flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+      <SectionLabel render={<div />} className="flex items-center gap-2">
         <Icon className="size-3.5 shrink-0" aria-hidden />
         <span className="min-w-0 break-words">{label}</span>
-      </div>
+      </SectionLabel>
       <p className="mt-2 break-words text-2xl font-semibold tabular-nums">
         {value}
       </p>
@@ -186,13 +191,13 @@ function LoadingInsights() {
   return (
     <div className="space-y-4 p-4 md:p-6">
       <div className="grid gap-3 md:grid-cols-3">
-        <Skeleton className="h-24 rounded-lg" />
-        <Skeleton className="h-24 rounded-lg" />
-        <Skeleton className="h-24 rounded-lg" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
-        <Skeleton className="h-64 rounded-lg" />
-        <Skeleton className="h-64 rounded-lg" />
+        <Skeleton className="h-64 rounded-xl" />
+        <Skeleton className="h-64 rounded-xl" />
       </div>
     </div>
   );
@@ -266,11 +271,11 @@ function GenerateFlowButton({
       disabled={isGenerating || !hasCompletedConversations}
     >
       {isGenerating ? (
-        <Loader2 className="size-4 animate-spin" aria-hidden />
+        <Spinner />
       ) : (
         <RefreshCw className="size-4" aria-hidden />
       )}
-      {isGenerating ? "Starting..." : label}
+      {isGenerating ? "Starting…" : label}
     </Button>
   );
 }
@@ -293,7 +298,7 @@ function InsightSection({
   return (
     <section
       aria-labelledby={headingId}
-      className="rounded-lg border bg-background"
+      className={cardVariants({ padding: "none" })}
     >
       <div className="flex min-w-0 items-center justify-between gap-3 border-b px-4 py-3">
         <h3
@@ -412,12 +417,12 @@ function HandoffsSection({
       ) : (
         <div className="space-y-3">
           {items.map((item) => (
-            <div key={item.id} className="rounded-lg border bg-muted/10 p-3">
+            <div key={item.id} className={INSET_ITEM}>
               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-start">
                 <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                  <SectionLabel>
                     Source step
-                  </p>
+                  </SectionLabel>
                   <FlowNodeLink
                     nodeId={item.source.id}
                     label={item.source.label}
@@ -429,9 +434,9 @@ function HandoffsSection({
                 </div>
                 <ArrowRight className="hidden size-4 text-muted-foreground md:block" />
                 <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                  <SectionLabel>
                     Target step
-                  </p>
+                  </SectionLabel>
                   <FlowNodeLink
                     nodeId={item.target.id}
                     label={item.target.label}
@@ -517,10 +522,10 @@ function ToolsSection({
           </div>
         )}
 
-        <div className="rounded-lg border bg-muted/10 p-3">
-          <p className="text-xs font-medium uppercase text-muted-foreground">
+        <div className={INSET_ITEM}>
+          <SectionLabel>
             Tool-heavy or handoff-heavy areas
-          </p>
+          </SectionLabel>
           {heavyAreas.length === 0 ? (
             <p className="mt-2 text-sm text-muted-foreground">
               No concentrated tool or handoff areas were detected.
@@ -566,7 +571,7 @@ function BottlenecksSection({
       ) : (
         <div className="space-y-3">
           {nodes.map((node) => (
-            <div key={node.id} className="rounded-lg border bg-muted/10 p-3">
+            <div key={node.id} className={INSET_ITEM}>
               <div className="flex flex-wrap items-center gap-2">
                 <FlowNodeLink
                   nodeId={node.id}
@@ -640,10 +645,10 @@ function AutomationSection({
             steps it covers, so most are already counted among the node-level
             candidates. Adding the two produced a total larger than the number
             of distinct findings. */}
-        <div className="rounded-lg border bg-muted/10 p-3">
-          <p className="text-xs font-medium uppercase text-muted-foreground">
+        <div className={INSET_ITEM}>
+          <SectionLabel>
             Potential automations
-          </p>
+          </SectionLabel>
           {!isAnalysed ? (
             <p className="mt-2 text-sm text-muted-foreground">
               Automations were not analysed for this run, so there is nothing to
@@ -670,7 +675,7 @@ function AutomationSection({
                   onClick={onOpenAutomations}
                 >
                   Open Automations
-                  <ArrowUpRight className="h-3.5 w-3.5" />
+                  <ArrowUpRight className="size-3.5" />
                 </Button>
               )}
             </>
@@ -682,7 +687,7 @@ function AutomationSection({
         ) : (
           <div className="space-y-3">
             {candidates.map((node) => (
-              <div key={node.id} className="rounded-lg border bg-muted/10 p-3">
+              <div key={node.id} className={INSET_ITEM}>
                 <div className="flex flex-wrap items-center gap-2">
                   <FlowNodeLink
                     nodeId={node.id}
@@ -736,7 +741,7 @@ function TribalKnowledgeSection({
       ) : (
         <div className="space-y-3">
           {nodes.map((node) => (
-            <div key={node.id} className="rounded-lg border bg-muted/10 p-3">
+            <div key={node.id} className={INSET_ITEM}>
               <div className="flex flex-wrap items-center gap-2">
                 <FlowNodeLink
                   nodeId={node.id}
@@ -794,7 +799,7 @@ function DecisionPointsSection({
           {decisionNodes.map((node) => {
             const branches = deriveDecisionBranches(node, edges);
             return (
-              <div key={node.id} className="rounded-lg border bg-muted/10 p-3">
+              <div key={node.id} className={INSET_ITEM}>
                 <div className="flex flex-wrap items-center gap-2">
                   <FlowNodeLink
                     nodeId={node.id}
@@ -819,7 +824,11 @@ function DecisionPointsSection({
                       return (
                         <div
                           key={edge.id}
-                          className="flex min-w-0 flex-col gap-1 rounded-lg border bg-background p-2 text-sm md:flex-row md:items-center md:justify-between"
+                          className={cardVariants({
+                            padding: "none",
+                            className:
+                              "flex min-w-0 flex-col gap-1 p-2 text-sm md:flex-row md:items-center md:justify-between",
+                          })}
                         >
                           <div className="min-w-0">
                             <p className="break-words font-medium">
@@ -875,14 +884,14 @@ function EvidenceCoverageSection({
     <InsightSection
       icon={ShieldAlert}
       title="Evidence Coverage"
-      count={`${flowConversationCount} of ${completedConversationCount} completed conversations`}
+      count={`${flowConversationCount} of ${completedConversationCount} completed contributions`}
     >
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
         <div className="space-y-4">
           <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">
+            <SectionLabel>
               Confidence distribution
-            </p>
+            </SectionLabel>
             <div className="mt-3 space-y-3">
               {(["high", "medium", "low"] as const).map((confidence) => {
                 const count = counts[confidence];
@@ -907,10 +916,10 @@ function EvidenceCoverageSection({
             </div>
           </div>
 
-          <div className="rounded-lg border bg-muted/10 p-3">
-            <p className="text-xs font-medium uppercase text-muted-foreground">
+          <div className={INSET_ITEM}>
+            <SectionLabel>
               Low-confidence nodes
-            </p>
+            </SectionLabel>
             {lowConfidenceNodes.length === 0 ? (
               <p className="mt-2 text-sm text-muted-foreground">
                 No low-confidence nodes are marked.
@@ -937,9 +946,9 @@ function EvidenceCoverageSection({
         </div>
 
         <div>
-          <p className="text-xs font-medium uppercase text-muted-foreground">
+          <SectionLabel>
             Source citations
-          </p>
+          </SectionLabel>
           <div className="mt-3">
             {allSources.length === 0 ? (
               <SectionEmpty message="No source citations are attached to the generated nodes." />
@@ -962,9 +971,9 @@ function DetailBlock({
 }) {
   return (
     <div className="min-w-0">
-      <p className="mb-1.5 text-xs font-medium uppercase text-muted-foreground">
+      <SectionLabel className="mb-1.5">
         {label}
-      </p>
+      </SectionLabel>
       {children}
     </div>
   );
@@ -1001,27 +1010,6 @@ function BulletList({
         </li>
       ))}
     </ul>
-  );
-}
-
-function FlowPendingState({
-  title,
-  description,
-  icon: Icon,
-}: {
-  title: string;
-  description: string;
-  icon: LucideIcon;
-}) {
-  return (
-    <div className="p-4 md:p-6">
-      <EmptyState
-        icon={Icon}
-        title={title}
-        description={description}
-        className="min-h-[22rem]"
-      />
-    </div>
   );
 }
 
@@ -1078,7 +1066,7 @@ export function ProcessInsightsTab({
               />
               {!hasCompletedConversations && canGenerate && (
                 <p className="text-xs text-muted-foreground">
-                  Record at least one completed conversation first.
+                  Complete at least one contribution first.
                 </p>
               )}
               {actionError && (
@@ -1101,17 +1089,19 @@ export function ProcessInsightsTab({
   if (stage === "graph" || stage === "details") {
     const progress = flowDetailProgress(flow);
     return (
-      <FlowPendingState
-        icon={Loader2}
-        title="Generating process insights"
-        description={
-          stage === "graph"
-            ? "The flow is being generated from completed conversations. Insights will appear once the flow is ready."
-            : progress
-              ? `Describing each step and identifying automation opportunities — ${progress.completed} of ${progress.total} steps done.`
-              : "Describing each step and identifying automation opportunities."
-        }
-      />
+      <div className="p-4 md:p-6">
+        <LoadingState
+          className="min-h-[22rem]"
+          title="Generating process insights"
+          description={
+            stage === "graph"
+              ? "The flow is being generated from completed contributions. Insights will appear once the flow is ready."
+              : progress
+                ? `Describing each step and identifying automation opportunities — ${progress.completed} of ${progress.total} steps done.`
+                : "Describing each step and identifying automation opportunities."
+          }
+        />
+      </div>
     );
   }
 
@@ -1211,7 +1201,7 @@ export function ProcessInsightsTab({
   return (
     <div className="min-h-full bg-muted/20">
       <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
-        <header className="rounded-lg border bg-background p-4">
+        <header className={cardVariants({ padding: "md" })}>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -1272,7 +1262,7 @@ export function ProcessInsightsTab({
           >
             {flow.errorMessage ?? "The last generation did not complete."} These
             insights come from the previous generation, which covered{" "}
-            {flow.conversationCount} completed conversations.
+            {flow.conversationCount} completed contributions.
           </InlineNotice>
         )}
 
@@ -1326,7 +1316,7 @@ export function ProcessInsightsTab({
                 one it actually is. */}
             {completedConversationCount === flow.conversationCount
               ? "This process has been updated since the flow was generated. Refresh the flow before using these insights for review."
-              : `The generated flow includes ${flow.conversationCount} completed conversations, while this process currently has ${completedConversationCount}. Refresh the flow before using these insights for review.`}
+              : `The generated flow includes ${flow.conversationCount} completed contributions, while this process currently has ${completedConversationCount}. Refresh the flow before using these insights for review.`}
           </InlineNotice>
         )}
 
@@ -1345,7 +1335,7 @@ export function ProcessInsightsTab({
             icon={Users}
             label="Evidence"
             value={flow.conversationCount}
-            detail={`${flow.conversationCount} of ${completedConversationCount} completed conversations`}
+            detail={`${flow.conversationCount} of ${completedConversationCount} completed contributions`}
             accent
           />
           <MetricTile
@@ -1445,7 +1435,13 @@ export function ProcessInsightsTab({
         />
 
         {flow.insights.totalEstimatedDuration && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-3 text-sm text-muted-foreground">
+          <div
+            className={cardVariants({
+              padding: "sm",
+              className:
+                "flex flex-wrap items-center gap-2 text-sm text-muted-foreground",
+            })}
+          >
             <Timer className="size-4 shrink-0" aria-hidden />
             <span className="font-medium text-foreground">
               Estimated duration:
@@ -1457,7 +1453,7 @@ export function ProcessInsightsTab({
         )}
 
         {criticalPathNodes.length > 0 && (
-          <div className="rounded-lg border bg-background p-3">
+          <div className={cardVariants({ padding: "sm" })}>
             <div className="mb-2 flex items-center gap-2 text-sm font-medium">
               <Workflow className="size-4 text-muted-foreground" aria-hidden />
               Critical path

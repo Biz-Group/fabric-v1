@@ -142,14 +142,14 @@ const heroSources = [
   {
     icon: Users,
     title: "Invoice approvals",
-    meta: "Team conversation",
+    meta: "Uploaded recording",
     visual: "conversation",
     delay: "0s",
   },
   {
     icon: Mic,
     title: "Customer onboarding",
-    meta: "Voice recording",
+    meta: "Voice note",
     visual: "voice",
     delay: "2s",
   },
@@ -438,16 +438,16 @@ export function ProductJourneyDemo() {
 function FabricWorkbench({ stage, children }: { stage: StageId; children: ReactNode }) {
   const activeTab =
     stage === "capture"
-      ? "Conversations"
+      ? "Contributions"
       : stage === "understand"
-        ? "Process Summary"
+        ? "Overview"
         : stage === "map"
           ? "Process Flow"
           : "Insights";
 
   const tabs = [
-    { label: "Process Summary", icon: FileText },
-    { label: "Conversations", icon: Mic, count: 4 },
+    { label: "Overview", icon: FileText },
+    { label: "Contributions", icon: Mic, count: 4 },
     { label: "Process Flow", icon: GitBranch },
     { label: "Insights", icon: BarChart3 },
   ];
@@ -504,20 +504,20 @@ function CaptureStage() {
     <div className={styles.conversationDemo}>
       <div className={styles.conversationListMock}>
         <div className={styles.mockFilters}>
-          <span>All conversations <ChevronDown /></span>
+          <span>All contributions <ChevronDown /></span>
           <span>Newest first <ChevronDown /></span>
         </div>
         <div className={`${styles.mockConversationRow} ${styles.mockConversationSelected}`}>
           <span className={styles.mockConversationIcon}><Bot /></span>
           <div>
-            <div><strong>AI Interview with Amira K.</strong><span>Completed</span></div>
+            <div><strong>AI interview with Amira K.</strong><span>Completed</span></div>
             <p><User /> Amira K. <Clock /> Today, 10:24 AM <i>18:42</i></p>
           </div>
         </div>
         <div className={styles.mockConversationRow}>
           <span className={styles.mockConversationIcon}><Mic /></span>
           <div>
-            <div><strong>Voice Recording with Kareem S.</strong><span>Completed</span></div>
+            <div><strong>Voice note with Kareem S.</strong><span>Completed</span></div>
             <p><User /> Kareem S. <Clock /> Yesterday <i>11:08</i></p>
           </div>
         </div>
@@ -714,7 +714,7 @@ function ImproveStage() {
   return (
     <div className={styles.insightsDemo}>
       <div className={styles.insightMetricGrid}>
-        <MetricTile icon={<Users />} label="Evidence" value="4" detail="completed conversations" />
+        <MetricTile icon={<Users />} label="Evidence" value="4" detail="completed contributions" />
         <MetricTile icon={<GitBranch />} label="Mapped steps" value="5" detail="1 decision point" />
         <MetricTile icon={<AlertTriangle />} label="Bottlenecks" value="1" detail="coding validation" />
         <MetricTile icon={<Bot />} label="Automation" value="1" detail="high-potential candidate" />

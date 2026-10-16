@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageTitle } from "@/components/ui/page-title";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -238,7 +240,7 @@ function DepartmentSection({
       description={
         coverage.total === 0
           ? "Your department"
-          : `Your department · ${coverage.covered} of ${coverage.total} processes have interviews`
+          : `Your department · ${coverage.covered} of ${coverage.total} processes have contributions`
       }
       action={
         <Button
@@ -260,7 +262,7 @@ function DepartmentSection({
         <div
           className="mb-2 mt-2 h-1.5 overflow-hidden rounded-full bg-muted"
           role="progressbar"
-          aria-label="Processes with interviews"
+          aria-label="Processes with contributions"
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={percentage}
@@ -415,9 +417,9 @@ function MyInterviewsSection({
     conversations !== undefined &&
     (loadingMore || conversations.length >= limit);
   return (
-    <HomeSection title="Your interviews">
+    <HomeSection title="Your contributions">
       {conversations === undefined ? (
-        <div className="space-y-px py-2" aria-label="Loading your interviews">
+        <div className="space-y-px py-2" aria-label="Loading your contributions">
           {Array.from({ length: 3 }).map((_, index) => (
             <Skeleton key={index} className="h-14 rounded-none" />
           ))}
@@ -425,8 +427,8 @@ function MyInterviewsSection({
       ) : conversations.length === 0 ? (
         <SectionNote>
           {canEdit
-            ? "You haven't recorded an interview yet. Use Capture on one of your department's processes to share how the work gets done."
-            : "Interviews you take part in will appear here."}
+            ? "You haven't made a contribution yet. Use Capture on one of your department's processes to start an AI interview, record a voice note, or upload files."
+            : "Contributions you take part in will appear here."}
         </SectionNote>
       ) : (
         <div role="list">
@@ -443,7 +445,7 @@ function MyInterviewsSection({
                   type="button"
                   className={ROW_CLASS}
                   onClick={() => onOpenConversation(conversation)}
-                  aria-label={`Open interview in ${conversation.processName}`}
+                  aria-label={`Open contribution in ${conversation.processName}`}
                 >
                   <RowIcon icon={INPUT_MODE_ICONS[conversation.inputMode]} />
                   <span className="min-w-0 flex-1">
@@ -520,8 +522,8 @@ function LabelsCallout({
         <div className="min-w-0">
           <p className="text-sm font-medium">
             {count === 1
-              ? "One of your interviews needs speaker labels"
-              : `${count} of your interviews need speaker labels`}
+              ? "One of your contributions needs speaker labels"
+              : `${count} of your contributions need speaker labels`}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Confirm who is speaking so Fabric can finish processing{" "}
@@ -604,30 +606,30 @@ function EmptyWorkspace({
     : null;
   const Icon = content?.icon ?? Building2;
   return (
-    <div className="mt-10 rounded-xl border border-dashed px-6 py-12 text-center">
-      <Icon
-        className="mx-auto size-7 text-muted-foreground"
-        aria-hidden="true"
-      />
-      <h2 className="mt-4 break-words text-lg font-semibold">
-        {content?.title ?? "No processes yet"}
-      </h2>
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-        {content?.description ??
-          "Nobody has added processes to this workspace yet. Once they do, you'll be able to explore them here."}
-      </p>
-      {content && (
-        <Button
-          type="button"
-          variant="outline"
-          className={cn("mt-6 gap-1.5", mobile && "h-11 px-4")}
-          onClick={content.onAction}
-        >
-          <Plus className="size-4" aria-hidden="true" />
-          {content.actionLabel}
-        </Button>
-      )}
-    </div>
+    <EmptyState
+      size="lg"
+      titleAs="h2"
+      className="mt-10"
+      icon={Icon}
+      title={content?.title ?? "No processes yet"}
+      description={
+        content?.description ??
+        "Nobody has added processes to this workspace yet. Once they do, you'll be able to explore them here."
+      }
+      action={
+        content && (
+          <Button
+            type="button"
+            variant="outline"
+            className={cn("gap-1.5", mobile && "h-11 px-4")}
+            onClick={content.onAction}
+          >
+            <Plus className="size-4" aria-hidden="true" />
+            {content.actionLabel}
+          </Button>
+        )
+      }
+    />
   );
 }
 
@@ -723,7 +725,7 @@ export function WorkspaceHome({
       aria-label="Home"
     >
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
+        <PageTitle size="lg">
           {showGettingStarted
             ? name
               ? `Welcome to Fabric, ${name}`
@@ -731,7 +733,7 @@ export function WorkspaceHome({
             : name
               ? `Welcome back, ${name}`
               : "Welcome back"}
-        </h1>
+        </PageTitle>
         {homePlacement && (
           <p className="mt-2 flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
             <Building2 className="size-4 shrink-0" aria-hidden="true" />

@@ -18,6 +18,7 @@ import { Check, PauseIcon, PlayIcon, RotateCcw, RotateCw, Settings } from "lucid
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -345,31 +346,12 @@ export const AudioPlayerProgress = ({
         <SliderPrimitive.Range className="bg-org-accent absolute h-full" />
       </SliderPrimitive.Track>
       <SliderPrimitive.Thumb
-        className="relative flex h-0 w-0 items-center justify-center opacity-0 outline-none group-hover/player:opacity-100 has-[:focus-visible]:opacity-100 pointer-coarse:opacity-100 disabled:pointer-events-none disabled:opacity-50"
+        className="relative flex size-0 items-center justify-center opacity-0 outline-none group-hover/player:opacity-100 has-[:focus-visible]:opacity-100 pointer-coarse:opacity-100 disabled:pointer-events-none disabled:opacity-50"
         data-slot="slider-thumb"
       >
         <div className="bg-org-accent absolute size-3 rounded-full outline-offset-2 outline-focus group-has-[:focus-visible]/player:outline-2 group-has-[:focus-visible]/player:outline-solid" />
       </SliderPrimitive.Thumb>
     </SliderPrimitive.Root>
-  )
-}
-
-interface SpinnerProps {
-  className?: string
-}
-
-function Spinner({ className }: SpinnerProps) {
-  return (
-    <div
-      className={cn(
-        "border-muted border-t-foreground size-3.5 animate-spin rounded-full border-2",
-        className
-      )}
-      role="status"
-      aria-label="Loading"
-    >
-      <span className="sr-only">Loading...</span>
-    </div>
   )
 }
 
@@ -396,6 +378,7 @@ const PlayButton = ({
       }}
       className={cn("relative", className)}
       aria-label={playing ? "Pause" : "Play"}
+      aria-busy={loading || undefined}
       type="button"
     >
       {playing ? (
@@ -411,7 +394,7 @@ const PlayButton = ({
       )}
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center rounded-[inherit] backdrop-blur-xs">
-          <Spinner />
+          <Spinner className="size-4" />
         </div>
       )}
     </Button>
@@ -484,7 +467,7 @@ export function AudioPlayerSkipButton({
     <Button
       variant={variant}
       size={size}
-      className={cn("h-8 w-8 shrink-0", className)}
+      className={cn("size-8 shrink-0", className)}
       onClick={(e) => {
         const current = player.ref.current?.currentTime ?? 0
         const max = player.duration ?? 0

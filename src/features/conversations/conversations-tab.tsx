@@ -10,7 +10,6 @@ import {
   ChevronUp,
   Clock,
   FileText,
-  Loader2,
   Mic,
   PlayCircle,
   Upload,
@@ -30,6 +29,7 @@ import {
   STATUS_TONE_SURFACE,
 } from "@/features/status/status-meta";
 import { Button } from "@/components/ui/button";
+import { cardVariants } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   Select,
@@ -74,13 +74,13 @@ const TYPE_META: Record<
   ConversationInputMode,
   { label: string; icon: LucideIcon }
 > = {
-  agent: { label: "AI Interview", icon: Bot },
-  voiceRecord: { label: "Voice Recording", icon: Mic },
-  audioUpload: { label: "Audio Upload", icon: Upload },
+  agent: { label: "AI interview", icon: Bot },
+  voiceRecord: { label: "Voice note", icon: Mic },
+  audioUpload: { label: "Uploaded recording", icon: Upload },
 };
 
 const STATUS_FILTER_ITEMS: Record<StatusFilter, string> = {
-  all: "All conversations",
+  all: "All contributions",
   done: conversationStatusMeta.done.label,
   processing: conversationStatusMeta.processing.label,
   needs_speaker_labels: conversationStatusMeta.needs_speaker_labels.label,
@@ -89,9 +89,9 @@ const STATUS_FILTER_ITEMS: Record<StatusFilter, string> = {
 
 const TYPE_FILTER_ITEMS: Record<TypeFilter, string> = {
   all: "All types",
-  agent: "AI Interview",
-  voiceRecord: "Voice Recording",
-  audioUpload: "Audio Upload",
+  agent: "AI interview",
+  voiceRecord: "Voice note",
+  audioUpload: "Uploaded recording",
 };
 
 const SORT_ORDER_ITEMS: Record<SortOrder, string> = {
@@ -149,9 +149,10 @@ function conversationTitle(conversation: CompactConversation) {
 
 function LoadingRows() {
   return (
-    <div className="space-y-3">
+    <div role="status" className="space-y-3">
+      <span className="sr-only">Loading contributions</span>
       {Array.from({ length: 4 }).map((_, index) => (
-        <div key={index} className="rounded-lg border bg-background p-3">
+        <div key={index} className={cardVariants({ padding: "sm" })}>
           <div className="flex items-center gap-3">
             <Skeleton className="size-9 rounded-lg" />
             <div className="min-w-0 flex-1 space-y-2">
@@ -189,7 +190,10 @@ function ConversationRow({
   return (
     <div
       className={cn(
-        "group flex min-h-24 items-stretch rounded-lg border bg-background transition-colors",
+        cardVariants({
+          padding: "none",
+          className: "group flex min-h-24 items-stretch transition-colors",
+        }),
         selected && "border-org-accent-border bg-org-accent-selected ring-1 ring-org-accent-border",
         highlighted && !selected && STATUS_TONE_SURFACE[status.tone],
       )}
@@ -228,7 +232,7 @@ function ConversationRow({
         className="flex min-w-0 flex-1 items-start p-3 text-left focus-ring-inset"
         aria-expanded={selected}
         aria-current={selected ? "true" : undefined}
-        aria-label={`${selected ? "Selected conversation" : "Open conversation"}: ${title}`}
+        aria-label={`${selected ? "Selected contribution" : "Open contribution"}: ${title}`}
         onClick={onSelect}
       >
         <span className="min-w-0 flex-1 space-y-2">
@@ -295,11 +299,11 @@ function ConversationPlaybackPanel({
         <div className="flex min-h-0 flex-1 items-center justify-center p-4">
           <EmptyState
             icon={hasConversations ? PlayCircle : Mic}
-            title={hasConversations ? "Select a conversation" : "No conversations yet"}
+            title={hasConversations ? "Select a contribution" : "No contributions yet"}
             description={
               hasConversations
                 ? "Playback and transcript review will appear in this panel."
-                : "Capture a conversation to start building the process history."
+                : "Start an AI interview, record a voice note, or upload files."
             }
             className="w-full border-0 bg-transparent"
           />
@@ -311,8 +315,18 @@ function ConversationPlaybackPanel({
   if (conversations === undefined) {
     return (
       <section className="flex h-full min-h-72 flex-col bg-background">
-        <div className="flex min-h-0 flex-1 items-center justify-center p-4">
-          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+        {/* The list beside it announces the load. */}
+        <div className="space-y-4 p-4" aria-hidden="true">
+          <div className="space-y-2">
+            <Skeleton className="h-5 w-2/3" />
+            <Skeleton className="h-3 w-1/3" />
+          </div>
+          <Skeleton className="h-12 w-full rounded-lg" />
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-11/12" />
+            <Skeleton className="h-4 w-4/5" />
+          </div>
         </div>
       </section>
     );
@@ -322,7 +336,7 @@ function ConversationPlaybackPanel({
     return (
       <section className="flex h-full min-h-72 flex-col bg-background">
         <div className="p-4 text-sm text-muted-foreground">
-          Conversation details are no longer available.
+          This contribution is no longer available.
         </div>
       </section>
     );
@@ -531,9 +545,9 @@ export function ProcessConversationsTab({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All types</SelectItem>
-                  <SelectItem value="agent">AI Interview</SelectItem>
-                  <SelectItem value="voiceRecord">Voice Recording</SelectItem>
-                  <SelectItem value="audioUpload">Audio Upload</SelectItem>
+                  <SelectItem value="agent">AI interview</SelectItem>
+                  <SelectItem value="voiceRecord">Voice note</SelectItem>
+                  <SelectItem value="audioUpload">Uploaded recording</SelectItem>
                 </SelectContent>
               </Select>
               <Select
@@ -541,7 +555,7 @@ export function ProcessConversationsTab({
                 items={SORT_ORDER_ITEMS}
                 onValueChange={(value) => setSortOrder(value as SortOrder)}
               >
-                <SelectTrigger size="sm" className="w-full" aria-label="Sort conversations">
+                <SelectTrigger size="sm" className="w-full" aria-label="Sort contributions">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -556,15 +570,15 @@ export function ProcessConversationsTab({
             ) : conversations.length === 0 ? (
               <EmptyState
                 icon={Mic}
-                title="No conversations yet"
-                description="Record a conversation to start building the process history."
+                title="No contributions yet"
+                description="Start an AI interview, record a voice note, or upload files."
                 className="min-h-72"
               />
             ) : filteredConversations.length === 0 ? (
               <EmptyState
                 icon={FileText}
-                title="No matching conversations"
-                description={hasFilters ? "Clear a filter to see more conversations." : undefined}
+                title="No matching contributions"
+                description={hasFilters ? "Clear a filter to see more contributions." : undefined}
                 className="min-h-72"
               />
             ) : (
@@ -604,7 +618,7 @@ export function ProcessConversationsTab({
                       )}
                       {viewAll
                         ? "Show fewer"
-                        : `View all conversations (${filteredConversations.length})`}
+                        : `View all contributions (${filteredConversations.length})`}
                     </Button>
                   </div>
                 )}
@@ -626,7 +640,7 @@ export function ProcessConversationsTab({
           aria-label={
             activeConversation
               ? `Playback: ${conversationTitle(activeConversation)}`
-              : "Conversation playback"
+              : "Contribution playback"
           }
           className="min-w-0 border-t p-4 outline-none md:min-h-0 md:overflow-hidden md:border-l md:border-t-0 md:p-6"
         >

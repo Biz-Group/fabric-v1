@@ -236,9 +236,9 @@ function EvidenceStrip({ data }: { data: ProcessPdfData }) {
 
   const tiles: Metric[] = [
     {
-      label: "Conversations",
+      label: "Contributions",
       value: String(coverage.includedSources),
-      detail: `of ${coverage.totalEligibleSources} eligible conversations included`,
+      detail: `of ${coverage.totalEligibleSources} eligible contributions included`,
     },
     {
       label: "Contributors",
@@ -252,8 +252,8 @@ function EvidenceStrip({ data }: { data: ProcessPdfData }) {
       label: "Coverage",
       value: coverage.complete ? "Complete" : "Partial",
       detail: coverage.complete
-        ? "Every eligible conversation is included"
-        : "Some eligible conversations are not included",
+        ? "Every eligible contribution is included"
+        : "Some eligible contributions are not included",
     },
   ];
 
@@ -527,8 +527,8 @@ function OverviewSectionPdf({ data }: { data: ProcessPdfData }) {
       ) : (
         <View style={s.cardSoft}>
           <Text style={s.muted}>
-            No overview is available yet. Complete a process conversation to
-            establish the first evidence-backed overview.
+            No overview is available yet. Complete a contribution to this
+            process to establish the first evidence-backed overview.
           </Text>
         </View>
       )}
@@ -1007,7 +1007,7 @@ function InsightsSection({ data }: { data: ProcessPdfData }) {
       {/* Evidence coverage */}
       <InsightCard
         title="Evidence Coverage"
-        count={`${data.flowConversationCount} of ${data.completedConversationCount} conversations`}
+        count={`${data.flowConversationCount} of ${data.completedConversationCount} contributions`}
       >
         <Text style={s.eyebrow}>Confidence distribution</Text>
         <ConfidenceBar

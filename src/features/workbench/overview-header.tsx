@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { SquarePen, Trash2 } from "lucide-react";
+import { PageTitle } from "@/components/ui/page-title";
 import {
   WorkbenchBreadcrumb,
   type WorkbenchCrumb,
@@ -25,7 +26,7 @@ export function OverviewActions({
         title={`Edit ${entityLabel}`}
         aria-label={`Edit ${entityLabel}`}
       >
-        <SquarePen className="h-4 w-4" />
+        <SquarePen className="size-4" />
       </button>
       <button
         type="button"
@@ -34,7 +35,7 @@ export function OverviewActions({
         title={`Delete ${entityLabel}`}
         aria-label={`Delete ${entityLabel}`}
       >
-        <Trash2 className="h-4 w-4" />
+        <Trash2 className="size-4" />
       </button>
     </div>
   );
@@ -56,9 +57,9 @@ export function OverviewHeader({
       <div className="grid min-w-0 gap-y-3 px-4 py-4 md:px-6">
         <WorkbenchBreadcrumb crumbs={breadcrumb} current={name} />
         <div className="flex min-w-0 items-start gap-2">
-          <h1 className="min-w-0 flex-1 break-words text-2xl font-semibold tracking-normal md:text-3xl">
+          <PageTitle size="lg" className="min-w-0 flex-1 break-words">
             {name}
-          </h1>
+          </PageTitle>
           {actions}
         </div>
       </div>

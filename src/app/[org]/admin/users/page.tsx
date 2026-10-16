@@ -18,6 +18,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableSkeletonRows,
 } from "@/components/ui/table";
 import {
   Select,
@@ -31,7 +32,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
+import { PageTitle } from "@/components/ui/page-title";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,6 +52,7 @@ import { PendingInvitesList } from "@/features/admin/pending-invites-list";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useLastLoaded } from "@/hooks/use-last-loaded";
 import { describeError } from "@/lib/user-error-message";
+import { cardVariants } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { MoreHorizontal, Search, UserPlus, X } from "lucide-react";
 
@@ -186,7 +190,7 @@ function RoleSelect({
         }
         description={
           pendingRole === "admin"
-            ? "Admins can manage members, invitations, and conversations across the workspace."
+            ? "Admins can manage members, invitations, and contributions across the workspace."
             : "This member will lose admin privileges."
         }
         confirmLabel="Change role"
@@ -248,7 +252,7 @@ function RowActions({
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title={`Remove ${member.name}?`}
-        description="They will immediately lose access to this workspace and will be removed from the Clerk organization. They can be re-invited later."
+        description="They will immediately lose access to this workspace. They can be re-invited later."
         confirmLabel="Remove member"
         destructive
         onConfirm={handleRemove}
@@ -319,7 +323,11 @@ function BulkActions({
     <div
       role="region"
       aria-label="Bulk actions"
-      className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2"
+      className={cardVariants({
+        variant: "inset",
+        padding: "none",
+        className: "flex flex-wrap items-center gap-2 px-3 py-2",
+      })}
     >
       <p className="mr-auto text-sm font-medium">
         {plural(count, "member")} selected
@@ -368,7 +376,7 @@ function BulkActions({
         title={`Change ${plural(count, "member")} to ${pendingRole}?`}
         description={[
           pendingRole === "admin"
-            ? "Admins can manage members, invitations, and conversations across the workspace."
+            ? "Admins can manage members, invitations, and contributions across the workspace."
             : demotesAdmins
               ? "Admins in the selection will lose admin privileges."
               : "Their access changes as soon as you confirm.",
@@ -384,7 +392,7 @@ function BulkActions({
         open={confirmRemove}
         onOpenChange={setConfirmRemove}
         title={`Remove ${plural(count, "member")}?`}
-        description="They will immediately lose access to this workspace and will be removed from the Clerk organization. They can be re-invited later."
+        description="They will immediately lose access to this workspace. They can be re-invited later."
         confirmLabel="Remove members"
         destructive
         onConfirm={remove}
@@ -482,7 +490,7 @@ export default function AdminUsersPage() {
   if (me === undefined) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+        <Spinner size="lg" label="Loading members" className="text-muted-foreground" />
       </div>
     );
   }
@@ -494,9 +502,9 @@ export default function AdminUsersPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Members</h2>
+          <PageTitle render={<h2 />}>Members</PageTitle>
           <p className="text-sm text-muted-foreground">
-            Manage members and roles for this organization.
+            Manage members and roles for this workspace.
           </p>
         </div>
         <Button onClick={() => setInviteOpen(true)}>
@@ -580,7 +588,13 @@ export default function AdminUsersPage() {
 
       {/* Table */}
       <div
-        className={cn("rounded-lg border transition-opacity", refreshing && "opacity-60")}
+        className={cn(
+          cardVariants({
+            padding: "none",
+            className: "overflow-hidden transition-opacity",
+          }),
+          refreshing && "opacity-60",
+        )}
         aria-busy={loadingFirstPage}
       >
         <Table>
@@ -616,19 +630,15 @@ export default function AdminUsersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {members.length === 0 ? (
+            {members.length === 0 && loadingFirstPage ? (
+              <TableSkeletonRows columns={9} label="Loading members" />
+            ) : members.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={9}
                   className="h-24 text-center text-muted-foreground"
                 >
-                  {loadingFirstPage ? (
-                    <div
-                      className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary"
-                      role="status"
-                      aria-label="Loading members"
-                    />
-                  ) : filtered ? (
+                  {filtered ? (
                     "No members match these filters."
                   ) : (
                     "No members yet."

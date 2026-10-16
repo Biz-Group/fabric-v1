@@ -12,9 +12,9 @@ import {
   AlertTriangle,
   KeyRound,
   Bot,
-  Loader2,
   AlertCircle,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import {
   automationPotentialTone,
@@ -123,11 +123,11 @@ function FlowNodeBase({
         <div className="flex items-start gap-2 p-3 pb-1">
           <div
             className={cn(
-              "flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
+              "flex size-6 shrink-0 items-center justify-center rounded-md",
               config.iconBg,
             )}
           >
-            <Icon className="h-3.5 w-3.5" />
+            <Icon className="size-3.5" />
           </div>
           <div className="min-w-0 flex-1">
             <div
@@ -146,7 +146,7 @@ function FlowNodeBase({
         <div className="flex flex-wrap items-center gap-1 px-3 pb-1">
           <span
             className={cn(
-              "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+              "inline-flex items-center rounded-full px-1.5 py-0.5 text-2xs font-medium",
               config.badgeClass,
             )}
           >
@@ -155,7 +155,7 @@ function FlowNodeBase({
           {isDetailed && data.confidence !== "high" && (
             <span
               className={cn(
-                "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px]",
+                "inline-flex items-center rounded-full px-1.5 py-0.5 text-2xs",
                 STATUS_TONE_CHIP[confidenceTone[data.confidence]],
               )}
             >
@@ -165,23 +165,23 @@ function FlowNodeBase({
           {isDetailed && data.automationPotential !== "none" && (
             <span
               className={cn(
-                "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-2xs font-medium",
                 STATUS_TONE_CHIP[automationPotentialTone[data.automationPotential]],
               )}
             >
-              <Bot className="h-2.5 w-2.5" />
+              <Bot className="size-2.5" />
               {data.automationPotential}
             </span>
           )}
           {detailPending && (
-            <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
+              <Spinner className="size-2.5" />
               describing
             </span>
           )}
           {detailFailed && (
-            <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              <AlertCircle className="h-2.5 w-2.5" />
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
+              <AlertCircle className="size-2.5" />
               no description
             </span>
           )}
@@ -220,20 +220,20 @@ function FlowNodeBase({
             data.estimatedDuration) && (
             <div className="flex items-center gap-2 border-t border-border/50 px-3 py-1.5">
               {data.isBottleneck && (
-                <span className="flex items-center gap-0.5 text-[10px] text-destructive">
-                  <AlertTriangle className="h-2.5 w-2.5" />
+                <span className="flex items-center gap-0.5 text-2xs text-destructive">
+                  <AlertTriangle className="size-2.5" />
                   bottleneck
                 </span>
               )}
               {data.isTribalKnowledge && (
-                <span className="flex items-center gap-0.5 text-[10px] text-warning">
-                  <KeyRound className="h-2.5 w-2.5" />
+                <span className="flex items-center gap-0.5 text-2xs text-warning">
+                  <KeyRound className="size-2.5" />
                   tribal
                 </span>
               )}
               {data.estimatedDuration && (
-                <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground ml-auto">
-                  <Clock className="h-2.5 w-2.5" />
+                <span className="flex items-center gap-0.5 text-2xs text-muted-foreground ml-auto">
+                  <Clock className="size-2.5" />
                   {data.estimatedDuration}
                 </span>
               )}

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { SectionLabel } from "@/components/ui/section-label";
 import { cn } from "@/lib/utils";
 import { Building2, Layers, Cog, Search } from "lucide-react";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -266,11 +267,11 @@ export function CommandPalette({
         showCloseButton={false}
         className="top-[12%] translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-xl"
       >
-        <DialogTitle className="sr-only">Search the organization</DialogTitle>
+        <DialogTitle className="sr-only">Search the workspace</DialogTitle>
         <div className="flex items-center gap-2 border-b px-3">
           <Search
             aria-hidden="true"
-            className="h-4 w-4 shrink-0 text-muted-foreground"
+            className="size-4 shrink-0 text-muted-foreground"
           />
           {/* ARIA 1.2 combobox: focus never leaves the input; the highlighted
               option is exposed through aria-activedescendant instead. */}
@@ -314,13 +315,14 @@ export function CommandPalette({
                 // through aria-labelledby and is hidden from the reading order.
                 return (
                   <div key={group.kind} role="presentation">
-                    <p
+                    <SectionLabel
                       id={labelId}
                       aria-hidden="true"
-                      className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                      size="sm"
+                      className="px-2 pt-2 pb-1"
                     >
                       {GROUP_META[group.kind].label}
-                    </p>
+                    </SectionLabel>
                     <div role="group" aria-labelledby={labelId}>
                       {group.entries.map(({ item: result, index }) => {
                         const isActive = index === activeRow;
@@ -352,7 +354,7 @@ export function CommandPalette({
                             <GroupIcon
                               aria-hidden="true"
                               className={cn(
-                                "h-4 w-4 shrink-0",
+                                "size-4 shrink-0",
                                 isActive
                                   ? "text-org-accent"
                                   : "text-muted-foreground",
@@ -384,7 +386,7 @@ export function CommandPalette({
           {announcement}
         </div>
 
-        <div className="border-t px-3 py-2 text-[11px] text-muted-foreground">
+        <div className="border-t px-3 py-2 text-2xs text-muted-foreground">
           <kbd className="font-sans">↑↓</kbd> navigate ·{" "}
           <kbd className="font-sans">↵</kbd> open ·{" "}
           <kbd className="font-sans">esc</kbd> close

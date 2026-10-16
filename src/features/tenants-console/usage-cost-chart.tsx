@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
+import { cardVariants } from "@/components/ui/card";
 import { formatPeriod, formatUsd, formatUsdCompact } from "./usage-format";
 
 /**
@@ -119,7 +120,13 @@ export function UsageCostChart({
 
   if (series.length === 0 || !geometry) {
     return (
-      <div className="flex h-[220px] items-center justify-center rounded-lg border border-border text-sm text-muted-foreground">
+      <div
+        className={cardVariants({
+          padding: "none",
+          className:
+            "flex h-[220px] items-center justify-center text-sm text-muted-foreground",
+        })}
+      >
         No usage recorded in this range.
       </div>
     );
@@ -177,7 +184,7 @@ export function UsageCostChart({
                 x={PAD.left - 8}
                 y={y + 4}
                 textAnchor="end"
-                className="fill-muted-foreground text-[11px]"
+                className="fill-muted-foreground text-2xs"
               >
                 {formatUsdCompact(max * t)}
               </text>
@@ -202,7 +209,7 @@ export function UsageCostChart({
             x={geometry.x(i)}
             y={HEIGHT - 8}
             textAnchor="middle"
-            className="fill-muted-foreground text-[11px]"
+            className="fill-muted-foreground text-2xs"
           >
             {i % labelEvery === 0 ? formatPeriod(point.period) : ""}
           </text>

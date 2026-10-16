@@ -3,6 +3,7 @@
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
+import { Skeleton } from "@/components/ui/skeleton"
 
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
@@ -91,6 +92,34 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
   )
 }
 
+/**
+ * Placeholder rows for a table's first load. Each row is one bar across every
+ * column, so it fits whichever columns are hidden at this width.
+ */
+function TableSkeletonRows({
+  columns,
+  rows = 5,
+  label,
+}: {
+  columns: number
+  rows?: number
+  /** Announced once, e.g. "Loading members". */
+  label: string
+}) {
+  return Array.from({ length: rows }, (_, index) => (
+    <TableRow key={index} className="hover:bg-transparent">
+      <TableCell colSpan={columns} className="py-3">
+        {index === 0 && (
+          <span role="status" className="sr-only">
+            {label}
+          </span>
+        )}
+        <Skeleton className="h-5 w-full" />
+      </TableCell>
+    </TableRow>
+  ))
+}
+
 function TableCaption({
   className,
   ...props
@@ -113,4 +142,5 @@ export {
   TableRow,
   TableCell,
   TableCaption,
+  TableSkeletonRows,
 }

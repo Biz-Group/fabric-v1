@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { PageTitle } from "@/components/ui/page-title";
 import {
   Table,
   TableBody,
@@ -42,14 +43,14 @@ export default function TenantsListPage() {
   const tenants = useQuery(api.tenants.list);
 
   if (tenants === undefined) {
-    return <LoadingScreen message="Loading tenants..." />;
+    return <LoadingScreen message="Loading tenants…" />;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Tenants</h1>
+          <PageTitle>Tenants</PageTitle>
           <p className="text-sm text-muted-foreground">
             Every client workspace on the platform.
           </p>
@@ -91,10 +92,10 @@ export default function TenantsListPage() {
                         <img
                           src={tenant.logoUrl}
                           alt=""
-                          className="h-7 w-7 rounded-md object-cover"
+                          className="size-7 rounded-md object-cover"
                         />
                       ) : (
-                        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-xs font-semibold uppercase">
+                        <span className="flex size-7 items-center justify-center rounded-md bg-muted text-xs font-semibold uppercase">
                           {tenant.name.slice(0, 2)}
                         </span>
                       )}
@@ -109,7 +110,7 @@ export default function TenantsListPage() {
                       className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground hover:underline"
                     >
                       {tenantHostname(tenant.slug)}
-                      <ExternalLink className="h-3 w-3" />
+                      <ExternalLink className="size-3" />
                     </a>
                   </TableCell>
                   <TableCell>

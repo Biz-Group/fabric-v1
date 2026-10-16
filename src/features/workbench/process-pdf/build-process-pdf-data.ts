@@ -265,7 +265,7 @@ function overviewSections(
       key: "consensus",
       title: "Agreements",
       findings: artifact.consensus.map(toPdfFinding),
-      empty: "No cross-conversation agreement has been established yet.",
+      empty: "No agreement across contributions has been established yet.",
     },
     {
       key: "gaps",
@@ -294,10 +294,10 @@ function buildOverview(input: ProcessOverviewInput): PdfOverview {
     state: input.state,
     stateLabel: OVERVIEW_STATE_META[input.state].label,
     sourceMode: artifact
-      ? "Interview evidence"
+      ? "Contribution evidence"
       : input.content.format === "none"
         ? "Awaiting evidence"
-        : "Legacy summary",
+        : "Legacy overview",
     generatedAt: input.lastSuccessfulGenerationAt,
     structured: artifact
       ? {
@@ -439,7 +439,7 @@ export function buildProcessPdfData(input: ProcessPdfInput): ProcessPdfData {
     {
       label: "Evidence",
       value: String(flow.conversationCount),
-      detail: `of ${input.completedConversationCount} completed conversations`,
+      detail: `of ${input.completedConversationCount} completed contributions`,
     },
     {
       label: "Mapped Steps",

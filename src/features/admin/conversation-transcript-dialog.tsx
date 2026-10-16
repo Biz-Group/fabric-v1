@@ -6,6 +6,8 @@ import { ArrowUpRight, Tag } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import { SectionLabel } from "@/components/ui/section-label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -73,7 +75,7 @@ export function ConversationTranscriptDialog({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {conversation?.contributorName ?? "Conversation"}
+            {conversation?.contributorName ?? "Contribution"}
           </DialogTitle>
           <DialogDescription>
             {conversation
@@ -89,13 +91,20 @@ export function ConversationTranscriptDialog({
                 ]
                   .filter(Boolean)
                   .join(" · ")
-              : "Loading..."}
+              : "Loading…"}
           </DialogDescription>
         </DialogHeader>
 
         {conversation === undefined && (
-          <div className="flex h-40 items-center justify-center">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+          // The description above already says "Loading…".
+          <div className="space-y-4" aria-hidden="true">
+            <Skeleton className="h-5 w-24 rounded-full" />
+            <div className="space-y-2">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-4/5" />
+            </div>
+            <Skeleton className="h-28 w-full" />
           </div>
         )}
 
@@ -111,9 +120,7 @@ export function ConversationTranscriptDialog({
 
             {conversation.summary && (
               <section className="space-y-1">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Summary
-                </h4>
+                <SectionLabel render={<h3 />}>Summary</SectionLabel>
                 <p className="text-sm whitespace-pre-wrap">
                   {conversation.summary}
                 </p>
@@ -122,9 +129,7 @@ export function ConversationTranscriptDialog({
 
             {conversation.transcript && conversation.transcript.length > 0 ? (
               <section className="space-y-2">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Transcript
-                </h4>
+                <SectionLabel render={<h3 />}>Transcript</SectionLabel>
                 <div className="space-y-2 rounded-md border p-3">
                   {conversation.transcript.map((msg, i) => (
                     <div

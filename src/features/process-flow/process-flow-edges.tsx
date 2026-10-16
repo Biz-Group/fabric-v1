@@ -120,7 +120,7 @@ function ProcessEdgeComponent({
           >
             <span
               className={cn(
-                "inline-flex max-w-40 items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-4 shadow-sm transition-opacity motion-reduce:transition-none",
+                "inline-flex max-w-40 items-center rounded-full border px-2 py-0.5 text-2xs font-semibold leading-4 shadow-sm transition-opacity motion-reduce:transition-none",
                 LABEL_CLASSES[edgeData.flowType],
                 edgeData.emphasis === "active" &&
                   "ring-2 ring-org-accent-ring/25",

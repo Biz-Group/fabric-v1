@@ -44,11 +44,11 @@ describe("ProcessFlowDetailPanel", () => {
     );
 
     expect(html).toContain(
-      'aria-label="Open source conversation: Alice, Conv. 1"',
+      'aria-label="Open source contribution: Alice, Conv. 1"',
     );
     expect(html).toContain("Unresolved source");
     expect(html).not.toContain(
-      'aria-label="Open source conversation: Unresolved source"',
+      'aria-label="Open source contribution: Unresolved source"',
     );
   });
 });

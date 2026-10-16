@@ -36,7 +36,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     image.referrerPolicy = "no-referrer";
     image.decoding = "async";
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Unable to load organization logo."));
+    image.onerror = () => reject(new Error("Unable to load the workspace logo."));
     image.src = src;
   });
 }

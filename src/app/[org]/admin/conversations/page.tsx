@@ -36,6 +36,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableSkeletonRows,
 } from "@/components/ui/table";
 import {
   Select,
@@ -47,6 +48,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { PageTitle } from "@/components/ui/page-title";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -71,6 +73,7 @@ import { processConversationHref } from "@/features/workbench/use-selection-para
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useLastLoaded } from "@/hooks/use-last-loaded";
 import { describeError } from "@/lib/user-error-message";
+import { cardVariants } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 type Status = "processing" | "needs_speaker_labels" | "done" | "failed";
@@ -116,9 +119,9 @@ const STATUS_FILTER_ITEMS: Record<StatusFilter, string> = {
 };
 
 function getConversationTypeLabel(inputMode: ConversationRow["inputMode"]) {
-  if (inputMode === "voiceRecord") return "Voice Recording";
-  if (inputMode === "audioUpload") return "Audio Upload";
-  return "AI Interview";
+  if (inputMode === "voiceRecord") return "Voice note";
+  if (inputMode === "audioUpload") return "Uploaded recording";
+  return "AI interview";
 }
 
 function ConversationTypeBadge({
@@ -208,9 +211,9 @@ export default function AdminConversationsPage() {
     if (!pendingDelete) return;
     try {
       await deleteConversation({ conversationId: pendingDelete });
-      toast.success("Conversation deleted.");
+      toast.success("Contribution deleted.");
     } catch (err) {
-      toast.error(describeError(err, "Failed to delete conversation."));
+      toast.error(describeError(err, "Failed to delete contribution."));
       throw err;
     }
   };
@@ -245,13 +248,13 @@ export default function AdminConversationsPage() {
       const csv = buildConversationsCsv(exported);
       const slug = me?.orgSlug || "workspace";
       const date = new Date().toISOString().slice(0, 10);
-      downloadCsv(`conversations-${slug}-${date}.csv`, csv);
+      downloadCsv(`contributions-${slug}-${date}.csv`, csv);
       if (exportTruncated) {
         toast.warning(
           `Exported the ${exported.length} newest matches. Narrow the search to export the rest.`,
         );
       } else {
-        toast.success(`Exported ${exported.length} conversations.`);
+        toast.success(`Exported ${exported.length} contributions.`);
       }
     } catch (err) {
       toast.error(describeError(err, "Export failed."));
@@ -266,10 +269,9 @@ export default function AdminConversationsPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Conversations</h2>
+          <PageTitle render={<h2 />}>Contributions</PageTitle>
           <p className="text-sm text-muted-foreground">
-            Review and manage every voice conversation captured in this
-            workspace.
+            Review and manage every contribution captured in this workspace.
           </p>
         </div>
         <Button
@@ -288,7 +290,7 @@ export default function AdminConversationsPage() {
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search contributor, process, title, or summary…"
-            aria-label="Search conversations"
+            aria-label="Search contributions"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -323,7 +325,10 @@ export default function AdminConversationsPage() {
 
       <div
         className={cn(
-          "rounded-lg border transition-opacity",
+          cardVariants({
+            padding: "none",
+            className: "overflow-hidden transition-opacity",
+          }),
           refreshing && "opacity-60",
         )}
         aria-busy={loadingRows}
@@ -341,24 +346,20 @@ export default function AdminConversationsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.length === 0 ? (
+            {rows.length === 0 && loadingRows ? (
+              <TableSkeletonRows columns={7} label="Loading contributions" />
+            ) : rows.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={7}
                   className="h-24 text-center text-muted-foreground"
                 >
-                  {loadingRows ? (
-                    <div
-                      className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary"
-                      role="status"
-                      aria-label="Loading conversations"
-                    />
-                  ) : searching ? (
-                    "No conversations match your search."
+                  {searching ? (
+                    "No contributions match your search."
                   ) : filtersActive ? (
                     "No contributions match these filters."
                   ) : (
-                    "No conversations yet."
+                    "No contributions yet."
                   )}
                 </TableCell>
               </TableRow>
@@ -451,7 +452,7 @@ export default function AdminConversationsPage() {
                         >
                           <MoreHorizontal />
                           <span className="sr-only">
-                            Actions for {r.contributorName}&apos;s conversation
+                            Actions for {r.contributorName}&apos;s contribution
                           </span>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
@@ -534,8 +535,8 @@ export default function AdminConversationsPage() {
         onOpenChange={(open) => {
           if (!open) setPendingDelete(null);
         }}
-        title="Delete this conversation?"
-        description="The transcript, summary, and audio metadata will be permanently removed. The parent process summary will be regenerated. This action cannot be undone."
+        title="Delete this contribution?"
+        description="The transcript, summary, and audio metadata will be permanently removed. The process overview will be refreshed without it. This action cannot be undone."
         confirmLabel="Delete"
         destructive
         onConfirm={handleDelete}

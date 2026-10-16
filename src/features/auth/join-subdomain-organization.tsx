@@ -5,6 +5,8 @@ import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../../convex/_generated/api";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { getTenantSubdomain } from "@/lib/subdomain";
 import { offerPasskeyAfterSignIn } from "./passkey-offer";
 import { clearReturnPath, readReturnPath, signInUrlFor } from "./return-path";
@@ -218,18 +220,18 @@ export function JoinSubdomainOrganization() {
       <div className="space-y-4 text-center">
         <p className="text-sm leading-6 text-destructive">{error.message}</p>
         {error.permanent ? (
-          <button
-            type="button"
+          <Button
+            size="lg"
             onClick={() =>
               void signOut({ redirectUrl: signInUrlFor(readReturnPath()) })
             }
-            className="h-11 rounded-xl bg-foreground px-4 text-sm font-medium text-background hover:bg-foreground/90"
+            className="h-11 px-4"
           >
             Sign out and use another account
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
+          <Button
+            size="lg"
             onClick={() => {
               hasStarted.current = false;
               hasSynced.current = false;
@@ -237,20 +239,23 @@ export function JoinSubdomainOrganization() {
               setTargetOrganizationId(null);
               setRetryKey((key) => key + 1);
             }}
-            className="h-11 rounded-xl bg-foreground px-4 text-sm font-medium text-background hover:bg-foreground/90"
+            className="h-11 px-4"
           >
             Try again
-          </button>
+          </Button>
         )}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-6">
-      <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+    <div
+      role="status"
+      className="flex flex-col items-center justify-center gap-3 py-6"
+    >
+      <Spinner size="lg" className="text-muted-foreground" />
       <p className="text-sm text-muted-foreground">
-        Preparing your workspace...
+        Preparing your workspace…
       </p>
     </div>
   );

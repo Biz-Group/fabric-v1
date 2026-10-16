@@ -12,7 +12,6 @@ import {
   ChevronRight,
   Copy,
   FileWarning,
-  Loader2,
   Workflow,
 } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
@@ -20,7 +19,9 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SectionLabel } from "@/components/ui/section-label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingState } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import {
@@ -55,9 +56,12 @@ const CONFIDENCE_CLASS: Record<AutomationOpportunity["confidence"], string> = {
 const markdownComponents: Components = {
   h1: () => null, // The title is already the panel heading.
   h2: ({ children }) => (
-    <h3 className="mt-6 mb-2 text-xs font-semibold uppercase tracking-wider text-foreground first:mt-0">
+    <SectionLabel
+      render={<h3 />}
+      className="mt-6 mb-2 text-foreground first:mt-0"
+    >
       {children}
-    </h3>
+    </SectionLabel>
   ),
   p: ({ children }) => (
     <p className="my-2 break-words text-sm leading-6 text-muted-foreground">
@@ -156,8 +160,7 @@ export function ProcessAutomationsTab({
     const progress = flowDetailProgress(flow);
     return (
       <TabShell>
-        <EmptyState
-          icon={Loader2}
+        <LoadingState
           title={
             stage === "graph"
               ? "Mapping the process"
@@ -222,7 +225,7 @@ export function ProcessAutomationsTab({
         <EmptyState
           icon={Bot}
           title="No automations recommended"
-          description="The analysis ran and found nothing in this process worth automating yet. More conversations covering exceptions and handoffs usually surface candidates."
+          description="The analysis ran and found nothing in this process worth automating yet. More contributions covering exceptions and handoffs usually surface candidates."
         />
       </TabShell>
     );
@@ -257,7 +260,7 @@ export function ProcessAutomationsTab({
       {(flow.stale || flowHasIncompleteDetails(flow)) && (
         <div className="border-b border-warning-border bg-warning-subtle px-4 py-2 text-xs text-foreground">
           {flow.stale
-            ? "New conversations have landed since this flow was generated. Regenerate the process flow for automations that reflect them."
+            ? "New contributions have landed since this flow was generated. Regenerate the process flow for automations that reflect them."
             : "Some steps were never described, so these briefs report a floor, not a complete picture."}
         </div>
       )}
@@ -270,12 +273,10 @@ export function ProcessAutomationsTab({
           )}
         >
           <div className="border-b px-4 py-3">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Potential automations
-            </p>
+            <SectionLabel>Potential automations</SectionLabel>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {pluralize(opportunities.length, "opportunity", "opportunities")}{" "}
-              from {pluralize(flow.conversationCount, "conversation")}
+              from {pluralize(flow.conversationCount, "contribution")}
             </p>
           </div>
           <ul className="divide-y">
@@ -300,20 +301,20 @@ export function ProcessAutomationsTab({
                         {opportunity.title}
                       </span>
                       <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        <Badge variant="outline" className="gap-1 text-[11px]">
+                        <Badge variant="outline" className="gap-1 text-2xs">
                           {opportunity.kind === "agent" ? (
-                            <Bot className="h-3 w-3" />
+                            <Bot className="size-3" />
                           ) : (
-                            <Workflow className="h-3 w-3" />
+                            <Workflow className="size-3" />
                           )}
                           {KIND_LABEL[opportunity.kind]}
                         </Badge>
-                        <span className="text-[11px] text-muted-foreground">
+                        <span className="text-2xs text-muted-foreground">
                           {pluralize(opportunity.nodeIds.length, "step")}
                         </span>
                         <span
                           className={cn(
-                            "text-[11px] capitalize",
+                            "text-2xs capitalize",
                             CONFIDENCE_CLASS[opportunity.confidence],
                           )}
                         >
@@ -321,7 +322,7 @@ export function ProcessAutomationsTab({
                         </span>
                       </span>
                     </span>
-                    <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground md:hidden" />
+                    <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground md:hidden" />
                   </button>
                 </li>
               );
@@ -343,7 +344,7 @@ export function ProcessAutomationsTab({
                 className="mb-3 -ml-2 gap-1.5 md:hidden"
                 onClick={() => setShowDetailOnMobile(false)}
               >
-                <ArrowLeft className="h-3.5 w-3.5" />
+                <ArrowLeft className="size-3.5" />
                 All automations
               </Button>
 
@@ -400,9 +401,9 @@ function CopyBriefButton({ markdown }: { markdown: string }) {
       }}
     >
       {state === "copied" ? (
-        <Check className="h-3.5 w-3.5" />
+        <Check className="size-3.5" />
       ) : (
-        <Copy className="h-3.5 w-3.5" />
+        <Copy className="size-3.5" />
       )}
       {state === "copied"
         ? "Copied"

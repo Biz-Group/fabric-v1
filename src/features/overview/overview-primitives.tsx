@@ -7,13 +7,13 @@ import {
   ChevronDown,
   Clock3,
   Copy,
-  Loader2,
   MessageSquareText,
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { splitEmphasisRuns } from "@/lib/inline-emphasis";
 import { cn } from "@/lib/utils";
 import {
@@ -93,7 +93,7 @@ export function OverviewStateBadge({
       <Icon
         className={cn(
           "size-3.5 shrink-0",
-          meta.busy && "animate-spin motion-reduce:animate-none",
+          meta.busy && "animate-spin",
         )}
         aria-hidden="true"
       />
@@ -307,10 +307,7 @@ export function OverviewLead({
                 }
               >
                 {refreshPending ? (
-                  <Loader2
-                    className="size-4 animate-spin motion-reduce:animate-none sm:size-3.5"
-                    aria-hidden="true"
-                  />
+                  <Spinner className="size-4 sm:size-3.5" />
                 ) : (
                   <RefreshCw className="size-4 sm:size-3.5" aria-hidden="true" />
                 )}
@@ -389,7 +386,7 @@ function EvidenceStrength({
   return (
     <span
       className={cn(
-        "inline-flex min-h-6 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+        "inline-flex min-h-6 items-center gap-1.5 rounded-full border px-2 py-0.5 text-2xs font-medium",
         STATUS_TONE_CHIP[EVIDENCE_TONE[level]],
       )}
     >
@@ -442,7 +439,7 @@ export function SourceChips({
             key={key}
             className="focus-ring inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-full border border-org-accent-border bg-org-accent-subtle px-3 py-1.5 text-left text-xs font-medium text-org-accent-selected-foreground transition-colors hover:bg-org-accent-selected"
             onClick={open}
-            aria-label={`Open ${source.kind}: ${source.label}`}
+            aria-label={`Open ${source.kind === "conversation" ? "contribution" : source.kind}: ${source.label}`}
             title={source.label}
           >
             {source.kind === "conversation" ? (

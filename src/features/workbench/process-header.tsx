@@ -10,7 +10,6 @@ import {
   Check,
   Download,
   GitBranch,
-  Loader2,
   Mic,
   MoreHorizontal,
   Pencil,
@@ -21,6 +20,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageTitle } from "@/components/ui/page-title";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { StatusBadge } from "@/features/status/status-badge";
 import { processPendingStatusMeta } from "@/features/status/status-meta";
 import {
@@ -186,7 +187,7 @@ function ProcessMetadata({
         />
       ) : (
         <span
-          className="flex size-6 shrink-0 items-center justify-center rounded-full bg-org-accent-subtle text-[10px] font-semibold text-org-accent"
+          className="flex size-6 shrink-0 items-center justify-center rounded-full bg-org-accent-subtle text-2xs font-semibold text-org-accent"
           aria-hidden="true"
         >
           {getInitials(contributorName)}
@@ -233,7 +234,7 @@ function CaptureActions({
     <div
       className="flex min-w-0 flex-wrap gap-2"
       role="group"
-      aria-label="Add information"
+      aria-label="Add a contribution"
       data-tour="capture"
     >
       <span className={styles.aiButtonGlow}>
@@ -305,9 +306,9 @@ function CaptureFab({
     <MenuPrimitive.Root>
       <MenuPrimitive.Trigger
         disabled={disabled}
-        aria-label="Add information"
+        aria-label="Add a contribution"
         data-tour="capture"
-        className="group/fab focus-ring fixed right-4 bottom-[calc(1rem+var(--bottom-dock-height,0px)+env(safe-area-inset-bottom))] z-40 flex size-14 items-center justify-center rounded-full bg-org-accent text-org-accent-foreground shadow-lg shadow-black/20 transition-transform active:scale-95 disabled:opacity-50 motion-reduce:transition-none"
+        className="group/fab focus-ring fixed right-4 bottom-[calc(1rem+var(--bottom-dock-height,0px)+env(safe-area-inset-bottom))] z-fab flex size-14 items-center justify-center rounded-full bg-org-accent text-org-accent-foreground shadow-lg shadow-black/20 transition-transform active:scale-95 disabled:opacity-50 motion-reduce:transition-none"
       >
         <Plus
           className="size-6 transition-transform duration-200 group-data-popup-open/fab:rotate-45 motion-reduce:transition-none"
@@ -315,12 +316,12 @@ function CaptureFab({
         />
       </MenuPrimitive.Trigger>
       <MenuPrimitive.Portal>
-        <MenuPrimitive.Backdrop className="fixed inset-0 z-30 bg-background/75 backdrop-blur-[2px] duration-150 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 motion-reduce:animate-none" />
+        <MenuPrimitive.Backdrop className="fixed inset-0 z-fab-backdrop bg-background/75 backdrop-blur-[2px] duration-150 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 motion-reduce:animate-none" />
         <MenuPrimitive.Positioner
           side="top"
           align="end"
           sideOffset={16}
-          className="isolate z-50 outline-none"
+          className="isolate z-popover outline-none"
         >
           <MenuPrimitive.Popup className="flex flex-col items-end gap-3 pr-1 outline-none duration-150 data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-bottom-3 data-closed:animate-out data-closed:fade-out-0 data-closed:slide-out-to-bottom-3 motion-reduce:animate-none">
             {actions.map(({ label, icon: Icon, onSelect, primary }) => (
@@ -433,7 +434,7 @@ export function ProcessHeader({
               onClick={handleCopyLink}
             >
               {copyState === "copying" ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Spinner />
               ) : copyState === "copied" ? (
                 <Check className="size-4" />
               ) : (
@@ -449,7 +450,7 @@ export function ProcessHeader({
           onClick={onDownloadProcess}
         >
           {isDownloading ? (
-            <Loader2 className="size-4 animate-spin" />
+            <Spinner />
           ) : (
             <Download className="size-4" />
           )}
@@ -499,9 +500,9 @@ export function ProcessHeader({
 
         <div className="flex min-w-0 items-start gap-2 @5xl:col-start-1 @5xl:row-start-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <h1 className="min-w-0 max-w-full break-words text-2xl font-semibold tracking-normal md:text-3xl">
+            <PageTitle size="lg" className="min-w-0 max-w-full break-words">
               {processName || "Untitled process"}
-            </h1>
+            </PageTitle>
             <ProcessStatusBadge
               workbench={workbench}
               onJumpToLabeling={onJumpToLabeling}
@@ -551,7 +552,7 @@ export function ProcessHeader({
                 disabled={copyState === "copying"}
               >
                 {copyState === "copying" ? (
-                  <Loader2 className="size-4 animate-spin" />
+                  <Spinner />
                 ) : copyState === "copied" ? (
                   <Check className="size-4" />
                 ) : (

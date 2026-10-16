@@ -183,7 +183,7 @@ describe("ProcessOverviewContent", () => {
     const heading = html.indexOf('id="process-overview-brief"');
     const statusChip = html.indexOf("Partial coverage");
     const brief = html.indexOf(artifact.executiveBrief);
-    const evidence = html.indexOf("Conversations included");
+    const evidence = html.indexOf("Contributions included");
 
     expect(heading).toBeGreaterThan(-1);
     expect(heading).toBeLessThan(statusChip);
@@ -196,7 +196,7 @@ describe("ProcessOverviewContent", () => {
   it("presents evidence coverage, scope, variations, agreement, and gaps", () => {
     const html = renderOverview(overview());
 
-    expect(html).toContain("Conversations included");
+    expect(html).toContain("Contributions included");
     expect(html).toContain("Unique contributors");
     expect(html).toContain("who runs it, and what it depends on");
     expect(html).toContain("Different ways the work is described");
@@ -237,7 +237,7 @@ describe("ProcessOverviewContent", () => {
     const html = renderOverview(overview());
 
     expect(html).toContain('<button type="button"');
-    expect(html).toContain('aria-label="Open conversation: Operations interview"');
+    expect(html).toContain('aria-label="Open contribution: Operations interview"');
     expect(html).not.toContain('tabindex="-1"');
   });
 
@@ -359,7 +359,7 @@ describe("ProcessOverviewContent", () => {
     // refresh over a process that had never been recorded.
     expect(html).toContain("Build overview");
     expect(html).toContain("disabled");
-    expect(html).toContain("No conversation has been completed for this process");
+    expect(html).toContain("No contribution has been completed for this process");
     expect(html).not.toContain("Refresh failed");
   });
 

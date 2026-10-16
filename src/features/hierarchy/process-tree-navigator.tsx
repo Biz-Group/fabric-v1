@@ -29,6 +29,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -335,7 +336,7 @@ function CountBadge({
 }) {
   return (
     <span
-      className="flex h-5 min-w-7 shrink-0 items-center justify-center rounded-md border bg-background px-1.5 text-[11px] font-medium tabular-nums text-muted-foreground"
+      className="flex h-5 min-w-7 shrink-0 items-center justify-center rounded-md border bg-background px-1.5 text-2xs font-medium tabular-nums text-muted-foreground"
       title={label}
       aria-label={label}
     >
@@ -796,7 +797,7 @@ export function ProcessTreeNavigator({
       }
       if (!isTypeaheadKey(event)) return;
       // The tree owns printable keys even without a match, so the
-      // Conversations tab's j/k/l playback shortcuts don't fire from here.
+      // Contributions tab's j/k/l playback shortcuts don't fire from here.
       event.preventDefault();
       const now = Date.now();
       const query =
@@ -909,23 +910,23 @@ export function ProcessTreeNavigator({
         {tree === undefined ? (
           <TreeSkeleton />
         ) : tree.functions.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-            <div className="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-              <Building2 className="size-5" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium">No functions yet</p>
-              <p className="text-xs leading-5 text-muted-foreground">
-                Functions will appear here as the workspace hierarchy is built.
-              </p>
-            </div>
-            {canEdit && (
-              <Button size="sm" className="gap-1.5" onClick={onCreateFunction}>
-                <Plus className="size-3.5" />
-                Add function
-              </Button>
-            )}
-          </div>
+          <EmptyState
+            variant="plain"
+            size="sm"
+            titleAs="p"
+            className="h-full"
+            icon={Building2}
+            title="No functions yet"
+            description="Functions will appear here as the workspace hierarchy is built."
+            action={
+              canEdit && (
+                <Button size="sm" className="gap-1.5" onClick={onCreateFunction}>
+                  <Plus className="size-3.5" />
+                  Add function
+                </Button>
+              )
+            }
+          />
         ) : (
           <div
             role="tree"
@@ -1091,7 +1092,7 @@ export function ProcessTreeNavigator({
                                         count={process.conversationCount}
                                         countTitle={countLabel(
                                           process.conversationCount,
-                                          "conversation",
+                                          "contribution",
                                         )}
                                         status={processRowStatus(
                                           process.pendingWorkStatus,

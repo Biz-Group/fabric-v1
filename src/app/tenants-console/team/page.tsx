@@ -17,6 +17,7 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { PageTitle } from "@/components/ui/page-title";
 import {
   Table,
   TableBody,
@@ -34,13 +35,13 @@ export default function PlatformTeamPage() {
   const me = useQuery(api.users.getMe);
 
   if (superAdmins === undefined || me === undefined) {
-    return <LoadingScreen message="Loading platform team..." />;
+    return <LoadingScreen message="Loading platform team…" />;
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">Platform team</h1>
+        <PageTitle>Platform team</PageTitle>
         <p className="text-sm text-muted-foreground">
           Super-admins can manage every tenant and this console.
         </p>
@@ -248,7 +249,7 @@ function PromoteCard() {
               <Badge variant="secondary">Already a super-admin</Badge>
             ) : (
               <Button onClick={() => setConfirmOpen(true)} disabled={promoting}>
-                {promoting ? "Promoting..." : "Promote"}
+                {promoting ? "Promoting…" : "Promote"}
               </Button>
             )}
           </div>
@@ -305,7 +306,7 @@ function StaffSyncCard() {
       </CardHeader>
       <CardContent>
         <Button variant="outline" onClick={handleSync} disabled={syncing}>
-          {syncing ? "Syncing..." : "Sync access to all tenants"}
+          {syncing ? "Syncing…" : "Sync access to all tenants"}
         </Button>
       </CardContent>
     </Card>

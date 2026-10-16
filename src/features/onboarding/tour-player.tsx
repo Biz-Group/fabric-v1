@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type UIEvent } from "react";
 import { FileText, PlayCircle } from "lucide-react";
+import { cardVariants } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { parseVtt, type VttCue } from "./parse-vtt";
 import { playedSeconds, tourSecondsLeft } from "./onboarding-view-model";
@@ -144,7 +145,7 @@ export function TourPlayer({
       </video>
 
       {transcriptOpen && (
-        <div className="rounded-lg border bg-card">
+        <div className={cardVariants({ padding: "none" })}>
           <div
             className="max-h-[min(24rem,55dvh)] overflow-y-auto px-4 py-3"
             onScroll={handleTranscriptScroll}

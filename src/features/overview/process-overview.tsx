@@ -16,6 +16,9 @@ import {
 } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { Card, cardVariants } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SectionLabel } from "@/components/ui/section-label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownSummary } from "@/features/workbench/markdown-summary";
 import {
@@ -86,12 +89,12 @@ function EvidenceStrip({ artifact }: { artifact: ProcessArtifact }) {
   const coverage = artifact.coverage;
   const items = [
     {
-      label: "Conversations included",
+      label: "Contributions included",
       value: coverage.includedSources.toLocaleString(),
       icon: MessageSquareQuote,
     },
     {
-      label: "Eligible conversations",
+      label: "Eligible contributions",
       value: coverage.totalEligibleSources.toLocaleString(),
       icon: Library,
     },
@@ -116,9 +119,9 @@ function EvidenceStrip({ artifact }: { artifact: ProcessArtifact }) {
             <div key={item.label} className="min-w-0 bg-background px-4 py-5 sm:px-5">
               <div className="mb-3 flex items-center gap-2 text-muted-foreground">
                 <Icon className="size-3.5 shrink-0" aria-hidden="true" />
-                <span className="truncate text-[10px] font-semibold uppercase tracking-[0.12em]">
+                <SectionLabel render={<span />} size="sm" className="truncate">
                   {item.label}
-                </span>
+                </SectionLabel>
               </div>
               <p className="text-xl font-semibold tracking-tight sm:text-2xl">
                 {item.value}
@@ -211,7 +214,11 @@ function ReadinessFooter({
               type="button"
               key={destination.label}
               onClick={destination.onOpen}
-              className="focus-ring group flex min-h-20 min-w-0 items-center gap-3 rounded-xl border bg-background p-4 text-left transition-colors hover:border-org-accent-border hover:bg-org-accent-subtle"
+              className={cardVariants({
+                padding: "md",
+                className:
+                  "focus-ring group flex min-h-20 min-w-0 items-center gap-3 text-left transition-colors hover:border-org-accent-border hover:bg-org-accent-subtle",
+              })}
             >
               <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-background group-hover:text-org-accent">
                 <Icon className="size-4" aria-hidden="true" />
@@ -219,7 +226,7 @@ function ReadinessFooter({
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="font-medium">{destination.label}</span>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-2xs text-muted-foreground">
                     {surfaceReadinessLabel(destination.readiness)}
                   </span>
                 </span>
@@ -315,22 +322,22 @@ export function ProcessOverviewContent({
             </div>
           </div>
         ) : (
-          <div className="border-y py-14 text-center">
-            <FileText
-              className="mx-auto size-7 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <h3 className="mt-4 text-lg font-semibold">
-              {overview.state === "refreshing"
+          <EmptyState
+            variant="plain"
+            size="lg"
+            className="border-y py-14"
+            icon={FileText}
+            title={
+              overview.state === "refreshing"
                 ? "Overview will appear here"
-                : "No overview yet"}
-            </h3>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-              {overview.state === "refreshing"
+                : "No overview yet"
+            }
+            description={
+              overview.state === "refreshing"
                 ? "You can continue working while Fabric prepares it in the background."
-                : "Complete a process conversation to establish the first evidence-backed overview."}
-            </p>
-          </div>
+                : "Complete a contribution to this process to establish the first evidence-backed overview."
+            }
+          />
         )}
       </OverviewLead>
 
@@ -366,23 +373,23 @@ export function ProcessOverviewContent({
           <OverviewSection
             id="process-agreements-gaps"
             title="Evidence alignment"
-            description="Agreements and open questions across the available conversations."
+            description="Agreements and open questions across the available contributions."
           >
             <div className="grid gap-10 lg:grid-cols-2 lg:gap-12">
               <div>
-                <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                <SectionLabel render={<h3 />} className="mb-4">
                   Agreements
-                </h3>
+                </SectionLabel>
                 <FindingRows
                   findings={structuredArtifact.consensus}
                   onOpenConversation={onOpenConversation}
-                  emptyText="No cross-conversation agreement has been established yet."
+                  emptyText="No agreement across contributions has been established yet."
                 />
               </div>
               <div>
-                <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                <SectionLabel render={<h3 />} className="mb-4">
                   Knowledge gaps and tensions
-                </h3>
+                </SectionLabel>
                 <FindingRows
                   findings={structuredArtifact.gaps}
                   onOpenConversation={onOpenConversation}
@@ -475,12 +482,12 @@ export function ProcessOverviewCompactPreview({
 
   if (overview === undefined) {
     return (
-      <div className="space-y-3 rounded-xl border p-4">
+      <Card padding="md" className="space-y-3">
         <Skeleton className="h-5 w-28" />
         <Skeleton className="h-7 w-4/5" />
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-3/4" />
-      </div>
+      </Card>
     );
   }
 
@@ -491,12 +498,12 @@ export function ProcessOverviewCompactPreview({
   const preview = artifact?.executiveBrief ?? legacyPreviewText(overview.content.markdown);
 
   return (
-    <section className="rounded-xl border bg-background p-4" aria-label="Process overview preview">
+    <section className={cardVariants({ padding: "md" })} aria-label="Process overview preview">
       <div className="flex flex-wrap items-center gap-2">
         <OverviewStateBadge state={overview.state} />
         {artifact && (
           <span className="text-xs text-muted-foreground">
-            {artifact.coverage.includedSources} of {artifact.coverage.totalEligibleSources} conversations
+            {artifact.coverage.includedSources} of {artifact.coverage.totalEligibleSources} contributions
           </span>
         )}
       </div>

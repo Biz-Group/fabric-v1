@@ -21,6 +21,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { PageTitle } from "@/components/ui/page-title";
 import {
   Table,
   TableBody,
@@ -61,7 +62,7 @@ export default function TenantDetailPage() {
   const tenant = useQuery(api.tenants.get, { tenantId: params.tenantId });
 
   if (tenant === undefined) {
-    return <LoadingScreen message="Loading tenant..." />;
+    return <LoadingScreen message="Loading tenant…" />;
   }
 
   if (tenant === null) {
@@ -145,10 +146,10 @@ function TenantHeader({ tenant }: { tenant: TenantView }) {
           <img
             src={tenant.logoUrl}
             alt=""
-            className="h-12 w-12 rounded-lg object-cover ring-1 ring-border"
+            className="size-12 rounded-lg object-cover ring-1 ring-border"
           />
         ) : (
-          <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted text-sm font-semibold uppercase">
+          <span className="flex size-12 items-center justify-center rounded-lg bg-muted text-sm font-semibold uppercase">
             {tenant.name.slice(0, 2)}
           </span>
         )}
@@ -171,12 +172,12 @@ function TenantHeader({ tenant }: { tenant: TenantView }) {
                 className="h-8 w-64"
               />
               <Button size="sm" onClick={handleRename} disabled={saving}>
-                {saving ? "Saving..." : "Save"}
+                {saving ? "Saving…" : "Save"}
               </Button>
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold">{tenant.name}</h1>
+              <PageTitle>{tenant.name}</PageTitle>
               <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
                 Rename
               </Button>
@@ -190,7 +191,7 @@ function TenantHeader({ tenant }: { tenant: TenantView }) {
               className="inline-flex items-center gap-1 hover:text-foreground hover:underline"
             >
               {tenantHostname(tenant.slug)}
-              <ExternalLink className="h-3 w-3" />
+              <ExternalLink className="size-3" />
             </a>
             <span>Created {formatDate(tenant.createdAt)}</span>
             {tenant.status === "needsAttention" && (
@@ -241,7 +242,7 @@ function ProvisioningErrors({ tenant }: { tenant: TenantView }) {
   };
 
   return (
-    <Card className="ring-destructive/30">
+    <Card className="border-destructive-border">
       <CardHeader>
         <CardTitle className="text-destructive">
           Provisioning incomplete
@@ -258,7 +259,7 @@ function ProvisioningErrors({ tenant }: { tenant: TenantView }) {
           ))}
         </ul>
         <Button onClick={handleRetry} disabled={retrying}>
-          {retrying ? "Retrying..." : "Retry provisioning"}
+          {retrying ? "Retrying…" : "Retry provisioning"}
         </Button>
       </CardContent>
     </Card>
@@ -330,7 +331,7 @@ function DomainsCard({ tenant }: { tenant: TenantView }) {
           </p>
         )}
         <Button onClick={handleSave} disabled={saving || !dirty}>
-          {saving ? "Saving..." : "Save domains"}
+          {saving ? "Saving…" : "Save domains"}
         </Button>
       </CardContent>
     </Card>
@@ -382,15 +383,15 @@ function LogoCard({ tenant }: { tenant: TenantView }) {
           <img
             src={tenant.logoUrl}
             alt=""
-            className="h-14 w-14 rounded-lg object-cover ring-1 ring-border"
+            className="size-14 rounded-lg object-cover ring-1 ring-border"
           />
         ) : (
-          <span className="flex h-14 w-14 items-center justify-center rounded-lg bg-muted text-sm font-semibold uppercase">
+          <span className="flex size-14 items-center justify-center rounded-lg bg-muted text-sm font-semibold uppercase">
             {tenant.name.slice(0, 2)}
           </span>
         )}
         <LogoFileButton
-          label={uploading ? "Uploading..." : "Replace logo"}
+          label={uploading ? "Uploading…" : "Replace logo"}
           disabled={uploading}
           onSelect={(file) => void handleFile(file)}
         />
@@ -413,7 +414,7 @@ function MembersCard({ clerkOrgId }: { clerkOrgId: string }) {
       </CardHeader>
       <CardContent>
         {members === undefined ? (
-          <p className="text-sm text-muted-foreground">Loading members...</p>
+          <p className="text-sm text-muted-foreground">Loading members…</p>
         ) : members.length === 0 ? (
           <p className="text-sm text-muted-foreground">No members yet.</p>
         ) : (
@@ -433,7 +434,7 @@ function MembersCard({ clerkOrgId }: { clerkOrgId: string }) {
                     {member.name}
                     {member.platformRole === "superAdmin" && (
                       <Badge variant="secondary" className="ml-2">
-                        Biz Group
+                        Super Admin
                       </Badge>
                     )}
                   </TableCell>

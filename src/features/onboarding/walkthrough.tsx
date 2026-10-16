@@ -120,7 +120,7 @@ export function ExploreSheet({
       ? {
           icon: Mic,
           title: "Share how the work gets done",
-          body: "Open a process and tap + to start an AI interview, record a voice note, or upload a recording.",
+          body: "Open a process and tap + to start an AI interview, record a voice note, or upload files.",
         }
       : {
           icon: Compass,

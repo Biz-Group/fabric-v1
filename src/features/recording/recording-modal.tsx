@@ -43,6 +43,7 @@ import {
 import { Message, MessageContent } from "@/components/ui/message";
 import { Orb } from "@/components/ui/orb";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
+import { Spinner } from "@/components/ui/spinner";
 import { useOrgAccentOrbColors } from "@/features/theming/use-org-accent-orb-colors";
 import {
   Collapsible,
@@ -69,7 +70,6 @@ import {
   Keyboard,
   CheckCircle2,
   ChevronRight,
-  Loader2,
   RotateCcw,
   Upload,
 } from "lucide-react";
@@ -652,7 +652,7 @@ export function RecordingModal({
       try {
         if (details?.reason === "error") {
           setDisconnectError(
-            "Something went wrong with the connection. If your conversation was long enough, it may still have been captured — check back in a minute. Otherwise, try again."
+            "Something went wrong with the connection. If your interview was long enough, it may still have been captured — check back in a minute. Otherwise, try again."
           );
           return;
         }
@@ -724,7 +724,7 @@ export function RecordingModal({
     } catch (err) {
       console.error("Failed to start session:", err);
       setDisconnectError(
-        "Failed to start the conversation. Please check your microphone and try again."
+        "Failed to start the interview. Please check your microphone and try again."
       );
     }
   }, [conversation, contributorName, buildDynamicVariables]);
@@ -1194,21 +1194,19 @@ export function RecordingModal({
             <DialogHeader>
               <DialogTitle>
                 {mode === "audioUpload"
-                  ? "Upload an Audio File"
+                  ? "Upload files"
                   : mode === "voiceRecord"
-                    ? isOnBehalf
-                      ? "Record a Voice Note"
-                      : "Record Your Voice"
-                    : "Record a Conversation"}
+                    ? "Record a voice note"
+                    : "Start an AI interview"}
               </DialogTitle>
               <DialogDescription>
                 {mode === "audioUpload"
-                  ? "You're about to upload an audio recording about "
+                  ? "You're about to upload files about "
                   : mode === "voiceRecord"
                     ? isOnBehalf
                       ? "You're about to record them describing "
                       : "You're about to record yourself describing "
-                    : "You're about to record a conversation about "}
+                    : "You're about to start an AI interview about "}
                 <span className="font-medium text-foreground">
                   {processName}
                 </span>
@@ -1252,7 +1250,7 @@ export function RecordingModal({
                   htmlFor="contributor-name"
                   className="text-sm font-medium"
                 >
-                  {isOnBehalf ? "Person being recorded" : "Your Name"}
+                  {isOnBehalf ? "Person being recorded" : "Your name"}
                 </label>
                 {subjectMode === "member" ? (
                   <Select
@@ -1340,7 +1338,7 @@ export function RecordingModal({
 
               <div className="rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed">
                 <p className="flex items-center gap-1.5 font-medium">
-                  <Shield className="h-4 w-4 text-primary" />
+                  <Shield className="size-4 text-primary" />
                   Recording notice
                 </p>
                 <p className="mt-1 text-muted-foreground">
@@ -1348,7 +1346,7 @@ export function RecordingModal({
                     ? "The uploaded audio will be transcribed and stored to help document our processes."
                     : mode === "voiceRecord"
                       ? "This recording will be transcribed and stored to help document our processes."
-                      : "This conversation will be recorded, transcribed, and stored to help document our processes."}
+                      : "This interview will be recorded, transcribed, and stored to help document our processes."}
                 </p>
                 {isOnBehalf && (
                   // The notice is only meaningful to the person whose voice is
@@ -1379,7 +1377,7 @@ export function RecordingModal({
                   role="alert"
                   className="flex items-start gap-2 rounded-lg border border-destructive-border bg-destructive-subtle p-3 text-sm text-destructive"
                 >
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                   <div>
                     <p className="font-medium">
                       {MIC_FAILURE_COPY[micFailure].title}
@@ -1396,7 +1394,7 @@ export function RecordingModal({
                         setMicPermission("prompt");
                       }}
                     >
-                      Upload a recording instead
+                      Upload files instead
                     </Button>
                   </div>
                 </div>
@@ -1412,15 +1410,15 @@ export function RecordingModal({
                 className="gap-2"
               >
                 {mode === "audioUpload" ? (
-                  <Upload className="h-4 w-4" />
+                  <Upload className="size-4" />
                 ) : (
-                  <Mic className="h-4 w-4" />
+                  <Mic className="size-4" />
                 )}
                 {mode === "audioUpload"
-                  ? "Choose Audio File"
+                  ? "Choose audio file"
                   : mode === "voiceRecord"
-                    ? "Start Voice Record"
-                    : "Start Recording"}
+                    ? "Start recording"
+                    : "Start interview"}
               </Button>
             </DialogFooter>
           </div>
@@ -1476,7 +1474,7 @@ export function RecordingModal({
                   </div>
 
                   <label className="flex w-full max-w-sm cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-muted-foreground/30 bg-muted/20 p-6 text-sm transition-colors hover:bg-muted/40">
-                    <Upload className="h-6 w-6 text-muted-foreground" />
+                    <Upload className="size-6 text-muted-foreground" />
                     {recordedBlob && uploadedFileName ? (
                       <div className="space-y-1">
                         <p className="font-medium">{uploadedFileName}</p>
@@ -1518,8 +1516,8 @@ export function RecordingModal({
                       {voiceRecordState === "recording"
                         ? "Recording your process notes"
                         : recordedBlob
-                          ? "Recording ready"
-                          : "Voice record mode"}
+                          ? "Voice note ready"
+                          : "Ready to record"}
                     </p>
                     <p className="text-3xl font-semibold tabular-nums">
                       {formatRecordingDuration(voiceRecordSeconds)}
@@ -1557,20 +1555,20 @@ export function RecordingModal({
                   >
                     {voiceRecordState === "recording" ? (
                       <>
-                        <PhoneOff className="h-4 w-4" />
-                        Stop Recording
+                        <PhoneOff className="size-4" />
+                        Stop recording
                       </>
                     ) : recordedBlob ? (
                       <>
-                        <CheckCircle2 className="h-4 w-4" />
-                        Recording Captured
+                        <CheckCircle2 className="size-4" />
+                        Voice note captured
                       </>
                     ) : (
                       <>
-                        <Mic className="h-4 w-4" />
+                        <Mic className="size-4" />
                         {voiceRecordState === "error"
-                          ? "Try Again"
-                          : "Start Recording"}
+                          ? "Try again"
+                          : "Start recording"}
                       </>
                     )}
                   </Button>
@@ -1579,7 +1577,7 @@ export function RecordingModal({
 
               {voiceRecordError && (
                 <div className="flex max-w-sm items-start gap-2 rounded-lg border border-destructive-border bg-destructive-subtle p-3 text-left text-sm text-destructive">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                   <p>{voiceRecordError}</p>
                 </div>
               )}
@@ -1594,7 +1592,7 @@ export function RecordingModal({
                     className="gap-2 rounded-xl"
                     disabled={voiceRecordState === "uploading"}
                   >
-                    <RotateCcw className="h-4 w-4" />
+                    <RotateCcw className="size-4" />
                     Discard
                   </Button>
                   <Button
@@ -1605,12 +1603,12 @@ export function RecordingModal({
                       voiceRecordState === "processing"
                     }
                   >
-                    <Upload className="h-4 w-4" />
+                    <Upload className="size-4" />
                     {voiceRecordError
                       ? "Retry upload"
                       : mode === "audioUpload"
-                        ? "Upload & Process"
-                        : "Submit Recording"}
+                        ? "Upload and process"
+                        : "Submit voice note"}
                   </Button>
                 </div>
               ) : (
@@ -1656,10 +1654,10 @@ export function RecordingModal({
             {disconnectError && isDisconnected && (
               <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
                 <div className="rounded-full bg-destructive/10 p-4">
-                  <AlertTriangle className="h-8 w-8 text-destructive" />
+                  <AlertTriangle className="size-8 text-destructive" />
                 </div>
                 <div className="max-w-sm space-y-2">
-                  <p className="text-sm font-medium">Connection Error</p>
+                  <p className="text-sm font-medium">Connection error</p>
                   <p className="text-sm text-muted-foreground">
                     {disconnectError}
                   </p>
@@ -1675,25 +1673,35 @@ export function RecordingModal({
                       startSession();
                     }}
                   >
-                    Try Again
+                    Try again
                   </Button>
                 </div>
               </div>
             )}
 
-            {/* Connecting state */}
-            {isConnecting && !disconnectError && (
+            {/* Starting and connecting. One block, so the orb doesn't remount
+                between the two. Disconnected with no messages and no error is
+                the initial state (or a clean disconnect). */}
+            {!disconnectError &&
+              (isConnecting ||
+                (isDisconnected && messages.length === 0)) && (
               <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
-                <div className="h-32 w-32">
+                <div className="size-32">
                   <Orb
                     agentState="thinking"
                     colors={orbColors}
                   />
                 </div>
-                <ShimmeringText
-                  text="Connecting to Fabric..."
-                  className="text-sm text-muted-foreground"
-                />
+                <div role="status">
+                  <ShimmeringText
+                    text={
+                      isConnecting
+                        ? "Connecting to Fabric…"
+                        : "Starting interview…"
+                    }
+                    className="text-sm text-muted-foreground"
+                  />
+                </div>
               </div>
             )}
 
@@ -1703,7 +1711,7 @@ export function RecordingModal({
               <>
                 {/* Orb */}
                 <div className="flex shrink-0 items-center justify-center py-4">
-                  <div className="h-24 w-24">
+                  <div className="size-24">
                     <Orb
                       agentState={
                         conversation.isSpeaking
@@ -1748,7 +1756,7 @@ export function RecordingModal({
                       <Input
                         value={textInput}
                         onChange={(e) => setTextInput(e.target.value)}
-                        placeholder="Type a message..."
+                        placeholder="Type a message…"
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
@@ -1764,7 +1772,7 @@ export function RecordingModal({
                         disabled={!textInput.trim()}
                         aria-label="Send message"
                       >
-                        <Send className="h-4 w-4" />
+                        <Send className="size-4" />
                       </Button>
                     </div>
                   )}
@@ -1779,15 +1787,15 @@ export function RecordingModal({
                           size="icon"
                           onClick={() => setIsMuted((prev) => !prev)}
                           className={cn(
-                            "h-10 w-10 rounded-full",
+                            "size-10 rounded-full",
                             isMuted && "bg-destructive-subtle text-destructive"
                           )}
                           aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
                         >
                           {isMuted ? (
-                            <MicOff className="h-4 w-4" />
+                            <MicOff className="size-4" />
                           ) : (
-                            <Mic className="h-4 w-4" />
+                            <Mic className="size-4" />
                           )}
                         </Button>
 
@@ -1797,12 +1805,12 @@ export function RecordingModal({
                           size="icon"
                           onClick={() => setTextMode((prev) => !prev)}
                           className={cn(
-                            "h-10 w-10 rounded-full",
+                            "size-10 rounded-full",
                             textMode && "bg-primary/10 text-primary"
                           )}
                           aria-label={textMode ? "Hide text input" : "Show text input"}
                         >
-                          <Keyboard className="h-4 w-4" />
+                          <Keyboard className="size-4" />
                         </Button>
 
                         {/* End call */}
@@ -1811,8 +1819,8 @@ export function RecordingModal({
                           onClick={endSession}
                           className="gap-2 rounded-full px-6"
                         >
-                          <PhoneOff className="h-4 w-4" />
-                          End Call
+                          <PhoneOff className="size-4" />
+                          End interview
                         </Button>
                       </>
                     )}
@@ -1828,28 +1836,18 @@ export function RecordingModal({
                   {/* Status indicator */}
                   {isConnected && (
                     <div className="mt-2 flex items-center justify-center gap-1.5">
-                      <span className="h-2 w-2 animate-pulse rounded-full bg-success" />
+                      <span className="size-2 animate-pulse rounded-full bg-success" />
                       <span className="text-xs text-muted-foreground">
                         {conversation.isSpeaking
-                          ? "Fabric is speaking..."
+                          ? "Fabric is speaking…"
                           : isMuted
                             ? "Microphone muted"
-                            : "Listening..."}
+                            : "Listening…"}
                       </span>
                     </div>
                   )}
                 </div>
               </>
-            )}
-
-            {/* Disconnected with no messages and no error (initial state or clean disconnect) */}
-            {isDisconnected && !disconnectError && messages.length === 0 && (
-              <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
-                <ShimmeringText
-                  text="Starting conversation..."
-                  className="text-sm text-muted-foreground"
-                />
-              </div>
             )}
           </div>
         )}
@@ -1899,7 +1897,7 @@ export function RecordingModal({
         {/* Step 4: Processing — post-call pipeline running */}
         {step === "processing" && (
           <div className="flex h-[50vh] flex-col items-center justify-center gap-6 p-8">
-            <div className="h-32 w-32">
+            <div className="size-32">
               <Orb
                 agentState="thinking"
                 colors={orbColors}
@@ -1925,14 +1923,16 @@ export function RecordingModal({
                 </div>
               </div>
             ) : (
-              <ShimmeringText
-                text={
-                  isStoredAudio
-                    ? "Transcribing and analyzing..."
-                    : "Processing your conversation..."
-                }
-                className="text-sm text-muted-foreground"
-              />
+              <div role="status">
+                <ShimmeringText
+                  text={
+                    isStoredAudio
+                      ? "Transcribing and analyzing…"
+                      : "Processing your interview…"
+                  }
+                  className="text-sm text-muted-foreground"
+                />
+              </div>
             )}
             <p className="max-w-xs text-center text-xs text-muted-foreground">
               {isUploading
@@ -1949,41 +1949,41 @@ export function RecordingModal({
               <DialogTitle className="flex items-center gap-2">
                 {postCallResult?.status === "done" ? (
                   <>
-                    <CheckCircle2 className="h-5 w-5 text-success" />
+                    <CheckCircle2 className="size-5 text-success" />
                     {mode === "audioUpload"
-                      ? "Audio Uploaded"
+                      ? "Recording saved"
                       : mode === "voiceRecord"
-                        ? "Recording Submitted"
-                        : "Conversation Recorded"}
+                        ? "Voice note saved"
+                        : "Interview saved"}
                   </>
                 ) : postCallResult?.status === "timeout" ||
                   postCallResult?.status === "processing" ? (
                   <>
                     {/* Still running, not a problem: the in-progress tone. */}
-                    <Loader2 className="h-5 w-5 animate-spin text-info motion-reduce:animate-none" />
-                    Still Processing
+                    <Spinner size="lg" className="text-info" />
+                    Still processing
                   </>
                 ) : (
                   <>
-                    <AlertTriangle className="h-5 w-5 text-destructive" />
-                    Processing Failed
+                    <AlertTriangle className="size-5 text-destructive" />
+                    Processing failed
                   </>
                 )}
               </DialogTitle>
               <DialogDescription>
                 {postCallResult?.status === "done"
                   ? mode === "audioUpload"
-                    ? "Your audio file has been transcribed, analyzed, and saved to the process detail panel."
+                    ? "Your recording has been transcribed, analyzed, and added to this process's contributions."
                     : mode === "voiceRecord"
-                      ? "Your recording has been transcribed, analyzed, and saved to the process detail panel."
-                      : "Your conversation has been saved and will appear in the process detail panel."
+                      ? "Your voice note has been transcribed, analyzed, and added to this process's contributions."
+                      : "Your interview has been saved and will appear in this process's contributions."
                   : postCallResult?.status === "timeout" ||
                       postCallResult?.status === "processing"
                     ? mode === "audioUpload"
-                      ? "The upload is being transcribed and analyzed. It will appear automatically once ready."
+                      ? "The recording is being transcribed and analyzed. It will appear automatically once ready."
                       : mode === "voiceRecord"
-                        ? "The recording is being transcribed and analyzed. It will appear automatically once ready."
-                        : "The conversation is still being processed. It will appear automatically once ready."
+                        ? "The voice note is being transcribed and analyzed. It will appear automatically once ready."
+                        : "The interview is still being processed. It will appear automatically once ready."
                     : isFailedStoredAudio
                       ? canRetryProcessing
                         ? "Your recording was saved, but we couldn't transcribe or analyze it. Retry now, or discard it."
@@ -1997,8 +1997,8 @@ export function RecordingModal({
               <div className="mt-4">
                 <Collapsible>
                   <CollapsibleTrigger className="group flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
-                    <ChevronRight className="h-3.5 w-3.5 transition-transform group-data-[panel-open]:rotate-90" />
-                    View Conversation ({messages.length} messages)
+                    <ChevronRight className="size-3.5 transition-transform group-data-[panel-open]:rotate-90" />
+                    View transcript ({messages.length} messages)
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <div className="mt-3 max-h-60 space-y-2 overflow-y-auto rounded-lg border bg-muted/20 p-3">
@@ -2050,7 +2050,7 @@ export function RecordingModal({
                       disabled={failureRetrying}
                       className="gap-2"
                     >
-                      <RotateCcw className="h-4 w-4" />
+                      <RotateCcw className="size-4" />
                       {failureRetrying ? "Retrying…" : "Retry"}
                     </Button>
                   )}

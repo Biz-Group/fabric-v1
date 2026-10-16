@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { PageTitle } from "@/components/ui/page-title";
 import { useLastLoaded } from "@/hooks/use-last-loaded";
 import { UsageBreakdownTable } from "@/features/tenants-console/usage-breakdown-table";
 import { UsageCostChart } from "@/features/tenants-console/usage-cost-chart";
@@ -59,14 +60,14 @@ export default function UsageOverviewPage() {
   );
 
   if (data === undefined || availability === undefined) {
-    return <LoadingScreen message="Loading usage..." />;
+    return <LoadingScreen message="Loading usage…" />;
   }
 
   return (
     <div className="space-y-6" aria-busy={refreshing}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Usage</h1>
+          <PageTitle>Usage</PageTitle>
           <p className="text-sm text-muted-foreground">
             AI and voice spend across every tenant, {from} to {to} (UTC).
             {refreshing && " Updating…"}

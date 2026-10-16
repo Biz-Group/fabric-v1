@@ -7,6 +7,7 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import {
@@ -20,6 +21,7 @@ import {
   House,
   Mic,
   Pencil,
+  Plus,
   Trash2,
 } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -79,8 +81,7 @@ import {
   ColumnItem,
   ColumnHeader,
   ColumnList,
-  EmptyState,
-  LoadingSpinner,
+  ColumnListSkeleton,
   type ColumnItemAction,
 } from "@/features/workbench/workbench-columns";
 import {
@@ -205,14 +206,14 @@ export function ProcessWorkbench() {
     "home",
   );
 
-  // Active detail tab (0 = Overview, 1 = Conversations, 2 = Process Flow,
+  // Active detail tab (0 = Overview, 1 = Contributions, 2 = Process Flow,
   // 3 = Insights, 4 = Automations), seeded from the URL.
   const [detailTab, setDetailTab] = useState<number>(initialSelection.tab);
   const [flowNodeId, setFlowNodeId] = useState<string | null>(
     initialSelection.node,
   );
   const [labelingJumpKey, setLabelingJumpKey] = useState(0);
-  // A `conv` link (Admin → Conversations) opens that contribution once.
+  // A `conv` link (Admin → Contributions) opens that contribution once.
   const [initialConversationId] = useState(() =>
     initialSelection.proc ? readConversationParam(searchParams) : null,
   );
@@ -1463,14 +1464,28 @@ export function ProcessWorkbench() {
       />
       <ColumnList>
         {functions === undefined ? (
-          <LoadingSpinner />
+          <ColumnListSkeleton label="Loading functions" />
         ) : functions.length === 0 ? (
           <EmptyState
+            variant="plain"
+            size="sm"
+            titleAs="p"
             icon={Building2}
             title="No functions yet"
             description="Organizational functions will appear here."
-            actionLabel={canEdit ? "Add function" : undefined}
-            onAction={canEdit ? () => openCrud("create", "Function") : undefined}
+            action={
+              canEdit ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => openCrud("create", "Function")}
+                >
+                  <Plus className="size-3.5" aria-hidden="true" />
+                  Add function
+                </Button>
+              ) : undefined
+            }
           />
         ) : (
           functions.map((fn) => {
@@ -1567,22 +1582,35 @@ export function ProcessWorkbench() {
       <ColumnList>
         {!selectedFunctionId ? (
           <EmptyState
+            variant="plain"
+            size="sm"
+            titleAs="p"
             icon={Layers}
             title="Select a function"
             description="Choose a function from the list to see its departments."
           />
         ) : departments === undefined ? (
-          <LoadingSpinner />
+          <ColumnListSkeleton label="Loading departments" />
         ) : departments.length === 0 ? (
           <EmptyState
+            variant="plain"
+            size="sm"
+            titleAs="p"
             icon={Layers}
             title="No departments"
             description="This function has no departments defined yet."
-            actionLabel={canEdit ? "Add department" : undefined}
-            onAction={
-              canEdit && selectedFunctionId
-                ? () => openCrud("create", "Department")
-                : undefined
+            action={
+              canEdit && selectedFunctionId ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => openCrud("create", "Department")}
+                >
+                  <Plus className="size-3.5" aria-hidden="true" />
+                  Add department
+                </Button>
+              ) : undefined
             }
           />
         ) : (
@@ -1637,22 +1665,35 @@ export function ProcessWorkbench() {
       <ColumnList>
         {!selectedDepartmentId ? (
           <EmptyState
+            variant="plain"
+            size="sm"
+            titleAs="p"
             icon={Cog}
             title="Select a department"
             description="Choose a department to see its processes."
           />
         ) : processes === undefined ? (
-          <LoadingSpinner />
+          <ColumnListSkeleton label="Loading processes" />
         ) : processes.length === 0 ? (
           <EmptyState
+            variant="plain"
+            size="sm"
+            titleAs="p"
             icon={Cog}
             title="No processes"
             description="No processes defined yet for this department."
-            actionLabel={canEdit ? "Add process" : undefined}
-            onAction={
-              canEdit && selectedDepartmentId
-                ? () => openCrud("create", "Process")
-                : undefined
+            action={
+              canEdit && selectedDepartmentId ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => openCrud("create", "Process")}
+                >
+                  <Plus className="size-3.5" aria-hidden="true" />
+                  Add process
+                </Button>
+              ) : undefined
             }
           />
         ) : (
@@ -1879,28 +1920,28 @@ export function ProcessWorkbench() {
                 aria-label="Process workbench sections"
               >
                 <TabsTrigger value={0} className="gap-1.5 px-2 text-xs">
-                  <FileText className="h-3.5 w-3.5" />
+                  <FileText className="size-3.5" />
                   Overview
                 </TabsTrigger>
                 <TabsTrigger value={1} className="gap-1.5 px-2 text-xs">
-                  <Mic className="h-3.5 w-3.5" />
-                  Conversations
+                  <Mic className="size-3.5" />
+                  Contributions
                   {processConversations !== undefined && (
-                    <span className="tabs-count-badge ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-semibold text-muted-foreground">
+                    <span className="tabs-count-badge ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-2xs font-semibold text-muted-foreground">
                       {processConversations.length}
                     </span>
                   )}
                 </TabsTrigger>
                 <TabsTrigger value={2} className="gap-1.5 px-2 text-xs">
-                  <GitBranch className="h-3.5 w-3.5" />
+                  <GitBranch className="size-3.5" />
                   Process Flow
                 </TabsTrigger>
                 <TabsTrigger value={3} className="gap-1.5 px-2 text-xs">
-                  <BarChart3 className="h-3.5 w-3.5" />
+                  <BarChart3 className="size-3.5" />
                   Insights
                 </TabsTrigger>
                 <TabsTrigger value={4} className="gap-1.5 px-2 text-xs">
-                  <Bot className="h-3.5 w-3.5" />
+                  <Bot className="size-3.5" />
                   Automations
                 </TabsTrigger>
               </TabsList>
@@ -1926,7 +1967,7 @@ export function ProcessWorkbench() {
               />
             </TabsContent>
 
-            {/* Conversations tab */}
+            {/* Contributions tab */}
             <TabsContent
               value={1}
               className={cn(
@@ -2034,7 +2075,7 @@ export function ProcessWorkbench() {
       ? "An at-a-glance view of the departments and work in this function."
       : mobilePreview?.type === "department"
         ? "An at-a-glance view of the processes inside this department."
-        : "The current process brief synthesized from captured conversations.";
+        : "The current process overview, synthesized from its contributions.";
   const mobilePreviewNavigateLabel =
     mobilePreview?.type === "function"
       ? "View departments"
@@ -2119,11 +2160,11 @@ export function ProcessWorkbench() {
               <div className="flex items-center gap-3">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-org-accent-subtle text-org-accent">
                   {mobilePreview?.type === "function" ? (
-                    <Building2 className="h-5 w-5" />
+                    <Building2 className="size-5" />
                   ) : mobilePreview?.type === "department" ? (
-                    <Layers className="h-5 w-5" />
+                    <Layers className="size-5" />
                   ) : (
-                    <Cog className="h-5 w-5" />
+                    <Cog className="size-5" />
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -2170,7 +2211,7 @@ export function ProcessWorkbench() {
                 onClick={handleMobilePreviewNavigate}
               >
                 {mobilePreviewNavigateLabel}
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className="size-4" />
               </Button>
             </SheetFooter>
           </SheetContent>
@@ -2238,7 +2279,7 @@ export function ProcessWorkbench() {
               anchor="capture"
               side={isMobile ? "top" : "bottom"}
               title="Capture how this process works"
-              body="Your first contribution turns into a process map. Start an AI interview, record a voice note, or upload a recording."
+              body="Your first contribution turns into a process map. Start an AI interview, record a voice note, or upload files."
               onDismiss={dismissCaptureHint}
               // No capture control on screen: try again another time.
               onAnchorMissing={() => setCaptureHintProcessId(null)}

@@ -3,6 +3,7 @@
 import type { FunctionReturnType } from "convex/server";
 import { AlertTriangle, Info } from "lucide-react";
 import type { api } from "../../../convex/_generated/api";
+import { cardVariants } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -164,7 +165,7 @@ function Tile({
   tone?: "default" | "warning";
 }) {
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className={cardVariants({ padding: "md" })}>
       <div className="text-xs text-muted-foreground">{label}</div>
       {/* Hero number: the tile's whole job is this figure. */}
       <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
@@ -268,7 +269,13 @@ export function UsageCaveats({
   if (notes.length === 0) return null;
 
   return (
-    <div className="space-y-1 rounded-lg border border-border bg-muted/40 px-3 py-2">
+    <div
+      className={cardVariants({
+        variant: "inset",
+        padding: "none",
+        className: "space-y-1 px-3 py-2",
+      })}
+    >
       {notes.map((note) => (
         <div
           key={note}

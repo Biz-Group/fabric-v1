@@ -27,7 +27,15 @@ const RICH_COLOR_TOKENS = {
   "--error-bg": onPopover("--destructive-subtle"),
   "--error-border": "var(--destructive-border)",
   "--error-text": "var(--destructive)",
+  // Sonner's own z-index is 999999999; the toast layer of the app's scale
+  // (globals.css) keeps it above dialogs, menus and the FAB.
+  zIndex: "var(--z-index-toast)",
 } as CSSProperties;
+
+// Sonner's default offsets (24px, 16px on phones), lifted over a docked bottom
+// bar (the audio mini-player) so a toast never covers its controls.
+const OFFSET = { bottom: "calc(24px + var(--bottom-dock-height, 0px))" };
+const MOBILE_OFFSET = { bottom: "calc(16px + var(--bottom-dock-height, 0px))" };
 
 export function ThemeToaster() {
   const { resolvedTheme } = useTheme();
@@ -38,6 +46,8 @@ export function ThemeToaster() {
       richColors
       closeButton
       position="bottom-right"
+      offset={OFFSET}
+      mobileOffset={MOBILE_OFFSET}
       style={RICH_COLOR_TOKENS}
     />
   );

@@ -19,7 +19,7 @@ describe("noConversationsMessage", () => {
 
   it("asks for a first contribution when none are pending", () => {
     expect(noConversationsMessage({ processing: 0, needsLabels: 0 })).toBe(
-      "Record at least one conversation first.",
+      "Add at least one contribution first.",
     );
   });
 });

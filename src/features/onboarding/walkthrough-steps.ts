@@ -226,7 +226,7 @@ export function walkthroughSteps({
         id: "capture",
         anchor: "capture",
         title: "Share what you know",
-        body: "Know how this work gets done? Start an AI interview, record a voice note, or upload a recording.",
+        body: "Know how this work gets done? Start an AI interview, record a voice note, or upload files.",
       });
     }
   }

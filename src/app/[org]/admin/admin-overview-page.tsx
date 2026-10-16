@@ -7,8 +7,10 @@ import { api } from "../../../../convex/_generated/api";
 import { Id } from "../../../../convex/_generated/dataModel";
 import { StatCard } from "@/features/admin/stat-card";
 import { ConversationTranscriptDialog } from "@/features/admin/conversation-transcript-dialog";
+import { cardVariants } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { LoadingScreen } from "@/components/ui/loading-screen";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PageTitle } from "@/components/ui/page-title";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 import { StatusBadge } from "@/features/status/status-badge";
 import { conversationStatusMeta } from "@/features/status/status-meta";
@@ -83,7 +85,7 @@ export default function AdminOverviewPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Overview</h2>
+        <PageTitle render={<h2 />}>Overview</PageTitle>
         <p className="text-sm text-muted-foreground">
           A snapshot of activity and health in this workspace.
         </p>
@@ -113,14 +115,14 @@ export default function AdminOverviewPage() {
           href={routes.adminUsersHref}
         />
         <StatCard
-          label="Conversations this week"
+          label="Contributions this week"
           value={weeklyConversations}
           hint={weeklyDelta ?? undefined}
           icon={MessageSquare}
           href={routes.adminConversationsHref}
         />
         <StatCard
-          label="Failed conversations"
+          label="Failed contributions"
           value={failedConversations}
           hint={
             failedConversations === undefined
@@ -142,22 +144,38 @@ export default function AdminOverviewPage() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold">Recent conversations</h3>
+            <h3 className="text-sm font-semibold">Recent contributions</h3>
             <p className="text-xs text-muted-foreground">
               The last 5 captured across every process.
             </p>
           </div>
         </div>
         {recentConversations === undefined ? (
-          <LoadingScreen fullScreen={false} message="Loading recent conversations..." />
+          <div role="status">
+            <span className="sr-only">Loading recent contributions</span>
+            <div
+              className={cardVariants({ padding: "none", className: "divide-y" })}
+              aria-hidden="true"
+            >
+              {[0, 1, 2, 3, 4].map((row) => (
+                <div key={row} className="flex items-center gap-3 px-3 py-2.5">
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <Skeleton className="h-4 w-2/5" />
+                    <Skeleton className="h-3 w-3/4" />
+                  </div>
+                  <Skeleton className="h-5 w-20 rounded-full" />
+                </div>
+              ))}
+            </div>
+          </div>
         ) : recentConversations.page.length === 0 ? (
           <EmptyState
             icon={MessageSquare}
-            title="No conversations yet"
-            description="Captured process conversations will appear here as soon as contributors start recording."
+            title="No contributions yet"
+            description="Contributions will appear here as soon as people start an AI interview, record a voice note, or upload files."
           />
         ) : (
-          <div className="divide-y rounded-lg border">
+          <div className={cardVariants({ padding: "none", className: "divide-y" })}>
             {recentConversations.page.map((r) => (
               <button
                 type="button"

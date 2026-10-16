@@ -1,6 +1,7 @@
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
+import { Spinner } from "@/components/ui/spinner"
 
 type LoadingScreenProps = React.ComponentProps<"div"> & {
   message?: string
@@ -10,7 +11,7 @@ type LoadingScreenProps = React.ComponentProps<"div"> & {
 
 function LoadingScreen({
   className,
-  message = "Loading...",
+  message = "Loading…",
   fullScreen = true,
   showSpinner = true,
   children,
@@ -28,10 +29,7 @@ function LoadingScreen({
       {...props}
     >
       {showSpinner && (
-        <div
-          className="size-5 animate-spin rounded-full border-2 border-primary/25 border-t-primary"
-          aria-hidden="true"
-        />
+        <Spinner size="lg" className="text-muted-foreground" />
       )}
       <p className="text-sm text-muted-foreground">{message}</p>
       {children}

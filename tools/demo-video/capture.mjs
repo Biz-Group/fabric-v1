@@ -96,7 +96,7 @@ await shot("proc", {
   upload: page.getByRole("button", { name: "Upload files" }),
   title: page.getByRole("heading", { name: "PM Flow" }),
   tabs: page.getByRole("tablist"),
-  tabConversations: tab("Conversations"),
+  tabConversations: tab("Contributions"),
   tabFlow: tab("Process Flow"),
   tabInsights: tab("Insights"),
   tabAutomations: tab("Automations"),
@@ -120,7 +120,7 @@ await page.keyboard.press("Escape");
 await page.waitForTimeout(800);
 
 // --- Conversations -------------------------------------------------------------
-await tab("Conversations").click();
+await tab("Contributions").click();
 await settle();
 await page.waitForTimeout(2000);
 await shot("conv", {

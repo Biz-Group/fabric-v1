@@ -46,10 +46,12 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  cardVariants,
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { PageTitle } from "@/components/ui/page-title";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { StatusTone } from "@/features/status/status-meta";
 import { describeError } from "@/lib/user-error-message";
@@ -217,7 +219,7 @@ function WorkspaceMock() {
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold">Fabric.</span>
           <span className="h-4 w-px bg-border" aria-hidden />
-          <span className="flex size-7 items-center justify-center rounded-md border border-org-accent-border bg-org-accent-subtle text-[10px] font-semibold text-org-accent-selected-foreground">
+          <span className="flex size-7 items-center justify-center rounded-md border border-org-accent-border bg-org-accent-subtle text-2xs font-semibold text-org-accent-selected-foreground">
             ORG
           </span>
         </div>
@@ -238,9 +240,9 @@ function WorkspaceMock() {
             Learning Technology / Axonify
           </div>
           <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
-            <h4 className="min-w-0 truncate text-base font-semibold">
+            <p className="min-w-0 truncate text-base font-semibold">
               Axonify Support Ticketing
-            </h4>
+            </p>
             <span className="inline-flex h-7 items-center rounded-lg bg-org-accent px-2.5 text-[0.8rem] font-medium text-org-accent-foreground">
               Primary action
             </span>
@@ -266,12 +268,12 @@ function WorkspaceMock() {
           <div className="space-y-3 p-3">
             <div className="flex items-center gap-3 border-b text-xs">
               <span className="border-b-2 border-org-accent px-1 pb-2 font-medium text-org-accent">
-                Conversations
+                Contributions
               </span>
               <span className="px-1 pb-2 text-muted-foreground">
                 Process Flow
               </span>
-              <span className="mb-2 flex h-5 min-w-5 items-center justify-center rounded-full border border-org-accent-border bg-org-accent-subtle px-1.5 text-[11px] font-semibold text-org-accent-selected-foreground">
+              <span className="mb-2 flex h-5 min-w-5 items-center justify-center rounded-full border border-org-accent-border bg-org-accent-subtle px-1.5 text-2xs font-semibold text-org-accent-selected-foreground">
                 2
               </span>
             </div>
@@ -283,13 +285,13 @@ function WorkspaceMock() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">
-                    AI Interview with Saish
+                    AI interview with Saish
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     Apr 22, 1:39 PM - 15:28
                   </div>
                 </div>
-                <span className="rounded-full border border-org-accent-border bg-org-accent-subtle px-2 py-0.5 text-[11px] font-medium text-org-accent-selected-foreground">
+                <span className="rounded-full border border-org-accent-border bg-org-accent-subtle px-2 py-0.5 text-2xs font-medium text-org-accent-selected-foreground">
                   Completed
                 </span>
               </div>
@@ -382,7 +384,7 @@ function AccentAdjustmentNote({ adjustment }: { adjustment: AccentAdjustment }) 
   ] as const;
 
   return (
-    <div className="space-y-3 rounded-lg border p-3">
+    <div className={cardVariants({ padding: "sm", className: "space-y-3" })}>
       <div className="flex flex-wrap gap-x-5 gap-y-2">
         {swatches.map(([label, hex]) => (
           <div key={label} className="flex items-center gap-2">
@@ -483,7 +485,7 @@ export default function AdminAppearancePage() {
 
   const handleGenerate = async () => {
     if (!logoUrl) {
-      toast.error("Add an organization logo in Clerk before generating a theme.");
+      toast.error("Ask Biz Group to add a workspace logo before generating a theme.");
       return;
     }
 
@@ -492,7 +494,7 @@ export default function AdminAppearancePage() {
       await startThemeGeneration({ sourceLogoUrl: logoUrl });
       const accentRgb = await extractLogoAccentRgb(logoUrl);
       await saveGeneratedCandidate({ sourceLogoUrl: logoUrl, accentRgb });
-      toast.success("Generated a theme candidate from the organization logo.");
+      toast.success("Generated a theme candidate from the workspace logo.");
     } catch (error) {
       const reason = describeError(error, "Theme generation failed.");
       try {
@@ -687,7 +689,7 @@ export default function AdminAppearancePage() {
 
   if (theme === undefined) {
     return (
-      <LoadingScreen fullScreen={false} message="Loading appearance settings..." />
+      <LoadingScreen fullScreen={false} message="Loading appearance settings…" />
     );
   }
 
@@ -695,9 +697,9 @@ export default function AdminAppearancePage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Appearance</h2>
+          <PageTitle render={<h2 />}>Branding</PageTitle>
           <p className="text-sm text-muted-foreground">
-            Generate and approve a restrained workspace accent from your organization logo.
+            Generate and approve a restrained workspace accent from your workspace logo.
           </p>
         </div>
         <Badge tone={statusTone(theme?.status)}>{statusLabel}</Badge>
@@ -705,7 +707,7 @@ export default function AdminAppearancePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Organization logo</CardTitle>
+          <CardTitle>Workspace logo</CardTitle>
           <CardDescription>
             The logo is sampled only when an admin starts generation.
           </CardDescription>
@@ -716,7 +718,7 @@ export default function AdminAppearancePage() {
               {logoUrl ? (
                 <Image
                   src={logoUrl}
-                  alt={organization?.name ? `${organization.name} logo` : "Organization logo"}
+                  alt={organization?.name ? `${organization.name} logo` : "Workspace logo"}
                   width={48}
                   height={48}
                   unoptimized
@@ -781,8 +783,8 @@ export default function AdminAppearancePage() {
       {!logoUrl && (
         <EmptyState
           icon={Palette}
-          title="No organization logo"
-          description="Add a logo in Clerk before generating an org accent theme. Fabric will stay neutral until then."
+          title="No workspace logo"
+          description="Ask Biz Group to add a workspace logo before generating an accent theme. Fabric will stay neutral until then."
         />
       )}
 
@@ -851,7 +853,7 @@ export default function AdminAppearancePage() {
           <EmptyState
             icon={Palette}
             title="Neutral theme active"
-            description="No approved org accent is active yet. Generate and approve a candidate to apply one."
+            description="No approved workspace accent is active yet. Generate and approve a candidate to apply one."
             action={(
               <Button
                 type="button"

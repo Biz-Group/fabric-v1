@@ -197,7 +197,7 @@ export function composeOpportunityBrief(input: BriefInput): OpportunityBrief {
     `Build ${KIND_LEAD[opportunity.kind]} that supports the **${input.processName}** process` +
     `${where ? ` (${where})` : ""}. ` +
     (coverage
-      ? `This brief is built from ${pluralize(coverage.includedSources, "recorded conversation")}` +
+      ? `This brief is built from ${pluralize(coverage.includedSources, "recorded contribution")}` +
         `${
           coverage.uniqueContributors === undefined
             ? ""
@@ -245,7 +245,7 @@ export function composeOpportunityBrief(input: BriefInput): OpportunityBrief {
   if (coverage && !coverage.complete) {
     unknowns.push(
       `Evidence is partial — ${coverage.includedSources} of ` +
-        `${coverage.totalEligibleSources} eligible conversations are included.`,
+        `${coverage.totalEligibleSources} eligible contributions are included.`,
     );
   }
   if (actors.length === 0) unknowns.push("No owner is named for these steps.");

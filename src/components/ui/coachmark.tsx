@@ -134,7 +134,7 @@ export function Coachmark({
     <>
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed z-40 rounded-lg shadow-[0_0_0_9999px_rgb(0_0_0/0.45)] ring-2 ring-org-accent transition-[top,left,width,height] duration-200 motion-reduce:transition-none"
+        className="pointer-events-none fixed z-coachmark rounded-lg shadow-[0_0_0_9999px_rgb(0_0_0/0.45)] ring-2 ring-org-accent transition-[top,left,width,height] duration-200 motion-reduce:transition-none"
         style={{
           top: rect.top - SPOTLIGHT_PADDING_PX,
           left: rect.left - SPOTLIGHT_PADDING_PX,
@@ -159,7 +159,12 @@ export function Coachmark({
           }
         }}
       >
-        <PopoverContent anchor={element} side={side} className="w-80">
+        <PopoverContent
+          anchor={element}
+          side={side}
+          layer="z-coachmark"
+          className="w-80"
+        >
           <div className="flex items-start justify-between gap-3">
             <PopoverTitle className="pt-0.5">{title}</PopoverTitle>
             <PopoverClose

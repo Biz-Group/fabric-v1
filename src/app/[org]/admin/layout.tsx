@@ -4,6 +4,9 @@ import { useQuery } from "convex/react";
 import Link from "next/link";
 import { Home, MessageSquare, Palette, Users } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
+import { buttonVariants } from "@/components/ui/button";
+import { PageTitle } from "@/components/ui/page-title";
+import { LoadingScreen } from "@/components/ui/loading-screen";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   WorkspaceAppShell,
@@ -22,19 +25,14 @@ export default function AdminLayout({
   const routes = useWorkspaceRoutes();
 
   if (membership === undefined) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-        <p className="text-sm text-muted-foreground">Loading admin...</p>
-      </div>
-    );
+    return <LoadingScreen message="Loading admin…" />;
   }
 
   if (membership?.role !== "admin") {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 p-6 text-center">
         <div>
-          <h1 className="text-lg font-semibold">Admin access required</h1>
+          <PageTitle>Admin access required</PageTitle>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
             {membership
               ? `Your current workspace role is ${membership.role}. `
@@ -44,7 +42,7 @@ export default function AdminLayout({
         </div>
         <Link
           href={routes.appHref}
-          className="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted"
+          className={buttonVariants({ variant: "outline" })}
         >
           Back to processes
         </Link>
@@ -65,19 +63,19 @@ export default function AdminLayout({
         {
           href: routes.adminUsersHref,
           icon: Users,
-          label: "Users",
+          label: "Members",
           active: routes.isActivePath("/admin/users", { exact: true }),
         },
         {
           href: routes.adminConversationsHref,
           icon: MessageSquare,
-          label: "Conversations",
+          label: "Contributions",
           active: routes.isActivePath("/admin/conversations", { exact: true }),
         },
         {
           href: routes.adminAppearanceHref,
           icon: Palette,
-          label: "Appearance",
+          label: "Branding",
           active: routes.isActivePath("/admin/appearance", { exact: true }),
         },
       ],

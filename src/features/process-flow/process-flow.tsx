@@ -17,7 +17,6 @@ import { useAction } from "convex/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   GitBranch,
-  Loader2,
   AlertCircle,
   Maximize2,
   Minimize2,
@@ -43,6 +42,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { LoadingScreen } from "@/components/ui/loading-screen";
+import { SectionLabel } from "@/components/ui/section-label";
+import { LoadingState, Spinner } from "@/components/ui/spinner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -801,15 +804,17 @@ function ProcessFlowInner({
   // Empty state: no flow generated yet
   if (flow === undefined) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
+      <LoadingScreen
+        fullScreen={false}
+        message="Loading process flow…"
+        className="min-h-0 flex-1 border-0 bg-transparent"
+      />
     );
   }
 
   if (flow === null) {
     return (
-      <EmptyState
+      <FlowEmptyState
         onGenerate={canEdit ? handleGenerate : undefined}
         isGenerating={isGenerating}
         hasConversations={conversationCount > 0}
@@ -826,20 +831,12 @@ function ProcessFlowInner({
   const detailProgress = flowDetailProgress(flow);
   if (stage === "graph") {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
-        <div className="flex flex-col items-center gap-3">
-          <div className="relative">
-            <GitBranch className="h-10 w-10 text-muted-foreground/40" />
-            <Loader2 className="text-org-accent absolute -right-1 -bottom-1 h-5 w-5 animate-spin" />
-          </div>
-          <div className="text-center">
-            <p className="text-sm font-medium">Generating process flow...</p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              Analyzing conversations and mapping the process structure
-            </p>
-          </div>
-        </div>
-      </div>
+      <LoadingState
+        variant="plain"
+        className="flex-1"
+        title="Generating process flow…"
+        description="Analyzing contributions and mapping the process structure"
+      />
     );
   }
 
@@ -851,7 +848,7 @@ function ProcessFlowInner({
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
         <div className="flex flex-col items-center gap-3">
-          <AlertCircle className="h-10 w-10 text-muted-foreground/40" />
+          <AlertCircle className="size-10 text-muted-foreground/40" />
           <div className="text-center">
             <p className="text-sm font-medium">Flow generation failed</p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -874,9 +871,9 @@ function ProcessFlowInner({
               className="gap-2"
             >
               {isGenerating ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Spinner className="size-4" />
               ) : (
-                <RefreshCw className="h-4 w-4" />
+                <RefreshCw className="size-4" />
               )}
               Try Again
             </Button>
@@ -899,7 +896,7 @@ function ProcessFlowInner({
       <div
         className={
           isFullscreen
-            ? "fixed inset-0 z-50 flex flex-col bg-background"
+            ? "fixed inset-0 z-fullscreen flex flex-col bg-background"
             : "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         }
       >
@@ -914,7 +911,7 @@ function ProcessFlowInner({
           {stage === "details" && (
             <div className="absolute top-3 left-3 right-12 z-10 md:right-auto">
               <div className="border-border bg-card/90 flex max-w-full flex-wrap items-center gap-2 rounded-lg border px-3 py-1.5 text-xs backdrop-blur-sm">
-                <Loader2 className="text-org-accent h-3 w-3 animate-spin" />
+                <Spinner className="size-3 text-org-accent" />
                 <span className="text-muted-foreground">
                   {detailProgress
                     ? `Describing steps — ${detailProgress.completed} of ${detailProgress.total}`
@@ -932,7 +929,7 @@ function ProcessFlowInner({
             // over the canvas.
             <div className="absolute top-3 left-3 right-12 z-10 rounded-lg bg-card md:right-auto">
               <div className="flex max-w-full flex-wrap items-center gap-2 rounded-lg border border-warning-border bg-warning-subtle px-3 py-1.5 text-xs text-warning">
-                <AlertCircle className="h-3 w-3 shrink-0" />
+                <AlertCircle className="size-3 shrink-0" />
                 <span>Couldn&apos;t refresh — showing the previous version</span>
                 {canEdit && (
                   <Button
@@ -943,9 +940,9 @@ function ProcessFlowInner({
                     disabled={isGenerating}
                   >
                     {isGenerating ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <Spinner className="size-3" />
                     ) : (
-                      <RefreshCw className="h-3 w-3" />
+                      <RefreshCw className="size-3" />
                     )}
                     Try Again
                   </Button>
@@ -960,7 +957,7 @@ function ProcessFlowInner({
             (isStale || hasNewerConversations) && (
               <div className="absolute left-3 right-12 top-3 z-10 rounded-lg bg-card md:right-auto">
                 <div className="flex max-w-full flex-wrap items-center gap-2 rounded-lg border border-warning-border bg-warning-subtle px-3 py-1.5 text-xs text-warning">
-                  <span>New data available</span>
+                  <span>New evidence available</span>
                   {canEdit && (
                     <Button
                       variant="ghost"
@@ -970,9 +967,9 @@ function ProcessFlowInner({
                       disabled={isGenerating}
                     >
                       {isGenerating ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <Spinner className="size-3" />
                       ) : (
-                        <RefreshCw className="h-3 w-3" />
+                        <RefreshCw className="size-3" />
                       )}
                       Refresh
                     </Button>
@@ -1058,12 +1055,12 @@ function ProcessFlowInner({
                   <div className="rounded-xl border border-border bg-card/95 px-3 py-2 shadow-lg backdrop-blur-md">
                     <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                       <UsersRound
-                        className="h-3.5 w-3.5 text-org-accent"
+                        className="size-3.5 text-org-accent"
                         aria-hidden
                       />
                       Owner lanes
                     </div>
-                    <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                    <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
                       A reading aid, not ownership data. Multi-actor steps
                       appear in Shared; unfinished steps stay in Awaiting
                       details. Choose Process view to turn it off.
@@ -1272,13 +1269,21 @@ function OwnerLaneBackdrop({
           }}
           aria-hidden
         >
-          <span className="absolute left-4 top-3 max-w-[calc(100%-2rem)] truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          <SectionLabel
+            render={<span />}
+            size="sm"
+            className="absolute left-4 top-3 max-w-[calc(100%-2rem)] truncate"
+          >
             {lane.label}
-          </span>
+          </SectionLabel>
           {direction === "vertical" && (
-            <span className="absolute bottom-3 left-4 max-w-[calc(100%-2rem)] truncate rounded-full border border-border/70 bg-card/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground shadow-sm">
+            <SectionLabel
+              render={<span />}
+              size="sm"
+              className="absolute bottom-3 left-4 max-w-[calc(100%-2rem)] truncate rounded-full border border-border/70 bg-card/90 px-2 py-1 shadow-sm"
+            >
               {lane.label}
-            </span>
+            </SectionLabel>
           )}
         </div>
       ))}
@@ -1484,7 +1489,7 @@ function ViewportToolbar({
           <Minus aria-hidden />
         </ToolbarButton>
         <output
-          className="min-w-11 px-1 text-center text-[11px] font-medium tabular-nums text-muted-foreground @max-xs:hidden pointer-coarse:@max-md:hidden"
+          className="min-w-11 px-1 text-center text-2xs font-medium tabular-nums text-muted-foreground @max-xs:hidden pointer-coarse:@max-md:hidden"
           aria-label={`Current zoom ${Math.round(zoom * 100)} percent`}
         >
           {Math.round(zoom * 100)}%
@@ -1620,7 +1625,7 @@ function DesktopPanelResizeHandle({
   );
 }
 
-function EmptyState({
+function FlowEmptyState({
   onGenerate,
   isGenerating,
   hasConversations,
@@ -1635,54 +1640,56 @@ function EmptyState({
   actionError: string | null;
 }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
-      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted/60">
-        <GitBranch className="h-8 w-8 text-muted-foreground/50" />
-      </div>
-      <div className="text-center">
-        <p className="text-sm font-medium">No process flow yet</p>
-        <p className="mt-1 max-w-[280px] text-xs text-muted-foreground">
-          {onGenerate ? (
-            <>Generate a visual flow diagram from this process&apos;s conversations.</>
-          ) : (
-            <>
-              A contributor or admin can generate a flow diagram from this
-              process&apos;s contributions.
-            </>
-          )}
-        </p>
-      </div>
-      {onGenerate && (
-        <Button
-          size="sm"
-          onClick={onGenerate}
-          disabled={isGenerating || !hasConversations}
-          className="gap-2"
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Generating...
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-4 w-4" />
-              Generate Process Flow
-            </>
-          )}
-        </Button>
-      )}
+    <EmptyState
+      variant="plain"
+      titleAs="p"
+      className="flex-1"
+      icon={GitBranch}
+      title="No process flow yet"
+      description={
+        onGenerate ? (
+          <>Generate a visual flow diagram from this process&apos;s contributions.</>
+        ) : (
+          <>
+            A contributor or admin can generate a flow diagram from this
+            process&apos;s contributions.
+          </>
+        )
+      }
+      action={
+        onGenerate && (
+          <Button
+            size="sm"
+            onClick={onGenerate}
+            disabled={isGenerating || !hasConversations}
+            className="gap-2"
+          >
+            {isGenerating ? (
+              <>
+                <Spinner className="size-4" />
+                Generating…
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-4" />
+                Generate Process Flow
+              </>
+            )}
+          </Button>
+        )
+      }
+    >
       {actionError && (
         <p className="max-w-sm text-xs text-destructive" role="alert">
           {actionError}
         </p>
       )}
       {!hasConversations && (
-        <p className="max-w-[280px] text-center text-[11px] text-muted-foreground">
+        <p className="max-w-[280px] text-center text-2xs text-muted-foreground">
           {noConversationsMessage(pendingConversations)}
         </p>
       )}
-    </div>
+    </EmptyState>
   );
 }
 
@@ -1727,12 +1734,12 @@ function InsightsBar({
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-muted-foreground">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
           <span className="flex items-center gap-1">
-            <BarChart3 className="h-3 w-3" aria-hidden />
+            <BarChart3 className="size-3" aria-hidden />
             {nodeCount} steps
           </span>
           {insights.totalEstimatedDuration && (
             <span className="flex items-center gap-1">
-              <Clock className="h-3 w-3" aria-hidden />
+              <Clock className="size-3" aria-hidden />
               {insights.totalEstimatedDuration}
             </span>
           )}
@@ -1783,7 +1790,7 @@ function InsightsBar({
                   : undefined
               }
             >
-              <Bot className="h-3 w-3" aria-hidden />
+              <Bot className="size-3" aria-hidden />
               {automationCount}{" "}
               {automationUnreviewed ? "possible" : "recommended"} automation
               {automationCount !== 1 ? "s" : ""}
@@ -1861,7 +1868,7 @@ function SpotlightButton({
             disabled={disabled}
             onClick={onClick}
           >
-            <Icon className="h-3 w-3" aria-hidden />
+            <Icon className="size-3" aria-hidden />
             <span className="tabular-nums">{spotlight.metricCount}</span>
             <span>{spotlight.metricLabel}</span>
           </Button>

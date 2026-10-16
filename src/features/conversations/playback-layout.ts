@@ -1,4 +1,4 @@
-// Layout rules for the Conversations tab's playback. Below `md` the list and
+// Layout rules for the Contributions tab's playback. Below `md` the list and
 // the playback stack and scroll as one column inside the workbench's tab
 // panel, so the playback can sit far below the list and its controls can
 // scroll off screen.

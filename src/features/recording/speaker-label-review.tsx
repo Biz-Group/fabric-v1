@@ -2,12 +2,14 @@
 
 import { useId, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { AudioLines, CheckCircle2, Loader2, UserRound } from "lucide-react";
+import { AudioLines, CheckCircle2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import { cardVariants } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -109,10 +111,10 @@ export function SpeakerLabelReview({
 
   if (!transcript || transcript.length === 0) {
     return (
-      <div className={cn("rounded-lg border bg-muted/20 p-4", className)}>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Preparing speaker review...
+      <div className={cardVariants({ variant: "inset", padding: "md", className })}>
+        <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Spinner />
+          Preparing speaker review…
         </div>
       </div>
     );
@@ -205,7 +207,7 @@ function SpeakerLabelEditor({
   }
 
   return (
-    <div className={cn("space-y-4 rounded-lg border bg-background p-4", className)}>
+    <div className={cn(cardVariants({ padding: "md" }), "space-y-4", className)}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold">Name the speakers</h3>
@@ -214,8 +216,8 @@ function SpeakerLabelEditor({
             analysis.
           </p>
         </div>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <UserRound className="h-4 w-4" />
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <UserRound className="size-4" />
         </div>
       </div>
 
@@ -225,7 +227,7 @@ function SpeakerLabelEditor({
             id={audioLabelId}
             className="flex items-center gap-2 text-xs font-medium text-muted-foreground"
           >
-            <AudioLines className="h-3.5 w-3.5" />
+            <AudioLines className="size-3.5" />
             Recording audio
           </div>
           <audio
@@ -247,7 +249,7 @@ function SpeakerLabelEditor({
           const memberLabelId = `${fieldId}-${index}-member-label`;
           const memberId = `${fieldId}-${index}-member`;
           return (
-            <div key={row.speakerId} className="rounded-md border p-3">
+            <div key={row.speakerId} className={cardVariants({ padding: "sm" })}>
               <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_220px]">
                 <div className="space-y-1.5">
                   {/* Names read "Name for Speaker 2" and "Member for
@@ -346,9 +348,9 @@ function SpeakerLabelEditor({
           className="gap-2"
         >
           {submitting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Spinner />
           ) : (
-            <CheckCircle2 className="h-4 w-4" />
+            <CheckCircle2 className="size-4" />
           )}
           Save and Analyze
         </Button>

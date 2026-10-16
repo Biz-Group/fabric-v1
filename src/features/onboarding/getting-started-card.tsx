@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Check, ChevronDown, PartyPopper } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
+import { cardVariants } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { describeError } from "@/lib/user-error-message";
 import { InviteMemberDialog } from "@/features/admin/invite-member-dialog";
@@ -131,7 +132,7 @@ export function GettingStartedCard({
         return (
           <div className="space-y-3">
             <p className="text-sm leading-6 text-muted-foreground">
-              See how Fabric turns conversations about your work into process
+              See how Fabric turns contributions about your work into process
               maps.
             </p>
             <Button type="button" size="sm" onClick={() => setTourOpen(true)}>
@@ -195,7 +196,7 @@ export function GettingStartedCard({
           <div className="space-y-3">
             <p className="text-sm leading-6 text-muted-foreground">
               Your first contribution turns into a process map. Start an AI
-              interview, record a voice note, or upload a recording.
+              interview, record a voice note, or upload files.
             </p>
             {checklist.newestProcess && (
               <Button
@@ -232,7 +233,7 @@ export function GettingStartedCard({
     <section
       aria-labelledby={headingId}
       data-tour="getting-started"
-      className="mt-8 scroll-mt-6 rounded-xl border bg-card"
+      className={cardVariants({ padding: "none", className: "mt-8 scroll-mt-6" })}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-5">
         <h2 id={headingId} className="text-base font-semibold tracking-tight">

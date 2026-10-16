@@ -133,7 +133,7 @@ describe("overview presentation rules", () => {
     const reason = refreshUnavailableReason("missing", false, undefined, false);
 
     expect(reason).toBe(
-      "No conversation has been completed for this process yet. Build becomes available once one is recorded.",
+      "No contribution has been completed for this process yet. Build becomes available once one is complete.",
     );
     // It outranks the generic "nothing new to read" explanation at any state,
     // including a built process whose conversations were all deleted.
@@ -143,7 +143,7 @@ describe("overview presentation rules", () => {
     expect(refreshUnavailableReason("missing", false)).not.toBe(reason);
     // The status detail names the same next step instead of offering a build.
     const detail = overviewStatusDetail("missing", null, undefined, true, false);
-    expect(detail).toContain("Complete a process conversation");
+    expect(detail).toContain("Complete a contribution to this process");
     expect(detail).not.toContain("when you are ready");
   });
 
@@ -162,7 +162,7 @@ describe("overview presentation rules", () => {
     // that one is about children it could not read, this one about having none.
     expect(
       refreshUnavailableReason("missing", false, "processes", false),
-    ).not.toContain("conversation");
+    ).not.toContain("contribution");
     expect(
       overviewStatusDetail("missing", null, "processes", true, false),
     ).toContain("Build one of its processes");

@@ -25,7 +25,7 @@ export type HomeProcessEntry = HomeDepartmentEntry & {
 };
 
 const NO_INTERVIEWS_YET: StatusMeta = {
-  label: "No interviews yet",
+  label: "No contributions yet",
   tone: "neutral",
   icon: CircleDashed,
 };
@@ -119,8 +119,8 @@ export function describeConversationStatus(
 }
 
 export function interviewCountLabel(count: number) {
-  if (count === 0) return "No interviews";
-  return count === 1 ? "1 interview" : `${count} interviews`;
+  if (count === 0) return "No contributions";
+  return count === 1 ? "1 contribution" : `${count} contributions`;
 }
 
 export function firstName(name: string | null | undefined) {

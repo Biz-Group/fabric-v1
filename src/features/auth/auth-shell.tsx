@@ -113,7 +113,6 @@ export async function AuthShell({
               fabricClassName="text-xs font-semibold uppercase tracking-[0.28em] text-neutral-500"
               dividerClassName="h-4 bg-border"
               logoContainerClassName="h-5 max-w-24 px-0"
-              initialsClassName="text-[9px]"
             />
             <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
               {title}

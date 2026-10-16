@@ -91,7 +91,7 @@ describe("overview tab URL compatibility", () => {
 describe("contribution deep links", () => {
   const conversationId = "conversation-1" as Id<"conversations">;
 
-  it("opens the process on its Conversations tab with the contribution", () => {
+  it("opens the process on its Contributions tab with the contribution", () => {
     const query = new URLSearchParams(
       processConversationQuery(selection, conversationId),
     );

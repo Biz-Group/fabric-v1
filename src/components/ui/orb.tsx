@@ -48,7 +48,7 @@ export function Orb({
     <div className={className ?? "relative h-full w-full"}>
       {/* Scene suspends while its noise texture downloads, and Canvas rethrows
           that into the page. Without a boundary here the nearest one wraps the
-          whole workspace, which flashed "Loading your workspace..." the first
+          whole workspace, which flashed "Loading workspace…" the first
           time an orb appeared. */}
       <Suspense fallback={null}>
         <Canvas

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { cardVariants } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -91,11 +92,21 @@ export function UsageBreakdownTable({
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-lg border border-border px-3 py-6 text-center text-sm text-muted-foreground">
+        <div
+          className={cardVariants({
+            padding: "none",
+            className: "px-3 py-6 text-center text-sm text-muted-foreground",
+          })}
+        >
           {emptyMessage}
         </div>
       ) : (
-        <div className="usage-bars overflow-x-auto rounded-lg border border-border">
+        <div
+          className={cardVariants({
+            padding: "none",
+            className: "usage-bars overflow-x-auto",
+          })}
+        >
           <style>{`
             .usage-bars { --series-1: #2a78d6; }
             @media (prefers-color-scheme: dark) {

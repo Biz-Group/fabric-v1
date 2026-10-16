@@ -29,7 +29,7 @@ export function StatusIcon({
         aria-hidden="true"
         className={cn(
           "size-3.5",
-          meta.busy && "animate-spin motion-reduce:animate-none",
+          meta.busy && "animate-spin",
         )}
       />
       <span className="sr-only">{meta.label}</span>
@@ -50,7 +50,7 @@ export function StatusBadge({
     <Badge tone={meta.tone} className={cn("gap-1", className)} {...props}>
       <Icon
         aria-hidden="true"
-        className={cn(meta.busy && "animate-spin motion-reduce:animate-none")}
+        className={cn(meta.busy && "animate-spin")}
       />
       {meta.label}
     </Badge>

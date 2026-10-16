@@ -67,7 +67,7 @@ export function ConfirmDialog({
             onClick={handleConfirm}
             disabled={pending}
           >
-            {pending ? "Working..." : confirmLabel}
+            {pending ? "Working…" : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

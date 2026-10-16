@@ -8,6 +8,7 @@ import { useEffect } from "react";
 import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { PageTitle } from "@/components/ui/page-title";
 import { ThemeToaster } from "@/features/theming/theme-toaster";
 import { ThemeToggle } from "@/features/theming/theme-toggle";
 
@@ -44,22 +45,22 @@ export default function TenantsConsoleLayout({
   }, [isLoaded, isSignedIn, redirectToSignIn]);
 
   if (!isLoaded || convexAuthLoading) {
-    return <LoadingScreen message="Loading tenant console..." />;
+    return <LoadingScreen message="Loading tenant console…" />;
   }
 
   if (!isSignedIn) {
-    return <LoadingScreen message="Redirecting to sign in..." />;
+    return <LoadingScreen message="Redirecting to sign in…" />;
   }
 
   // Convex dropped the session (e.g. a token refresh failed while offline):
   // `getMe` reads null then, which must not look like "access denied".
   // ConvexClientProvider retries on its own.
   if (hasActiveSession && !isAuthenticated) {
-    return <LoadingScreen message="Reconnecting to the tenant console..." />;
+    return <LoadingScreen message="Reconnecting to the tenant console…" />;
   }
 
   if (me === undefined) {
-    return <LoadingScreen message="Loading tenant console..." />;
+    return <LoadingScreen message="Loading tenant console…" />;
   }
 
   if (!me || me.platformRole !== "superAdmin") {
@@ -138,7 +139,7 @@ function AccessBlocker() {
   const { signOut } = useClerk();
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
-      <h2 className="text-xl font-semibold">Platform access required</h2>
+      <PageTitle>Platform access required</PageTitle>
       <p className="max-w-md text-sm text-muted-foreground">
         The tenant console is available to Fabric platform super-admins only.
         If you believe you should have access, ask an existing super-admin to

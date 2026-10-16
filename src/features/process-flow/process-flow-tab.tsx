@@ -4,7 +4,9 @@ import { lazy, Suspense } from "react";
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { Clock, Loader2 } from "lucide-react";
+import { Clock } from "lucide-react";
+import { cardVariants } from "@/components/ui/card";
+import { LoadingScreen } from "@/components/ui/loading-screen";
 import type { FlowConversationForSources } from "./flow-sources";
 import type { PendingConversationCounts } from "./pending-conversations";
 
@@ -44,12 +46,11 @@ function formatGeneratedAt(epochMs: number | null | undefined) {
 
 function FlowCanvasFallback() {
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" aria-hidden />
-        Loading process flow
-      </div>
-    </div>
+    <LoadingScreen
+      fullScreen={false}
+      message="Loading process flow…"
+      className="min-h-0 flex-1 border-0 bg-transparent"
+    />
   );
 }
 
@@ -67,7 +68,7 @@ export function ProcessFlowTab({
 }: ProcessFlowTabProps) {
   const generatedLabel =
     flow === undefined
-      ? "Generated ..."
+      ? "Generated …"
       : flow === null
         ? "Not generated"
         : `Generated ${formatGeneratedAt(flow.generatedAt)}`;
@@ -82,7 +83,13 @@ export function ProcessFlowTab({
       </div>
 
       <div className="flex min-h-0 flex-1 p-3 md:p-4">
-        <div className="relative flex h-full min-h-[29rem] min-w-0 flex-1 overflow-hidden rounded-lg border bg-background shadow-xs md:min-h-0">
+        <div
+          className={cardVariants({
+            padding: "none",
+            className:
+              "relative flex h-full min-h-[29rem] min-w-0 flex-1 overflow-hidden shadow-xs md:min-h-0",
+          })}
+        >
           <Suspense fallback={<FlowCanvasFallback />}>
             <ProcessFlow
               processId={processId}

@@ -17,6 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PageTitle } from "@/components/ui/page-title";
 import {
   Select,
   SelectContent,
@@ -151,7 +152,7 @@ export default function NewTenantPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">New tenant</h1>
+        <PageTitle>New tenant</PageTitle>
         <p className="text-sm text-muted-foreground">
           Creates the Clerk organization, gives Biz Group super-admins access,
           and optionally invites the client&apos;s first user.
@@ -237,7 +238,7 @@ export default function NewTenantPage() {
                 <img
                   src={logoPreview}
                   alt="Logo preview"
-                  className="h-10 w-10 rounded-md object-cover ring-1 ring-border"
+                  className="size-10 rounded-md object-cover ring-1 ring-border"
                 />
               )}
               <LogoFileButton
@@ -324,7 +325,7 @@ export default function NewTenantPage() {
               checked={inviteFirstUser}
               onChange={(e) => setInviteFirstUser(e.target.checked)}
               disabled={submitting}
-              className="h-4 w-4 rounded border-border"
+              className="size-4 rounded border-border"
             />
             Invite a first user now
           </label>
@@ -390,7 +391,7 @@ export default function NewTenantPage() {
           Cancel
         </Button>
         <Button onClick={handleSubmit} disabled={!canSubmit}>
-          {submitting ? "Creating..." : "Create tenant"}
+          {submitting ? "Creating…" : "Create tenant"}
         </Button>
       </div>
     </div>

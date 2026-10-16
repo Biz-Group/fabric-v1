@@ -22,5 +22,5 @@ export function noConversationsMessage({
       ? "1 contribution needs speaker labels before it can be used."
       : `${needsLabels} contributions need speaker labels before they can be used.`;
   }
-  return "Record at least one conversation first.";
+  return "Add at least one contribution first.";
 }

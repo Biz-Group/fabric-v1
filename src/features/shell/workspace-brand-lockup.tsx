@@ -89,7 +89,7 @@ export function WorkspaceBrandLockup({
             ) : (
               <span
                 className={cn(
-                  "text-[11px] font-semibold uppercase text-muted-foreground",
+                  "text-2xs font-semibold uppercase text-muted-foreground",
                   initialsClassName,
                 )}
               >

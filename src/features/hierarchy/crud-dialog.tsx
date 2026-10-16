@@ -197,7 +197,7 @@ export function CrudDialog({
       ? "departments"
       : deleteChildKind === "processes"
         ? "processes"
-        : "conversations";
+        : "contributions";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -207,7 +207,7 @@ export function CrudDialog({
           {mode === "delete" ? (
             <DialogDescription>
               {deleteLoading ? (
-                <>Checking whether <strong>{currentName}</strong> can be deleted...</>
+                <>Checking whether <strong>{currentName}</strong> can be deleted…</>
               ) : deleteEligibility?.blocker === "role" ? (
                 <>
                   You need contributor or admin access to delete{" "}
@@ -219,8 +219,8 @@ export function CrudDialog({
                   {childLabel}.{" "}
                   {deleteChildKind === "conversations"
                     ? deleteEligibility.canCleanUpChildren
-                      ? "Delete those conversations from Admin > Conversations first, then try again."
-                      : "Ask a workspace admin to delete those conversations first."
+                      ? "Delete those contributions from Admin > Contributions first, then try again."
+                      : "Ask a workspace admin to delete those contributions first."
                     : "Remove all child items first."}
                 </>
               ) : deleteGone ? (
@@ -361,7 +361,7 @@ export function CrudDialog({
                 onClick={onCleanupChildren}
                 disabled={loading}
               >
-                Open conversations
+                Open contributions
               </Button>
             )}
           <DialogClose render={<Button variant="outline" size="sm" />}>

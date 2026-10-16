@@ -1,11 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useClerk, useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Card,
   CardContent,
@@ -16,9 +23,6 @@ import {
 import { Id } from "../../../convex/_generated/dataModel";
 import { describeError } from "@/lib/user-error-message";
 import { cn } from "@/lib/utils";
-
-const selectClassName =
-  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-ring disabled:cursor-not-allowed disabled:opacity-50";
 
 const MISSING_PLACEMENT =
   "Choose your department, or select “Not sure” to skip this for now.";
@@ -58,63 +62,98 @@ function usePlacementChoice(enabled: boolean) {
 type PlacementChoice = ReturnType<typeof usePlacementChoice>;
 
 function PlacementSelects({ choice }: { choice: PlacementChoice }) {
+  const fieldId = useId();
+  const functionLabelId = `${fieldId}-function-label`;
+  const functionTriggerId = `${fieldId}-function`;
+  const departmentLabelId = `${fieldId}-department-label`;
+  const departmentTriggerId = `${fieldId}-department`;
+  const departmentEmptyId = `${fieldId}-department-empty`;
+  const functionItems = Object.fromEntries(
+    (choice.functions ?? []).map((fn) => [fn._id, fn.name]),
+  );
+  const departmentItems = Object.fromEntries(
+    (choice.departments ?? []).map((dept) => [dept._id, dept.name]),
+  );
   return (
     <>
       <div className="space-y-2">
-        <label htmlFor="function" className="text-sm font-medium leading-none">
+        <label
+          id={functionLabelId}
+          htmlFor={functionTriggerId}
+          className="text-sm font-medium leading-none"
+        >
           Function
         </label>
-        <select
-          id="function"
-          className={selectClassName}
-          value={choice.functionId}
-          onChange={(e) =>
-            choice.chooseFunction(e.target.value as Id<"functions"> | "")
+        <Select
+          value={choice.functionId || null}
+          items={functionItems}
+          onValueChange={(value) =>
+            choice.chooseFunction((value ?? "") as Id<"functions"> | "")
           }
         >
-          <option value="">Select a function…</option>
-          {choice.functions?.map((fn) => (
-            <option key={fn._id} value={fn._id}>
-              {fn.name}
-            </option>
-          ))}
-        </select>
+          {/* Base UI only wires aria-labelledby from its own Select.Label,
+              so point the trigger at this label explicitly. */}
+          <SelectTrigger
+            id={functionTriggerId}
+            aria-labelledby={functionLabelId}
+            className="w-full"
+          >
+            <SelectValue placeholder="Select a function…" />
+          </SelectTrigger>
+          <SelectContent>
+            {choice.functions?.map((fn) => (
+              <SelectItem key={fn._id} value={fn._id}>
+                {fn.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">
         <label
-          htmlFor="department"
+          id={departmentLabelId}
+          htmlFor={departmentTriggerId}
           className="text-sm font-medium leading-none"
         >
           Department
         </label>
-        <select
-          id="department"
-          className={selectClassName}
-          value={choice.departmentId}
-          onChange={(e) =>
-            choice.chooseDepartment(e.target.value as Id<"departments"> | "")
+        <Select
+          value={choice.departmentId || null}
+          items={departmentItems}
+          onValueChange={(value) =>
+            choice.chooseDepartment((value ?? "") as Id<"departments"> | "")
           }
           disabled={!choice.functionId || choice.functionHasNoDepartments}
-          aria-describedby={
-            choice.functionHasNoDepartments ? "department-empty" : undefined
-          }
         >
-          <option value="">
-            {!choice.functionId
-              ? "Select a function first"
-              : choice.functionHasNoDepartments
-                ? "No departments yet"
-                : "Select a department…"}
-          </option>
-          {choice.departments?.map((dept) => (
-            <option key={dept._id} value={dept._id}>
-              {dept.name}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger
+            id={departmentTriggerId}
+            aria-labelledby={departmentLabelId}
+            aria-describedby={
+              choice.functionHasNoDepartments ? departmentEmptyId : undefined
+            }
+            className="w-full"
+          >
+            <SelectValue
+              placeholder={
+                !choice.functionId
+                  ? "Select a function first"
+                  : choice.functionHasNoDepartments
+                    ? "No departments yet"
+                    : "Select a department…"
+              }
+            />
+          </SelectTrigger>
+          <SelectContent>
+            {choice.departments?.map((dept) => (
+              <SelectItem key={dept._id} value={dept._id}>
+                {dept.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {choice.functionHasNoDepartments && (
-          <p id="department-empty" className="text-xs text-muted-foreground">
+          <p id={departmentEmptyId} className="text-xs text-muted-foreground">
             This function has no departments yet. Pick another function, or
             choose &ldquo;Not sure&rdquo; below.
           </p>
@@ -408,7 +447,7 @@ export function ProfileOnboarding({ mode, askPlacement }: ProfileOnboardingProps
           <CardDescription>
             {mode === "profile"
               ? "Complete your profile to get started. This helps us personalize your experience."
-              : "Choose your function and department in this organization."}
+              : "Choose your function and department in this workspace."}
           </CardDescription>
         </CardHeader>
         <CardContent>

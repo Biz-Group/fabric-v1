@@ -221,7 +221,7 @@ describe("process report data", () => {
 
     expect(data.overview.structured).not.toBeNull();
     expect(data.overview.legacyMarkdown).toBeNull();
-    expect(data.overview.sourceMode).toBe("Interview evidence");
+    expect(data.overview.sourceMode).toBe("Contribution evidence");
     expect(data.overview.stateLabel).toBe("Partial coverage");
     expect(data.overview.generatedAt).toBe(generatedAt);
     expect(data.overview.structured?.coverage).toEqual({
@@ -268,7 +268,7 @@ describe("process report data", () => {
 
     expect(data.overview.structured).toBeNull();
     expect(data.overview.legacyMarkdown).toContain("Existing narrative");
-    expect(data.overview.sourceMode).toBe("Legacy summary");
+    expect(data.overview.sourceMode).toBe("Legacy overview");
   });
 
   it("reports an ungenerated overview without inventing content", () => {
@@ -322,7 +322,7 @@ describe("process report rendering", () => {
     expect(html).toContain("Operations interview");
     expect(html).toContain("No direct source — identified as an evidence gap");
     // Coverage is reported as evidence, never as measured execution.
-    expect(html).toContain("of 4 eligible conversations included");
+    expect(html).toContain("of 4 eligible contributions included");
     expect(html).toContain("Partial coverage");
     expect(html).not.toContain("Process Summary");
   });
@@ -422,10 +422,10 @@ describe("process report rendering", () => {
     expect(html).toContain("Existing narrative");
     expect(html).toContain("The original summary remains readable.");
     expect(html).toContain("One recorded detail");
-    expect(html).toContain("Legacy summary");
+    expect(html).toContain("Legacy overview");
     // No structured scaffolding is implied for content that has no artifact.
     expect(html).not.toContain("Corroborated");
-    expect(html).not.toContain("eligible conversations included");
+    expect(html).not.toContain("eligible contributions included");
   });
 
   it("renders an overview-only report when no flow exists", () => {

@@ -14,9 +14,15 @@ import { api } from "../../../convex/_generated/api";
 import { PasskeyOffer } from "@/features/auth/passkey-offer";
 import { OrgThemeProvider } from "@/features/theming/org-theme-provider";
 import { ThemeToaster } from "@/features/theming/theme-toaster";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { PageTitle } from "@/components/ui/page-title";
+import { SectionLabel } from "@/components/ui/section-label";
 
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "";
+
+// The main action on an access screen sits alone, so it's a step up from `lg`.
+const ACCESS_ACTION = "h-11 px-5";
 
 // After this long on a loading screen, offer a way out instead of spinning on.
 const STALLED_AFTER_MS = 20_000;
@@ -93,7 +99,7 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
     void setActive({ organization: targetOrgId }).catch((error: unknown) => {
       // Usually the membership was just removed and the cached list still
       // has it. Refetching drops it, which moves on to the access screen
-      // instead of "Activating your workspace…" forever.
+      // instead of "Loading workspace…" forever.
       console.warn("Could not activate this workspace", error);
       void revalidateMemberships?.();
     });
@@ -120,11 +126,11 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
   }, [userLoaded, isSignedIn, redirectToSignIn]);
 
   if (authLoading || !userLoaded || !orgLoaded || !orgListLoaded) {
-    return <StallableLoading message="Loading workspace..." />;
+    return <StallableLoading message="Loading workspace…" />;
   }
 
   if (!isSignedIn) {
-    return <LoadingScreen message="Redirecting to sign in..." />;
+    return <LoadingScreen message="Redirecting to sign in…" />;
   }
 
   // Signed in to Clerk but Convex has no session. Either the Clerk session is
@@ -136,8 +142,8 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
       <StallableLoading
         message={
           hasActiveSession
-            ? "Reconnecting to your workspace..."
-            : "Loading workspace..."
+            ? "Reconnecting to your workspace…"
+            : "Loading workspace…"
         }
       />
     );
@@ -149,7 +155,7 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
     !matchingMembership &&
     (userMemberships.hasNextPage || userMemberships.isFetching)
   ) {
-    return <StallableLoading message="Loading workspace..." />;
+    return <StallableLoading message="Loading workspace…" />;
   }
 
   if (!matchingMembership) {
@@ -177,13 +183,13 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
           tab. Fabric works in one workspace at a time in a browser, so{" "}
           {matchingMembership.organization.name} is paused here.
         </p>
-        <button
-          type="button"
+        <Button
+          size="lg"
           onClick={() => void setActive?.({ organization: targetOrgId })}
-          className="h-11 rounded-xl bg-foreground px-5 text-sm font-medium text-background hover:bg-foreground/90"
+          className={ACCESS_ACTION}
         >
           Continue in {matchingMembership.organization.name}
-        </button>
+        </Button>
       </AccessScreen>
     );
   }
@@ -192,7 +198,7 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
   // carries the target org. This prevents first-render queries from throwing
   // "No active organization" while Clerk finishes activating the session.
   if (organization?.id !== targetOrgId || activeOrg?.orgId !== targetOrgId) {
-    return <StallableLoading message="Activating your workspace..." />;
+    return <StallableLoading message="Loading workspace…" />;
   }
 
   return (
@@ -290,7 +296,7 @@ function WorkspaceAccess({
   }
 
   if (membership === undefined) {
-    return <StallableLoading message="Loading your workspace..." />;
+    return <StallableLoading message="Loading workspace…" />;
   }
 
   if (joinStatus?.blocked) {
@@ -314,19 +320,19 @@ function WorkspaceAccess({
           This is usually temporary. Try again in a moment, and if it keeps
           happening, contact your workspace admin.
         </p>
-        <button
-          type="button"
+        <Button
+          size="lg"
           onClick={() => setAttempt((n) => n + 1)}
-          className="h-11 rounded-xl bg-foreground px-5 text-sm font-medium text-background hover:bg-foreground/90"
+          className={ACCESS_ACTION}
         >
           Try again
-        </button>
+        </Button>
         <SignOutLink />
       </AccessScreen>
     );
   }
 
-  return <StallableLoading message="Setting up your workspace..." />;
+  return <StallableLoading message="Loading workspace…" />;
 }
 
 type Eligibility = { eligible: true } | { eligible: false; error: string };
@@ -378,20 +384,18 @@ function NotInWorkspace({
           ? refused.error
           : eligibility
             ? `Your account isn't a member of ${slug} yet. You can join it now, or switch to a workspace you already belong to.`
-            : `Checking whether your account can join ${slug}...`}
+            : `Checking whether your account can join ${slug}…`}
       </p>
       {eligibility?.eligible && <JoinWorkspaceButton />}
       {otherWorkspaces.length > 0 && (
         <div className="mt-2 flex flex-col items-center gap-2">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">
-            Workspaces you can access
-          </p>
+          <SectionLabel>Workspaces you can access</SectionLabel>
           <div className="flex flex-wrap items-center justify-center gap-2">
             {otherWorkspaces.map((workspace) => (
               <a
                 key={workspace.id}
                 href={buildSubdomainUrl(workspace.slug)}
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted"
+                className={buttonVariants({ variant: "outline" })}
               >
                 {workspace.name}
               </a>
@@ -413,7 +417,7 @@ function AccessScreen({
 }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-5 p-6 text-center">
-      <h2 className="text-xl font-semibold">{title}</h2>
+      <PageTitle>{title}</PageTitle>
       {children}
     </div>
   );
@@ -440,13 +444,13 @@ function StallableLoading({ message }: { message: string }) {
     >
       {stalled && (
         <div className="flex items-center gap-4">
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="lg"
             onClick={() => window.location.reload()}
-            className="h-9 rounded-lg border border-border bg-background px-3 text-sm font-medium hover:bg-muted"
           >
             Reload
-          </button>
+          </Button>
           <SignOutLink />
         </div>
       )}
@@ -492,14 +496,14 @@ function JoinWorkspaceButton() {
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <button
-        type="button"
+      <Button
+        size="lg"
         onClick={() => void handleJoin()}
         disabled={joining}
-        className="h-11 rounded-xl bg-foreground px-5 text-sm font-medium text-background hover:bg-foreground/90 disabled:opacity-60"
+        className={ACCESS_ACTION}
       >
-        {joining ? "Joining..." : "Join this workspace"}
-      </button>
+        {joining ? "Joining…" : "Join this workspace"}
+      </Button>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
   );

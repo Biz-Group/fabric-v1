@@ -14,7 +14,7 @@ const PARAM = {
 } as const;
 
 // One-shot link to a contribution: the workbench opens it in the
-// Conversations tab on load, and the next URL write drops it, so it never
+// Contributions tab on load, and the next URL write drops it, so it never
 // outlives the visit it was for.
 const CONVERSATION_PARAM = "conv";
 
@@ -68,8 +68,8 @@ export function readConversationParam(
   return conversationId ? (conversationId as Id<"conversations">) : null;
 }
 
-/** Query string that opens a process on its Conversations tab with one
- * contribution selected, e.g. from Admin → Conversations. */
+/** Query string that opens a process on its Contributions tab with one
+ * contribution selected, e.g. from Admin → Contributions. */
 export function processConversationQuery(
   ids: {
     fn: Id<"functions">;

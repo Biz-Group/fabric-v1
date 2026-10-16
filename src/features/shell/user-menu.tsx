@@ -70,7 +70,7 @@ export function UserMenu({ compact = false }: { compact?: boolean }) {
           <span className={compact ? "sr-only" : "hidden sm:inline"}>Admin</span>
         </Link>
       )}
-      <span className={compact ? "hidden" : "rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium capitalize text-muted-foreground"}>
+      <span className={compact ? "hidden" : "rounded-full bg-muted px-2 py-0.5 text-2xs font-medium capitalize text-muted-foreground"}>
         {role}
       </span>
       <ThemeToggle />

@@ -91,7 +91,7 @@ export function overviewActionHint(
     // nothing to read.
     return childUnit
       ? `Build one of its ${childUnit} before rolling this overview up.`
-      : "Complete a process conversation before building this overview.";
+      : "Complete a contribution to this process before building this overview.";
   }
   const action =
     state === "missing" ? "Build the overview" : "Rebuild the overview";
@@ -163,7 +163,7 @@ export function refreshUnavailableReason(
     // two — the same signal the `partial` message below reads.
     return childUnit
       ? `No ${childUnit} have an overview to roll up yet. Build becomes available once one is built.`
-      : "No conversation has been completed for this process yet. Build becomes available once one is recorded.";
+      : "No contribution has been completed for this process yet. Build becomes available once one is complete.";
   }
   if (state === "partial") {
     // A rollup left incomplete by children that have no overview of their own —

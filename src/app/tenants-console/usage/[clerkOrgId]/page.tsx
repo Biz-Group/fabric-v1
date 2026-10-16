@@ -9,6 +9,7 @@ import { api } from "../../../../../convex/_generated/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/components/ui/loading-screen";
+import { PageTitle } from "@/components/ui/page-title";
 import { useLastLoaded } from "@/hooks/use-last-loaded";
 import {
   Table,
@@ -96,7 +97,7 @@ export default function TenantUsagePage() {
   );
 
   if (data === undefined || availability === undefined) {
-    return <LoadingScreen message="Loading tenant usage..." />;
+    return <LoadingScreen message="Loading tenant usage…" />;
   }
 
   return (
@@ -111,9 +112,7 @@ export default function TenantUsagePage() {
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">
-            {data.tenantName ?? clerkOrgId}
-          </h1>
+          <PageTitle>{data.tenantName ?? clerkOrgId}</PageTitle>
           <p className="text-sm text-muted-foreground">
             {data.tenantName ? `${clerkOrgId} · ` : ""}
             {from} to {to} (UTC)
@@ -198,7 +197,7 @@ export default function TenantUsagePage() {
 
         {log.results.length === 0 ? (
           <div className="rounded-lg border border-border px-3 py-6 text-center text-sm text-muted-foreground">
-            {log.isLoading ? "Loading..." : "No metered calls for this tenant."}
+            {log.isLoading ? "Loading…" : "No metered calls for this tenant."}
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">

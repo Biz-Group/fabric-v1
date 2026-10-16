@@ -3,11 +3,16 @@
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 
+import { SectionLabel } from "@/components/ui/section-label";
+
 const components: Components = {
   h2: ({ children }) => (
-    <h3 className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-foreground first:mt-0">
+    <SectionLabel
+      render={<h3 />}
+      className="mt-4 mb-1.5 text-foreground first:mt-0"
+    >
       {children}
-    </h3>
+    </SectionLabel>
   ),
   p: ({ children }) => (
     <p className="my-1.5 break-words text-sm leading-relaxed text-muted-foreground">

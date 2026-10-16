@@ -13,12 +13,14 @@ import {
   ShieldAlert,
   ArrowRight,
   ArrowLeft,
-  Loader2,
   AlertCircle,
   RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cardVariants } from "@/components/ui/card";
+import { SectionLabel } from "@/components/ui/section-label";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import {
   automationPotentialTone,
@@ -100,11 +102,11 @@ export function ProcessFlowDetailPanel({
       <div className="flex items-start gap-2 border-b border-border p-4">
         <div
           className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+            "flex size-8 shrink-0 items-center justify-center rounded-lg",
             config.iconBg,
           )}
         >
-          <Icon className="h-4 w-4" aria-hidden="true" />
+          <Icon className="size-4" aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="break-words text-sm font-medium leading-tight">
@@ -113,7 +115,7 @@ export function ProcessFlowDetailPanel({
           <div className="mt-1 flex flex-wrap gap-1">
             <span
               className={cn(
-                "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                "inline-flex items-center rounded-full px-1.5 py-0.5 text-2xs font-medium",
                 config.badgeClass,
               )}
             >
@@ -122,14 +124,14 @@ export function ProcessFlowDetailPanel({
             {/* Withheld until described: these flags are assessments, and a
                 node still being written carries defaults nobody assessed. */}
             {isDetailed && node.isBottleneck && (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-destructive-subtle px-1.5 py-0.5 text-[10px] font-medium text-destructive">
-                <AlertTriangle className="h-2.5 w-2.5" />
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-destructive-subtle px-1.5 py-0.5 text-2xs font-medium text-destructive">
+                <AlertTriangle className="size-2.5" />
                 Bottleneck
               </span>
             )}
             {isDetailed && node.isTribalKnowledge && (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-warning-subtle px-1.5 py-0.5 text-[10px] font-medium text-warning">
-                <KeyRound className="h-2.5 w-2.5" />
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-warning-subtle px-1.5 py-0.5 text-2xs font-medium text-warning">
+                <KeyRound className="size-2.5" />
                 Tribal Knowledge
               </span>
             )}
@@ -142,7 +144,7 @@ export function ProcessFlowDetailPanel({
           onClick={onClose}
           aria-label="Close node details"
         >
-          <X className="h-4 w-4" aria-hidden="true" />
+          <X className="size-4" aria-hidden="true" />
         </Button>
       </div>
 
@@ -159,11 +161,11 @@ export function ProcessFlowDetailPanel({
             </div>
           ) : detailPending ? (
             <div className="text-muted-foreground flex items-start gap-2 text-sm">
-              <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin" />
+              <Spinner className="mt-0.5" />
               <p>Describing this step from what contributors said…</p>
             </div>
           ) : (
-            <div className="border-border bg-muted/40 space-y-2 rounded-lg border p-3">
+            <div className={cardVariants({ variant: "inset", padding: "sm", className: "space-y-2" })}>
               <div className="flex items-start gap-2">
                 <AlertCircle className="text-muted-foreground mt-0.5 size-3.5 shrink-0" />
                 <div className="min-w-0">
@@ -186,7 +188,7 @@ export function ProcessFlowDetailPanel({
                   disabled={isRetryingDetail}
                 >
                   {isRetryingDetail ? (
-                    <Loader2 className="size-3 animate-spin" />
+                    <Spinner className="size-3" />
                   ) : (
                     <RefreshCw className="size-3" />
                   )}
@@ -271,7 +273,7 @@ export function ProcessFlowDetailPanel({
                     key={i}
                     className="flex min-w-0 items-start gap-1.5 text-xs text-muted-foreground"
                   >
-                    <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" />
+                    <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-destructive" />
                     <span className="min-w-0 break-words">{pp}</span>
                   </li>
                 ))}
@@ -288,7 +290,7 @@ export function ProcessFlowDetailPanel({
                     key={i}
                     className="flex min-w-0 items-start gap-1.5 text-xs text-muted-foreground"
                   >
-                    <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
+                    <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-warning" />
                     <span className="min-w-0 break-words">{risk}</span>
                   </li>
                 ))}
@@ -307,7 +309,7 @@ export function ProcessFlowDetailPanel({
                       key={source.conversationId}
                       className="focus-ring-inset group flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-org-accent-subtle hover:text-foreground"
                       onClick={() => onOpenConversation(source.conversationId)}
-                      aria-label={`Open source conversation: ${source.source}`}
+                      aria-label={`Open source contribution: ${source.source}`}
                     >
                       <MessageSquareText
                         className="size-3.5 shrink-0 text-org-accent"
@@ -337,9 +339,7 @@ export function ProcessFlowDetailPanel({
           {/* Connections */}
           {(incomingEdges.length > 0 || outgoingEdges.length > 0) && (
             <div className="space-y-2 border-t border-border pt-4">
-              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Connections
-              </h4>
+              <SectionLabel render={<h4 />}>Connections</SectionLabel>
               {incomingEdges.map((edge) => {
                 const sourceNode = nodeMap.get(edge.source);
                 if (!sourceNode) return null;
@@ -350,12 +350,12 @@ export function ProcessFlowDetailPanel({
                     className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-org-accent-subtle focus-ring-inset"
                     aria-label={`Navigate to source node ${sourceNode.label}`}
                   >
-                    <ArrowLeft className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <ArrowLeft className="size-3 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1 truncate">
                       From: {sourceNode.label}
                     </span>
                     {edge.label && (
-                      <span className="ml-auto max-w-24 shrink-0 truncate text-[10px] italic text-muted-foreground">
+                      <span className="ml-auto max-w-24 shrink-0 truncate text-2xs italic text-muted-foreground">
                         {edge.label}
                       </span>
                     )}
@@ -372,12 +372,12 @@ export function ProcessFlowDetailPanel({
                     className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-org-accent-subtle focus-ring-inset"
                     aria-label={`Navigate to target node ${targetNode.label}`}
                   >
-                    <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <ArrowRight className="size-3 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1 truncate">
                       To: {targetNode.label}
                     </span>
                     {edge.label && (
-                      <span className="ml-auto max-w-24 shrink-0 truncate text-[10px] italic text-muted-foreground">
+                      <span className="ml-auto max-w-24 shrink-0 truncate text-2xs italic text-muted-foreground">
                         {edge.label}
                       </span>
                     )}
@@ -408,7 +408,7 @@ function Section({
   return (
     <div className="space-y-1.5">
       <h4 className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
-        <IconComp className="h-3 w-3 shrink-0" aria-hidden="true" />
+        <IconComp className="size-3 shrink-0" aria-hidden="true" />
         <span className="min-w-0 break-words">{title}</span>
       </h4>
       {children}

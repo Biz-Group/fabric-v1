@@ -27,7 +27,7 @@ export function retryLabel(target: RetryTarget) {
 }
 
 /** Admin-only retry for a failed contribution, shared by Admin →
- * Conversations and the process log. The server refuses everyone else. */
+ * Contributions and the process log. The server refuses everyone else. */
 export function useRetryConversation() {
   const retryAgentConversation = useAction(api.conversations.retryFetch);
   const retryAudioConversation = useMutation(

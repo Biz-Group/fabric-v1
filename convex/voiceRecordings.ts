@@ -374,7 +374,7 @@ function fallbackSummaryFromTranscript(
 ): string {
   const text = transcriptText(transcript).trim();
   if (!text) return "No transcript content was available for this recording.";
-  return text.length > 800 ? `${text.slice(0, 797)}...` : text;
+  return text.length > 800 ? `${text.slice(0, 799)}…` : text;
 }
 
 async function transcribeWithScribe(
@@ -616,7 +616,7 @@ export const generateUploadUrl = mutation({
     }
     if (orgLimit.uploadUrlsIssued >= MAX_ORG_UPLOADS_PER_WINDOW) {
       throw audioUploadError(
-        "Organization audio upload limit reached. Try again later.",
+        "This workspace has reached its audio upload limit. Try again later.",
       );
     }
 

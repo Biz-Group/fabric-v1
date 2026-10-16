@@ -33,13 +33,13 @@ export default function OrgHomePage() {
     placement === undefined ||
     onboarding === undefined
   ) {
-    return <LoadingScreen message="Loading your workspace..." />;
+    return <LoadingScreen message="Loading workspace…" />;
   }
 
   // The workspace layout provisions the user before mounting this page, so
   // null only lasts until that write reaches this query.
   if (user === null) {
-    return <LoadingScreen message="Setting up your workspace..." />;
+    return <LoadingScreen message="Loading workspace…" />;
   }
 
   // Members who joined after onboarding launched get the welcome once. It
@@ -74,7 +74,7 @@ export default function OrgHomePage() {
       {/* Suspense boundary required: ProcessWorkbench reads useSearchParams, which
           would otherwise fail the production build ("Missing Suspense boundary
           with useSearchParams"). */}
-      <Suspense fallback={<LoadingScreen message="Loading your workspace..." />}>
+      <Suspense fallback={<LoadingScreen message="Loading workspace…" />}>
         <ProcessWorkbench />
       </Suspense>
     </div>

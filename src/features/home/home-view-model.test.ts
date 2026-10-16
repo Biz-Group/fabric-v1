@@ -145,7 +145,7 @@ describe("workspace home status rules", () => {
   it("flags only processes that need something", () => {
     expect(describeProcessActivity(processRow("a"))).toMatchObject({
       tone: "neutral",
-      label: "No interviews yet",
+      label: "No contributions yet",
     });
     expect(
       describeProcessActivity(processRow("b", { total: 3, done: 3 })),
@@ -170,9 +170,9 @@ describe("workspace home status rules", () => {
   });
 
   it("formats counts, names, and times", () => {
-    expect(interviewCountLabel(0)).toBe("No interviews");
-    expect(interviewCountLabel(1)).toBe("1 interview");
-    expect(interviewCountLabel(4)).toBe("4 interviews");
+    expect(interviewCountLabel(0)).toBe("No contributions");
+    expect(interviewCountLabel(1)).toBe("1 contribution");
+    expect(interviewCountLabel(4)).toBe("4 contributions");
     expect(firstName("  Saish   Gaonkar ")).toBe("Saish");
     expect(firstName(null)).toBe("");
     const now = Date.UTC(2026, 9, 14, 12);

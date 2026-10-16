@@ -8,7 +8,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --font-heading: "Inter", ui-sans-serif, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -69,6 +69,42 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Type scale: one step below Tailwind's `text-xs` (12px), for dense chrome:
+   counts, chips, timestamps, flow-node badges and `SectionLabel size="sm"`.
+   11px is the floor for user-facing text, so there is no smaller step. */
+@theme {
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: calc(1 / 0.6875);
+}
+
+/* Layering: one scale for everything that floats over the page, lowest
+   first. Each token is a `z-<name>` utility and a `--z-index-<name>`
+   variable (static, so CSS modules and inline styles can read it).
+   Plain z-10/20/30 stay for layering inside one component (scroll fades,
+   flow toolbars, a resize handle); every page-level layer sits above them.
+   - sticky: in-page sticky bars.
+   - dock: the bar fixed to the bottom of the viewport (audio mini-player).
+   - fab-backdrop / fab: the phone capture button sits above its own
+     backdrop, which dims the dock too.
+   - fullscreen: a non-portaled takeover of the page (the flow's full screen).
+   - coachmark: the onboarding spotlight and its card. Below dialogs, so a
+     dialog opened from the highlighted control covers the hint.
+   - overlay: dialog and sheet backdrops and panels.
+   - popover: menus, selects, tooltips and popovers, above dialogs so one
+     opened from inside a dialog shows over it.
+   - toast: Sonner, above everything. */
+@theme static {
+  --z-index-sticky: 40;
+  --z-index-dock: 50;
+  --z-index-fab-backdrop: 60;
+  --z-index-fab: 70;
+  --z-index-fullscreen: 80;
+  --z-index-coachmark: 90;
+  --z-index-overlay: 100;
+  --z-index-popover: 110;
+  --z-index-toast: 120;
 }
 
 :root {
@@ -242,13 +278,31 @@
     radial-gradient(circle at -8% 108%, oklch(0.3 0.01 255 / 9%), transparent 32rem);
 }
 
-.dark ::selection {
+/* Not while a public page is shown: it keeps light mode's default selection
+   (see below). */
+.dark:not(:has([data-public-page])) ::selection {
   background: color-mix(in oklch, var(--org-accent) 32%, transparent);
   color: var(--foreground);
 }
 
 .dark {
   scrollbar-color: oklch(0.48 0.008 255) oklch(0.185 0.006 255);
+}
+
+/* Public pages (the marketing landing and the legal pages, marked
+   `data-public-page`) have one light cream design and no theme toggle. The
+   theme script still marks the document dark under an OS dark preference,
+   so while one is on screen pin the document light: browser-drawn controls,
+   scrollbars, the canvas behind overscroll, and the default selection
+   colours. `!important` beats the script's inline color-scheme. Their
+   viewport exports pin the theme-color meta to the same cream. */
+:root:has([data-public-page]) {
+  color-scheme: light !important;
+  scrollbar-color: auto;
+}
+
+:root:has([data-public-page]) body {
+  background: #f7f5f0;
 }
 
 @layer utilities {

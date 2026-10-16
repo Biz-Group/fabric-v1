@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { instrumentSans, newsreader } from "@/features/marketing/marketing-fonts";
 
 import { MarketingLandingPage } from "@/features/marketing/marketing-landing-page";
@@ -27,9 +27,20 @@ export const metadata: Metadata = {
   },
 };
 
+// The landing has one light design and no theme toggle, so the browser chrome
+// stays cream under an OS dark preference too. globals.css pins the rest
+// (`data-public-page`).
+export const viewport: Viewport = {
+  colorScheme: "light",
+  themeColor: "#F7F5F0",
+};
+
 export default function Home() {
   return (
-    <div className={`${instrumentSans.variable} ${newsreader.variable}`}>
+    <div
+      data-public-page
+      className={`${instrumentSans.variable} ${newsreader.variable}`}
+    >
       <MarketingLandingPage />
     </div>
   );
