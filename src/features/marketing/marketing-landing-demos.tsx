@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Popover } from "@base-ui/react/popover";
 import { Tabs } from "@base-ui/react/tabs";
@@ -19,6 +26,7 @@ import {
   Menu,
   Mic,
   MoreHorizontal,
+  Pause,
   Play,
   Share2,
   Sparkles,
@@ -335,38 +343,58 @@ export function HeroConversationDemo() {
   );
 }
 
+const subscribeNever = () => () => {};
+
 export function ProductJourneyDemo() {
   const [activeStage, setActiveStage] = useState<StageId>("capture");
-  const [paused, setPaused] = useState(false);
+  // Hover and focus hold the stage only while they last.
+  const [held, setHeld] = useState(false);
+  // The visitor's own choice; null until they press Pause/Play or pick a stage.
+  const [playChoice, setPlayChoice] = useState<boolean | null>(null);
   const reduceMotion = useReducedMotion();
+  // The reduced-motion preference is only known in the browser, so the server
+  // render and hydration both assume it is off and the label can't mismatch.
+  const hydrated = useSyncExternalStore(subscribeNever, () => true, () => false);
+  const playing = playChoice ?? !(hydrated && reduceMotion);
   const activeIndex = stages.findIndex((stage) => stage.id === activeStage);
   const active = stages[activeIndex];
 
+  // A timeout per stage rather than an interval, so every stage change, the
+  // visitor's included, gets the full reading time before the next advance.
   useEffect(() => {
-    if (paused || reduceMotion) return;
+    if (!playing || held) return;
 
-    const interval = window.setInterval(() => {
+    const timeout = window.setTimeout(() => {
       setActiveStage((current) => {
         const index = stages.findIndex((stage) => stage.id === current);
         return stages[(index + 1) % stages.length].id;
       });
     }, 6500);
 
-    return () => window.clearInterval(interval);
-  }, [paused, reduceMotion]);
+    return () => window.clearTimeout(timeout);
+  }, [activeStage, playing, held]);
 
   // Arrow keys, Home and End move through the stages and select as they go. The
   // copy sits inside the one panel, so a chosen stage is read from its tab, and
-  // the automatic rotation stays silent.
+  // the automatic rotation stays silent. Choosing a stage stops the rotation so
+  // it stays on screen; Play resumes it.
   return (
     <Tabs.Root
       className={styles.productJourney}
       value={activeStage}
-      onValueChange={(value: StageId) => setActiveStage(value)}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocusCapture={() => setPaused(true)}
-      onBlurCapture={() => setPaused(false)}
+      onValueChange={(value: StageId) => {
+        setActiveStage(value);
+        setPlayChoice(false);
+      }}
+      onMouseEnter={() => setHeld(true)}
+      onMouseLeave={() => setHeld(false)}
+      onFocusCapture={(event) => {
+        // Focus on the toggle itself shouldn't hold the stage it just resumed.
+        if (!(event.target as HTMLElement).closest("[data-rotation-toggle]")) {
+          setHeld(true);
+        }
+      }}
+      onBlurCapture={() => setHeld(false)}
     >
       <Tabs.List
         className={styles.journeyControls}
@@ -399,8 +427,24 @@ export function ProductJourneyDemo() {
               <p>{active.description}</p>
             </motion.div>
           </AnimatePresence>
-          <div className={styles.journeyProgress} aria-hidden="true">
-            <span style={{ width: `${((activeIndex + 1) / stages.length) * 100}%` }} />
+          <div className={styles.journeyPlayback}>
+            <div className={styles.journeyProgress} aria-hidden="true">
+              <span style={{ width: `${((activeIndex + 1) / stages.length) * 100}%` }} />
+            </div>
+            <button
+              type="button"
+              className={styles.journeyPlayToggle}
+              data-rotation-toggle
+              onClick={() => {
+                // The pointer is still over the demo; let Play take effect now
+                // rather than after the next mouse leave.
+                setHeld(false);
+                setPlayChoice(!playing);
+              }}
+            >
+              {playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+              {playing ? "Pause demo" : "Play demo"}
+            </button>
           </div>
         </div>
 

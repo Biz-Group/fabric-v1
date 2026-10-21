@@ -165,7 +165,8 @@
 .mobileNavigationPanel a:focus-visible,
 .signInMenu > button:focus-visible,
 .signInSubmit:focus-visible,
-.journeyControls button:focus-visible {
+.journeyControls button:focus-visible,
+.journeyPlayToggle:focus-visible {
   outline: 3px solid rgba(101, 114, 91, 0.38);
   outline-offset: 3px;
 }
@@ -866,7 +867,7 @@
   place-items: center;
   border: 1px solid var(--line);
   border-radius: 50%;
-  font-size: 0.58rem;
+  font-size: 0.75rem;
   transition: border-color 180ms ease, background-color 180ms ease;
 }
 
@@ -912,9 +913,17 @@
   line-height: 1.6;
 }
 
+.journeyPlayback {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-top: 1.3rem;
+}
+
 .journeyProgress {
   height: 2px;
-  margin-top: 1.3rem;
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
   background: var(--line);
 }
@@ -924,6 +933,34 @@
   height: 100%;
   background: var(--moss);
   transition: width 320ms ease;
+}
+
+/* Two classes deep to beat the `.site button { font: inherit }` reset. */
+.journeyPlayback .journeyPlayToggle {
+  display: inline-flex;
+  min-height: 2.5rem;
+  flex: none;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  padding: 0 0.95rem;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 650;
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+
+.journeyPlayback .journeyPlayToggle:hover {
+  border-color: var(--moss);
+  background: var(--moss-pale);
+}
+
+.journeyPlayToggle svg {
+  width: 0.85rem;
+  height: 0.85rem;
 }
 
 .demoStage {
@@ -1513,7 +1550,7 @@
 .orgLayer span {
   grid-area: tier;
   color: rgba(255, 254, 251, 0.55);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 650;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1534,7 +1571,7 @@
   background: rgba(229, 233, 223, 0.1);
   padding: 0.22rem 0.5rem;
   color: rgba(255, 254, 251, 0.62);
-  font-size: 0.58rem;
+  font-size: 0.75rem;
   white-space: nowrap;
 }
 
@@ -2106,9 +2143,7 @@
     padding: 1rem 1.25rem;
   }
 
-  .orgLayer span { font-size: 0.68rem; }
   .orgLayer strong { font-size: 0.95rem; }
-  .orgLayer small { font-size: 0.64rem; }
 
   .useCaseCard {
     grid-template-columns: 3rem minmax(0, 1fr) minmax(15rem, 0.7fr);
@@ -2260,7 +2295,7 @@
     padding: 2.5rem;
   }
 
-  .journeyProgress {
+  .journeyPlayback {
     margin-top: auto;
   }
 
@@ -3652,6 +3687,73 @@
     box-shadow:
       0 0 0 0.9rem rgba(101, 114, 91, 0.07),
       0 16px 38px rgba(17, 22, 28, 0.23);
+  }
+}
+
+/*
+ * Phone readability. The hero and the product demo are miniatures sized for the
+ * wide layouts; on a phone nothing in them drops below 12px. Chrome that only
+ * says "this is the app" (breadcrumb, metadata, card descriptions) is hidden
+ * rather than shrunk, so the stage content keeps its room.
+ */
+@media (max-width: 47.99rem) {
+  .heroSourceHeading small,
+  .heroResultCard > small,
+  .heroFabricEngine > div:last-child span,
+  .heroInsightSignals,
+  .workbenchBreadcrumb,
+  .workbenchMetadata {
+    display: none;
+  }
+
+  .processFlowSignals {
+    flex-wrap: wrap;
+    row-gap: 0.35rem;
+  }
+
+  .heroSourceHeading strong,
+  .heroResultHeading strong,
+  .heroFabricEngine > div:last-child strong,
+  .workbenchTitleRow > span,
+  .workbenchTabs > span,
+  .workbenchTabs i,
+  .workbenchActions button,
+  .mockFilters > span,
+  .mockConversationRow > div > div > span,
+  .mockConversationRow p,
+  .mockAudioControls > span,
+  .mockPlaybackSection > p,
+  .mockTranscript p,
+  .summaryDemoToolbar button,
+  .summaryDemo article p,
+  .summaryDemo article li,
+  .summaryDemo cite,
+  .demoFlowBadges > span,
+  .demoFlowNode > p,
+  .demoFlowIndicator,
+  .flowConnector > span,
+  .processFlowSignals span,
+  .metricTile > div span,
+  .metricTile > p,
+  .insightSectionCard > header > span,
+  .insightCandidate > div:first-child > span,
+  .insightCandidate > p,
+  .insightCandidate > div:last-child,
+  .insightRiskRow {
+    font-size: 0.75rem;
+  }
+
+  .mockConversationRow strong,
+  .summaryDemo blockquote,
+  .demoFlowNodeHeader strong,
+  .insightSectionCard h5 {
+    font-size: 0.8125rem;
+  }
+
+  .mockPlaybackSection h5,
+  .summaryDemo h5,
+  .insightCandidate strong {
+    font-size: 0.875rem;
   }
 }
 
