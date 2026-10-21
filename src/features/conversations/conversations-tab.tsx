@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type Ref } from "react";
-import { useQuery } from "convex/react";
+import { useEffect, useRef, useState, type Ref } from "react";
+import { usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import type { LucideIcon } from "lucide-react";
 import {
   Bot,
   ChevronDown,
-  ChevronUp,
   Clock,
   FileText,
   Mic,
@@ -17,7 +16,8 @@ import {
   UserCheck,
 } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../../convex/_generated/dataModel";
+import { conversationTitle as storedConversationTitle } from "../../../convex/lib/conversationTitle";
 import { FocusedConversationPlayback } from "@/features/conversations/conversation-log";
 import type { RecordingMode } from "@/features/recording/recording-modal";
 import {
@@ -48,13 +48,12 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-const COMPACT_QUERY_LIMIT = 100;
-const INITIAL_VISIBLE_COUNT = 8;
+const INITIAL_PAGE_SIZE = 10;
+const LOAD_MORE_PAGE_SIZE = 20;
 
-type CompactConversationRows = FunctionReturnType<
-  typeof api.conversations.listCompactByProcess
->;
-type CompactConversation = CompactConversationRows[number];
+type CompactConversation = FunctionReturnType<
+  typeof api.conversations.listPageByProcess
+>["page"][number];
 type ConversationStatus = CompactConversation["status"];
 type ConversationInputMode = CompactConversation["inputMode"];
 type StatusFilter = "all" | ConversationStatus;
@@ -158,6 +157,29 @@ function conversationTitle(conversation: CompactConversation) {
       conversation.inputMode,
       conversation.contributorName,
     )
+  );
+}
+
+/** The row's title, for a contribution read in full rather than from the list. */
+function playbackTitle(conversation: Doc<"conversations">) {
+  return (
+    storedConversationTitle(conversation) ||
+    conversationTitleFromParts(
+      conversation.inputMode ?? "agent",
+      conversation.contributorName,
+    )
+  );
+}
+
+/** Whether a loaded row still shows under a status and type filter. */
+function matchesFilters(
+  conversation: CompactConversation,
+  statusFilter: StatusFilter,
+  typeFilter: TypeFilter,
+) {
+  return (
+    (statusFilter === "all" || conversation.status === statusFilter) &&
+    (typeFilter === "all" || conversation.inputMode === typeFilter)
   );
 }
 
@@ -289,26 +311,19 @@ function ConversationRow({
 }
 
 function ConversationPlaybackPanel({
-  processId,
   conversationId,
-  title,
+  conversation,
   canLabelSpeakers,
   canRetry,
   hasConversations,
 }: {
-  processId: Id<"processes">;
   conversationId: Id<"conversations"> | null;
-  title: string;
+  /** Undefined while loading; null when the row is gone or out of reach. */
+  conversation: Doc<"conversations"> | null | undefined;
   canLabelSpeakers: boolean;
   canRetry: boolean;
   hasConversations: boolean;
 }) {
-  const conversations = useQuery(
-    api.conversations.listByProcess,
-    conversationId ? { processId } : "skip",
-  );
-  const conversation = conversations?.find((row) => row._id === conversationId);
-
   if (!conversationId) {
     return (
       <section className="flex h-full min-h-72 flex-col bg-background">
@@ -328,7 +343,7 @@ function ConversationPlaybackPanel({
     );
   }
 
-  if (conversations === undefined) {
+  if (conversation === undefined) {
     return (
       <section className="flex h-full min-h-72 flex-col bg-background">
         {/* The list beside it announces the load. */}
@@ -348,11 +363,16 @@ function ConversationPlaybackPanel({
     );
   }
 
-  if (!conversation) {
+  if (conversation === null) {
     return (
       <section className="flex h-full min-h-72 flex-col bg-background">
-        <div className="p-4 text-sm text-muted-foreground">
-          This contribution is no longer available.
+        <div className="flex min-h-0 flex-1 items-center justify-center p-4">
+          <EmptyState
+            icon={FileText}
+            title="Contribution unavailable"
+            description="It may have been deleted or moved to another process."
+            className="w-full border-0 bg-transparent"
+          />
         </div>
       </section>
     );
@@ -362,7 +382,7 @@ function ConversationPlaybackPanel({
     <section className="flex h-full min-h-72 overflow-hidden bg-background">
       <FocusedConversationPlayback
         conversation={conversation}
-        title={title}
+        title={playbackTitle(conversation)}
         canLabelSpeakers={canLabelSpeakers}
         canRetry={canRetry}
       />
@@ -409,22 +429,39 @@ export function ProcessConversationsTab({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
-  const [viewAll, setViewAll] = useState(false);
+  // May point past the loaded pages: a link opens its contribution whether or
+  // not the list has reached it yet.
   const [selectedConversationId, setSelectedConversationId] =
     useState<Id<"conversations"> | null>(null);
   const handledLabelingJumpKey = useRef(0);
   const handledFocusConversationJumpKey = useRef(0);
+  const revealedFocusConversationJumpKey = useRef(0);
   const conversationButtonRefs = useRef(
     new Map<Id<"conversations">, HTMLButtonElement>(),
   );
   const listRef = useRef<HTMLElement>(null);
   const playbackRef = useRef<HTMLElement>(null);
-  const conversations = useQuery(api.conversations.listCompactByProcess, {
-    processId,
-    limit: COMPACT_QUERY_LIMIT,
-  });
+  // Changing a filter or the order changes the arguments, which starts the
+  // list again from its first page.
+  const {
+    results: conversations,
+    status: pageStatus,
+    loadMore,
+  } = usePaginatedQuery(
+    api.conversations.listPageByProcess,
+    {
+      processId,
+      status: statusFilter === "all" ? undefined : statusFilter,
+      inputMode: typeFilter === "all" ? undefined : typeFilter,
+      order: sortOrder,
+    },
+    { initialNumItems: INITIAL_PAGE_SIZE },
+  );
+  const loadingFirstPage = pageStatus === "LoadingFirstPage";
+  const canLoadMore =
+    pageStatus === "CanLoadMore" || pageStatus === "LoadingMore";
 
-  /* eslint-disable react-hooks/set-state-in-effect -- this responds to an explicit header jump command. */
+  // These respond to explicit header jump commands.
   useEffect(() => {
     if (
       !labelingJumpKey ||
@@ -432,21 +469,14 @@ export function ProcessConversationsTab({
     ) {
       return;
     }
+    handledLabelingJumpKey.current = labelingJumpKey;
 
+    // The status filter runs on the server, so the first row of the new list
+    // is the newest contribution awaiting labels however old the rest are.
     setStatusFilter("needs_speaker_labels");
     setTypeFilter("all");
-    setViewAll(true);
-
-    if (conversations === undefined) return;
-
-    const firstConversationNeedingLabels = conversations.find(
-      (conversation) => conversation.status === "needs_speaker_labels",
-    );
-    if (firstConversationNeedingLabels) {
-      setSelectedConversationId(firstConversationNeedingLabels._id);
-    }
-    handledLabelingJumpKey.current = labelingJumpKey;
-  }, [conversations, labelingJumpKey]);
+    setSelectedConversationId(null);
+  }, [labelingJumpKey]);
 
   useEffect(() => {
     if (
@@ -456,77 +486,100 @@ export function ProcessConversationsTab({
     ) {
       return;
     }
+    handledFocusConversationJumpKey.current = focusConversationJumpKey;
 
     setStatusFilter("all");
     setTypeFilter("all");
-    setViewAll(true);
+    setSelectedConversationId(focusConversationId);
+  }, [focusConversationId, focusConversationJumpKey]);
 
-    if (conversations === undefined) return;
-
-    const targetConversation = conversations.find(
-      (conversation) => conversation._id === focusConversationId,
-    );
-    if (targetConversation) {
-      setSelectedConversationId(targetConversation._id);
-    }
-    handledFocusConversationJumpKey.current = focusConversationJumpKey;
-  }, [conversations, focusConversationId, focusConversationJumpKey]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  const filteredConversations = useMemo(() => {
-    const rows = conversations ?? [];
-    const next = rows.filter((conversation) => {
-      const statusMatches =
-        statusFilter === "all" || conversation.status === statusFilter;
-      const typeMatches =
-        typeFilter === "all" || conversation.inputMode === typeFilter;
-      return statusMatches && typeMatches;
-    });
-
-    return [...next].sort((first, second) =>
-      sortOrder === "newest"
-        ? second._creationTime - first._creationTime
-        : first._creationTime - second._creationTime,
-    );
-  }, [conversations, sortOrder, statusFilter, typeFilter]);
-
-  const visibleConversations = viewAll
-    ? filteredConversations
-    : filteredConversations.slice(0, INITIAL_VISIBLE_COUNT);
-  const hasMoreConversations =
-    filteredConversations.length > visibleConversations.length;
   const hasFilters = statusFilter !== "all" || typeFilter !== "all";
-  const activeConversation =
-    visibleConversations.find(
-      (conversation) => conversation._id === selectedConversationId,
-    ) ??
-    visibleConversations[0] ??
-    null;
-  const activeConversationId = activeConversation?._id ?? null;
+  const activeConversationId =
+    selectedConversationId ?? conversations[0]?._id ?? null;
+  const activeListRow =
+    conversations.find(
+      (conversation) => conversation._id === activeConversationId,
+    ) ?? null;
+  const activeConversation = useQuery(
+    api.conversations.getInProcess,
+    activeConversationId
+      ? { processId, conversationId: activeConversationId }
+      : "skip",
+  );
+  // A linked contribution older than the loaded pages still plays; say why
+  // the list doesn't show it.
+  const activeOutsideList =
+    activeConversationId !== null &&
+    !loadingFirstPage &&
+    activeListRow === null &&
+    Boolean(activeConversation);
 
   useEffect(() => {
     if (
       !focusConversationId ||
       !focusConversationJumpKey ||
       handledFocusConversationJumpKey.current !== focusConversationJumpKey ||
-      activeConversationId !== focusConversationId
+      revealedFocusConversationJumpKey.current === focusConversationJumpKey ||
+      activeConversationId !== focusConversationId ||
+      loadingFirstPage
     ) {
       return;
     }
+    revealedFocusConversationJumpKey.current = focusConversationJumpKey;
 
     // Stacked, the conversation the link points at is the playback, not the
     // row above it.
     if (revealPlaybackIfStacked(listRef.current, playbackRef.current)) return;
 
+    // Not loaded yet, the link's contribution is only in the playback.
     const target = conversationButtonRefs.current.get(focusConversationId);
-    target?.scrollIntoView({ block: "nearest" });
-    target?.focus({ preventScroll: true });
-  }, [activeConversationId, focusConversationId, focusConversationJumpKey]);
+    if (target) {
+      target.scrollIntoView({ block: "nearest" });
+      target.focus({ preventScroll: true });
+    } else {
+      playbackRef.current?.focus({ preventScroll: true });
+    }
+  }, [
+    activeConversationId,
+    focusConversationId,
+    focusConversationJumpKey,
+    loadingFirstPage,
+  ]);
 
   const selectConversation = (conversationId: Id<"conversations">) => {
     setSelectedConversationId(conversationId);
     revealPlaybackIfStacked(listRef.current, playbackRef.current);
   };
+
+  // Keeps the open contribution when it still matches; otherwise the first
+  // row of the new list takes over.
+  const changeFilters = (
+    nextStatusFilter: StatusFilter,
+    nextTypeFilter: TypeFilter,
+  ) => {
+    setStatusFilter(nextStatusFilter);
+    setTypeFilter(nextTypeFilter);
+    if (
+      !activeListRow ||
+      !matchesFilters(activeListRow, nextStatusFilter, nextTypeFilter)
+    ) {
+      setSelectedConversationId(null);
+    }
+  };
+
+  const loadMoreButton = canLoadMore && (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="gap-2"
+      disabled={pageStatus === "LoadingMore"}
+      onClick={() => loadMore(LOAD_MORE_PAGE_SIZE)}
+    >
+      <ChevronDown className="size-3.5" aria-hidden="true" />
+      {pageStatus === "LoadingMore" ? "Loading…" : "Load more"}
+    </Button>
+  );
 
   return (
     <TooltipProvider>
@@ -540,7 +593,9 @@ export function ProcessConversationsTab({
               <Select
                 value={statusFilter}
                 items={STATUS_FILTER_ITEMS}
-                onValueChange={(value) => setStatusFilter(value as StatusFilter)}
+                onValueChange={(value) =>
+                  changeFilters(value as StatusFilter, typeFilter)
+                }
               >
                 <SelectTrigger size="sm" className="w-full" aria-label="Status filter">
                   <SelectValue />
@@ -556,7 +611,9 @@ export function ProcessConversationsTab({
               <Select
                 value={typeFilter}
                 items={TYPE_FILTER_ITEMS}
-                onValueChange={(value) => setTypeFilter(value as TypeFilter)}
+                onValueChange={(value) =>
+                  changeFilters(statusFilter, value as TypeFilter)
+                }
               >
                 <SelectTrigger size="sm" className="w-full" aria-label="Type filter">
                   <SelectValue />
@@ -583,9 +640,16 @@ export function ProcessConversationsTab({
               </Select>
             </div>
 
-            {conversations === undefined ? (
+            {activeOutsideList && (
+              <p className="text-xs text-muted-foreground">
+                The open contribution is further down the list than has loaded
+                so far.
+              </p>
+            )}
+
+            {loadingFirstPage ? (
               <LoadingRows />
-            ) : conversations.length === 0 ? (
+            ) : conversations.length === 0 && !hasFilters && !canLoadMore ? (
               <EmptyState
                 icon={Mic}
                 title="No contributions yet"
@@ -618,34 +682,34 @@ export function ProcessConversationsTab({
                 }
                 className="min-h-72"
               />
-            ) : filteredConversations.length === 0 ? (
+            ) : conversations.length === 0 ? (
               <EmptyState
                 icon={FileText}
                 title="No matching contributions"
                 description={
-                  hasFilters
-                    ? "No contributions match these filters."
-                    : undefined
+                  canLoadMore
+                    ? "None of the contributions loaded so far match these filters. Load more to keep looking."
+                    : "No contributions match these filters."
                 }
                 action={
-                  hasFilters && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setStatusFilter("all");
-                        setTypeFilter("all");
-                      }}
-                    >
-                      Clear filters
-                    </Button>
-                  )
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {hasFilters && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => changeFilters("all", "all")}
+                      >
+                        Clear filters
+                      </Button>
+                    )}
+                    {loadMoreButton}
+                  </div>
                 }
                 className="min-h-72"
               />
             ) : (
               <div className="space-y-3">
-                {visibleConversations.map((conversation) => (
+                {conversations.map((conversation) => (
                   <ConversationRow
                     key={conversation._id}
                     conversation={conversation}
@@ -664,31 +728,20 @@ export function ProcessConversationsTab({
                   />
                 ))}
 
-                {filteredConversations.length > INITIAL_VISIBLE_COUNT && (
-                  <div className="flex justify-center pt-1">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="gap-2"
-                      onClick={() => setViewAll((current) => !current)}
+                {(canLoadMore || conversations.length > INITIAL_PAGE_SIZE) && (
+                  <div className="flex flex-col items-center gap-2 pt-1">
+                    {loadMoreButton}
+                    {/* Loaded rows, not a total: the list can't know how many
+                        remain until it reaches the end. */}
+                    <p
+                      className="text-center text-xs text-muted-foreground"
+                      aria-live="polite"
                     >
-                      {viewAll ? (
-                        <ChevronUp className="size-3.5" />
-                      ) : (
-                        <ChevronDown className="size-3.5" />
-                      )}
-                      {viewAll
-                        ? "Show fewer"
-                        : `View all contributions (${filteredConversations.length})`}
-                    </Button>
+                      {canLoadMore
+                        ? `${conversations.length} loaded`
+                        : `All ${conversations.length} loaded`}
+                    </p>
                   </div>
-                )}
-
-                {hasMoreConversations && (
-                  <p className="text-center text-xs text-muted-foreground">
-                    Showing {visibleConversations.length} of {filteredConversations.length}
-                  </p>
                 )}
               </div>
             )}
@@ -701,18 +754,21 @@ export function ProcessConversationsTab({
           tabIndex={-1}
           aria-label={
             activeConversation
-              ? `Playback: ${conversationTitle(activeConversation)}`
-              : "Contribution playback"
+              ? `Playback: ${playbackTitle(activeConversation)}`
+              : activeListRow
+                ? `Playback: ${conversationTitle(activeListRow)}`
+                : "Contribution playback"
           }
           className="min-w-0 border-t p-4 outline-none md:min-h-0 md:overflow-hidden md:border-l md:border-t-0 md:p-6"
         >
           <ConversationPlaybackPanel
-            processId={processId}
             conversationId={activeConversationId}
-            title={activeConversation ? conversationTitle(activeConversation) : ""}
+            conversation={activeConversation}
             canLabelSpeakers={canLabelSpeakers}
             canRetry={canRetry}
-            hasConversations={(conversations?.length ?? 0) > 0}
+            hasConversations={
+              conversations.length > 0 || hasFilters || pageStatus !== "Exhausted"
+            }
           />
         </aside>
       </div>

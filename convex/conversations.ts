@@ -23,6 +23,7 @@ import { conversationTitle } from "./lib/conversationTitle";
 
 const DEFAULT_COMPACT_CONVERSATION_LIMIT = 50;
 const MAX_COMPACT_CONVERSATION_LIMIT = 100;
+const MAX_CONVERSATION_PAGE_SIZE = 50;
 const DEFAULT_MY_CONVERSATION_LIMIT = 6;
 const MAX_MY_CONVERSATION_LIMIT = 50;
 // Org-wide rows awaiting labels read to find the caller's own. Labelling is
@@ -76,27 +77,133 @@ export const listCompactByProcess = query({
       .order("desc")
       .take(limit);
 
-    return rows.map((conversation) => ({
-      _id: conversation._id,
-      _creationTime: conversation._creationTime,
-      processId: conversation.processId,
-      contributorName: conversation.contributorName,
-      userId: conversation.userId ?? null,
-      subjectUserId: conversation.subjectUserId ?? null,
-      submittedByName: conversation.submittedByName ?? null,
-      inputMode: conversation.inputMode ?? "agent",
-      status: conversation.status,
-      // Falls back to the analysis blob so rows written before the `title`
-      // column existed are still titled by what was discussed.
-      title: conversationTitle(conversation) ?? null,
-      durationSeconds: conversation.durationSeconds ?? null,
-      hasAudio: Boolean(
-        conversation.elevenlabsConversationId || conversation.audioStorageId,
+    return rows.map(compactConversation);
+  },
+});
+
+/** A list row without the transcript, summary or analysis payloads. */
+function compactConversation(conversation: Doc<"conversations">) {
+  return {
+    _id: conversation._id,
+    _creationTime: conversation._creationTime,
+    processId: conversation.processId,
+    contributorName: conversation.contributorName,
+    userId: conversation.userId ?? null,
+    subjectUserId: conversation.subjectUserId ?? null,
+    submittedByName: conversation.submittedByName ?? null,
+    inputMode: conversation.inputMode ?? "agent",
+    status: conversation.status,
+    // Falls back to the analysis blob so rows written before the `title`
+    // column existed are still titled by what was discussed.
+    title: conversationTitle(conversation) ?? null,
+    durationSeconds: conversation.durationSeconds ?? null,
+    hasAudio: Boolean(
+      conversation.elevenlabsConversationId || conversation.audioStorageId,
+    ),
+    hasTranscript: Boolean(conversation.transcript?.length),
+    hasSummary: Boolean(conversation.summary?.trim()),
+    needsSpeakerLabels: conversation.status === "needs_speaker_labels",
+  };
+}
+
+/**
+ * A process's contributions a page at a time, for the Contributions tab. The
+ * status filter and sort order run on the index, so every contribution is
+ * reachable however old. There is no `inputMode` index (legacy rows have no
+ * mode), so the type filter drops rows from each page after reading it; a
+ * filtered page can come back short, or empty while more remain.
+ */
+export const listPageByProcess = query({
+  args: {
+    processId: v.id("processes"),
+    paginationOpts: paginationOptsValidator,
+    status: v.optional(
+      v.union(
+        v.literal("processing"),
+        v.literal("needs_speaker_labels"),
+        v.literal("done"),
+        v.literal("failed"),
       ),
-      hasTranscript: Boolean(conversation.transcript?.length),
-      hasSummary: Boolean(conversation.summary?.trim()),
-      needsSpeakerLabels: conversation.status === "needs_speaker_labels",
-    }));
+    ),
+    inputMode: v.optional(
+      v.union(
+        v.literal("agent"),
+        v.literal("voiceRecord"),
+        v.literal("audioUpload"),
+      ),
+    ),
+    order: v.union(v.literal("newest"), v.literal("oldest")),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgMember(ctx);
+    const parent = await ctx.db.get(args.processId);
+    if (!parent || parent.clerkOrgId !== caller.orgId) {
+      return { page: [], isDone: true, continueCursor: "" };
+    }
+
+    const paginationOpts = {
+      ...args.paginationOpts,
+      numItems: Math.min(
+        Math.max(Math.floor(args.paginationOpts.numItems), 1),
+        MAX_CONVERSATION_PAGE_SIZE,
+      ),
+    };
+    const status = args.status;
+    const indexed =
+      status === undefined
+        ? ctx.db
+            .query("conversations")
+            .withIndex("by_clerkOrgId_and_processId", (q) =>
+              q.eq("clerkOrgId", caller.orgId).eq("processId", args.processId),
+            )
+        : ctx.db
+            .query("conversations")
+            .withIndex("by_clerkOrgId_and_processId_and_status", (q) =>
+              q
+                .eq("clerkOrgId", caller.orgId)
+                .eq("processId", args.processId)
+                .eq("status", status),
+            );
+    const result = await indexed
+      .order(args.order === "newest" ? "desc" : "asc")
+      .paginate(paginationOpts);
+
+    const inputMode = args.inputMode;
+    return {
+      ...result,
+      page: result.page
+        .filter(
+          (conversation) =>
+            inputMode === undefined ||
+            (conversation.inputMode ?? "agent") === inputMode,
+        )
+        .map(compactConversation),
+    };
+  },
+});
+
+/**
+ * One contribution with its transcript and summary, for playback. Any member
+ * may read it, as with `listByProcess`. Returns null when the row is gone,
+ * belongs to another org, or isn't in `processId`, so a stale link shows as
+ * unavailable rather than playing something else.
+ */
+export const getInProcess = query({
+  args: {
+    processId: v.id("processes"),
+    conversationId: v.id("conversations"),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgMember(ctx);
+    const conversation = await ctx.db.get(args.conversationId);
+    if (
+      !conversation ||
+      conversation.clerkOrgId !== caller.orgId ||
+      conversation.processId !== args.processId
+    ) {
+      return null;
+    }
+    return conversation;
   },
 });
 

@@ -10,16 +10,11 @@ import { Button } from "@/components/ui/button";
 import { cardVariants } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useConversationAudioUrl } from "@/features/conversations/use-conversation-audio-url";
 import { describeError } from "@/lib/user-error-message";
+import { SpeakerMemberPicker } from "./speaker-member-picker";
+import { NO_LINKED_MEMBER, type MemberOption } from "./speaker-member-options";
 
 type TranscriptMessage = {
   role: string;
@@ -162,7 +157,25 @@ function SpeakerLabelEditor({
   className?: string;
   onSubmitted?: () => void;
 }) {
-  const members = useQuery(api.users.searchOrgMembers, { limit: 50 });
+  // Names for members linked before this review opened, who may be outside
+  // any search result the picker has loaded.
+  const linkedUserIds = useMemo(
+    () => [
+      ...new Set(
+        (speakerLabels ?? []).flatMap((label) =>
+          label.userId ? [label.userId] : [],
+        ),
+      ),
+    ],
+    [speakerLabels],
+  );
+  const linkedMembers = useQuery(
+    api.users.getOrgMembersByUserIds,
+    linkedUserIds.length > 0 ? { userIds: linkedUserIds } : "skip",
+  );
+  const [pickedMembers, setPickedMembers] = useState<
+    Record<string, MemberOption>
+  >({});
   const submitSpeakerLabels = useMutation(
     api.voiceRecordings.submitSpeakerLabels,
   );
@@ -177,6 +190,20 @@ function SpeakerLabelEditor({
   // Unique per mount, so two copies of the review never share ids.
   const fieldId = useId();
   const audioLabelId = `${fieldId}-audio`;
+
+  function memberFor(draft: SpeakerDraft): MemberOption {
+    if (!draft.userId) return NO_LINKED_MEMBER;
+    return (
+      pickedMembers[draft.userId] ??
+      linkedMembers?.find((member) => member.userId === draft.userId) ?? {
+        // Until the lookup loads (or if they've left the workspace), the
+        // saved speaker name is the best label we have.
+        userId: draft.userId,
+        name: draft.displayName || "Linked member",
+        email: "",
+      }
+    );
+  }
 
   const canSubmit =
     speakerRows.length > 0 &&
@@ -285,42 +312,26 @@ function SpeakerLabelEditor({
                     Member
                     <span className="sr-only"> for {row.defaultName}</span>
                   </label>
-                  <Select
-                    value={draft.userId ?? "none"}
-                    onValueChange={(value) => {
-                      if (value === "none") {
+                  <SpeakerMemberPicker
+                    id={memberId}
+                    labelledBy={memberLabelId}
+                    value={memberFor(draft)}
+                    onChange={(member) => {
+                      if (!member.userId) {
                         setDrafts((prev) => ({
                           ...prev,
                           [row.speakerId]: { ...draft, userId: null },
                         }));
                         return;
                       }
-                      const member = members?.find((m) => m.userId === value);
+                      const userId = member.userId;
+                      setPickedMembers((prev) => ({ ...prev, [userId]: member }));
                       setDrafts((prev) => ({
                         ...prev,
-                        [row.speakerId]: {
-                          displayName: member?.name ?? draft.displayName,
-                          userId: value as Id<"users">,
-                        },
+                        [row.speakerId]: { displayName: member.name, userId },
                       }));
                     }}
-                  >
-                    <SelectTrigger
-                      id={memberId}
-                      aria-labelledby={memberLabelId}
-                      className="w-full"
-                    >
-                      <SelectValue placeholder="Optional" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No linked member</SelectItem>
-                      {(members ?? []).map((member) => (
-                        <SelectItem key={member.userId} value={member.userId}>
-                          {member.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  />
                 </div>
               </div>
 

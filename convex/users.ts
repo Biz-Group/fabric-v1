@@ -1259,6 +1259,27 @@ export const searchOrgMembers = query({
   },
 });
 
+// Resolves members already linked to something (e.g. a speaker label) whose
+// row may be outside a capped searchOrgMembers result.
+export const getOrgMembersByUserIds = query({
+  args: { userIds: v.array(v.id("users")) },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgContributor(ctx);
+    const members = [];
+    for (const userId of [...new Set(args.userIds)].slice(0, 25)) {
+      const memberships = await ctx.db
+        .query("memberships")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .take(50);
+      const membership = memberships.find((m) => m.clerkOrgId === caller.orgId);
+      if (!membership) continue;
+      const m = await memberRow(ctx, membership);
+      members.push({ userId: m.userId, name: m.name, email: m.email });
+    }
+    return members;
+  },
+});
+
 export const listOrgMemberOptions = query({
   args: {},
   handler: async (ctx) => {
