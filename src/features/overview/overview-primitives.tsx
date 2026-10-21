@@ -511,12 +511,15 @@ export function FindingRows({
   onOpenProcess,
   onOpenDepartment,
   emptyText,
+  anchorId,
 }: {
   findings: OverviewFinding[];
   onOpenConversation?: (conversationId: Id<"conversations">) => void;
   onOpenProcess?: (processId: Id<"processes">) => void;
   onOpenDepartment?: (departmentId: Id<"departments">) => void;
   emptyText: string;
+  /** Gives each row an id, for in-page links to a single finding. */
+  anchorId?: (finding: OverviewFinding) => string;
 }) {
   if (findings.length === 0) {
     return (
@@ -529,7 +532,11 @@ export function FindingRows({
   return (
     <div className="divide-y divide-border/80">
       {findings.map((finding) => (
-        <article key={finding.id} className="py-5 first:pt-0 last:pb-0">
+        <article
+          key={finding.id}
+          id={anchorId?.(finding)}
+          className="focus-ring scroll-mt-4 rounded-sm py-5 first:pt-0 last:pb-0"
+        >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <h3 className="min-w-0 text-base font-semibold leading-6">
               {finding.title}

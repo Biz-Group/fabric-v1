@@ -253,6 +253,168 @@ export function deriveDecisionBranches(node: FlowNode, edges: FlowEdge[]) {
   return edges.filter((edge) => edge.source === node.id);
 }
 
+export type KeyFindingKind =
+  | "bottleneck"
+  | "automation"
+  | "knowledge_risk"
+  | "weak_evidence"
+  | "handoff_hotspot";
+
+export type KeyFinding = {
+  kind: KeyFindingKind;
+  title: string;
+  detail: string;
+  /** The step the finding is about, for "Show in flow". */
+  nodeId: string | null;
+};
+
+export type KeyFindings =
+  | { state: "findings"; findings: KeyFinding[] }
+  /** Described steps exist, and none carry a reported issue. */
+  | { state: "none_reported" }
+  /** No step was described, so there is nothing to report on. */
+  | { state: "not_described" };
+
+export const MAX_KEY_FINDINGS = 4;
+
+const CONFIDENCE_RANK: Record<Confidence, number> = {
+  high: 2,
+  medium: 1,
+  low: 0,
+};
+
+function firstText(values: string[]) {
+  return values.map((value) => value.trim()).find(Boolean) ?? null;
+}
+
+/** The step with the most supporting text, ties broken by confidence then label. */
+function pickStrongest(nodes: FlowNode[], weight: (node: FlowNode) => number) {
+  return [...nodes].sort(
+    (a, b) =>
+      weight(b) - weight(a) ||
+      CONFIDENCE_RANK[b.confidence] - CONFIDENCE_RANK[a.confidence] ||
+      a.label.localeCompare(b.label),
+  )[0];
+}
+
+function moreSuffix(count: number, noun: string) {
+  return count > 1 ? ` One of ${pluralize(count, noun)}.` : "";
+}
+
+/**
+ * The few findings Insights leads with, chosen deterministically from what the
+ * flow already reports — no new analysis. Every finding cites a step (or an
+ * automation opportunity) the reader can open. Ordered by how directly a reader
+ * can act on it: a reported bottleneck, the strongest recommended automation,
+ * knowledge held by few, steps resting on weak evidence, then a step where work
+ * changes hands repeatedly.
+ */
+export function deriveKeyFindings(
+  flow: ProcessFlow,
+  handoffs: HandoffItem[],
+): KeyFindings {
+  const described = describedNodes(flow.nodes);
+  if (described.length === 0) return { state: "not_described" };
+
+  const findings: KeyFinding[] = [];
+
+  const bottlenecks = deriveBottlenecks(flow);
+  if (bottlenecks.length > 0) {
+    const node = pickStrongest(bottlenecks, (n) => n.painPoints.length);
+    findings.push({
+      kind: "bottleneck",
+      title: `Bottleneck: ${node.label}`,
+      detail:
+        (firstText(node.painPoints) ??
+          "Marked as a bottleneck in the generated flow.") +
+        moreSuffix(bottlenecks.length, "reported bottleneck"),
+      nodeId: node.id,
+    });
+  }
+
+  // Derived opportunities are automatable-looking steps, not recommendations,
+  // so they never lead.
+  const opportunities =
+    flow.insights.automationOpportunitiesSource === "derived"
+      ? []
+      : (flow.insights.automationOpportunityDetails ?? []);
+  if (opportunities.length > 0) {
+    const top = [...opportunities].sort(
+      (a, b) =>
+        CONFIDENCE_RANK[b.confidence] - CONFIDENCE_RANK[a.confidence] ||
+        b.nodeIds.length - a.nodeIds.length ||
+        a.title.localeCompare(b.title),
+    )[0];
+    findings.push({
+      kind: "automation",
+      title: `Automation: ${top.title}`,
+      detail:
+        (top.expectedBenefit?.trim() || top.rationale.trim()) +
+        moreSuffix(opportunities.length, "recommended automation"),
+      nodeId: top.nodeIds[0] ?? null,
+    });
+  }
+
+  const knowledgeRisks = described.filter((node) => node.isTribalKnowledge);
+  if (knowledgeRisks.length > 0) {
+    const node = pickStrongest(knowledgeRisks, (n) => n.riskIndicators.length);
+    findings.push({
+      kind: "knowledge_risk",
+      title: `Knowledge risk: ${node.label}`,
+      detail:
+        (firstText(node.riskIndicators) ??
+          "Depends on knowledge only a few people hold.") +
+        moreSuffix(knowledgeRisks.length, "step"),
+      nodeId: node.id,
+    });
+  }
+
+  const weak = described.filter((node) => node.confidence === "low");
+  if (weak.length > 0) {
+    findings.push({
+      kind: "weak_evidence",
+      title:
+        weak.length === 1
+          ? `Weak evidence: ${weak[0].label}`
+          : `Weak evidence: ${pluralize(weak.length, "step")}`,
+      detail:
+        weak.length === 1
+          ? "This step is inferred or rests on a weak source. Confirm it in a contribution."
+          : `${weak[0].label} and ${pluralize(weak.length - 1, "other step")} are inferred or rest on weak sources. Confirm them in a contribution.`,
+      nodeId: weak[0].id,
+    });
+  }
+
+  // Count how often each step sits at either end of a handoff. Only a step in
+  // two or more is a hotspot; a single handoff is ordinary.
+  const handoffsByNode = new Map<string, { node: FlowNode; count: number }>();
+  for (const item of handoffs) {
+    for (const node of new Set([item.source, item.target])) {
+      const current = handoffsByNode.get(node.id);
+      handoffsByNode.set(node.id, {
+        node,
+        count: (current?.count ?? 0) + 1,
+      });
+    }
+  }
+  const hotspot = [...handoffsByNode.values()]
+    .filter((entry) => entry.count >= 2)
+    .sort(
+      (a, b) => b.count - a.count || a.node.label.localeCompare(b.node.label),
+    )[0];
+  if (hotspot) {
+    findings.push({
+      kind: "handoff_hotspot",
+      title: `Handoff hotspot: ${hotspot.node.label}`,
+      detail: `Work changes hands ${hotspot.count} times around this step.`,
+      nodeId: hotspot.node.id,
+    });
+  }
+
+  if (findings.length === 0) return { state: "none_reported" };
+  return { state: "findings", findings: findings.slice(0, MAX_KEY_FINDINGS) };
+}
+
 /**
  * Confidence breakdown over described steps only. The totals will not add up to
  * the node count on a partial flow — which is correct: a step nobody described

@@ -80,6 +80,8 @@ import { resolveFlowNodeId } from "./flow-navigation";
 import {
   resolveEntryViewportTransform,
   resolveFlowEntryNodeId,
+  resolveResizeReframe,
+  type AutomaticFlowFrame,
 } from "./flow-viewport";
 import {
   resolveFreshFlowSourceConversations,
@@ -206,6 +208,8 @@ function ProcessFlowInner({
   const [actionError, setActionError] = useState<string | null>(null);
   const lastInitialFrameKey = useRef<string | null>(null);
   const lastSelectionFrameKey = useRef<string | null>(null);
+  // Repeated when the canvas resizes; null once the person moves the view.
+  const automaticFrame = useRef<AutomaticFlowFrame | null>(null);
   const spotlightFitTimeout = useRef<number | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -447,6 +451,16 @@ function ProcessFlowInner({
   );
 
   const handleFitAll = useCallback(() => {
+    const canvas = canvasRef.current?.getBoundingClientRect();
+    automaticFrame.current = canvas
+      ? {
+          mode: "fit",
+          width: canvas.width,
+          height: canvas.height,
+          padding: 0.16,
+          maxZoom: 1,
+        }
+      : null;
     void fitView({
       padding: 0.16,
       maxZoom: 1,
@@ -455,8 +469,29 @@ function ProcessFlowInner({
   }, [fitView, viewportDuration]);
 
   const handleCenterSelected = useCallback(() => {
-    if (selectedNodeId) centerNode(selectedNodeId);
+    if (!selectedNodeId) return;
+    automaticFrame.current = null;
+    centerNode(selectedNodeId);
   }, [centerNode, selectedNodeId]);
+
+  const handleZoomOut = useCallback(() => {
+    automaticFrame.current = null;
+    void zoomOut({ duration: viewportDuration });
+  }, [viewportDuration, zoomOut]);
+
+  const handleZoomIn = useCallback(() => {
+    automaticFrame.current = null;
+    void zoomIn({ duration: viewportDuration });
+  }, [viewportDuration, zoomIn]);
+
+  // Programmatic moves arrive without an event; a drag, wheel or pinch has one.
+  // onMove, not onMoveStart, so a click that leaves the view still doesn't count.
+  const handleMove = useCallback(
+    (event: MouseEvent | TouchEvent | null) => {
+      if (event) automaticFrame.current = null;
+    },
+    [],
+  );
 
   const handleFlowKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -496,6 +531,8 @@ function ProcessFlowInner({
 
       const currentNodeId = nodeElement.dataset.id;
       if (!currentNodeId) return;
+      // Keyboard moves between steps auto-pan; the person is exploring now.
+      automaticFrame.current = null;
 
       if (event.key === "Enter") {
         event.preventDefault();
@@ -669,6 +706,8 @@ function ProcessFlowInner({
       clearTransientHover();
 
       if (mode === null || mode === activeSpotlightMode) {
+        // The view stays on the old highlight, which a resize shouldn't redo.
+        automaticFrame.current = null;
         setSpotlightState(null);
         return;
       }
@@ -681,6 +720,17 @@ function ProcessFlowInner({
       // Clearing first cancels this callback, so clear never changes viewport.
       spotlightFitTimeout.current = window.setTimeout(() => {
         spotlightFitTimeout.current = null;
+        const canvas = canvasRef.current?.getBoundingClientRect();
+        automaticFrame.current = canvas
+          ? {
+              mode: "fit",
+              width: canvas.width,
+              height: canvas.height,
+              nodeIds: matchingNodes.map((node) => node.id),
+              padding: 0.3,
+              maxZoom: 1.05,
+            }
+          : null;
         void fitView({
           nodes: matchingNodes,
           padding: 0.3,
@@ -705,6 +755,42 @@ function ProcessFlowInner({
     }
   });
 
+  const frameEntry = useCallback(
+    (canvas: { width: number; height: number }) => {
+      if (
+        entryNodeX === undefined ||
+        entryNodeY === undefined ||
+        !entryNodeCategory
+      )
+        return;
+      automaticFrame.current = {
+        mode: "entry",
+        width: canvas.width,
+        height: canvas.height,
+      };
+      void setViewport(
+        resolveEntryViewportTransform({
+          node: {
+            position: { x: entryNodeX, y: entryNodeY },
+            width: FLOW_NODE_WIDTH,
+            height: flowNodeHeight(entryNodeCategory),
+          },
+          viewport: { width: canvas.width, height: canvas.height },
+          direction: viewPreferences.direction,
+        }),
+        { duration: viewportDuration },
+      );
+    },
+    [
+      entryNodeCategory,
+      entryNodeX,
+      entryNodeY,
+      setViewport,
+      viewPreferences.direction,
+      viewportDuration,
+    ],
+  );
+
   useEffect(() => {
     if (
       !viewportInitialized ||
@@ -728,18 +814,7 @@ function ProcessFlowInner({
         if (!canvas || canvas.width <= 0 || canvas.height <= 0) return;
 
         lastInitialFrameKey.current = frameKey;
-        void setViewport(
-          resolveEntryViewportTransform({
-            node: {
-              position: { x: entryNodeX, y: entryNodeY },
-              width: FLOW_NODE_WIDTH,
-              height: flowNodeHeight(entryNodeCategory),
-            },
-            viewport: { width: canvas.width, height: canvas.height },
-            direction: viewPreferences.direction,
-          }),
-          { duration: viewportDuration },
-        );
+        frameEntry({ width: canvas.width, height: canvas.height });
       },
       isFullscreen ? 80 : 0,
     );
@@ -749,16 +824,60 @@ function ProcessFlowInner({
     entryNodeId,
     entryNodeX,
     entryNodeY,
+    frameEntry,
     isFullscreen,
     selectedNodeId,
-    setViewport,
     topologyKey,
     viewerWidth,
     viewPreferences.direction,
     viewPreferences.grouping,
     viewportInitialized,
-    viewportDuration,
   ]);
+
+  // A window resize, or the tree, sidebar or fullscreen changing the canvas,
+  // leaves an automatic frame stale. Repeat it at the new size unless the
+  // person has since moved the view themselves.
+  const reframeAfterResize = useRef<(canvas: DOMRect) => void>(() => {});
+  useEffect(() => {
+    reframeAfterResize.current = (canvas) => {
+      if (selectedNodeId) return;
+      const frame = resolveResizeReframe(automaticFrame.current, {
+        width: canvas.width,
+        height: canvas.height,
+      });
+      if (!frame) return;
+      if (frame.mode === "entry") {
+        frameEntry(frame);
+        return;
+      }
+      automaticFrame.current = frame;
+      void fitView({
+        nodes: frame.nodeIds?.map((id) => ({ id })),
+        padding: frame.padding,
+        maxZoom: frame.maxZoom,
+        duration: viewportDuration,
+      });
+    };
+  }, [fitView, frameEntry, selectedNodeId, viewportDuration]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    let timeout: number | null = null;
+    const observer = new ResizeObserver(() => {
+      if (timeout !== null) window.clearTimeout(timeout);
+      timeout = window.setTimeout(() => {
+        timeout = null;
+        reframeAfterResize.current(canvas.getBoundingClientRect());
+      }, 200);
+    });
+    observer.observe(canvas);
+    return () => {
+      observer.disconnect();
+      if (timeout !== null) window.clearTimeout(timeout);
+    };
+  }, [flow?.status]);
 
   useEffect(() => {
     if (!viewportInitialized || !selectedNodeId) {
@@ -781,6 +900,7 @@ function ProcessFlowInner({
     const timeout = window.setTimeout(
       () => {
         lastSelectionFrameKey.current = frameKey;
+        automaticFrame.current = null;
         centerNode(resolvedNodeId);
       },
       isMobile || reduceMotion ? 0 : 220,
@@ -1012,6 +1132,7 @@ function ProcessFlowInner({
               onEdgeMouseEnter={handleEdgeMouseEnter}
               onEdgeMouseLeave={handleEdgeMouseLeave}
               onPaneClick={handlePaneClick}
+              onMove={handleMove}
               minZoom={0.3}
               maxZoom={2}
               nodesDraggable={false}
@@ -1089,8 +1210,8 @@ function ProcessFlowInner({
                 isFullscreen={isFullscreen}
                 direction={viewPreferences.direction}
                 grouping={viewPreferences.grouping}
-                onZoomOut={() => void zoomOut({ duration: viewportDuration })}
-                onZoomIn={() => void zoomIn({ duration: viewportDuration })}
+                onZoomOut={handleZoomOut}
+                onZoomIn={handleZoomIn}
                 onFitAll={handleFitAll}
                 onCenterSelected={handleCenterSelected}
                 onToggleMinimap={() => setShowMinimap((visible) => !visible)}

@@ -8,9 +8,7 @@ import {
   ArrowRight,
   ArrowRightLeft,
   ArrowUpRight,
-  BarChart3,
   Bot,
-  Clock,
   FileWarning,
   GitBranch,
   KeyRound,
@@ -54,6 +52,8 @@ import {
   type HandoffItem,
   type ToolUsage,
   type HeavyArea,
+  type KeyFindingKind,
+  type KeyFindings,
   actorList,
   deriveAutomationCandidates,
   deriveBottlenecks,
@@ -61,6 +61,7 @@ import {
   deriveDecisionBranches,
   deriveHandoffs,
   deriveHeavyAreas,
+  deriveKeyFindings,
   deriveToolUsage,
   getNodeMap,
   pluralize,
@@ -140,17 +141,6 @@ const CONFIDENCE_LABELS: Record<
 /** A nested item inside an insight section. */
 const INSET_ITEM = cardVariants({ variant: "inset", padding: "sm" });
 
-function formatGeneratedAt(epochMs: number | null | undefined) {
-  if (!epochMs) return "Not generated";
-  return new Date(epochMs).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 function MetricTile({
   icon: Icon,
   label,
@@ -167,7 +157,7 @@ function MetricTile({
   return (
     <div
       className={cn(
-        cardVariants({ padding: "md", className: "min-h-24" }),
+        cardVariants({ padding: "sm" }),
         accent && "border-org-accent-border bg-org-accent-selected",
       )}
     >
@@ -175,7 +165,7 @@ function MetricTile({
         <Icon className="size-3.5 shrink-0" aria-hidden />
         <span className="min-w-0 break-words">{label}</span>
       </SectionLabel>
-      <p className="mt-2 break-words text-2xl font-semibold tabular-nums">
+      <p className="mt-1 break-words text-lg font-semibold tabular-nums">
         {value}
       </p>
       {detail && (
@@ -318,6 +308,114 @@ function InsightSection({
         )}
       </div>
       <div className="p-4">{children}</div>
+    </section>
+  );
+}
+
+const FINDING_ICONS: Record<KeyFindingKind, LucideIcon> = {
+  bottleneck: FileWarning,
+  automation: Bot,
+  knowledge_risk: KeyRound,
+  weak_evidence: ShieldAlert,
+  handoff_hotspot: ArrowRightLeft,
+};
+
+/**
+ * What to look at first. The counts below say how big the process is; this
+ * says where a reviewer should start, each finding with one way in.
+ */
+function KeyFindingsSummary({
+  result,
+  onOpenNode,
+  onOpenAutomations,
+  onOpenProcessFlow,
+}: {
+  result: KeyFindings;
+  onOpenNode: (nodeId: string) => void;
+  onOpenAutomations?: () => void;
+  onOpenProcessFlow: () => void;
+}) {
+  return (
+    <section
+      aria-labelledby="insights-key-findings"
+      className={cardVariants({ padding: "none" })}
+    >
+      <h3
+        id="insights-key-findings"
+        className="border-b px-4 py-3 text-sm font-semibold"
+      >
+        Key findings
+      </h3>
+      {result.state === "findings" ? (
+        <ul className="divide-y">
+          {result.findings.map((finding) => {
+            const Icon = FINDING_ICONS[finding.kind];
+            const nodeId = finding.nodeId;
+            const action =
+              finding.kind === "automation" && onOpenAutomations ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={onOpenAutomations}
+                >
+                  Open Automations
+                  <ArrowUpRight className="size-3.5" aria-hidden />
+                </Button>
+              ) : nodeId ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  data-flow-node-id={nodeId}
+                  onClick={() => onOpenNode(nodeId)}
+                >
+                  Show in flow
+                  <ArrowRight className="size-3.5" aria-hidden />
+                </Button>
+              ) : null;
+            return (
+              <li
+                key={finding.kind}
+                className="flex flex-col gap-3 px-4 py-3 @xl/detail:flex-row @xl/detail:items-start @xl/detail:justify-between"
+              >
+                <div className="flex min-w-0 items-start gap-2">
+                  <Icon
+                    className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-medium">
+                      {finding.title}
+                    </p>
+                    <p className="mt-0.5 break-words text-xs leading-5 text-muted-foreground">
+                      {finding.detail}
+                    </p>
+                  </div>
+                </div>
+                {action && <div className="shrink-0 pl-6 @xl/detail:pl-0">{action}</div>}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <div className="flex flex-col gap-3 px-4 py-3 text-sm @xl/detail:flex-row @xl/detail:items-start @xl/detail:justify-between">
+          <p className="min-w-0 text-muted-foreground">
+            {result.state === "not_described"
+              ? "No step in this flow has been described yet, so there are no findings to report. Regenerate the flow to describe its steps."
+              : "No bottlenecks, knowledge risks, weak evidence or recommended automations were reported in this analysis. That reflects what contributors described, not proof the process has no issues."}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 gap-1.5"
+            onClick={onOpenProcessFlow}
+          >
+            <GitBranch className="size-3.5" aria-hidden />
+            View Flow
+          </Button>
+        </div>
+      )}
     </section>
   );
 }
@@ -1173,6 +1271,7 @@ export function ProcessInsightsTab({
   const heavyAreas = deriveHeavyAreas(flow.nodes, handoffs);
   const bottlenecks = deriveBottlenecks(flow);
   const automationCandidates = deriveAutomationCandidates(flow.nodes);
+  const keyFindings = deriveKeyFindings(flow, handoffs);
   // The flow-level count the Process Flow bottom bar shows, computed once here so
   // the tile and the section badge cannot drift from each other or from the bar.
   // `automationOpportunities` is the field to read: `deriveFlowInsights` fills it
@@ -1202,49 +1301,16 @@ export function ProcessInsightsTab({
   return (
     <div className="min-h-full bg-muted/20">
       <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
-        <header className={cardVariants({ padding: "md" })}>
-          <div className="flex flex-col gap-3 @2xl/detail:flex-row @2xl/detail:items-start @2xl/detail:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <BarChart3
-                  className="size-4 text-muted-foreground"
-                  aria-hidden
-                />
-                <h2 className="text-base font-semibold">Process Insights</h2>
-                <Badge variant="outline" className="capitalize">
-                  {flow.status}
-                </Badge>
-                {isStale && <Badge tone="warning">Out of date</Badge>}
-              </div>
-              <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                <Clock className="size-3.5 shrink-0" aria-hidden />
-                <span className="min-w-0 break-words">
-                  Generated {formatGeneratedAt(flow.generatedAt)}
-                </span>
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {isStale && (
-                <GenerateFlowButton
-                  canGenerate={canGenerate}
-                  hasCompletedConversations={hasCompletedConversations}
-                  isGenerating={isGenerating}
-                  label="Refresh Insights"
-                  onGenerate={handleGenerate}
-                  onOpenProcessFlow={onOpenProcessFlow}
-                />
-              )}
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={() => onOpenProcessFlow()}
-              >
-                <GitBranch className="size-4" aria-hidden />
-                View Flow
-              </Button>
-            </div>
-          </div>
-        </header>
+        {/* The tab is labelled by the process tab strip; this keeps the
+            section headings below in a sensible outline. */}
+        <h2 className="sr-only">Process insights</h2>
+
+        <KeyFindingsSummary
+          result={keyFindings}
+          onOpenNode={onOpenProcessFlow}
+          onOpenAutomations={onOpenAutomations}
+          onOpenProcessFlow={() => onOpenProcessFlow()}
+        />
 
         {showingRetained && (
           <InlineNotice
@@ -1332,8 +1398,13 @@ export function ProcessInsightsTab({
         )}
 
         {/* Columns follow the detail panel, not the viewport: at 1280px with the
-            sidebar and tree open, the panel is only about 670px wide. */}
-        <div className="grid gap-3 @xs/detail:grid-cols-2 @4xl/detail:grid-cols-4">
+            sidebar and tree open, the panel is only about 670px wide. Compact,
+            because the findings above are what to read first. */}
+        <div
+          role="group"
+          aria-label="Process metrics"
+          className="grid gap-2 @xs/detail:grid-cols-2 @4xl/detail:grid-cols-4"
+        >
           <MetricTile
             icon={Users}
             label="Evidence"

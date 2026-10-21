@@ -193,6 +193,39 @@ describe("ProcessOverviewContent", () => {
     expect(html).not.toContain("mb-8 flex items-start gap-3 border-l-2");
   });
 
+  it("opens with the headline and key facts before the long brief", () => {
+    const html = renderOverview(overview());
+    const headline = html.indexOf(artifact.headline);
+    const keyFacts = html.indexOf('aria-label="Key facts"');
+    const trigger = html.indexOf("A customer request arriving in the service inbox");
+    const openQuestion = html.indexOf("Open question");
+    const brief = html.indexOf(artifact.executiveBrief);
+
+    expect(headline).toBeGreaterThan(-1);
+    expect(headline).toBeLessThan(keyFacts);
+    expect(keyFacts).toBeLessThan(trigger);
+    expect(trigger).toBeLessThan(openQuestion);
+    expect(openQuestion).toBeLessThan(brief);
+    expect(html).toContain('aria-label="On this page"');
+    // Each fact points at a full finding row, where its sources live.
+    expect(html).toContain('id="process-scope-finding-scope-trigger"');
+    expect(html).toContain('id="process-agreements-gaps-finding-gap-threshold"');
+  });
+
+  it("leaves the key facts out when the evidence establishes none", () => {
+    const html = renderOverview({
+      ...overview(),
+      content: {
+        format: "v2",
+        artifact: { ...artifact, scope: [], gaps: [] },
+        markdown: "projection",
+      },
+    });
+
+    expect(html).not.toContain('aria-label="Key facts"');
+    expect(html).toContain(artifact.executiveBrief);
+  });
+
   it("presents evidence coverage, scope, variations, agreement, and gaps", () => {
     const html = renderOverview(overview());
 
@@ -406,7 +439,7 @@ describe("ProcessOverviewContent", () => {
 
     expect(html).toContain("Scope claim 8");
     expect(html).toContain("Executive context");
-    expect(html).not.toContain("H".repeat(120));
+    expect(html).toContain("H".repeat(120));
     expect(html).toContain("Operational detail");
   });
 

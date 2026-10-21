@@ -9,9 +9,6 @@ type ViewportNode = {
 type ViewportEdge = {
   source: string;
   target: string;
-  data?: {
-    isHappyPath?: boolean;
-  };
 };
 
 type EntryViewportDirection = "horizontal" | "vertical";
@@ -96,51 +93,45 @@ export function resolveFlowEntryNodeId(
 }
 
 /**
- * Returns a small entry-path window for the initial viewport of a large graph.
- * Happy-path edges win where available, while stable input ordering keeps the
- * result deterministic for branches and older flow rows.
+ * The last viewport the map chose for itself, so a later resize can repeat
+ * it. Cleared as soon as the person pans, zooms or selects a step.
  */
-export function resolveInitialViewportNodeIds(
-  nodes: ViewportNode[],
-  edges: ViewportEdge[],
-  limit = 4,
-) {
-  const entryNodeId = resolveFlowEntryNodeId(nodes, edges);
-  if (!entryNodeId || limit <= 0) return [];
+export type AutomaticFlowFrame =
+  | { mode: "entry"; width: number; height: number }
+  | {
+      mode: "fit";
+      width: number;
+      height: number;
+      nodeIds?: string[];
+      padding: number;
+      maxZoom: number;
+    };
 
-  const nodeIds = new Set(nodes.map((node) => node.id));
-  const orderedOutgoing = new Map<string, ViewportEdge[]>();
+const RESIZE_REFRAME_MIN_PX = 48;
+const RESIZE_REFRAME_MIN_RATIO = 0.1;
 
-  for (const edge of edges) {
-    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
-    const outgoing = orderedOutgoing.get(edge.source) ?? [];
-    outgoing.push(edge);
-    orderedOutgoing.set(edge.source, outgoing);
+function changedMaterially(previous: number, next: number) {
+  return (
+    Math.abs(next - previous) >=
+    Math.max(RESIZE_REFRAME_MIN_PX, previous * RESIZE_REFRAME_MIN_RATIO)
+  );
+}
+
+/**
+ * Decides whether a canvas resize should repeat the last automatic frame.
+ * Returns null when the person has taken over the view, or when the change
+ * is too small to leave the frame stale (scrollbars, sub-pixel layout).
+ */
+export function resolveResizeReframe(
+  frame: AutomaticFlowFrame | null,
+  size: EntryViewportSize,
+): AutomaticFlowFrame | null {
+  if (!frame || size.width <= 0 || size.height <= 0) return null;
+  if (
+    !changedMaterially(frame.width, size.width) &&
+    !changedMaterially(frame.height, size.height)
+  ) {
+    return null;
   }
-
-  for (const outgoing of orderedOutgoing.values()) {
-    outgoing.sort(
-      (a, b) =>
-        Number(Boolean(b.data?.isHappyPath)) -
-        Number(Boolean(a.data?.isHappyPath)),
-    );
-  }
-
-  const result: string[] = [];
-  const queued = new Set([entryNodeId]);
-  const queue = [entryNodeId];
-
-  while (queue.length > 0 && result.length < limit) {
-    const nodeId = queue.shift();
-    if (!nodeId) break;
-    result.push(nodeId);
-
-    for (const edge of orderedOutgoing.get(nodeId) ?? []) {
-      if (queued.has(edge.target)) continue;
-      queued.add(edge.target);
-      queue.push(edge.target);
-    }
-  }
-
-  return result;
+  return { ...frame, width: size.width, height: size.height };
 }

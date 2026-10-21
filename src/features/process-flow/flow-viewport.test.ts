@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveEntryViewportTransform,
   resolveFlowEntryNodeId,
-  resolveInitialViewportNodeIds,
+  resolveResizeReframe,
 } from "./flow-viewport";
 
 describe("process-flow initial viewport", () => {
@@ -62,49 +62,51 @@ describe("process-flow initial viewport", () => {
 
     expect(resolveFlowEntryNodeId(nodes, edges)).toBe("intake");
   });
+});
 
-  it("builds a bounded entry window and prioritizes the happy path", () => {
-    const nodes = [
-      { id: "start", type: "start" },
-      { id: "fallback" },
-      { id: "primary" },
-      { id: "next" },
-      { id: "later" },
-    ];
-    const edges = [
-      {
-        source: "start",
-        target: "fallback",
-        data: { isHappyPath: false },
-      },
-      {
-        source: "start",
-        target: "primary",
-        data: { isHappyPath: true },
-      },
-      { source: "primary", target: "next", data: { isHappyPath: true } },
-      { source: "next", target: "later", data: { isHappyPath: true } },
-    ];
+describe("process-flow resize reframing", () => {
+  const entry = { mode: "entry" as const, width: 1000, height: 600 };
+  const fitAll = {
+    mode: "fit" as const,
+    width: 1000,
+    height: 600,
+    padding: 0.16,
+    maxZoom: 1,
+  };
 
-    expect(resolveInitialViewportNodeIds(nodes, edges, 4)).toEqual([
-      "start",
-      "primary",
-      "fallback",
-      "next",
-    ]);
+  it("leaves the view alone once the person has taken over", () => {
+    expect(resolveResizeReframe(null, { width: 400, height: 600 })).toBeNull();
   });
 
-  it("handles empty, cyclic, and dangling graph data safely", () => {
-    expect(resolveInitialViewportNodeIds([], [])).toEqual([]);
+  it("ignores small or empty size changes", () => {
+    expect(resolveResizeReframe(entry, { width: 960, height: 600 })).toBeNull();
+    expect(resolveResizeReframe(entry, { width: 1000, height: 640 })).toBeNull();
+    expect(resolveResizeReframe(entry, { width: 0, height: 0 })).toBeNull();
+  });
+
+  it("uses the larger of 48px and 10% as the threshold", () => {
+    const small = { mode: "entry" as const, width: 300, height: 300 };
+    expect(resolveResizeReframe(small, { width: 340, height: 300 })).toBeNull();
+    expect(resolveResizeReframe(small, { width: 348, height: 300 })).toEqual({
+      mode: "entry",
+      width: 348,
+      height: 300,
+    });
+    expect(resolveResizeReframe(entry, { width: 1099, height: 600 })).toBeNull();
+    expect(resolveResizeReframe(entry, { width: 1100, height: 600 })).not.toBeNull();
+  });
+
+  it("repeats the same kind of frame at the new size", () => {
+    expect(resolveResizeReframe(entry, { width: 1400, height: 600 })).toEqual({
+      mode: "entry",
+      width: 1400,
+      height: 600,
+    });
     expect(
-      resolveInitialViewportNodeIds(
-        [{ id: "a" }, { id: "b" }],
-        [
-          { source: "a", target: "b" },
-          { source: "b", target: "a" },
-          { source: "missing", target: "a" },
-        ],
+      resolveResizeReframe(
+        { ...fitAll, nodeIds: ["a", "b"] },
+        { width: 1000, height: 400 },
       ),
-    ).toEqual(["a", "b"]);
+    ).toEqual({ ...fitAll, nodeIds: ["a", "b"], height: 400 });
   });
 });

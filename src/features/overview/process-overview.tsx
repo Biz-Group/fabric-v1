@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
+  ArrowDown,
   ArrowUpRight,
   BarChart3,
   Check,
@@ -36,7 +37,15 @@ import {
   overviewCopyText,
   surfaceReadinessLabel,
 } from "@/features/overview/overview-view-model";
+import {
+  PROCESS_OVERVIEW_SECTION_IDS,
+  findingAnchorId,
+  processKeyFacts,
+  type ProcessKeyFact,
+} from "@/features/overview/process-overview-key-facts";
 import { useSummaryOverview } from "@/features/workbench/use-summary-overview";
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
+import { cn } from "@/lib/utils";
 
 type OverviewResponse = FunctionReturnType<typeof api.summaries.getOverview>;
 type StructuredArtifact = Extract<
@@ -135,6 +144,80 @@ function EvidenceStrip({ artifact }: { artifact: ProcessArtifact }) {
 }
 
 /**
+ * The first-screen answer to "how does this work": what starts it, what done
+ * looks like, who runs it and what it runs on, plus the first open question.
+ * Each fact jumps to its full finding, where the sources are.
+ */
+function KeyFacts({
+  facts,
+  onJump,
+}: {
+  facts: ProcessKeyFact[];
+  onJump: (targetId: string) => void;
+}) {
+  if (facts.length === 0) return null;
+
+  return (
+    <ul aria-label="Key facts" className="mt-5 grid gap-x-6 gap-y-3 @xl/detail:grid-cols-2">
+      {facts.map((fact) => (
+        <li key={fact.key} className="min-w-0">
+          <button
+            type="button"
+            onClick={() => onJump(fact.targetId)}
+            className={cn(
+              "focus-ring group block w-full min-w-0 rounded-r-md border-l-2 py-1 pl-3 pr-1 text-left transition-colors hover:bg-muted/50",
+              fact.kind === "open_question"
+                ? "border-warning"
+                : "border-org-accent-border",
+            )}
+          >
+            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <span className="min-w-0">{fact.label}</span>
+              <ArrowDown
+                className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 pointer-coarse:opacity-100"
+                aria-hidden="true"
+              />
+            </span>
+            <span className="mt-0.5 line-clamp-2 block text-sm leading-6 text-foreground">
+              {fact.text}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const SECTION_LINKS = [
+  { id: PROCESS_OVERVIEW_SECTION_IDS.scope, label: "Scope" },
+  { id: PROCESS_OVERVIEW_SECTION_IDS.variations, label: "Reported practice" },
+  { id: PROCESS_OVERVIEW_SECTION_IDS.alignment, label: "Evidence alignment" },
+  { id: PROCESS_OVERVIEW_SECTION_IDS.notable, label: "Context" },
+];
+
+/** Only where it fits on one line, so it never pushes the brief down on phones. */
+function OnThisPage({ onJump }: { onJump: (targetId: string) => void }) {
+  return (
+    <nav
+      aria-label="On this page"
+      className="mt-4 hidden flex-wrap items-center gap-x-1 text-xs text-muted-foreground @xl/detail:flex"
+    >
+      <span className="mr-1">On this page:</span>
+      {SECTION_LINKS.map((link) => (
+        <button
+          type="button"
+          key={link.id}
+          onClick={() => onJump(link.id)}
+          className="focus-ring inline-flex min-h-8 items-center rounded px-1.5 font-medium underline-offset-4 hover:text-foreground hover:underline pointer-coarse:min-h-10"
+        >
+          {link.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/**
  * Orientation facts the Flow graph cannot state at process level: trigger,
  * completion, owning roles, systems of record, and dependencies. Deliberately
  * not a sequence — an ordered list here would compete with the Flow graph, and
@@ -157,6 +240,9 @@ function ScopeAndParticipants({
         findings={scope}
         onOpenConversation={onOpenConversation}
         emptyText="The current evidence does not establish the trigger, completion, or ownership of this process."
+        anchorId={(finding) =>
+          findingAnchorId(PROCESS_OVERVIEW_SECTION_IDS.scope, finding.id)
+        }
       />
       {flowAvailable && (
         <p className="mt-6 text-sm text-muted-foreground">
@@ -263,12 +349,31 @@ export function ProcessOverviewContent({
   onOpenInsights: () => void;
 }) {
   const [copyState, setCopyState] = useState<OverviewCopyState>("idle");
+  const articleRef = useRef<HTMLElement>(null);
+  const reduceMotion = usePrefersReducedMotion();
   const hasContent = overview.content.format !== "none";
   const structuredArtifact =
     overview.content.format === "v2" && isProcessArtifact(overview.content.artifact)
       ? overview.content.artifact
       : null;
   const brief = structuredArtifact?.executiveBrief ?? null;
+  const headline = structuredArtifact?.headline.trim() || null;
+  const keyFacts = structuredArtifact ? processKeyFacts(structuredArtifact) : [];
+  const jumpTo = (targetId: string) => {
+    // The workbench can mount this overview in its desktop and phone layouts
+    // at once, so look inside this copy, not the document, whose first match
+    // may be the hidden one.
+    const target = articleRef.current?.querySelector<HTMLElement>(
+      `#${CSS.escape(targetId)}`,
+    );
+    if (!target) return;
+    if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+    target.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "start",
+    });
+    target.focus({ preventScroll: true });
+  };
   const handleCopy = async () => {
     const text = overviewCopyText(overview.content);
     if (!text) return;
@@ -285,6 +390,7 @@ export function ProcessOverviewContent({
 
   return (
     <article
+      ref={articleRef}
       className="mx-auto w-full max-w-5xl px-4 pb-4 pt-5 @xl/detail:px-6 @xl/detail:pt-6 @3xl/detail:px-8"
       aria-label="Process overview"
     >
@@ -305,11 +411,25 @@ export function ProcessOverviewContent({
         onRefresh={onRefresh}
       >
         {structuredArtifact ? (
-          brief && (
-            <p className="max-w-3xl text-base leading-8 text-foreground/75 @xl/detail:text-lg">
-              <EmphasizedText value={brief} />
-            </p>
-          )
+          <>
+            {headline && (
+              <p className="max-w-prose text-lg font-medium leading-7 tracking-tight text-foreground @xl/detail:text-xl @xl/detail:leading-8">
+                {headline}
+              </p>
+            )}
+            <KeyFacts facts={keyFacts} onJump={jumpTo} />
+            {brief && (
+              <p
+                className={cn(
+                  "max-w-prose text-base leading-8 text-foreground/75 @xl/detail:text-lg",
+                  (headline || keyFacts.length > 0) && "mt-5",
+                )}
+              >
+                <EmphasizedText value={brief} />
+              </p>
+            )}
+            <OnThisPage onJump={jumpTo} />
+          </>
         ) : hasContent ? (
           <div className="max-w-3xl">
             <p className="mb-5 text-xs leading-5 text-muted-foreground">
@@ -346,7 +466,7 @@ export function ProcessOverviewContent({
           <EvidenceStrip artifact={structuredArtifact} />
 
           <OverviewSection
-            id="process-scope"
+            id={PROCESS_OVERVIEW_SECTION_IDS.scope}
             title="Scope and participants"
             description="What contributors say this process covers, who runs it, and what it depends on. The Process Flow owns the order these activities happen in."
           >
@@ -359,7 +479,7 @@ export function ProcessOverviewContent({
           </OverviewSection>
 
           <OverviewSection
-            id="process-variations"
+            id={PROCESS_OVERVIEW_SECTION_IDS.variations}
             title="Reported practice"
             description="Different ways the work is described. These are reported variations, not measured execution frequency or conformance."
           >
@@ -371,7 +491,7 @@ export function ProcessOverviewContent({
           </OverviewSection>
 
           <OverviewSection
-            id="process-agreements-gaps"
+            id={PROCESS_OVERVIEW_SECTION_IDS.alignment}
             title="Evidence alignment"
             description="Agreements and open questions across the available contributions."
           >
@@ -394,13 +514,16 @@ export function ProcessOverviewContent({
                   findings={structuredArtifact.gaps}
                   onOpenConversation={onOpenConversation}
                   emptyText="No explicit knowledge gap is recorded in the current overview."
+                  anchorId={(finding) =>
+                    findingAnchorId(PROCESS_OVERVIEW_SECTION_IDS.alignment, finding.id)
+                  }
                 />
               </div>
             </div>
           </OverviewSection>
 
           <OverviewSection
-            id="process-notable-context"
+            id={PROCESS_OVERVIEW_SECTION_IDS.notable}
             title="Context worth carrying forward"
             description="Notable context that helps readers interpret the reported process."
           >
