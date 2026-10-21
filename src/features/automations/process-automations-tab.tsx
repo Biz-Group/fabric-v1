@@ -44,10 +44,6 @@ import {
   effectiveOpportunityConfidence,
 } from "@/features/automations/opportunity-confidence";
 
-// The list and brief sit side by side from Tailwind's `md`; below it they are
-// one pane at a time, and focus has to follow the pane that is showing.
-const SPLIT_PANE_QUERY = "(min-width: 48rem)";
-
 const KIND_LABEL: Record<AutomationOpportunity["kind"], string> = {
   agent: "Agent",
   workflow: "Workflow",
@@ -120,6 +116,10 @@ export function ProcessAutomationsTab({
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   const [showDetailOnMobile, setShowDetailOnMobile] = useState(false);
   const briefHeadingRef = useRef<HTMLHeadingElement>(null);
+  // The list and brief sit side by side once the detail panel (not the
+  // viewport) is `@3xl` wide; below that they are one pane at a time, and
+  // focus has to follow the pane that is showing.
+  const briefPaneRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   // Set by the action that swaps panes, consumed once the swapped-in pane has
   // rendered. A ref, not state: it must not cause a render of its own.
@@ -327,11 +327,11 @@ export function ProcessAutomationsTab({
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 md:grid-cols-[minmax(0,19rem)_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 @3xl/detail:grid-cols-[minmax(0,19rem)_minmax(0,1fr)]">
         <div
           className={cn(
-            "min-w-0 border-b md:border-b-0 md:border-r",
-            showDetailOnMobile && "hidden md:block",
+            "min-w-0 border-b @3xl/detail:border-b-0 @3xl/detail:border-r",
+            showDetailOnMobile && "hidden @3xl/detail:block",
           )}
         >
           <div className="border-b px-4 py-3">
@@ -357,11 +357,13 @@ export function ProcessAutomationsTab({
                       else rowRefs.current.delete(opportunity.title);
                     }}
                     onClick={() => {
+                      // A brief pane with no boxes is hidden behind the list,
+                      // so this click swaps panes rather than updating a split.
+                      const stacked =
+                        briefPaneRef.current?.getClientRects().length === 0;
                       setSelectedTitle(opportunity.title);
                       setShowDetailOnMobile(true);
-                      if (!window.matchMedia(SPLIT_PANE_QUERY).matches) {
-                        pendingFocusRef.current = "brief";
-                      }
+                      if (stacked) pendingFocusRef.current = "brief";
                     }}
                     aria-current={isSelected ? "true" : undefined}
                     className={cn(
@@ -395,7 +397,7 @@ export function ProcessAutomationsTab({
                         </span>
                       </span>
                     </span>
-                    <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground md:hidden" />
+                    <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground @3xl/detail:hidden" />
                   </button>
                 </li>
               );
@@ -404,9 +406,10 @@ export function ProcessAutomationsTab({
         </div>
 
         <div
+          ref={briefPaneRef}
           className={cn(
             "min-w-0",
-            !showDetailOnMobile && "hidden md:block",
+            !showDetailOnMobile && "hidden @3xl/detail:block",
           )}
         >
           {brief && selected ? (
@@ -414,7 +417,7 @@ export function ProcessAutomationsTab({
               <Button
                 size="sm"
                 variant="ghost"
-                className="mb-3 -ml-2 gap-1.5 md:hidden"
+                className="mb-3 -ml-2 gap-1.5 @3xl/detail:hidden"
                 onClick={() => {
                   pendingFocusRef.current = "row";
                   setShowDetailOnMobile(false);

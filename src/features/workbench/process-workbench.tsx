@@ -120,6 +120,7 @@ import {
   type MobileLevel,
 } from "@/features/workbench/mobile-level";
 import { CommandPalette } from "@/features/hierarchy/command-palette";
+import { setTreeCollapsed } from "@/features/hierarchy/tree-collapse-preference";
 import { useProcessPdfDownload } from "@/features/workbench/process-pdf/use-process-pdf-download";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -171,8 +172,6 @@ export function ProcessWorkbench() {
   // up can return to an earlier entry (see history-move.ts).
   const [initialTrail] = useState(() => startTrail(searchParams.toString()));
   const historyTrail = useRef(initialTrail);
-
-  // Column collapse state
 
   // Selection state (seeded from the URL so deep links / refresh restore position)
   const [selectedFunctionId, setSelectedFunctionId] =
@@ -1267,6 +1266,8 @@ export function ProcessWorkbench() {
   const [deepLinkToastDue, setDeepLinkToastDue] = useState(false);
 
   const startTour = useCallback(() => {
+    // The tour points at the tree, so a collapsed tree opens for it.
+    setTreeCollapsed(false);
     setTourRun((run) => run + 1);
     setTourActive(true);
   }, []);
@@ -1901,6 +1902,9 @@ export function ProcessWorkbench() {
             onUploadAudio={() => handleOpenRecordingMode("audioUpload")}
           />
 
+          {/* `@container/detail`: the tabs lay out by the panel's own width
+              (`@md/detail:` etc.), not the viewport's, since the sidebar and
+              tree take a varying share of the screen. */}
           <Tabs
             value={detailTab}
             onValueChange={(value) => {
@@ -1909,7 +1913,7 @@ export function ProcessWorkbench() {
               if (safeTab !== 2) setFlowNodeId(null);
               setDetailTab(safeTab);
             }}
-            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-0"
+            className="@container/detail flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-0"
           >
             <ProcessTabStrip activeTab={detailTab} className="border-b">
               <TabsList

@@ -272,7 +272,7 @@ function ConversationRow({
         onClick={onSelect}
       >
         <span className="min-w-0 flex-1 space-y-2">
-          <span className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <span className="grid min-w-0 gap-2 @sm/list:grid-cols-[minmax(0,1fr)_auto] @sm/list:items-center">
             <span className="line-clamp-2 min-w-0 max-w-full break-words text-sm font-medium text-foreground">
               {title}
             </span>
@@ -583,13 +583,15 @@ export function ProcessConversationsTab({
 
   return (
     <TooltipProvider>
-      <div className="grid min-h-full min-w-0 gap-0 md:h-full md:min-h-0 md:grid-cols-2">
+      {/* Splits on the detail panel's width, not the viewport's: beside the
+          sidebar and tree the panel can be far narrower than the screen. */}
+      <div className="grid min-h-full min-w-0 gap-0 @3xl/detail:h-full @3xl/detail:min-h-0 @3xl/detail:grid-cols-2">
         <section
           ref={listRef}
-          className="min-w-0 p-4 md:min-h-0 md:overflow-y-auto md:p-6"
+          className="@container/list min-w-0 p-4 @3xl/detail:min-h-0 @3xl/detail:overflow-y-auto @3xl/detail:p-6"
         >
           <div className="space-y-4">
-            <div className="grid w-full min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]">
+            <div className="grid w-full min-w-0 gap-2 @md/list:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]">
               <Select
                 value={statusFilter}
                 items={STATUS_FILTER_ITEMS}
@@ -759,7 +761,7 @@ export function ProcessConversationsTab({
                 ? `Playback: ${conversationTitle(activeListRow)}`
                 : "Contribution playback"
           }
-          className="min-w-0 border-t p-4 outline-none md:min-h-0 md:overflow-hidden md:border-l md:border-t-0 md:p-6"
+          className="min-w-0 border-t p-4 outline-none @3xl/detail:min-h-0 @3xl/detail:overflow-hidden @3xl/detail:border-l @3xl/detail:border-t-0 @3xl/detail:p-6"
         >
           <ConversationPlaybackPanel
             conversationId={activeConversationId}

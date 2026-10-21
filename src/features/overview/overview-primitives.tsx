@@ -187,8 +187,8 @@ function OverviewAlert({ children }: { children: ReactNode }) {
 
 /**
  * The top of every overview surface: the overview itself leads, and the
- * lifecycle chip, provenance, and actions ride one compact line under the
- * heading. Everything that used to sit above the content as chips, a banner,
+ * lifecycle chip, provenance, and actions ride the heading's line, wrapping
+ * under it only where the panel is narrow. Everything that used to sit above the content as chips, a banner,
  * and a button row is either in that line or disclosed from the chip, so the
  * reader reaches the actual overview in the first screen on any viewport.
  */
@@ -254,15 +254,45 @@ export function OverviewLead({
     hasEvidenceSource,
   );
 
+  // The page header above already names the entity, so this is a section
+  // heading rather than a second page title.
   return (
-    <section aria-labelledby={id} className="pb-8 sm:pb-10">
-      <div className="flex items-center justify-between gap-3">
-        <h2
-          id={id}
-          className="min-w-0 text-2xl font-semibold tracking-tight sm:text-3xl"
-        >
-          {title}
-        </h2>
+    <section aria-labelledby={id} className="pb-6 sm:pb-8">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-h-9 min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 sm:min-h-7">
+          <h2
+            id={id}
+            className="min-w-0 text-xl font-semibold tracking-tight sm:text-2xl"
+          >
+            {title}
+          </h2>
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1"
+          >
+            <OverviewStateBadge
+              state={state}
+              expandable={detail !== null}
+              expanded={detailOpen}
+              controls={detailId}
+              onToggle={() => setDetailOpen((open) => !open)}
+            />
+            {(liveProgress || generatedAt !== null) && (
+              <p className="min-w-0 text-xs text-muted-foreground">
+                {liveProgress}
+                {liveProgress && generatedAt !== null && (
+                  <span aria-hidden="true"> · </span>
+                )}
+                {generatedAt !== null && (
+                  <time dateTime={new Date(generatedAt).toISOString()}>
+                    {formatGeneratedTime(generatedAt)}
+                  </time>
+                )}
+              </p>
+            )}
+          </div>
+        </div>
         {(hasContent || showRefresh) && (
           <div className="flex shrink-0 items-center gap-1.5">
             {hasContent && (
@@ -322,33 +352,6 @@ export function OverviewLead({
         )}
       </div>
 
-      <div
-        role="status"
-        aria-live="polite"
-        className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-2"
-      >
-        <OverviewStateBadge
-          state={state}
-          expandable={detail !== null}
-          expanded={detailOpen}
-          controls={detailId}
-          onToggle={() => setDetailOpen((open) => !open)}
-        />
-        {(liveProgress || generatedAt !== null) && (
-          <p className="min-w-0 text-xs text-muted-foreground">
-            {liveProgress}
-            {liveProgress && generatedAt !== null && (
-              <span aria-hidden="true"> · </span>
-            )}
-            {generatedAt !== null && (
-              <time dateTime={new Date(generatedAt).toISOString()}>
-                {formatGeneratedTime(generatedAt)}
-              </time>
-            )}
-          </p>
-        )}
-      </div>
-
       {detail && (
         <p
           id={detailId}
@@ -371,7 +374,7 @@ export function OverviewLead({
       )}
       {refreshError && <OverviewAlert>{refreshError}</OverviewAlert>}
 
-      {children ? <div className="mt-6 sm:mt-7">{children}</div> : null}
+      {children ? <div className="mt-4 sm:mt-5">{children}</div> : null}
     </section>
   );
 }

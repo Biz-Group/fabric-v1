@@ -410,7 +410,10 @@ export function ProcessHeader({
           ? "Copy failed"
           : "Share";
 
-  const moreMenu = (
+  // `includeShare` folds Share into the menu wherever it has no room beside
+  // the title: always on phones, and in a panel too narrow for the capture
+  // actions and Share to share one row.
+  const renderMoreMenu = (includeShare: boolean) => (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
@@ -426,8 +429,7 @@ export function ProcessHeader({
         <MoreHorizontal className="size-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent role="menu" align="end" className="w-48">
-        {/* Phones have no room for the Share button beside the title. */}
-        {mobile && (
+        {includeShare && (
           <>
             <DropdownMenuItem
               disabled={copyState === "copying"}
@@ -484,9 +486,11 @@ export function ProcessHeader({
   // The layout follows the panel's width, not the viewport's: beside the
   // sidebar and tree, the panel is narrow even on a wide screen. Only a panel
   // wide enough for the title and the whole action row puts them side by side.
+  // Below @3xl, Share and More move up beside the title so the capture actions
+  // keep a row to themselves instead of pushing Share onto another.
   return (
     <header className="@container shrink-0 border-b bg-background">
-      <div className="grid min-w-0 gap-y-3 px-4 py-4 md:px-6 @5xl:grid-cols-[minmax(0,1fr)_auto] @5xl:items-center @5xl:gap-x-6">
+      <div className="grid min-w-0 gap-y-2 px-4 py-3 md:px-6 @5xl:grid-cols-[minmax(0,1fr)_auto] @5xl:items-center @5xl:gap-x-6">
         {/* Phones drop the breadcrumb: the back button above already names
             the department, and the title below names the process. */}
         {!mobile && (
@@ -508,7 +512,9 @@ export function ProcessHeader({
               onJumpToLabeling={onJumpToLabeling}
             />
           </div>
-          {mobile && <div className="-mr-2 shrink-0">{moreMenu}</div>}
+          <div className={cn("-mr-2 shrink-0", !mobile && "@3xl:hidden")}>
+            {renderMoreMenu(true)}
+          </div>
         </div>
 
         <div className="flex min-w-0 flex-wrap items-center gap-2 @5xl:col-start-1 @5xl:row-start-3">
@@ -527,7 +533,13 @@ export function ProcessHeader({
         </div>
 
         {!mobile && (
-          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 @5xl:col-start-2 @5xl:row-start-2 @5xl:flex-nowrap @5xl:justify-end">
+          <div
+            className={cn(
+              "flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 @5xl:col-start-2 @5xl:row-start-2 @5xl:flex-nowrap @5xl:justify-end",
+              // A viewer has nothing left in this row until Share returns.
+              !canEdit && "hidden @3xl:flex",
+            )}
+          >
             {canEdit && (
               <CaptureActions
                 disabled={captureDisabled}
@@ -540,7 +552,7 @@ export function ProcessHeader({
                 wrapped Share would start its line with it. */}
             <div
               className={cn(
-                "flex shrink-0 items-center gap-1.5",
+                "hidden shrink-0 items-center gap-1.5 @3xl:flex",
                 canEdit && "@3xl:border-l @3xl:pl-3",
               )}
             >
@@ -560,7 +572,7 @@ export function ProcessHeader({
                 )}
                 {copyLabel}
               </Button>
-              <div>{moreMenu}</div>
+              <div>{renderMoreMenu(false)}</div>
             </div>
           </div>
         )}

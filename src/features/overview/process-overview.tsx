@@ -61,7 +61,7 @@ function isProcessArtifact(
 
 function ProcessOverviewLoading() {
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8" aria-label="Loading overview">
+    <div className="mx-auto max-w-5xl px-4 py-6 @xl/detail:px-6 @3xl/detail:px-8" aria-label="Loading overview">
       <div className="space-y-4 pb-8">
         <div className="flex items-center justify-between gap-4">
           <Skeleton className="h-9 w-40" />
@@ -71,7 +71,7 @@ function ProcessOverviewLoading() {
         <Skeleton className="h-5 w-full max-w-3xl" />
         <Skeleton className="h-5 w-3/4 max-w-2xl" />
       </div>
-      <div className="grid grid-cols-2 gap-px border-y bg-border sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-px border-y bg-border @3xl/detail:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <Skeleton key={index} className="h-24 rounded-none" />
         ))}
@@ -112,18 +112,18 @@ function EvidenceStrip({ artifact }: { artifact: ProcessArtifact }) {
 
   return (
     <section aria-label="Evidence coverage" className="border-y border-border">
-      <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-px bg-border @3xl/detail:grid-cols-4">
         {items.map((item) => {
           const Icon = item.icon;
           return (
-            <div key={item.label} className="min-w-0 bg-background px-4 py-5 sm:px-5">
-              <div className="mb-3 flex items-center gap-2 text-muted-foreground">
-                <Icon className="size-3.5 shrink-0" aria-hidden="true" />
-                <SectionLabel render={<span />} size="sm" className="truncate">
+            <div key={item.label} className="min-w-0 bg-background px-4 py-5 @3xl/detail:px-5">
+              <div className="mb-3 flex items-start gap-2 text-muted-foreground">
+                <Icon className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                <SectionLabel render={<span />} size="sm" className="min-w-0">
                   {item.label}
                 </SectionLabel>
               </div>
-              <p className="text-xl font-semibold tracking-tight sm:text-2xl">
+              <p className="text-xl font-semibold tracking-tight @3xl/detail:text-2xl">
                 {item.value}
               </p>
             </div>
@@ -206,7 +206,7 @@ function ReadinessFooter({
       <h2 className="mb-4 text-base font-semibold tracking-tight">
         Continue exploring
       </h2>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 @xl/detail:grid-cols-2">
         {destinations.map((destination) => {
           const Icon = destination.icon;
           return (
@@ -285,7 +285,7 @@ export function ProcessOverviewContent({
 
   return (
     <article
-      className="mx-auto w-full max-w-5xl px-4 pb-4 pt-7 sm:px-6 sm:pt-10 lg:px-8"
+      className="mx-auto w-full max-w-5xl px-4 pb-4 pt-5 @xl/detail:px-6 @xl/detail:pt-6 @3xl/detail:px-8"
       aria-label="Process overview"
     >
       <OverviewLead
@@ -306,7 +306,7 @@ export function ProcessOverviewContent({
       >
         {structuredArtifact ? (
           brief && (
-            <p className="max-w-3xl text-base leading-8 text-foreground/75 sm:text-lg">
+            <p className="max-w-3xl text-base leading-8 text-foreground/75 @xl/detail:text-lg">
               <EmphasizedText value={brief} />
             </p>
           )
@@ -317,7 +317,7 @@ export function ProcessOverviewContent({
               links. It remains readable while Fabric transitions to the
               evidence-backed format.
             </p>
-            <div className="border-l-2 border-border pl-5 sm:pl-7">
+            <div className="border-l-2 border-border pl-5 @xl/detail:pl-7">
               <MarkdownSummary content={overview.content.markdown ?? ""} />
             </div>
           </div>
@@ -375,7 +375,7 @@ export function ProcessOverviewContent({
             title="Evidence alignment"
             description="Agreements and open questions across the available contributions."
           >
-            <div className="grid gap-10 lg:grid-cols-2 lg:gap-12">
+            <div className="grid gap-10 @3xl/detail:grid-cols-2 @3xl/detail:gap-12">
               <div>
                 <SectionLabel render={<h3 />} className="mb-4">
                   Agreements

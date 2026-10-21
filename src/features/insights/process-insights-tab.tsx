@@ -190,12 +190,12 @@ function MetricTile({
 function LoadingInsights() {
   return (
     <div className="space-y-4 p-4 md:p-6">
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 @2xl/detail:grid-cols-3">
         <Skeleton className="h-24 rounded-xl" />
         <Skeleton className="h-24 rounded-xl" />
         <Skeleton className="h-24 rounded-xl" />
       </div>
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 @4xl/detail:grid-cols-2">
         <Skeleton className="h-64 rounded-xl" />
         <Skeleton className="h-64 rounded-xl" />
       </div>
@@ -219,7 +219,7 @@ function InlineNotice({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-lg border p-3 text-sm sm:flex-row sm:items-start sm:justify-between",
+        "flex flex-col gap-3 rounded-lg border p-3 text-sm @md/detail:flex-row @md/detail:items-start @md/detail:justify-between",
         STATUS_TONE_SURFACE[tone],
         tone === "destructive" && STATUS_TONE_TEXT.destructive,
       )}
@@ -419,7 +419,7 @@ function HandoffsSection({
         <div className="space-y-3">
           {items.map((item) => (
             <div key={item.id} className={INSET_ITEM}>
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-start">
+              <div className="grid gap-3 @2xl/detail:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @2xl/detail:items-start">
                 <div className="min-w-0">
                   <SectionLabel>
                     Source step
@@ -433,7 +433,7 @@ function HandoffsSection({
                     {actorList(item.source)}
                   </p>
                 </div>
-                <ArrowRight className="hidden size-4 text-muted-foreground md:block" />
+                <ArrowRight className="hidden size-4 text-muted-foreground @2xl/detail:block" />
                 <div className="min-w-0">
                   <SectionLabel>
                     Target step
@@ -587,7 +587,7 @@ function BottlenecksSection({
                   {CONFIDENCE_LABELS[node.confidence].label} confidence
                 </Badge>
               </div>
-              <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <div className="mt-3 grid gap-3 @2xl/detail:grid-cols-3">
                 <DetailBlock label="Pain points">
                   <BulletList
                     items={node.painPoints}
@@ -756,7 +756,7 @@ function TribalKnowledgeSection({
                   {CONFIDENCE_LABELS[node.confidence].label} confidence
                 </Badge>
               </div>
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div className="mt-3 grid gap-3 @xl/detail:grid-cols-2">
                 <DetailBlock label="Risk indicators">
                   <BulletList
                     items={node.riskIndicators}
@@ -828,7 +828,7 @@ function DecisionPointsSection({
                           className={cardVariants({
                             padding: "none",
                             className:
-                              "flex min-w-0 flex-col gap-1 p-2 text-sm md:flex-row md:items-center md:justify-between",
+                              "flex min-w-0 flex-col gap-1 p-2 text-sm @3xl/detail:flex-row @3xl/detail:items-center @3xl/detail:justify-between",
                           })}
                         >
                           <div className="min-w-0">
@@ -887,7 +887,7 @@ function EvidenceCoverageSection({
       title="Evidence Coverage"
       count={`${flowConversationCount} of ${completedConversationCount} completed contributions`}
     >
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+      <div className="grid gap-4 @4xl/detail:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
         <div className="space-y-4">
           <div>
             <SectionLabel>
@@ -1203,7 +1203,7 @@ export function ProcessInsightsTab({
     <div className="min-h-full bg-muted/20">
       <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
         <header className={cardVariants({ padding: "md" })}>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-3 @2xl/detail:flex-row @2xl/detail:items-start @2xl/detail:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <BarChart3
@@ -1331,7 +1331,9 @@ export function ProcessInsightsTab({
           </InlineNotice>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {/* Columns follow the detail panel, not the viewport: at 1280px with the
+            sidebar and tree open, the panel is only about 670px wide. */}
+        <div className="grid gap-3 @xs/detail:grid-cols-2 @4xl/detail:grid-cols-4">
           <MetricTile
             icon={Users}
             label="Evidence"
@@ -1387,7 +1389,7 @@ export function ProcessInsightsTab({
           />
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 @4xl/detail:grid-cols-2">
           <HandoffsSection
             items={handoffs}
             onOpenNode={onOpenProcessFlow}
@@ -1400,7 +1402,7 @@ export function ProcessInsightsTab({
           />
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 @4xl/detail:grid-cols-2">
           <BottlenecksSection
             nodes={bottlenecks}
             onOpenNode={onOpenProcessFlow}
@@ -1415,7 +1417,7 @@ export function ProcessInsightsTab({
           />
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 @4xl/detail:grid-cols-2">
           <TribalKnowledgeSection
             nodes={tribalKnowledgeNodes}
             onOpenNode={onOpenProcessFlow}

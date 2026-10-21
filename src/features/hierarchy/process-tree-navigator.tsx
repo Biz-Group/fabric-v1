@@ -24,11 +24,18 @@ import {
   House,
   Layers,
   MoreHorizontal,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Plus,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   DropdownMenu,
@@ -53,6 +60,10 @@ import {
   pickTabStop,
   type TreeNavRow,
 } from "@/features/hierarchy/tree-keyboard";
+import {
+  setTreeCollapsed,
+  useTreeCollapsed,
+} from "@/features/hierarchy/tree-collapse-preference";
 
 export type ProcessTreeData = FunctionReturnType<typeof api.hierarchy.getTree>;
 export type ProcessTreeFunction = ProcessTreeData["functions"][number];
@@ -75,6 +86,9 @@ const REVEAL_HIGHLIGHT_MS = 2400;
 
 /** A pause longer than this starts a new type-ahead search. */
 const TYPEAHEAD_RESET_MS = 500;
+
+/** The tree's scroll region, which the collapse toggle controls. */
+const TREE_PANEL_ID = "process-tree-panel";
 
 function collectNodeIds(tree: ProcessTreeData) {
   const ids = new Set<string>();
@@ -819,6 +833,51 @@ export function ProcessTreeNavigator({
     selectedProcessId,
   );
 
+  // Collapsing swaps which toggle is mounted, so focus follows to the other
+  // one rather than dropping to the page.
+  const collapsed = useTreeCollapsed();
+  const collapseToggleRef = useRef<HTMLButtonElement>(null);
+  const expandToggleRef = useRef<HTMLButtonElement>(null);
+  const toggleFocusPending = useRef(false);
+  useEffect(() => {
+    if (!toggleFocusPending.current) return;
+    toggleFocusPending.current = false;
+    (collapsed ? expandToggleRef : collapseToggleRef).current?.focus();
+  }, [collapsed]);
+  const toggleCollapsed = () => {
+    toggleFocusPending.current = true;
+    setTreeCollapsed(!collapsed);
+  };
+
+  if (collapsed) {
+    return (
+      <aside
+        aria-label="Process tree"
+        data-tour="tree"
+        className="flex h-full w-12 shrink-0 flex-col items-center border-r bg-muted/10 py-3"
+      >
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                ref={expandToggleRef}
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={toggleCollapsed}
+                aria-label="Show process tree"
+                aria-expanded={false}
+              />
+            }
+          >
+            <PanelLeftOpen className="size-4" />
+          </TooltipTrigger>
+          <TooltipContent side="right">Show process tree</TooltipContent>
+        </Tooltip>
+      </aside>
+    );
+  }
+
   return (
     <aside
       aria-label="Process tree"
@@ -831,59 +890,81 @@ export function ProcessTreeNavigator({
             <GitBranch className="size-4 shrink-0 text-muted-foreground" />
             <h2 className="truncate text-sm font-semibold">Process Tree</h2>
           </div>
-          {canEdit && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
+          <div className="flex shrink-0 items-center gap-1">
+            {canEdit && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      aria-label="Add hierarchy item"
+                    />
+                  }
+                >
+                  <span>Add</span>
+                  <Plus className="size-3.5" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-auto min-w-44">
+                  <DropdownMenuItem onClick={onCreateFunction}>
+                    <Building2 className="size-4" />
+                    Function
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!selectedFunctionForCreate}
+                    onClick={() => {
+                      if (selectedFunctionForCreate) {
+                        onCreateDepartment(selectedFunctionForCreate);
+                      }
+                    }}
+                  >
+                    <Layers className="size-4" />
+                    Department
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!selectedFunctionForCreate || !selectedDepartmentForCreate}
+                    onClick={() => {
+                      if (selectedFunctionForCreate && selectedDepartmentForCreate) {
+                        onCreateProcess(
+                          selectedFunctionForCreate,
+                          selectedDepartmentForCreate,
+                        );
+                      }
+                    }}
+                  >
+                    <Cog className="size-4" />
+                    Process
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            <Tooltip>
+              <TooltipTrigger
                 render={
                   <Button
+                    ref={collapseToggleRef}
                     type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    aria-label="Add hierarchy item"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={toggleCollapsed}
+                    aria-label="Hide process tree"
+                    aria-expanded
+                    aria-controls={TREE_PANEL_ID}
                   />
                 }
               >
-                <span>Add</span>
-                <Plus className="size-3.5" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-auto min-w-44">
-                <DropdownMenuItem onClick={onCreateFunction}>
-                  <Building2 className="size-4" />
-                  Function
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={!selectedFunctionForCreate}
-                  onClick={() => {
-                    if (selectedFunctionForCreate) {
-                      onCreateDepartment(selectedFunctionForCreate);
-                    }
-                  }}
-                >
-                  <Layers className="size-4" />
-                  Department
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={!selectedFunctionForCreate || !selectedDepartmentForCreate}
-                  onClick={() => {
-                    if (selectedFunctionForCreate && selectedDepartmentForCreate) {
-                      onCreateProcess(
-                        selectedFunctionForCreate,
-                        selectedDepartmentForCreate,
-                      );
-                    }
-                  }}
-                >
-                  <Cog className="size-4" />
-                  Process
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+                <PanelLeftClose className="size-4" />
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Hide process tree</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
       </div>
 
       <div
+        id={TREE_PANEL_ID}
         ref={treeScrollRef}
         className="min-h-0 flex-1 overflow-y-auto py-2 scrollbar-hide"
       >
