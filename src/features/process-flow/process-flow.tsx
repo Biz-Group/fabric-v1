@@ -1715,11 +1715,11 @@ function InsightsBar({
   onSpotlightChange: (mode: FlowSpotlightMode | null) => void;
   onOpenInsights: () => void;
 }) {
-  // "Potential automations", not "automation opportunities": this is the
-  // flow-level analysed list, a handful of multi-step recommendations. The
-  // Insights tab's Automation tile is a different measure — one entry per step
-  // whose automationPotential is above none — so it reads far higher on the same
-  // flow. Wording them alike made the two look like the same count disagreeing.
+  // "Recommended automations" is the flow-level analysed list, a handful of
+  // multi-step recommendations. The "automatable steps" spotlight is a
+  // different measure — one entry per step whose automationPotential is above
+  // none — so it reads far higher on the same flow. Wording them alike made
+  // the two look like the same count disagreeing.
   //
   // The insights stage failing leaves behind placeholders that merely look
   // automatable. Absent means a legacy row from before the field existed, which
@@ -1754,7 +1754,8 @@ function InsightsBar({
               spotlight={spotlights.bottlenecks}
               active={activeSpotlight?.mode === "bottlenecks"}
               icon={AlertTriangle}
-              tone="danger"
+              // A zero count is not a warning, so it stays neutral.
+              tone={spotlights.bottlenecks.metricCount > 0 ? "danger" : "neutral"}
               onClick={() => onSpotlightChange("bottlenecks")}
             />
             <SpotlightButton
@@ -1767,7 +1768,7 @@ function InsightsBar({
               spotlight={spotlights.automation}
               active={activeSpotlight?.mode === "automation"}
               icon={Bot}
-              tone="success"
+              tone={spotlights.automation.metricCount > 0 ? "success" : "neutral"}
               onClick={() => onSpotlightChange("automation")}
             />
             <SpotlightButton

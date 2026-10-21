@@ -92,13 +92,16 @@ export function deriveFlowSpotlights(flow: ProcessFlow): FlowSpotlightMap {
       flow.edges,
       new Set(handoffs.flatMap((item) => (item.edge ? [item.edge.id] : []))),
     ),
+    // "Automatable steps", not "automation candidates": these are single steps
+    // with some automation potential, while the bar's "recommended
+    // automations" are the analysed multi-step proposals.
     automation: createSpotlight(
       "automation",
-      "Automation candidates",
+      "Automatable steps",
       automationCandidates.length,
       automationCandidates.length === 1
-        ? "automation candidate"
-        : "automation candidates",
+        ? "automatable step"
+        : "automatable steps",
       automationNodeIds,
       flow.edges,
     ),

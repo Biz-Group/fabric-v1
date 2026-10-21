@@ -202,10 +202,19 @@
   height: 1.1rem;
 }
 
+/* Positioned by the popover; the panel styling lives on the nav inside. */
+.mobileNavigationPopup {
+  outline: none;
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
+}
+
+.mobileNavigationPopup[data-starting-style],
+.mobileNavigationPopup[data-ending-style] {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
 .mobileNavigationPanel {
-  position: absolute;
-  top: calc(100% + 0.8rem);
-  right: 0;
   display: flex;
   width: min(17rem, calc(100vw - 2rem));
   flex-direction: column;
@@ -256,15 +265,13 @@
 }
 
 .signInPanel {
-  position: absolute;
-  top: calc(100% + 0.8rem);
-  right: 0;
   width: 20rem;
   border: 1px solid var(--line);
   border-radius: 1rem;
   background: var(--paper);
   padding: 1.1rem;
   box-shadow: 0 24px 60px rgba(17, 22, 28, 0.14);
+  outline: none;
 }
 
 .mobileSignIn {
@@ -876,6 +883,12 @@
 
 .journeyContent {
   min-width: 0;
+}
+
+/* The tab panel is a tab stop; inset the ring so the card's overflow keeps it. */
+.journeyContent:focus-visible {
+  outline: 3px solid rgba(101, 114, 91, 0.38);
+  outline-offset: -3px;
 }
 
 .journeyCopy {

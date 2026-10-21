@@ -19,6 +19,7 @@ import {
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { FocusedConversationPlayback } from "@/features/conversations/conversation-log";
+import type { RecordingMode } from "@/features/recording/recording-modal";
 import {
   isStackedBelow,
   scrollIntoNearestScroller,
@@ -68,6 +69,8 @@ type ProcessConversationListProps = {
   labelingJumpKey?: number;
   focusConversationId?: Id<"conversations"> | null;
   focusConversationJumpKey?: number;
+  /** Opens capture in a mode. Left out for people who can't contribute. */
+  onCapture?: (mode: RecordingMode) => void;
 };
 
 const TYPE_META: Record<
@@ -78,6 +81,17 @@ const TYPE_META: Record<
   voiceRecord: { label: "Voice note", icon: Mic },
   audioUpload: { label: "Uploaded recording", icon: Upload },
 };
+
+// Same names and order as the header's capture buttons.
+const CAPTURE_ACTIONS: {
+  mode: RecordingMode;
+  label: string;
+  icon: LucideIcon;
+}[] = [
+  { mode: "agent", label: "Start AI interview", icon: Bot },
+  { mode: "voiceRecord", label: "Record a voice note", icon: Mic },
+  { mode: "audioUpload", label: "Upload files", icon: Upload },
+];
 
 const STATUS_FILTER_ITEMS: Record<StatusFilter, string> = {
   all: "All contributions",
@@ -237,7 +251,7 @@ function ConversationRow({
       >
         <span className="min-w-0 flex-1 space-y-2">
           <span className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-            <span className="min-w-0 max-w-full truncate text-sm font-medium text-foreground">
+            <span className="line-clamp-2 min-w-0 max-w-full break-words text-sm font-medium text-foreground">
               {title}
             </span>
             <StatusBadge meta={status} />
@@ -277,12 +291,14 @@ function ConversationRow({
 function ConversationPlaybackPanel({
   processId,
   conversationId,
+  title,
   canLabelSpeakers,
   canRetry,
   hasConversations,
 }: {
   processId: Id<"processes">;
   conversationId: Id<"conversations"> | null;
+  title: string;
   canLabelSpeakers: boolean;
   canRetry: boolean;
   hasConversations: boolean;
@@ -303,7 +319,7 @@ function ConversationPlaybackPanel({
             description={
               hasConversations
                 ? "Playback and transcript review will appear in this panel."
-                : "Start an AI interview, record a voice note, or upload files."
+                : "Playback and transcript review will appear here once this process has a contribution."
             }
             className="w-full border-0 bg-transparent"
           />
@@ -346,6 +362,7 @@ function ConversationPlaybackPanel({
     <section className="flex h-full min-h-72 overflow-hidden bg-background">
       <FocusedConversationPlayback
         conversation={conversation}
+        title={title}
         canLabelSpeakers={canLabelSpeakers}
         canRetry={canRetry}
       />
@@ -387,6 +404,7 @@ export function ProcessConversationsTab({
   labelingJumpKey = 0,
   focusConversationId = null,
   focusConversationJumpKey = 0,
+  onCapture,
 }: ProcessConversationListProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -571,14 +589,58 @@ export function ProcessConversationsTab({
               <EmptyState
                 icon={Mic}
                 title="No contributions yet"
-                description="Start an AI interview, record a voice note, or upload files."
+                description={
+                  onCapture
+                    ? "Start an AI interview, record a voice note, or upload files."
+                    : "Contributions appear here once a contributor starts an AI interview, records a voice note, or uploads files."
+                }
+                action={
+                  onCapture && (
+                    <div
+                      className="flex flex-wrap justify-center gap-2"
+                      role="group"
+                      aria-label="Add a contribution"
+                    >
+                      {CAPTURE_ACTIONS.map(({ mode, label, icon: Icon }) => (
+                        <Button
+                          key={mode}
+                          type="button"
+                          variant="outline"
+                          className="gap-2"
+                          onClick={() => onCapture(mode)}
+                        >
+                          <Icon className="size-4" aria-hidden="true" />
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
+                  )
+                }
                 className="min-h-72"
               />
             ) : filteredConversations.length === 0 ? (
               <EmptyState
                 icon={FileText}
                 title="No matching contributions"
-                description={hasFilters ? "Clear a filter to see more contributions." : undefined}
+                description={
+                  hasFilters
+                    ? "No contributions match these filters."
+                    : undefined
+                }
+                action={
+                  hasFilters && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setStatusFilter("all");
+                        setTypeFilter("all");
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  )
+                }
                 className="min-h-72"
               />
             ) : (
@@ -647,6 +709,7 @@ export function ProcessConversationsTab({
           <ConversationPlaybackPanel
             processId={processId}
             conversationId={activeConversationId}
+            title={activeConversation ? conversationTitle(activeConversation) : ""}
             canLabelSpeakers={canLabelSpeakers}
             canRetry={canRetry}
             hasConversations={(conversations?.length ?? 0) > 0}

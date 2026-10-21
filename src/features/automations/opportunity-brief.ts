@@ -20,6 +20,7 @@ import {
   pluralize,
   uniqueStrings,
 } from "@/features/insights/insights-derivations";
+import { effectiveOpportunityConfidence } from "@/features/automations/opportunity-confidence";
 
 export type AutomationOpportunity = NonNullable<
   ProcessFlow["insights"]["automationOpportunityDetails"]
@@ -136,6 +137,10 @@ export function findInterstitialNodeIds(
 
 export function composeOpportunityBrief(input: BriefInput): OpportunityBrief {
   const { opportunity, edges, coverage, overview } = input;
+  const confidence = effectiveOpportunityConfidence(
+    opportunity.confidence,
+    coverage?.uniqueContributors,
+  );
   const nodeMap = new Map(input.nodes.map((node) => [node.id, node]));
 
   const order = new Map(input.criticalPath.map((id, index) => [id, index]));
@@ -204,7 +209,10 @@ export function composeOpportunityBrief(input: BriefInput): OpportunityBrief {
             : ` with ${pluralize(coverage.uniqueContributors, "contributor")}`
         } describing how the work is done today. `
       : "") +
-    `Evidence confidence for this opportunity: **${opportunity.confidence}**.`;
+    `Evidence confidence for this opportunity: **${confidence.level}**` +
+    (confidence.capped
+      ? " (capped at medium because one contributor described it)."
+      : ".");
 
   const whatToBuild: string[] = ["## What to build", "", sentence(opportunity.rationale)];
   if (opportunity.expectedBenefit) {
@@ -250,7 +258,7 @@ export function composeOpportunityBrief(input: BriefInput): OpportunityBrief {
   }
   if (actors.length === 0) unknowns.push("No owner is named for these steps.");
   if (systems.length === 0) unknowns.push("No systems are named for these steps.");
-  if (opportunity.confidence === "low") {
+  if (confidence.level === "low") {
     unknowns.push(
       "This opportunity was identified with low confidence — confirm it with the process owner " +
         "before building.",

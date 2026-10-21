@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState, type Ref } from "react";
+import { Popover } from "@base-ui/react/popover";
 
 import { isValidTenantSlug } from "../../../convex/lib/slugs";
 import styles from "@/features/marketing/marketing-landing-page.module.css";
@@ -27,9 +28,9 @@ function workspaceSlugFrom(input: string): string {
  * `/sign-in` back here), so ask which workspace and send them there.
  */
 export function WorkspaceSignInForm({
-  autoFocus = false,
+  inputRef,
 }: {
-  autoFocus?: boolean;
+  inputRef?: Ref<HTMLInputElement>;
 }) {
   const id = useId();
   const [workspace, setWorkspace] = useState("");
@@ -59,6 +60,7 @@ export function WorkspaceSignInForm({
       <label htmlFor={inputId}>Sign in to your workspace</label>
       <div className={styles.signInField}>
         <input
+          ref={inputRef}
           id={inputId}
           value={workspace}
           onChange={(event) => {
@@ -66,7 +68,6 @@ export function WorkspaceSignInForm({
             setError(null);
           }}
           placeholder="your-workspace"
-          autoFocus={autoFocus}
           autoComplete="off"
           autoCapitalize="none"
           spellCheck={false}
@@ -75,8 +76,9 @@ export function WorkspaceSignInForm({
         />
         <span aria-hidden="true">.{ROOT_HOSTNAME}</span>
       </div>
+      {/* An alert is announced as it appears, without moving focus off the input. */}
       {error && (
-        <p id={errorId} className={styles.signInError}>
+        <p id={errorId} role="alert" className={styles.signInError}>
           {error}
         </p>
       )}
@@ -87,47 +89,39 @@ export function WorkspaceSignInForm({
   );
 }
 
-/** "Sign in" in the desktop navigation, opening the workspace form. */
+/**
+ * "Sign in" in the desktop navigation, opening the workspace form. The popover
+ * closes on Escape or an outside press and hands focus back to the trigger. It
+ * portals into its own wrapper so the page's CSS variables and fonts still apply.
+ */
 export function SignInMenu() {
-  const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const panelId = useId();
-
-  useEffect(() => {
-    if (!open) return;
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    const closeOnOutsidePress = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-
-    window.addEventListener("keydown", closeOnEscape);
-    document.addEventListener("pointerdown", closeOnOutsidePress);
-    return () => {
-      window.removeEventListener("keydown", closeOnEscape);
-      document.removeEventListener("pointerdown", closeOnOutsidePress);
-    };
-  }, [open]);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   if (!ROOT_DOMAIN) return null;
 
   return (
     <div ref={rootRef} className={styles.signInMenu}>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen((current) => !current)}
-      >
-        Sign in
-      </button>
-      {open && (
-        <div id={panelId} className={styles.signInPanel}>
-          <WorkspaceSignInForm autoFocus />
-        </div>
-      )}
+      <Popover.Root>
+        <Popover.Trigger>Sign in</Popover.Trigger>
+        <Popover.Portal container={rootRef}>
+          {/* 0.8rem below the trigger, right-aligned, as the panel always sat. */}
+          <Popover.Positioner
+            side="bottom"
+            align="end"
+            sideOffset={12.8}
+            collisionAvoidance={{ side: "none" }}
+          >
+            <Popover.Popup
+              className={styles.signInPanel}
+              aria-label="Sign in"
+              initialFocus={inputRef}
+            >
+              <WorkspaceSignInForm inputRef={inputRef} />
+            </Popover.Popup>
+          </Popover.Positioner>
+        </Popover.Portal>
+      </Popover.Root>
     </div>
   );
 }

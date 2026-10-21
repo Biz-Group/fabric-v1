@@ -19,6 +19,7 @@ import {
   moveHighlight,
   resultCountMessage,
 } from "./command-palette-a11y";
+import { searchCandidates, truncationMessage } from "./command-palette-search";
 
 type FunctionItem = { _id: Id<"functions">; name: string };
 type DepartmentItem = {
@@ -70,21 +71,6 @@ const GROUP_LIMIT = 8;
 
 // How long the result count waits for typing to settle before it is announced.
 const COUNT_ANNOUNCE_DELAY_MS = 500;
-
-// startsWith matches rank above plain substring matches.
-function rankAndLimit<T extends { name: string }>(
-  items: T[],
-  query: string,
-): T[] {
-  if (!query) return items;
-  const matches = items.filter((i) => i.name.toLowerCase().includes(query));
-  matches.sort((a, b) => {
-    const aStarts = a.name.toLowerCase().startsWith(query) ? 0 : 1;
-    const bStarts = b.name.toLowerCase().startsWith(query) ? 0 : 1;
-    return aStarts - bStarts || a.name.localeCompare(b.name);
-  });
-  return matches.slice(0, GROUP_LIMIT);
-}
 
 export function CommandPalette({
   open,
@@ -145,13 +131,19 @@ export function CommandPalette({
     [onOpenChange],
   );
 
-  const results = useMemo<Result[]>(() => {
-    const q = query.trim().toLowerCase();
+  const { results, totals } = useMemo(() => {
+    const q = query.trim();
     const close = () => handleOpenChange(false);
 
     // Empty query: surface top-level functions as a quick-nav starting point
-    // (rankAndLimit returns the list unfiltered when the query is empty).
-    const fnResults: Result[] = rankAndLimit(functions, q).map((fn) => ({
+    // (searchCandidates returns the list uncapped when the query is empty).
+    const fnSearch = searchCandidates(
+      functions,
+      q,
+      (fn) => ({ name: fn.name, path: [] }),
+      GROUP_LIMIT,
+    );
+    const fnResults: Result[] = fnSearch.matches.map((fn) => ({
       kind: "function",
       key: fn._id,
       label: fn.name,
@@ -163,51 +155,76 @@ export function CommandPalette({
     }));
 
     // Only search children once the user types, so the empty state stays calm.
-    const deptResults: Result[] = q
-      ? rankAndLimit(departments, q).map((dept) => ({
-          kind: "department",
-          key: dept._id,
-          label: dept.name,
-          context: dept.functionName,
-          select: () => {
-            onJumpDepartment(
-              dept.functionId,
-              dept.functionName,
-              dept._id,
-              dept.name,
-            );
-            close();
-          },
-        }))
-      : [];
+    // Their ancestor names are searchable too, so "finance invoice" finds an
+    // invoice process under Finance.
+    const deptSearch = q
+      ? searchCandidates(
+          departments,
+          q,
+          (dept) => ({ name: dept.name, path: [dept.functionName] }),
+          GROUP_LIMIT,
+        )
+      : { matches: [], total: 0 };
+    const deptResults: Result[] = deptSearch.matches.map((dept) => ({
+      kind: "department",
+      key: dept._id,
+      label: dept.name,
+      context: dept.functionName,
+      select: () => {
+        onJumpDepartment(
+          dept.functionId,
+          dept.functionName,
+          dept._id,
+          dept.name,
+        );
+        close();
+      },
+    }));
 
-    const procResults: Result[] = q
-      ? rankAndLimit(
+    // A null functionId means the process's department no longer exists, so
+    // there is nowhere in the hierarchy to jump to.
+    const procSearch = q
+      ? searchCandidates(
           processes.filter(
             (p): p is ProcessItem & { functionId: Id<"functions"> } =>
               p.functionId !== null,
           ),
           q,
-        ).map((proc) => ({
-          kind: "process",
-          key: proc._id,
-          label: proc.name,
-          context: `${proc.functionName} › ${proc.departmentName}`,
-          select: () => {
-            onJumpProcess(
-              proc.functionId as Id<"functions">,
-              proc.functionName,
-              proc.departmentId,
-              proc.departmentName,
-              proc._id,
-              proc.name,
-            );
-            close();
-          },
-        }))
-      : [];
+          (proc) => ({
+            name: proc.name,
+            path: [proc.functionName, proc.departmentName],
+          }),
+          GROUP_LIMIT,
+        )
+      : { matches: [], total: 0 };
+    const procResults: Result[] = procSearch.matches.map((proc) => ({
+      kind: "process",
+      key: proc._id,
+      label: proc.name,
+      context: `${proc.functionName} › ${proc.departmentName}`,
+      select: () => {
+        onJumpProcess(
+          proc.functionId as Id<"functions">,
+          proc.functionName,
+          proc.departmentId,
+          proc.departmentName,
+          proc._id,
+          proc.name,
+        );
+        close();
+      },
+    }));
 
-    return [...fnResults, ...deptResults, ...procResults];
+    return {
+      results: [...fnResults, ...deptResults, ...procResults],
+      // Functions are uncapped while the query is empty, so only a typed
+      // query can truncate them.
+      totals: {
+        function: fnSearch.total,
+        department: deptSearch.total,
+        process: procSearch.total,
+      } satisfies Record<Result["kind"], number>,
+    };
   }, [
     query,
     functions,
@@ -238,7 +255,13 @@ export function CommandPalette({
   // no-op, so an unchanged count is not re-announced. While closed it settles
   // to "", which also covers a parent closing the palette without going
   // through handleOpenChange.
-  const countMessage = open ? resultCountMessage(results.length) : "";
+  const anyTruncated = groups.some(
+    (group) => totals[group.kind] > group.entries.length,
+  );
+  const countMessage = open
+    ? resultCountMessage(results.length) +
+      (anyTruncated ? ". More match; refine your search" : "")
+    : "";
   useEffect(() => {
     const timer = setTimeout(
       () => setAnnouncement(countMessage),
@@ -310,6 +333,10 @@ export function CommandPalette({
               {groups.map((group) => {
                 const GroupIcon = GROUP_META[group.kind].icon;
                 const labelId = groupLabelId(group.kind);
+                const truncation = truncationMessage(
+                  group.entries.length,
+                  totals[group.kind],
+                );
                 // The heading sits beside the group, not inside it, so the
                 // listbox owns only groups and options. It names the group
                 // through aria-labelledby and is hidden from the reading order.
@@ -375,6 +402,16 @@ export function CommandPalette({
                         );
                       })}
                     </div>
+                    {/* Hidden like the heading: the live region already says
+                        that more results match. */}
+                    {truncation && (
+                      <p
+                        aria-hidden="true"
+                        className="px-2 pt-1 pb-2 text-xs text-muted-foreground"
+                      >
+                        {truncation}
+                      </p>
+                    )}
                   </div>
                 );
               })}

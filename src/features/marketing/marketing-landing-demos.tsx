@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { Popover } from "@base-ui/react/popover";
+import { Tabs } from "@base-ui/react/tabs";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -64,57 +66,50 @@ const stages = [
 
 type StageId = (typeof stages)[number]["id"];
 
+/**
+ * The popover closes on Escape, an outside press or a link, and always hands
+ * focus back to the trigger (the header is sticky, so that never scrolls). It
+ * portals into its own wrapper so the page's CSS variables and fonts still apply.
+ */
 export function MobileNavigation() {
   const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [open]);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className={styles.mobileNavigation}>
-      <button
-        type="button"
-        aria-label={open ? "Close navigation" : "Open navigation"}
-        aria-expanded={open}
-        aria-controls="mobile-marketing-navigation"
-        onClick={() => setOpen((current) => !current)}
-      >
-        {open ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.nav
-            id="mobile-marketing-navigation"
-            aria-label="Mobile navigation"
-            className={styles.mobileNavigationPanel}
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
+    <div ref={rootRef} className={styles.mobileNavigation}>
+      <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Trigger aria-label={open ? "Close navigation" : "Open navigation"}>
+          {open ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
+        </Popover.Trigger>
+        <Popover.Portal container={rootRef}>
+          <Popover.Positioner
+            side="bottom"
+            align="end"
+            sideOffset={12.8}
+            collisionAvoidance={{ side: "none" }}
           >
-            <a href="#how-it-works" onClick={() => setOpen(false)}>
-              How it works
-            </a>
-            <a href="#platform" onClick={() => setOpen(false)}>
-              Platform
-            </a>
-            <a href="#use-cases" onClick={() => setOpen(false)}>
-              Use cases
-            </a>
-            <div className={styles.mobileSignIn}>
-              <WorkspaceSignInForm />
-            </div>
-          </motion.nav>
-        )}
-      </AnimatePresence>
+            <Popover.Popup
+              className={styles.mobileNavigationPopup}
+              aria-label="Navigation"
+            >
+              <nav aria-label="Mobile navigation" className={styles.mobileNavigationPanel}>
+                <a href="#how-it-works" onClick={() => setOpen(false)}>
+                  How it works
+                </a>
+                <a href="#platform" onClick={() => setOpen(false)}>
+                  Platform
+                </a>
+                <a href="#use-cases" onClick={() => setOpen(false)}>
+                  Use cases
+                </a>
+                <div className={styles.mobileSignIn}>
+                  <WorkspaceSignInForm />
+                </div>
+              </nav>
+            </Popover.Popup>
+          </Popover.Positioner>
+        </Popover.Portal>
+      </Popover.Root>
     </div>
   );
 }
@@ -360,34 +355,38 @@ export function ProductJourneyDemo() {
     return () => window.clearInterval(interval);
   }, [paused, reduceMotion]);
 
+  // Arrow keys, Home and End move through the stages and select as they go. The
+  // copy sits inside the one panel, so a chosen stage is read from its tab, and
+  // the automatic rotation stays silent.
   return (
-    <div
+    <Tabs.Root
       className={styles.productJourney}
+      value={activeStage}
+      onValueChange={(value: StageId) => setActiveStage(value)}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
     >
-      <div className={styles.journeyControls} role="tablist" aria-label="How Fabric works">
+      <Tabs.List
+        className={styles.journeyControls}
+        aria-label="How Fabric works"
+        activateOnFocus
+      >
         {stages.map((stage, index) => (
-          <button
+          <Tabs.Tab
             key={stage.id}
-            type="button"
-            role="tab"
-            aria-selected={stage.id === activeStage}
-            aria-controls="fabric-demo-panel"
-            id={`fabric-demo-tab-${stage.id}`}
+            value={stage.id}
             className={stage.id === activeStage ? styles.journeyTabActive : undefined}
-            onClick={() => setActiveStage(stage.id)}
           >
             <span>{String(index + 1).padStart(2, "0")}</span>
             {stage.title}
-          </button>
+          </Tabs.Tab>
         ))}
-      </div>
+      </Tabs.List>
 
-      <div className={styles.journeyContent}>
-        <div className={styles.journeyCopy} aria-live="polite">
+      <Tabs.Panel value={activeStage} className={styles.journeyContent}>
+        <div className={styles.journeyCopy}>
           <AnimatePresence mode="wait">
             <motion.div
               key={active.id}
@@ -405,12 +404,7 @@ export function ProductJourneyDemo() {
           </div>
         </div>
 
-        <div
-          id="fabric-demo-panel"
-          role="tabpanel"
-          aria-labelledby={`fabric-demo-tab-${active.id}`}
-          className={styles.demoStage}
-        >
+        <div className={styles.demoStage}>
           <AnimatePresence mode="wait">
             <motion.div
               key={active.id}
@@ -430,8 +424,8 @@ export function ProductJourneyDemo() {
             </motion.div>
           </AnimatePresence>
         </div>
-      </div>
-    </div>
+      </Tabs.Panel>
+    </Tabs.Root>
   );
 }
 

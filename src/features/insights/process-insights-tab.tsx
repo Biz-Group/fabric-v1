@@ -399,18 +399,19 @@ export function FlowNodeLink({
 
 function HandoffsSection({
   items,
-  reportedCount,
   onOpenNode,
 }: {
   items: HandoffItem[];
-  reportedCount: number;
   onOpenNode: (nodeId: string) => void;
 }) {
+  // The derived count, the same one the Process Flow bar shows. The stored
+  // insights.handoffCount only counts steps categorised as handoffs, so it
+  // reads lower on the same flow and looked like the two disagreeing.
   return (
     <InsightSection
       icon={ArrowRightLeft}
       title="Handoffs"
-      count={pluralize(reportedCount, "signal")}
+      count={pluralize(items.length, "handoff")}
     >
       {items.length === 0 ? (
         <SectionEmpty message="No handoff steps or actor-change edges are present in this generated flow." />
@@ -638,7 +639,7 @@ function AutomationSection({
     <InsightSection
       icon={Bot}
       title="Automation Opportunities"
-      count={`${flowLevelCount} recommended · ${pluralize(candidates.length, "candidate")}`}
+      count={`${flowLevelCount} recommended · ${pluralize(candidates.length, "automatable step")}`}
     >
       <div className="space-y-4">
         {/* Reported apart, never summed: a flow-level recommendation cites the
@@ -1347,8 +1348,8 @@ export function ProcessInsightsTab({
           <MetricTile
             icon={ArrowRightLeft}
             label="Handoffs"
-            value={flow.insights.handoffCount}
-            detail={`${handoffs.length} related edges or nodes shown`}
+            value={handoffs.length}
+            detail="Where work changes hands between people or roles"
           />
           <MetricTile
             icon={Monitor}
@@ -1375,7 +1376,7 @@ export function ProcessInsightsTab({
             detail={
               automationUnreviewed
                 ? "Possible only — not analysed"
-                : "Potential automations"
+                : "Recommended automations"
             }
           />
           <MetricTile
@@ -1389,7 +1390,6 @@ export function ProcessInsightsTab({
         <div className="grid gap-4 xl:grid-cols-2">
           <HandoffsSection
             items={handoffs}
-            reportedCount={flow.insights.handoffCount}
             onOpenNode={onOpenProcessFlow}
           />
           <ToolsSection

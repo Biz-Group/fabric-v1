@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
@@ -39,6 +39,14 @@ import {
   type AutomationOpportunity,
   composeOpportunityBrief,
 } from "@/features/automations/opportunity-brief";
+import {
+  CONFIDENCE_DEFINITION,
+  effectiveOpportunityConfidence,
+} from "@/features/automations/opportunity-confidence";
+
+// The list and brief sit side by side from Tailwind's `md`; below it they are
+// one pane at a time, and focus has to follow the pane that is showing.
+const SPLIT_PANE_QUERY = "(min-width: 48rem)";
 
 const KIND_LABEL: Record<AutomationOpportunity["kind"], string> = {
   agent: "Agent",
@@ -97,17 +105,25 @@ export function ProcessAutomationsTab({
   departmentName,
   functionName,
   onOpenProcessFlow,
+  onAddContribution,
 }: {
   processId: Id<"processes">;
   processName: string;
   departmentName?: string | null;
   functionName?: string | null;
   onOpenProcessFlow?: () => void;
+  /** Pass only when the viewer may capture; the empty state offers it then. */
+  onAddContribution?: () => void;
 }) {
   const flow = useQuery(api.processFlows.getProcessFlow, { processId });
   const overview = useSummaryOverview({ kind: "process", processId });
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   const [showDetailOnMobile, setShowDetailOnMobile] = useState(false);
+  const briefHeadingRef = useRef<HTMLHeadingElement>(null);
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  // Set by the action that swaps panes, consumed once the swapped-in pane has
+  // rendered. A ref, not state: it must not cause a render of its own.
+  const pendingFocusRef = useRef<"brief" | "row" | null>(null);
 
   const opportunities = useMemo<AutomationOpportunity[]>(() => {
     if (!flow) return [];
@@ -125,6 +141,21 @@ export function ProcessAutomationsTab({
     opportunities.find((item) => item.title === selectedTitle) ??
     opportunities[0] ??
     null;
+
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    pendingFocusRef.current = null;
+    if (!pending || !selected) return;
+    if (pending === "brief") {
+      const heading = briefHeadingRef.current;
+      heading?.scrollIntoView({ block: "start" });
+      heading?.focus({ preventScroll: true });
+      return;
+    }
+    const row = rowRefs.current.get(selected.title);
+    row?.scrollIntoView({ block: "nearest" });
+    row?.focus({ preventScroll: true });
+  }, [showDetailOnMobile, selected]);
 
   if (flow === undefined || overview === undefined) {
     return (
@@ -200,13 +231,21 @@ export function ProcessAutomationsTab({
     );
   }
 
-  if (flow.insights.automationOpportunitiesSource === "derived") {
+  const source = flow.insights.automationOpportunitiesSource;
+  // Flows generated before opportunities were analysed carry no source and no
+  // details. "Found nothing" would be false for them: nothing was looked for.
+  const predatesAnalysis = source === undefined && opportunities.length === 0;
+  if (source === "derived" || predatesAnalysis) {
     return (
       <TabShell>
         <EmptyState
           icon={AlertTriangle}
           title="Automations were not analysed for this run"
-          description="The analysis stage fell back to flagging automatable-looking steps, which is not enough to brief a build. Regenerate the process flow to get Potential automations."
+          description={
+            predatesAnalysis
+              ? "This process flow was generated before automations were analysed. Regenerate the process flow to get Potential automations."
+              : "The analysis stage fell back to flagging automatable-looking steps, which is not enough to brief a build. Regenerate the process flow to get Potential automations."
+          }
           action={
             onOpenProcessFlow ? (
               <Button size="sm" variant="outline" onClick={onOpenProcessFlow}>
@@ -226,6 +265,17 @@ export function ProcessAutomationsTab({
           icon={Bot}
           title="No automations recommended"
           description="The analysis ran and found nothing in this process worth automating yet. More contributions covering exceptions and handoffs usually surface candidates."
+          action={
+            onAddContribution ? (
+              <Button size="sm" variant="outline" onClick={onAddContribution}>
+                Add a contribution
+              </Button>
+            ) : onOpenProcessFlow ? (
+              <Button size="sm" variant="outline" onClick={onOpenProcessFlow}>
+                Open Process Flow
+              </Button>
+            ) : undefined
+          }
         />
       </TabShell>
     );
@@ -258,10 +308,22 @@ export function ProcessAutomationsTab({
   return (
     <div className="flex min-h-0 flex-col">
       {(flow.stale || flowHasIncompleteDetails(flow)) && (
-        <div className="border-b border-warning-border bg-warning-subtle px-4 py-2 text-xs text-foreground">
-          {flow.stale
-            ? "New contributions have landed since this flow was generated. Regenerate the process flow for automations that reflect them."
-            : "Some steps were never described, so these briefs report a floor, not a complete picture."}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-warning-border bg-warning-subtle px-4 py-2 text-xs text-foreground">
+          <span className="min-w-0 flex-1 basis-60">
+            {flow.stale
+              ? "New contributions have landed since this flow was generated. Regenerate the process flow for automations that reflect them."
+              : "Some steps were never described, so these briefs report a floor, not a complete picture."}
+          </span>
+          {onOpenProcessFlow ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="bg-background"
+              onClick={onOpenProcessFlow}
+            >
+              Open Process Flow
+            </Button>
+          ) : null}
         </div>
       )}
 
@@ -282,13 +344,24 @@ export function ProcessAutomationsTab({
           <ul className="divide-y">
             {opportunities.map((opportunity) => {
               const isSelected = selected?.title === opportunity.title;
+              const confidence = effectiveOpportunityConfidence(
+                opportunity.confidence,
+                overview.coverage?.uniqueContributors,
+              );
               return (
                 <li key={`${opportunity.kind}:${opportunity.title}`}>
                   <button
                     type="button"
+                    ref={(node) => {
+                      if (node) rowRefs.current.set(opportunity.title, node);
+                      else rowRefs.current.delete(opportunity.title);
+                    }}
                     onClick={() => {
                       setSelectedTitle(opportunity.title);
                       setShowDetailOnMobile(true);
+                      if (!window.matchMedia(SPLIT_PANE_QUERY).matches) {
+                        pendingFocusRef.current = "brief";
+                      }
                     }}
                     aria-current={isSelected ? "true" : undefined}
                     className={cn(
@@ -315,10 +388,10 @@ export function ProcessAutomationsTab({
                         <span
                           className={cn(
                             "text-2xs capitalize",
-                            CONFIDENCE_CLASS[opportunity.confidence],
+                            CONFIDENCE_CLASS[confidence.level],
                           )}
                         >
-                          {opportunity.confidence} confidence
+                          {confidence.level} confidence
                         </span>
                       </span>
                     </span>
@@ -342,7 +415,10 @@ export function ProcessAutomationsTab({
                 size="sm"
                 variant="ghost"
                 className="mb-3 -ml-2 gap-1.5 md:hidden"
-                onClick={() => setShowDetailOnMobile(false)}
+                onClick={() => {
+                  pendingFocusRef.current = "row";
+                  setShowDetailOnMobile(false);
+                }}
               >
                 <ArrowLeft className="size-3.5" />
                 All automations
@@ -350,10 +426,18 @@ export function ProcessAutomationsTab({
 
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 className="text-base font-semibold leading-6">
+                  <h2
+                    ref={briefHeadingRef}
+                    tabIndex={-1}
+                    className="text-base font-semibold leading-6 focus:outline-none"
+                  >
                     {selected.title}
                   </h2>
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  <OpportunityEvidence
+                    confidence={selected.confidence}
+                    coverage={overview.coverage}
+                  />
+                  <p className="mt-2 text-xs text-muted-foreground">
                     Paste this into Copilot Studio&apos;s agent builder as the
                     description of what to build.
                   </p>
@@ -370,6 +454,51 @@ export function ProcessAutomationsTab({
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The evidence behind an opportunity, beside its heading: how many
+ * contributions and people back it, and what its confidence label measures.
+ * Shown before the brief is copied, not only inside it.
+ */
+function OpportunityEvidence({
+  confidence: stored,
+  coverage,
+}: {
+  confidence: AutomationOpportunity["confidence"];
+  coverage: { includedSources: number; uniqueContributors?: number } | null;
+}) {
+  const confidence = effectiveOpportunityConfidence(
+    stored,
+    coverage?.uniqueContributors,
+  );
+  return (
+    <div className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
+      <p className="flex flex-wrap items-center gap-x-1.5">
+        {coverage ? (
+          <>
+            <span>{pluralize(coverage.includedSources, "contribution")}</span>
+            {coverage.uniqueContributors !== undefined ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>
+                  {pluralize(coverage.uniqueContributors, "contributor")}
+                </span>
+              </>
+            ) : null}
+            <span aria-hidden="true">·</span>
+          </>
+        ) : null}
+        <span className={cn("capitalize", CONFIDENCE_CLASS[confidence.level])}>
+          {confidence.level} confidence
+        </span>
+      </p>
+      <p>
+        {CONFIDENCE_DEFINITION}
+        {confidence.capped ? " With one contributor it is capped at medium." : ""}
+      </p>
     </div>
   );
 }

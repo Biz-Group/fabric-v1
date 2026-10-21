@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/tooltip";
 import { HelpMenu } from "@/features/shell/help-menu";
 import { UserMenu } from "@/features/shell/user-menu";
+import { ThemeToggle } from "@/features/theming/theme-toggle";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 import {
   getWorkspaceInitials,
@@ -136,9 +137,11 @@ function subscribeToNothing() {
 function SearchTrigger({
   onSearch,
   compact = false,
+  className,
 }: {
   onSearch: () => void;
   compact?: boolean;
+  className?: string;
 }) {
   // The palette opens on Cmd+K or Ctrl+K; show the one this keyboard has.
   const isApple = useSyncExternalStore(
@@ -153,8 +156,9 @@ function SearchTrigger({
       className={cn(
         "group flex min-w-0 items-center rounded-lg border border-border bg-background text-left text-sm text-muted-foreground shadow-xs transition-colors hover:border-org-accent-border hover:bg-org-accent-subtle hover:text-foreground focus-ring",
         compact
-          ? "size-9 justify-center pointer-coarse:size-10"
+          ? "size-10 shrink-0 justify-center"
           : "h-9 w-full max-w-xl gap-2 px-3 pointer-coarse:h-10",
+        className,
       )}
       aria-label="Search functions, departments, or processes"
       data-tour="search"
@@ -405,6 +409,12 @@ function MobileNavSheet({
             sections={navSections}
             onNavigate={() => onOpenChange(false)}
           />
+          {/* The top bar drops the theme toggle on phones to keep room for
+              search, so it lives here instead. */}
+          <div className="mt-auto flex items-center justify-between gap-3 border-t pt-4 sm:hidden">
+            <span className="text-sm text-muted-foreground">Appearance</span>
+            <ThemeToggle className="pointer-coarse:size-10" />
+          </div>
         </div>
       </SheetContent>
     </Sheet>
@@ -441,9 +451,14 @@ function TopBar({
         </TooltipTrigger>
         <TooltipContent>Open navigation</TooltipContent>
       </Tooltip>
-      <div className="min-w-0 flex-1">
+      {/* On phones search is a fixed icon beside the other actions, so the
+          workspace controls can never squeeze it to a sliver. */}
+      <div className="flex min-w-0 flex-1 justify-end sm:justify-start">
         {onSearch ? (
-          <SearchTrigger onSearch={onSearch} />
+          <>
+            <SearchTrigger onSearch={onSearch} compact className="sm:hidden" />
+            <SearchTrigger onSearch={onSearch} className="hidden sm:flex" />
+          </>
         ) : (
           <h1 className="truncate text-sm font-medium text-foreground">
             {title}

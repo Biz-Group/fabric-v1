@@ -191,7 +191,23 @@ describe("composeOpportunityBrief", () => {
       "Build an automated workflow that supports the **Product Building** process (AI Transformation department).",
     );
     expect(body).toContain("1 recorded contribution with 1 contributor");
-    expect(body).toContain("Evidence confidence for this opportunity: **high**");
+    expect(body).toContain(
+      "Evidence confidence for this opportunity: **medium** (capped at medium because one contributor described it).",
+    );
+  });
+
+  test("keeps high confidence when several contributors support it", () => {
+    const { body } = composeOpportunityBrief(
+      input({
+        coverage: {
+          includedSources: 3,
+          totalEligibleSources: 3,
+          uniqueContributors: 2,
+          complete: true,
+        },
+      }),
+    );
+    expect(body).toContain("Evidence confidence for this opportunity: **high**.");
   });
 
   test("orders covered steps by the critical path, not by nodeIds order", () => {

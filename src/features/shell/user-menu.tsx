@@ -50,19 +50,27 @@ export function UserMenu({ compact = false }: { compact?: boolean }) {
               rootBox: compact ? "flex min-w-0 items-center" : "flex items-center",
               organizationSwitcherTrigger:
                 compact
-                  ? "h-8 max-w-36 rounded-lg px-2 text-xs font-medium hover:bg-muted"
+                  ? "h-8 max-w-36 rounded-lg px-2 text-xs font-medium hover:bg-muted pointer-coarse:h-10"
                   : "h-7 rounded-md px-2 text-xs font-medium hover:bg-muted",
+              // On phones the compact trigger is just the workspace logo, so
+              // a long name can't push search off the bar.
+              ...(compact && {
+                organizationPreviewTextContainer__organizationSwitcherTrigger:
+                  "hidden sm:flex",
+              }),
             },
           }}
         />
       )}
+      {/* Compact (the top bar): phones reach Admin and the theme from the
+          navigation sheet instead. */}
       {role === "admin" && (
         <Link
           href={routes.adminHref}
           aria-label="Admin settings"
           className={
             compact
-              ? "flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring pointer-coarse:size-10"
+              ? "hidden size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring pointer-coarse:size-10 sm:flex"
               : "flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring pointer-coarse:h-10"
           }
         >
@@ -73,7 +81,7 @@ export function UserMenu({ compact = false }: { compact?: boolean }) {
       <span className={compact ? "hidden" : "rounded-full bg-muted px-2 py-0.5 text-2xs font-medium capitalize text-muted-foreground"}>
         {role}
       </span>
-      <ThemeToggle />
+      <ThemeToggle className={compact ? "hidden sm:inline-flex" : undefined} />
       <UserButton />
     </div>
   );

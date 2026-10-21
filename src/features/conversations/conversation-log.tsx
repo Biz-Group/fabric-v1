@@ -1108,10 +1108,13 @@ function StickyMiniPlayer({
 
 export function FocusedConversationPlayback({
   conversation,
+  title,
   canLabelSpeakers,
   canRetry,
 }: {
   conversation: Doc<"conversations">;
+  /** The same title as the selected row, so it's clear what is playing. */
+  title: string;
   canLabelSpeakers: boolean;
   /** Admins can retry a failed contribution from here. */
   canRetry: boolean;
@@ -1141,6 +1144,23 @@ export function FocusedConversationPlayback({
             column and this panel ends it. */}
         <div className="flex h-full min-h-0 w-full flex-col bg-background pb-[var(--bottom-dock-height,0px)]">
           <div className="shrink-0 space-y-3 border-b p-4">
+            <div className="space-y-2">
+              <h2 className="break-words text-base font-semibold leading-snug text-foreground">
+                {title}
+              </h2>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <StatusBadge meta={conversationStatusMeta[conversation.status]} />
+                {/* "Completed" is about processing, and is easily read as a
+                    verdict on the contribution itself. */}
+                {isDone && (
+                  <p className="text-xs text-muted-foreground">
+                    Processing finished. This doesn&apos;t mean it covers the
+                    whole process.
+                  </p>
+                )}
+              </div>
+            </div>
+
             <div
               ref={setControlsElement}
               className="flex min-w-0 items-center gap-3"
@@ -1181,10 +1201,6 @@ export function FocusedConversationPlayback({
                 </Tooltip>
               )}
             </div>
-
-            {!isDone && (
-              <StatusBadge meta={conversationStatusMeta[conversation.status]} />
-            )}
 
             {conversation.status === "failed" && (
               <ConversationFailureNotice

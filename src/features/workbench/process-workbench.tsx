@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ProcessHeader } from "@/features/workbench/process-header";
+import { ProcessTabStrip } from "@/features/workbench/process-tab-strip";
 import { ProcessAppShell } from "@/features/shell/process-app-shell";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 import { ProcessConversationsTab } from "@/features/conversations/conversations-tab";
@@ -1910,10 +1911,7 @@ export function ProcessWorkbench() {
             }}
             className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-0"
           >
-            <div
-              className="shrink-0 overflow-x-auto overflow-y-hidden border-b px-2 sm:px-4"
-              data-tour="process-tabs"
-            >
+            <ProcessTabStrip activeTab={detailTab} className="border-b">
               <TabsList
                 variant="line"
                 className="h-10 min-w-max justify-start"
@@ -1945,7 +1943,7 @@ export function ProcessWorkbench() {
                   Automations
                 </TabsTrigger>
               </TabsList>
-            </div>
+            </ProcessTabStrip>
 
             {/* Overview tab */}
             <TabsContent
@@ -1983,6 +1981,7 @@ export function ProcessWorkbench() {
                 labelingJumpKey={labelingJumpKey}
                 focusConversationId={conversationFocusId}
                 focusConversationJumpKey={conversationFocusJumpKey}
+                onCapture={canEdit ? handleOpenRecordingMode : undefined}
               />
             </TabsContent>
 
@@ -2056,6 +2055,10 @@ export function ProcessWorkbench() {
                 departmentName={workbenchDepartmentName}
                 functionName={workbenchFunctionName}
                 onOpenProcessFlow={handleOpenProcessFlow}
+                // One button, so it opens the primary capture mode.
+                onAddContribution={
+                  canEdit ? () => handleOpenRecordingMode("agent") : undefined
+                }
               />
             </TabsContent>
           </Tabs>
