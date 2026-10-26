@@ -44,6 +44,14 @@ export const INSIGHTS_TIMEOUT_MS = 135_000;
 export const INSIGHTS_MAX_RETRIES = 2;
 
 /**
+ * Haiku 5.5 caps output tokens per minute, and the SDK's own retries all land
+ * inside the same minute, so a 429 here outlasts them. A rate-limited analysis
+ * is rescheduled after each delay in turn instead of finalizing without
+ * opportunities. Together they stay well inside the flow watchdog's 10 minutes.
+ */
+export const INSIGHTS_RATE_LIMIT_RETRY_DELAYS_MS = [60_000, 90_000, 120_000];
+
+/**
  * Soft ceiling on graph size. Enforcement is deliberately soft: the normalizer
  * accepts whatever arrives and warns past this, because a count-based reject
  * would reintroduce exactly the total-failure mode this design exists to

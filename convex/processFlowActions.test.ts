@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { MutationCtx } from "./_generated/server";
+import { INSIGHTS_RATE_LIMIT_RETRY_DELAYS_MS } from "./lib/flowStages";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -114,6 +115,8 @@ type StubOptions = {
   truncateAll?: boolean;
   /** Force only the named tool's stage to truncate. */
   truncateTool?: string;
+  /** Answer the named tool's stage with a 429 on every attempt. */
+  rateLimitTool?: string;
 };
 
 /**
@@ -136,6 +139,23 @@ function stubClaude(options: StubOptions = {}) {
       const toolName = body.tools?.[0]?.name ?? "";
       seenTools.push(toolName);
       sentPrompts[toolName] = body.messages?.[0]?.content ?? "";
+
+      if (options.rateLimitTool === toolName) {
+        return new Response(
+          JSON.stringify({
+            type: "error",
+            error: { type: "rate_limit_error", message: "Rate limited" },
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json",
+              // Skips the SDK's own backoff so the test stays fast.
+              "x-should-retry": "false",
+            },
+          },
+        );
+      }
 
       const shouldTruncate =
         options.truncateAll === true || options.truncateTool === toolName;
@@ -690,6 +710,42 @@ describe("staged flow generation, driven end to end", () => {
     expect(flow?.status).toBe("ready");
     expect(flow?.detailsStatus).toBe("failed");
     expect(flow?.detailErrorMessage).toBeDefined();
+  });
+
+  test("a rate-limited automation analysis waits and retries before finalizing", async () => {
+    const t = harness();
+    // Wrapped rather than passed by reference: `run` supplies a second
+    // argument, which would land in `orgId`.
+    const processId = await t.run((ctx) => seedOrg(ctx));
+    stubClaude({ rateLimitTool: "return_automation_opportunities" });
+
+    const { generationId } = await t.mutation(
+      internal.processFlows.startFlowGeneration,
+      { processId, clerkOrgId: ORG },
+    );
+    await t.action(internal.processFlows.generateGraphInternal, {
+      processId,
+      clerkOrgId: ORG,
+      generationId,
+    });
+    const processFlowId = (await readFlow(t, processId))!._id;
+    await runDetailBatches(t, { processId, processFlowId, generationId });
+    const args = { processId, clerkOrgId: ORG, processFlowId, generationId };
+    await t.action(internal.processFlows.generateFlowInsightsInternal, args);
+
+    // Not finalized: the analysis is rescheduled past the rate-limit window.
+    expect((await readFlow(t, processId))?.detailsStatus).toBe("generating");
+    const retry = await scheduledJobFor(t, "generateFlowInsightsInternal");
+    expect(retry?.args.rateLimitAttempt).toBe(1);
+
+    // Out of reschedules, it finalizes without the analysed opportunities.
+    await t.action(internal.processFlows.generateFlowInsightsInternal, {
+      ...args,
+      rateLimitAttempt: INSIGHTS_RATE_LIMIT_RETRY_DELAYS_MS.length,
+    });
+    const flow = await readFlow(t, processId);
+    expect(flow?.detailsStatus).toBe("ready");
+    expect(flow?.insights.automationOpportunitiesSource).not.toBe("ai");
   });
 });
 

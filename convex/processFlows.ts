@@ -12,6 +12,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireOrgMember, resolveOrgForAction } from "./lib/orgAuth";
 import {
+  AIRequestError,
   isAIConfigured,
   isTokenLimitFinishReason,
   type AICompletion,
@@ -25,6 +26,7 @@ import {
   deriveFlowInsights,
   GRAPH_MAX_TOKENS,
   INSIGHTS_MAX_TOKENS,
+  INSIGHTS_RATE_LIMIT_RETRY_DELAYS_MS,
   NODE_DETAILS_BATCH_SIZE,
   NODE_DETAILS_MAX_TOKENS,
   normalizeAutomationOpportunities,
@@ -1942,6 +1944,8 @@ export const generateFlowInsightsInternal = internalAction({
     clerkOrgId: v.string(),
     processFlowId: v.id("processFlows"),
     generationId: v.string(),
+    /** How many rate-limit reschedules this analysis has already had. */
+    rateLimitAttempt: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<void> => {
     const finalize = async (
@@ -1989,6 +1993,24 @@ export const generateFlowInsightsInternal = internalAction({
         buildFlowInsightsAIRequest(buildInsightsUserContent(flow)),
       );
     } catch (error) {
+      const attempt = args.rateLimitAttempt ?? 0;
+      const delayMs = INSIGHTS_RATE_LIMIT_RETRY_DELAYS_MS[attempt];
+      if (
+        error instanceof AIRequestError &&
+        error.status === 429 &&
+        delayMs !== undefined
+      ) {
+        console.warn("Automation-opportunity analysis was rate limited", {
+          attempt: attempt + 1,
+          delayMs,
+        });
+        await ctx.scheduler.runAfter(
+          delayMs,
+          internal.processFlows.generateFlowInsightsInternal,
+          { ...args, rateLimitAttempt: attempt + 1 },
+        );
+        return;
+      }
       console.error("AI automation-opportunity request failed", {
         errorType: error instanceof Error ? error.name : "UnknownError",
       });
