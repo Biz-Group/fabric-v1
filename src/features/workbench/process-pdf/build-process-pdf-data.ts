@@ -18,6 +18,14 @@ import {
 } from "@/features/insights/insights-derivations";
 import { flowStage, isFlowRenderable, type FlowStage } from "@/lib/flow-status";
 import {
+  DECISION_LABEL,
+  INTERVENTION_LABEL,
+  interviewsLabel,
+  isTechnical,
+  type ClientRecommendation,
+} from "@/features/recommendations/recommendation-meta";
+import { groupRecommendations } from "@/features/recommendations/recommendation-tree";
+import {
   evidenceStrengthLabel,
   OVERVIEW_STATE_META,
   surfaceReadinessLabel,
@@ -75,11 +83,32 @@ export type ProcessPdfInput = {
   completedConversationCount: number;
   /** Full flow document, or null when none has been generated. */
   flow: ProcessFlow | null;
+  /**
+   * Ranked current recommendations, or null when none have been published —
+   * "not worked out yet" and "nothing to change" read differently.
+   */
+  recommendations: ClientRecommendation[] | null;
   /** Epoch ms the report was generated (supplied by the browser handler). */
   generatedAt: number;
 };
 
 export type Metric = { label: string; value: string; detail: string };
+
+/** One recommendation in the report: the summary only, never a plan or brief. */
+export type PdfRecommendation = {
+  title: string;
+  kind: string;
+  technical: boolean;
+  problem: string;
+  change: string;
+  value: string;
+  effort: string;
+  evidence: string;
+  /** Null while undecided. */
+  decision: string | null;
+  /** Technical next steps that build on this one; empty on a next step. */
+  followOns: PdfRecommendation[];
+};
 
 export type PdfFinding = {
   id: string;
@@ -173,6 +202,8 @@ export type ProcessPdfData = {
   uniquePainPoints: string[];
 
   automationOpportunities: string[];
+  /** Null when recommendations have not been published for this process. */
+  recommendations: PdfRecommendation[] | null;
   criticalPathLabels: string[];
   totalEstimatedDuration: string | null;
 };
@@ -318,6 +349,43 @@ function buildOverview(input: ProcessOverviewInput): PdfOverview {
   };
 }
 
+function toPdfRecommendation(
+  rec: ClientRecommendation,
+  followOns: PdfRecommendation[] = [],
+): PdfRecommendation | null {
+  if (!rec.content || !rec.scores) return null;
+  return {
+    title: rec.title,
+    kind: INTERVENTION_LABEL[rec.content.intervention],
+    technical: isTechnical(rec.content.intervention),
+    problem: rec.content.problem,
+    change: rec.content.proposedChange,
+    value: rec.scores.value.level,
+    effort: rec.scores.effort.level,
+    evidence: interviewsLabel(rec.scores.evidence.interviews),
+    decision:
+      rec.decisionStatus === "new" ? null : DECISION_LABEL[rec.decisionStatus],
+    followOns,
+  };
+}
+
+function buildRecommendations(
+  recommendations: ClientRecommendation[] | null,
+): PdfRecommendation[] | null {
+  if (recommendations === null) return null;
+  // Same nesting as the tab. Dismissed ones are a decision already taken, not
+  // something to act on, so they are left out — and so are the next steps of
+  // a dismissed change, which are grouped with it.
+  return groupRecommendations(recommendations, []).open.flatMap((node) => {
+    const followOns = node.followOns
+      .filter((rec) => rec.decisionStatus !== "dismissed")
+      .map((rec) => toPdfRecommendation(rec))
+      .filter((rec): rec is PdfRecommendation => rec !== null);
+    const item = toPdfRecommendation(node.rec, followOns);
+    return item ? [item] : [];
+  });
+}
+
 export function buildProcessPdfData(input: ProcessPdfInput): ProcessPdfData {
   const { flow } = input;
   // `isFlowRenderable` rather than `status === "ready"`: the graph lands minutes
@@ -362,6 +430,7 @@ export function buildProcessPdfData(input: ProcessPdfInput): ProcessPdfData {
     completedConversationCount: input.completedConversationCount,
     flowErrorMessage: flow?.errorMessage ?? null,
     hasFlow,
+    recommendations: buildRecommendations(input.recommendations),
   };
 
   if (!hasFlow || !flow) {

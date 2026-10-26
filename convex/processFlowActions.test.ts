@@ -101,13 +101,20 @@ function detailFor(nodeId: string) {
   };
 }
 
-const OPPORTUNITY = {
-  title: "Ticket triage assistant",
-  kind: "agent",
+const RECOMMENDATION = {
+  title: "Route tickets with a triage workflow",
+  problem: "Every ticket is read and routed by hand today.",
+  cause: "There is no routing rule, so the lead reads each ticket.",
+  causeBasis: "reported",
+  intervention: "workflow",
+  supportingInterventions: ["standardise"],
+  proposedChange: "Write the routing rules down, then route tickets automatically.",
+  whyNotSimpler: "The rules exist but applying them by hand is the bottleneck.",
   nodeIds: ["intake", "triage"],
-  rationale: "Every ticket is read and routed by hand today.",
-  prerequisites: ["Jira API access"],
-  confidence: "high",
+  pilot: { what: "Route one queue for two weeks", measure: "Tickets waiting for triage" },
+  openQuestions: ["Which queues have written rules?"],
+  risks: ["Misrouted urgent tickets"],
+  frequency: "daily",
 };
 
 type StubOptions = {
@@ -168,7 +175,7 @@ function stubClaude(options: StubOptions = {}) {
             ? toolUseResponse(toolName, {
                 details: GRAPH_PAYLOAD.nodes.map((n) => detailFor(n.id)),
               })
-            : toolUseResponse(toolName, { opportunities: [OPPORTUNITY] });
+            : toolUseResponse(toolName, { recommendations: [RECOMMENDATION] });
 
       return new Response(JSON.stringify(payload), {
         status: 200,
@@ -305,6 +312,35 @@ async function runDetailBatches(
   }
 }
 
+/** Graph, every detail batch, then the empty batch that finalizes the flow. */
+async function generateFinalizedFlow(t: Harness, processId: Id<"processes">) {
+  const { generationId } = await t.mutation(
+    internal.processFlows.startFlowGeneration,
+    { processId, clerkOrgId: ORG },
+  );
+  await t.action(internal.processFlows.generateGraphInternal, {
+    processId,
+    clerkOrgId: ORG,
+    generationId,
+  });
+  const processFlowId = (await readFlow(t, processId))!._id;
+  await runDetailBatches(t, { processId, processFlowId, generationId });
+  // No pending rows left, so this call finalizes.
+  await t.action(internal.processFlows.generateNodeDetailsBatchInternal, {
+    processId,
+    clerkOrgId: ORG,
+    processFlowId,
+    generationId,
+  });
+  return { generationId, processFlowId };
+}
+
+async function scheduledRecommendationRunId(t: Harness): Promise<string> {
+  const job = await scheduledJobFor(t, "generateRecommendationsInternal");
+  if (!job) throw new Error("No recommendation run was scheduled");
+  return job.args.runId as string;
+}
+
 describe("staged flow generation, driven end to end", () => {
   beforeEach(() => {
     configureFoundry();
@@ -382,51 +418,52 @@ describe("staged flow generation, driven end to end", () => {
     expect(await readDetailRows(t)).toHaveLength(0);
   });
 
-  test("a whole run reaches ready with analysed automation opportunities", async () => {
+  test("a whole run lands the flow, then publishes recommendations on their own", async () => {
     const t = harness();
     // Wrapped rather than passed by reference: `run` supplies a second
     // argument, which would land in `orgId`.
     const processId = await t.run((ctx) => seedOrg(ctx));
     const { seenTools } = stubClaude();
 
-    const { generationId } = await t.mutation(
-      internal.processFlows.startFlowGeneration,
-      { processId, clerkOrgId: ORG },
-    );
-    await t.action(internal.processFlows.generateGraphInternal, {
-      processId,
+    await generateFinalizedFlow(t, processId);
+
+    // The flow is usable before any recommendation exists.
+    const landed = await readFlow(t, processId);
+    expect(landed?.detailsStatus).toBe("ready");
+    expect(landed?.detailCompletedCount).toBe(3);
+    expect(landed?.insights.toolCount).toBe(1);
+    expect(landed?.insights.topBottlenecks).toHaveLength(3);
+
+    const runId = await scheduledRecommendationRunId(t);
+    await t.action(internal.recommendations.generateRecommendationsInternal, {
       clerkOrgId: ORG,
-      generationId,
-    });
-    const processFlowId = (await readFlow(t, processId))!._id;
-    await runDetailBatches(t, { processId, processFlowId, generationId });
-    await t.action(internal.processFlows.generateFlowInsightsInternal, {
-      processId,
-      clerkOrgId: ORG,
-      processFlowId,
-      generationId,
+      runId,
     });
 
-    const flow = await readFlow(t, processId);
-    const rows = await readDetailRows(t);
-
-    expect(rows.every((r) => r.status === "ready")).toBe(true);
-    expect(flow?.detailsStatus).toBe("ready");
-    expect(flow?.detailCompletedCount).toBe(3);
-    // All three stages ran, in order.
     expect(seenTools).toEqual([
       "return_process_graph",
       "return_node_details",
-      "return_automation_opportunities",
+      "return_process_recommendations",
     ]);
-    // The analysed opportunity, not the mechanical fallback.
-    expect(flow?.insights.automationOpportunitiesSource).toBe("ai");
-    expect(flow?.insights.automationOpportunityDetails?.[0].title).toBe(
-      "Ticket triage assistant",
+
+    const rows = await t.run((ctx) =>
+      ctx.db.query("processRecommendations").collect(),
     );
-    // Rolled up from the details that landed.
-    expect(flow?.insights.toolCount).toBe(1);
-    expect(flow?.insights.topBottlenecks).toHaveLength(3);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].content?.intervention).toBe("workflow");
+    expect(rows[0].decisionStatus).toBe("new");
+    // Scored in code from the flow, not by the model.
+    expect(rows[0].scores?.evidence).toEqual({ interviews: 1, contributors: 1 });
+    expect(rows[0].scores?.peopleAffected).toEqual(["Team lead"]);
+
+    // The technical subset is still written where Insights and the PDF read it.
+    const flow = await readFlow(t, processId);
+    expect(flow?.insights.automationOpportunitiesSource).toBe("ai");
+    expect(flow?.insights.automationOpportunityDetails?.[0]).toMatchObject({
+      title: "Route tickets with a triage workflow",
+      kind: "workflow",
+      confidence: "medium",
+    });
   });
 
   test("each stage is sent the context it needs and nothing it shouldn't change", async () => {
@@ -436,22 +473,10 @@ describe("staged flow generation, driven end to end", () => {
     const processId = await t.run((ctx) => seedOrg(ctx));
     const { sentPrompts } = stubClaude();
 
-    const { generationId } = await t.mutation(
-      internal.processFlows.startFlowGeneration,
-      { processId, clerkOrgId: ORG },
-    );
-    await t.action(internal.processFlows.generateGraphInternal, {
-      processId,
+    await generateFinalizedFlow(t, processId);
+    await t.action(internal.recommendations.generateRecommendationsInternal, {
       clerkOrgId: ORG,
-      generationId,
-    });
-    const processFlowId = (await readFlow(t, processId))!._id;
-    await runDetailBatches(t, { processId, processFlowId, generationId });
-    await t.action(internal.processFlows.generateFlowInsightsInternal, {
-      processId,
-      clerkOrgId: ORG,
-      processFlowId,
-      generationId,
+      runId: await scheduledRecommendationRunId(t),
     });
 
     // The graph pass gets the evidence.
@@ -473,12 +498,18 @@ describe("staged flow generation, driven end to end", () => {
       "Tickets arrive, are triaged, then resolved.",
     );
 
-    // The automation pass gets the enriched process — descriptions and pain
-    // points, not just the skeleton — because that is what it reasons over.
-    const insightsPrompt = sentPrompts.return_automation_opportunities;
-    expect(insightsPrompt).toContain("What happens at triage");
-    expect(insightsPrompt).toContain("Checked by hand");
-    expect(insightsPrompt).toContain("Automation potential: high");
+    // The recommendation pass gets the enriched process — descriptions and
+    // problems, not just the skeleton — with interviews referenced by number
+    // and contributor names left out.
+    const recommendationPrompt = sentPrompts.return_process_recommendations;
+    expect(recommendationPrompt).toContain("What happens at triage");
+    expect(recommendationPrompt).toContain("Checked by hand");
+    expect(recommendationPrompt).toContain("Flags: bottleneck");
+    expect(recommendationPrompt).toContain("Nature: rule-based and repetitive");
+    expect(recommendationPrompt).toContain("Described in: Conv. 1");
+    expect(recommendationPrompt).not.toContain("Alice");
+    // The automation framing is gone from what it is shown.
+    expect(recommendationPrompt).not.toContain("Automation potential");
   });
 
   test("an agent conversation's ElevenLabs envelopes reach the graph pass as evidence", async () => {
@@ -655,8 +686,7 @@ describe("staged flow generation, driven end to end", () => {
         halved: true,
       });
     }
-    await t.action(internal.processFlows.generateFlowInsightsInternal, {
-      processId,
+    await t.mutation(internal.processFlows.finalizeNodeDetails, {
       clerkOrgId: ORG,
       processFlowId,
       generationId,
@@ -698,8 +728,7 @@ describe("staged flow generation, driven end to end", () => {
       }),
     );
     await runDetailBatches(t, { processId, processFlowId, generationId });
-    await t.action(internal.processFlows.generateFlowInsightsInternal, {
-      processId,
+    await t.mutation(internal.processFlows.finalizeNodeDetails, {
       clerkOrgId: ORG,
       processFlowId,
       generationId,
@@ -712,40 +741,35 @@ describe("staged flow generation, driven end to end", () => {
     expect(flow?.detailErrorMessage).toBeDefined();
   });
 
-  test("a rate-limited automation analysis waits and retries before finalizing", async () => {
+  test("a rate-limited recommendation run waits and retries, and never touches the flow", async () => {
     const t = harness();
     // Wrapped rather than passed by reference: `run` supplies a second
     // argument, which would land in `orgId`.
     const processId = await t.run((ctx) => seedOrg(ctx));
-    stubClaude({ rateLimitTool: "return_automation_opportunities" });
+    stubClaude({ rateLimitTool: "return_process_recommendations" });
 
-    const { generationId } = await t.mutation(
-      internal.processFlows.startFlowGeneration,
-      { processId, clerkOrgId: ORG },
-    );
-    await t.action(internal.processFlows.generateGraphInternal, {
-      processId,
+    await generateFinalizedFlow(t, processId);
+    const runId = await scheduledRecommendationRunId(t);
+    await t.action(internal.recommendations.generateRecommendationsInternal, {
       clerkOrgId: ORG,
-      generationId,
+      runId,
     });
-    const processFlowId = (await readFlow(t, processId))!._id;
-    await runDetailBatches(t, { processId, processFlowId, generationId });
-    const args = { processId, clerkOrgId: ORG, processFlowId, generationId };
-    await t.action(internal.processFlows.generateFlowInsightsInternal, args);
 
-    // Not finalized: the analysis is rescheduled past the rate-limit window.
-    expect((await readFlow(t, processId))?.detailsStatus).toBe("generating");
-    const retry = await scheduledJobFor(t, "generateFlowInsightsInternal");
+    // Rescheduled past the rate-limit window rather than failed.
+    const retry = await scheduledJobFor(t, "generateRecommendationsInternal");
     expect(retry?.args.rateLimitAttempt).toBe(1);
+    const readRun = () =>
+      t.run((ctx) => ctx.db.query("recommendationRuns").first());
+    expect((await readRun())?.status).toBe("running");
 
-    // Out of reschedules, it finalizes without the analysed opportunities.
-    await t.action(internal.processFlows.generateFlowInsightsInternal, {
-      ...args,
+    // Out of reschedules, the run fails — and the flow stays ready.
+    await t.action(internal.recommendations.generateRecommendationsInternal, {
+      clerkOrgId: ORG,
+      runId,
       rateLimitAttempt: INSIGHTS_RATE_LIMIT_RETRY_DELAYS_MS.length,
     });
-    const flow = await readFlow(t, processId);
-    expect(flow?.detailsStatus).toBe("ready");
-    expect(flow?.insights.automationOpportunitiesSource).not.toBe("ai");
+    expect((await readRun())?.status).toBe("failed");
+    expect((await readFlow(t, processId))?.detailsStatus).toBe("ready");
   });
 });
 

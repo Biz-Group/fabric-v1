@@ -42,12 +42,15 @@ export function useProcessPdfDownload() {
       setIsDownloading(true);
       const toastId = toast.loading("Generating PDF…");
       try {
-        const [flow, overview] = await Promise.all([
+        const [flow, overview, recommendations] = await Promise.all([
           convex.query(api.processFlows.getProcessFlow, {
             processId: args.processId,
           }),
           convex.query(api.summaries.getOverview, {
             entity: { kind: "process", processId: args.processId },
+          }),
+          convex.query(api.recommendations.getProcessRecommendations, {
+            processId: args.processId,
           }),
         ]);
         const { generateProcessPdfBlob } = await import(
@@ -69,6 +72,10 @@ export function useProcessPdfDownload() {
           lastUpdatedAt: args.lastUpdatedAt,
           completedConversationCount: args.completedConversationCount,
           flow,
+          recommendations:
+            recommendations && recommendations.lastReadyAt !== null
+              ? recommendations.recommendations
+              : null,
           generatedAt: Date.now(),
         });
 

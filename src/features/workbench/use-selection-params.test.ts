@@ -49,9 +49,15 @@ describe("overview tab URL compatibility", () => {
     ["conversations", 1],
     ["flow", 2],
     ["insights", 3],
+    ["recommendations", 4],
   ])("preserves the %s tab mapping", (token, tab) => {
     expect(paramToTab(token)).toBe(tab);
     expect(tabToParam(tab as number)).toBe(token);
+  });
+
+  it("keeps old Automations links landing on Recommendations", () => {
+    expect(paramToTab("automations")).toBe(4);
+    expect(tabToParam(4)).toBe("recommendations");
   });
 
   it("round-trips a Flow node deep link", () => {

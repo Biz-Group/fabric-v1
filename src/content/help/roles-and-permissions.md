@@ -24,7 +24,8 @@ Every member of a workspace has one of three roles. Each role includes everythin
 
 A viewer can read everything in the workspace:
 
-- Browse the Process Tree, overviews, contributions, process flows, insights and automations.
+- Browse the Process Tree, overviews, contributions, process flows, insights and recommendations.
+- Rate whether a recommendation was useful.
 - Use search, share links to a process, and download a process PDF report.
 
 A viewer cannot capture contributions. The capture buttons do not appear for viewers.
@@ -37,6 +38,7 @@ A contributor can do everything a viewer can, plus:
 - Label speakers on a recording that is waiting for labels.
 - Add, edit, move and delete functions, departments and processes. A deletion only goes through when the item has nothing inside it.
 - Build or refresh an overview, and generate or refresh a Process Flow.
+- Shortlist, start, finish or dismiss a recommendation, and generate or retry recommendations.
 
 ## Admin
 

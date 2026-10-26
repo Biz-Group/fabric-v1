@@ -161,7 +161,7 @@ Return ONLY a valid JSON object with this exact shape:
   "data_collection": {
     "process_steps": "JSON array string of steps: [{\\"id\\":\\"kebab-case\\",\\"name\\":\\"Step name\\",\\"type\\":\\"action|decision|handoff|wait\\",\\"actor\\":\\"person/team\\",\\"tools\\":[\\"tool\\"],\\"duration\\":\\"duration or null\\"}]",
     "step_connections": "JSON array string of connections: [{\\"from\\":\\"step-id\\",\\"to\\":\\"step-id\\",\\"condition\\":\\"condition or null\\"}]",
-    "step_issues": "JSON array string of issues: [{\\"step_id\\":\\"step-id\\",\\"pain_point\\":\\"issue or null\\",\\"is_bottleneck\\":false,\\"bottleneck_reason\\":\\"reason or null\\",\\"automation_potential\\":\\"none|low|medium|high|null\\",\\"workaround\\":\\"workaround or null\\"}]",
+    "step_issues": "JSON array string of issues: [{\\"step_id\\":\\"step-id\\",\\"pain_point\\":\\"issue or null\\",\\"is_bottleneck\\":false,\\"bottleneck_reason\\":\\"reason or null\\",\\"workaround\\":\\"workaround or null\\"}]",
     "dependencies": "People, teams, or systems depended on. Empty string if not mentioned.",
     "frequency": "How often this process happens. Empty string if not mentioned.",
     "volume": "Roughly how many times, cases or items the process handles, per run or per period (e.g. '40 requests a month', 'every employee, about 3,000, once a year'). Empty string if not mentioned.",

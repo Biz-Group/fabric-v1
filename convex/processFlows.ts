@@ -12,7 +12,6 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireOrgMember, resolveOrgForAction } from "./lib/orgAuth";
 import {
-  AIRequestError,
   isAIConfigured,
   isTokenLimitFinishReason,
   type AICompletion,
@@ -20,23 +19,19 @@ import {
 import { meteredCompletion } from "./lib/aiUsageMeter";
 import { extractDataCollection } from "./lib/conversationAnalysis";
 import {
-  buildFlowInsightsAIRequest,
   buildGraphAIRequest,
   buildNodeDetailsAIRequest,
   deriveFlowInsights,
   GRAPH_MAX_TOKENS,
-  INSIGHTS_MAX_TOKENS,
-  INSIGHTS_RATE_LIMIT_RETRY_DELAYS_MS,
   NODE_DETAILS_BATCH_SIZE,
   NODE_DETAILS_MAX_TOKENS,
-  normalizeAutomationOpportunities,
   normalizeGraphResponse,
   normalizeNodeDetailsResponse,
   placeholderNodeDetail,
   SOFT_MAX_NODES,
-  type AutomationOpportunity,
   type FlowNodeDetail,
 } from "./lib/flowStages";
+import { startRecommendationRunForOrg } from "./recommendations";
 import {
   buildFlowQualityReport,
   compareFlowQualityReports,
@@ -342,66 +337,6 @@ function buildNodeDetailsUserContent(
     `Describe ONLY these ${nodeIds.length} steps:\n${requested}`,
     `Evidence:\n\n${buildEvidenceBlock(data)}`,
   ].join("\n\n---\n\n");
-}
-
-/**
- * The whole enriched process in one block: every step with what contributors
- * said about it, plus the connections. The automation pass needs to see all of
- * it at once — that is the point of it being its own stage.
- */
-function buildInsightsUserContent(flow: {
-  nodes: Array<{
-    id: string;
-    label: string;
-    category: string;
-    detail: FlowNodeDetail | null;
-  }>;
-  edges: Array<{
-    source: string;
-    target: string;
-    type: string;
-    label?: string;
-  }>;
-}): string {
-  const steps = flow.nodes
-    .map((node) => {
-      const lines = [`### ${node.id} — ${node.label} (${node.category})`];
-      const detail = node.detail;
-      if (!detail) {
-        lines.push("No description available for this step.");
-        return lines.join("\n");
-      }
-      lines.push(detail.description);
-      if (detail.actors.length)
-        lines.push(`Actors: ${detail.actors.join(", ")}`);
-      if (detail.tools.length) lines.push(`Tools: ${detail.tools.join(", ")}`);
-      if (detail.estimatedDuration) {
-        lines.push(`Duration: ${detail.estimatedDuration}`);
-      }
-      if (detail.painPoints.length) {
-        lines.push(`Pain points: ${detail.painPoints.join(" | ")}`);
-      }
-      if (detail.riskIndicators.length) {
-        lines.push(`Risks: ${detail.riskIndicators.join(" | ")}`);
-      }
-      lines.push(
-        `Automation potential: ${detail.automationPotential}; bottleneck: ${detail.isBottleneck}; tribal knowledge: ${detail.isTribalKnowledge}; confidence: ${detail.confidence}`,
-      );
-      if (detail.sources.length) {
-        lines.push(`Described by: ${detail.sources.join(", ")}`);
-      }
-      return lines.join("\n");
-    })
-    .join("\n\n");
-
-  const connections = flow.edges
-    .map(
-      (edge) =>
-        `- ${edge.source} -> ${edge.target} (${edge.type}${edge.label ? `: ${edge.label}` : ""})`,
-    )
-    .join("\n");
-
-  return `## Process steps\n\n${steps}\n\n## Connections\n\n${connections}`;
 }
 
 export const getFlowByProcess = internalQuery({
@@ -966,9 +901,9 @@ export const finalizeNodeDetails = internalMutation({
     clerkOrgId: v.string(),
     processFlowId: v.id("processFlows"),
     generationId: v.string(),
-    // Supplied by the insights stage. Absent means that stage failed or was
-    // skipped (the watchdog finalizes without it), and the rollup falls back to
-    // flagging automatable-looking steps.
+    // No longer supplied: recommendations run after finalize, in their own
+    // stage, and write the analysed opportunities back when they publish. Kept
+    // optional so jobs scheduled before that change still validate.
     automationOpportunityDetails: v.optional(
       v.array(automationOpportunityValidator),
     ),
@@ -1002,8 +937,8 @@ export const finalizeNodeDetails = internalMutation({
 
     // No LLM call here on purpose: finalizing must not itself be able to fail
     // on a timeout or a token cap, or the pipeline would have a last step that
-    // can strand a finished generation. The analysed opportunities are produced
-    // by the insights stage and handed in.
+    // can strand a finished generation. Recommendations are scheduled below and
+    // publish on their own.
     const insights = deriveFlowInsights(flow.nodes, detailsByNodeId, {
       criticalPath: flow.insights.criticalPath,
       totalEstimatedDuration: flow.insights.totalEstimatedDuration,
@@ -1030,6 +965,16 @@ export const finalizeNodeDetails = internalMutation({
           : `${failed + unfinished} of ${rows.length} steps could not be described.`,
       lastProgressAt: Date.now(),
     });
+
+    // The flow is usable from here. Recommendations follow in their own run,
+    // so a slow or failed analysis never holds the flow back.
+    if (completed > 0) {
+      await startRecommendationRunForOrg(ctx, {
+        clerkOrgId: args.clerkOrgId,
+        processId: flow.processId,
+        trigger: "flow",
+      });
+    }
   },
 });
 
@@ -1439,6 +1384,12 @@ export const deleteForProcess = internalMutation({
     }
 
     await ctx.db.delete(flow._id);
+    // Recommendations are read from the flow, so they go with it — along with
+    // their decisions, ratings and runs. Bounded and self-continuing.
+    await ctx.scheduler.runAfter(0, internal.recommendations.deleteForProcess, {
+      processId: args.processId,
+      clerkOrgId: args.clerkOrgId,
+    });
   },
 });
 
@@ -1740,18 +1691,13 @@ export const generateNodeDetailsBatchInternal = internalAction({
     if (batch === null) return;
 
     if (batch.nodeIds.length === 0) {
-      // Every node is described, so the automation analysis can now see the
-      // whole enriched process. It finalizes the run when it is done.
-      await ctx.scheduler.runAfter(
-        0,
-        internal.processFlows.generateFlowInsightsInternal,
-        {
-          processId: args.processId,
-          clerkOrgId: args.clerkOrgId,
-          processFlowId: args.processFlowId,
-          generationId: args.generationId,
-        },
-      );
+      // Every node is described: land the flow. Finalize schedules the
+      // recommendation run, which now sees the whole enriched process.
+      await ctx.runMutation(internal.processFlows.finalizeNodeDetails, {
+        clerkOrgId: args.clerkOrgId,
+        processFlowId: args.processFlowId,
+        generationId: args.generationId,
+      });
       return;
     }
 
@@ -1881,62 +1827,11 @@ export const generateNodeDetailsBatchInternal = internalAction({
 });
 
 // ---------------------------------------------------------------------------
-// Stage 3: what to do about it.
-//
-// Understanding how the work happens today is only half the product — the
-// output that matters is where it could be transformed. That needs one pass over
-// the *whole* enriched graph: several manual handoffs in a row are one thing to
-// build, which no per-node call can see.
-//
-// Its own stage so that failing it costs only the opportunities. Finalize runs
-// either way, and records whether what it stored was analysed or fallback.
+// Stage 3 used to be an automation-only analysis run before finalize. It is
+// replaced by the recommendation stage (recommendations.ts), which runs after
+// finalize with its own status. This shim only finalizes, for jobs that were
+// already scheduled under the old chain when it was deployed.
 // ---------------------------------------------------------------------------
-
-export const getFlowForInsights = internalQuery({
-  args: {
-    clerkOrgId: v.string(),
-    processFlowId: v.id("processFlows"),
-    generationId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const flow = await ctx.db.get(args.processFlowId);
-    if (!ownsGeneration(flow, args.generationId)) return null;
-    if (flow.clerkOrgId !== args.clerkOrgId) return null;
-
-    const rows = await ctx.db
-      .query("processFlowNodeDetails")
-      .withIndex(
-        "by_clerkOrgId_and_processFlowId_and_generationId_and_nodeId",
-        (q) =>
-          q
-            .eq("clerkOrgId", args.clerkOrgId)
-            .eq("processFlowId", args.processFlowId)
-            .eq("generationId", args.generationId),
-      )
-      .take(SOFT_MAX_NODES * 4);
-
-    const detailByNodeId = new Map(
-      rows
-        .filter((row) => row.status === "ready" && row.detail)
-        .map((row) => [row.nodeId, row.detail!]),
-    );
-
-    return {
-      nodes: flow.nodes.map((node) => ({
-        id: node.id,
-        label: node.label,
-        category: node.category,
-        detail: detailByNodeId.get(node.id) ?? null,
-      })),
-      edges: flow.edges.map((edge) => ({
-        source: edge.source,
-        target: edge.target,
-        type: edge.type,
-        label: edge.label,
-      })),
-    };
-  },
-});
 
 export const generateFlowInsightsInternal = internalAction({
   args: {
@@ -1944,113 +1839,14 @@ export const generateFlowInsightsInternal = internalAction({
     clerkOrgId: v.string(),
     processFlowId: v.id("processFlows"),
     generationId: v.string(),
-    /** How many rate-limit reschedules this analysis has already had. */
     rateLimitAttempt: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<void> => {
-    const finalize = async (
-      automationOpportunityDetails?: AutomationOpportunity[],
-    ) => {
-      await ctx.runMutation(internal.processFlows.finalizeNodeDetails, {
-        clerkOrgId: args.clerkOrgId,
-        processFlowId: args.processFlowId,
-        generationId: args.generationId,
-        automationOpportunityDetails,
-      });
-    };
-
-    const flow = await ctx.runQuery(internal.processFlows.getFlowForInsights, {
+    await ctx.runMutation(internal.processFlows.finalizeNodeDetails, {
       clerkOrgId: args.clerkOrgId,
       processFlowId: args.processFlowId,
       generationId: args.generationId,
     });
-    // Superseded by a newer generation — that run owns the flow now.
-    if (flow === null) return;
-
-    if (!isAIConfigured("synthesis")) {
-      await finalize();
-      return;
-    }
-
-    const enriched = flow.nodes.filter((node) => node.detail !== null);
-    if (enriched.length === 0) {
-      // Nothing was described, so there is nothing to analyse. Finalize will
-      // land this as failed details.
-      await finalize();
-      return;
-    }
-
-    let completion: AICompletion;
-    try {
-      completion = await meteredCompletion(
-        ctx,
-        {
-          clerkOrgId: args.clerkOrgId,
-          entityType: "process",
-          entityId: args.processId,
-          runId: args.generationId,
-        },
-        buildFlowInsightsAIRequest(buildInsightsUserContent(flow)),
-      );
-    } catch (error) {
-      const attempt = args.rateLimitAttempt ?? 0;
-      const delayMs = INSIGHTS_RATE_LIMIT_RETRY_DELAYS_MS[attempt];
-      if (
-        error instanceof AIRequestError &&
-        error.status === 429 &&
-        delayMs !== undefined
-      ) {
-        console.warn("Automation-opportunity analysis was rate limited", {
-          attempt: attempt + 1,
-          delayMs,
-        });
-        await ctx.scheduler.runAfter(
-          delayMs,
-          internal.processFlows.generateFlowInsightsInternal,
-          { ...args, rateLimitAttempt: attempt + 1 },
-        );
-        return;
-      }
-      console.error("AI automation-opportunity request failed", {
-        errorType: error instanceof Error ? error.name : "UnknownError",
-      });
-      await finalize();
-      return;
-    }
-
-    if (isTokenLimitFinishReason(completion.finishReason)) {
-      console.error("Automation-opportunity analysis hit the token limit", {
-        maxTokens: INSIGHTS_MAX_TOKENS,
-      });
-      await finalize();
-      return;
-    }
-
-    const payload = completion.toolInput ?? completion.text;
-    let opportunities: AutomationOpportunity[] = [];
-    if (payload !== null && !(typeof payload === "string" && !payload.trim())) {
-      try {
-        opportunities = normalizeAutomationOpportunities(
-          completion.toolInput ?? parseFlowResponsePayload(payload),
-          flow.nodes.map((node) => node.id),
-        );
-      } catch (e) {
-        console.error("Failed to parse automation-opportunity JSON:", {
-          error: e instanceof Error ? e.message : "Unknown parse error",
-        });
-      }
-    }
-
-    if (opportunities.length === 0) {
-      // A process with genuinely no candidates is a valid answer, but so is a
-      // response we could not use — log so the two are distinguishable.
-      console.warn("Automation-opportunity analysis returned nothing usable", {
-        processId: args.processId,
-        enrichedNodes: enriched.length,
-      });
-    }
-
-    await finalize(opportunities.length > 0 ? opportunities : undefined);
   },
 });
 

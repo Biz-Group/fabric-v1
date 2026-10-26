@@ -39,7 +39,7 @@ Press Ctrl+K (Cmd+K on a Mac), or select the search box at the top, to open sear
 
 ## Tabs on a process
 
-When you open a process, its tabs are Overview, Contributions, Process Flow, Insights and Automations. The Contributions tab shows how many contributions the process has.
+When you open a process, its tabs are Overview, Contributions, Process Flow, Insights and Recommendations. The Contributions tab shows how many contributions the process has.
 
 ## Sharing a view
 

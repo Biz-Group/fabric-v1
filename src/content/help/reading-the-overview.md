@@ -4,7 +4,7 @@ title: Reading the Overview
 summary: How to read a process, department or function Overview, including evidence levels, coverage and what the status labels mean.
 audience: [viewer, contributor, admin]
 tags: [overview, evidence, coverage, status]
-related: [what-is-fabric, after-you-contribute, reading-the-process-flow, insights-and-automations]
+related: [what-is-fabric, after-you-contribute, reading-the-process-flow, insights-and-recommendations]
 verifiedAgainst:
   - src/features/overview/process-overview.tsx
   - src/features/overview/hierarchy-overview.tsx

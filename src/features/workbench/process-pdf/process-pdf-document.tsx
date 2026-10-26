@@ -864,6 +864,60 @@ function InsightsSection({ data }: { data: ProcessPdfData }) {
         )}
       </InsightCard>
 
+      {/* Recommendations: the summary only. Plans and briefs stay in the app. */}
+      <InsightCard
+        title="Recommendations"
+        count={
+          data.recommendations === null
+            ? undefined
+            : pluralize(data.recommendations.length, "recommendation")
+        }
+      >
+        {data.recommendations === null ? (
+          <Text style={s.muted}>
+            Recommendations have not been worked out for this process yet.
+          </Text>
+        ) : data.recommendations.length === 0 ? (
+          <Text style={s.muted}>
+            No changes recommended from current evidence.
+          </Text>
+        ) : (
+          data.recommendations.map((rec, index) => (
+            <MiniItem
+              key={`${index}-${rec.title}`}
+              title={`${index + 1}. ${rec.title}`}
+              rightChips={<Chip label={rec.kind} />}
+            >
+              <Text style={s.body}>{rec.problem}</Text>
+              <Text style={[s.body, { marginTop: 2 }]}>{rec.change}</Text>
+              <Text style={s.faint}>
+                {[
+                  rec.technical ? "Technical" : "Non-technical",
+                  `Value ${rec.value}`,
+                  `Effort ${rec.effort}`,
+                  rec.evidence,
+                  rec.decision,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </Text>
+              {rec.followOns.map((followOn) => (
+                <View key={followOn.title} style={{ marginTop: 4, paddingLeft: 10 }}>
+                  <Text style={s.body}>
+                    {`Then: ${followOn.title} (${followOn.kind}). ${followOn.change}`}
+                  </Text>
+                  <Text style={s.faint}>
+                    {[`Effort ${followOn.effort}`, followOn.decision]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </Text>
+                </View>
+              ))}
+            </MiniItem>
+          ))
+        )}
+      </InsightCard>
+
       {/* Automation */}
       <InsightCard
         title="Automation Opportunities"

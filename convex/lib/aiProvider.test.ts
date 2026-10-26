@@ -158,6 +158,73 @@ describe("AI provider adapter", () => {
     expect(getPersistedAIProvider()).toBe("fabric-foundry");
   });
 
+  test("a reasoning request offers the tool instead of forcing it, so the model can think", async () => {
+    process.env.FOUNDRY_ENDPOINT = "https://fabric-test.services.ai.azure.com/";
+    process.env.FOUNDRY_API_KEY = "foundry-test-key";
+    process.env.FOUNDRY_CLAUDE_DEPLOYMENT = "fabric-claude-haiku-5-5";
+
+    const bodies: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        bodies.push((await observeRequest(input, init)).body);
+        return new Response(
+          JSON.stringify({
+            id: "msg_test",
+            type: "message",
+            role: "assistant",
+            model: "fabric-claude-haiku-5-5",
+            // Thinking comes first; the tool call is found by type, not position.
+            content: [
+              { type: "thinking", thinking: "", signature: "sig" },
+              { type: "tool_use", id: "toolu_1", name: "return_x", input: { ok: true } },
+            ],
+            stop_reason: "tool_use",
+            stop_sequence: null,
+            usage: { input_tokens: 12, output_tokens: 40 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }),
+    );
+
+    const tool = {
+      name: "return_x",
+      description: "Return x",
+      inputSchema: { type: "object" as const, properties: {} },
+    };
+    const reasoned = await generateAICompletion({
+      capability: "synthesis",
+      operation: "adapter-test-reasoning",
+      system: "System prompt",
+      user: "User prompt",
+      maxTokens: 12_000,
+      reasoning: "medium",
+      tool,
+    });
+    await generateAICompletion({
+      capability: "synthesis",
+      operation: "adapter-test-forced",
+      system: "System prompt",
+      user: "User prompt",
+      maxTokens: 4_000,
+      tool,
+    });
+
+    expect(bodies[0]).toMatchObject({
+      output_config: { effort: "medium" },
+      tool_choice: { type: "auto" },
+    });
+    // Haiku 5.5 thinks adaptively by default; nothing to send.
+    expect(bodies[0]).not.toHaveProperty("thinking");
+    expect(reasoned.toolInput).toEqual({ ok: true });
+    // Without reasoning, the tool is still forced at low effort.
+    expect(bodies[1]).toMatchObject({
+      output_config: { effort: "low" },
+      tool_choice: { type: "tool", name: "return_x" },
+    });
+  });
+
   test("uses Foundry OpenAI strict tool calling for safety", async () => {
     process.env.FOUNDRY_ENDPOINT =
       "https://fabric-test.services.ai.azure.com/openai/v1";

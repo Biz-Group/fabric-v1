@@ -205,6 +205,7 @@ function input(overrides: Partial<ProcessPdfInput> = {}): ProcessPdfInput {
     lastUpdatedAt: generatedAt,
     completedConversationCount: 4,
     flow: flowFixture(),
+    recommendations: null,
     generatedAt: generatedAt + 60_000,
     ...overrides,
   };
@@ -485,5 +486,121 @@ describe("process report rendering", () => {
     expect(html).toContain("Refresh failed");
     expect(html).toContain("What starts the process");
     expect(html).toContain(SCOPE_BODY);
+  });
+  it("summarises open recommendations, leaving out dismissed ones", () => {
+    const recommendation = (
+      title: string,
+      decisionStatus: "new" | "dismissed" | "shortlisted",
+    ) => ({
+      _id: title as never,
+      source: "v2" as const,
+      lifecycle: "active" as const,
+      title,
+      nodeIds: [],
+      content: {
+        problem: `${title} problem`,
+        cause: "",
+        causeBasis: "unknown" as const,
+        intervention: "standardise" as const,
+        supportingInterventions: [],
+        proposedChange: `${title} change`,
+        pilot: { what: "", measure: "" },
+        openQuestions: [],
+        risks: [],
+        frequency: "weekly" as const,
+      },
+      scores: {
+        value: { level: "high" as const, reasons: [] },
+        effort: { level: "low" as const, reasons: [] },
+        evidence: { interviews: 2, contributors: 2 },
+        peopleAffected: [],
+      },
+      legacy: null,
+      buildsOnId: null,
+      decisionStatus,
+      dismissReason: null,
+      createdAt: 0,
+      updatedAt: 0,
+    });
+    const html = render({
+      recommendations: [
+        recommendation("Agree a checklist", "shortlisted"),
+        recommendation("Drop the second sign-off", "dismissed"),
+      ],
+    });
+
+    expect(html).toContain("1. Agree a checklist");
+    expect(html).toContain("Non-technical · Value high · Effort low · Based on 2 interviews · Shortlisted");
+    expect(html).not.toContain("Drop the second sign-off");
+  });
+
+  it("prints a next step under the change it builds on, not as its own item", () => {
+    const base = {
+      source: "v2" as const,
+      lifecycle: "active" as const,
+      nodeIds: [],
+      legacy: null,
+      dismissReason: null,
+      createdAt: 0,
+      updatedAt: 0,
+      scores: {
+        value: { level: "high" as const, reasons: [] },
+        effort: { level: "medium" as const, reasons: [] },
+        evidence: { interviews: 1, contributors: 1 },
+        peopleAffected: [],
+      },
+    };
+    const content = (intervention: "standardise" | "workflow", change: string) => ({
+      problem: "Problem",
+      cause: "",
+      causeBasis: "unknown" as const,
+      intervention,
+      supportingInterventions: [],
+      proposedChange: change,
+      pilot: { what: "", measure: "" },
+      openQuestions: [],
+      risks: [],
+      frequency: "daily" as const,
+    });
+    const data = buildProcessPdfData(
+      input({
+        recommendations: [
+          {
+            ...base,
+            _id: "rules" as never,
+            title: "Write down the triage rule",
+            content: content("standardise", "Write the rule."),
+            buildsOnId: null,
+            decisionStatus: "new",
+          },
+          {
+            ...base,
+            _id: "route" as never,
+            title: "Route tickets automatically",
+            content: content("workflow", "Apply the rule in Zendesk."),
+            buildsOnId: "rules" as never,
+            decisionStatus: "new",
+          },
+        ],
+      }),
+    );
+
+    expect(data.recommendations?.map((rec) => rec.title)).toEqual([
+      "Write down the triage rule",
+    ]);
+    expect(data.recommendations?.[0].followOns.map((rec) => rec.title)).toEqual([
+      "Route tickets automatically",
+    ]);
+    const html = renderToStaticMarkup(
+      createElement(ProcessPdfDocument, { data }),
+    );
+    expect(html).toContain("Then: Route tickets automatically (Workflow). Apply the rule in Zendesk.");
+  });
+
+  it("says when recommendations have not been worked out yet", () => {
+    expect(render()).toContain("Recommendations have not been worked out for this process yet.");
+    expect(render({ recommendations: [] })).toContain(
+      "No changes recommended from current evidence.",
+    );
   });
 });

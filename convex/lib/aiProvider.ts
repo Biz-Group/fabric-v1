@@ -115,6 +115,14 @@ export type AIRequest = {
   timeoutMs?: number;
   maxRetries?: number;
   tool?: AITool;
+  /**
+   * Let the model reason before it answers, at this effort. Claude only. A
+   * forced tool call skips thinking on Haiku 5.5, so with this set the tool is
+   * offered with `tool_choice: auto` and the prompt must tell the model to
+   * call it; a caller must treat a text-only answer as a miss. Thinking counts
+   * toward `maxTokens`, so size the budget for it.
+   */
+  reasoning?: "low" | "medium" | "high";
 };
 
 /**
@@ -480,11 +488,16 @@ async function callFoundryClaude(
     // because Haiku 4.5 ran with thinking off. `low` is the closest match; a
     // forced tool call skips thinking regardless. No `temperature`: Haiku 5.5
     // rejects any non-default sampling parameter with a 400.
-    output_config: { effort: "low" },
+    // With `reasoning`, `thinking` stays unset: Haiku 5.5 runs adaptive
+    // thinking by default, and SDK 0.72 predates the `adaptive` type.
+    output_config: { effort: request.reasoning ?? "low" },
     ...(tools
       ? {
           tools,
-          tool_choice: { type: "tool" as const, name: request.tool!.name },
+          // Forcing the tool would skip the reasoning that was asked for.
+          tool_choice: request.reasoning
+            ? { type: "auto" as const }
+            : { type: "tool" as const, name: request.tool!.name },
         }
       : {}),
   };

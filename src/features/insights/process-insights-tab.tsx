@@ -74,8 +74,8 @@ type ProcessInsightsTabProps = {
   canGenerate: boolean;
   isActive: boolean;
   onOpenProcessFlow: (nodeId?: string) => void;
-  /** Potential automations and their build briefs live on their own tab. */
-  onOpenAutomations?: () => void;
+  /** Recommendations — technical and non-technical — live on their own tab. */
+  onOpenRecommendations?: () => void;
 };
 
 type AutomationOpportunity = NonNullable<
@@ -327,12 +327,12 @@ const FINDING_ICONS: Record<KeyFindingKind, LucideIcon> = {
 function KeyFindingsSummary({
   result,
   onOpenNode,
-  onOpenAutomations,
+  onOpenRecommendations,
   onOpenProcessFlow,
 }: {
   result: KeyFindings;
   onOpenNode: (nodeId: string) => void;
-  onOpenAutomations?: () => void;
+  onOpenRecommendations?: () => void;
   onOpenProcessFlow: () => void;
 }) {
   return (
@@ -352,14 +352,14 @@ function KeyFindingsSummary({
             const Icon = FINDING_ICONS[finding.kind];
             const nodeId = finding.nodeId;
             const action =
-              finding.kind === "automation" && onOpenAutomations ? (
+              finding.kind === "automation" && onOpenRecommendations ? (
                 <Button
                   variant="outline"
                   size="sm"
                   className="gap-1.5"
-                  onClick={onOpenAutomations}
+                  onClick={onOpenRecommendations}
                 >
-                  Open Automations
+                  Open Recommendations
                   <ArrowUpRight className="size-3.5" aria-hidden />
                 </Button>
               ) : nodeId ? (
@@ -715,7 +715,7 @@ function AutomationSection({
   isAnalysed,
   candidates,
   onOpenNode,
-  onOpenAutomations,
+  onOpenRecommendations,
 }: {
   opportunityDetails?: AutomationOpportunity[];
   /** Same value the Automation tile and the Process Flow bottom bar show. */
@@ -724,12 +724,12 @@ function AutomationSection({
   isAnalysed: boolean;
   candidates: FlowNode[];
   onOpenNode: (nodeId: string) => void;
-  onOpenAutomations?: () => void;
+  onOpenRecommendations?: () => void;
 }) {
-  // Insights answers "where should we look"; the Automations tab answers "what
-  // do we build, and with what brief". The recommendations themselves live
-  // there so the same list is not maintained in two places — what stays here is
-  // the signal: how many were recommended, and which steps look automatable.
+  // Insights answers "where should we look"; the Recommendations tab answers
+  // "what should we change". The recommendations live there so the same list
+  // is not maintained in two places — what stays here is the automation signal:
+  // the technical recommendations, and which steps look automatable.
   const titles = (opportunityDetails ?? []).map(
     (opportunity) => opportunity.title,
   );
@@ -750,12 +750,13 @@ function AutomationSection({
           </SectionLabel>
           {!isAnalysed ? (
             <p className="mt-2 text-sm text-muted-foreground">
-              Automations were not analysed for this run, so there is nothing to
-              brief. Regenerate the process flow.
+              Recommendations for this run are still being worked out, or
+              didn&apos;t finish. The Recommendations tab shows which.
             </p>
           ) : titles.length === 0 ? (
             <p className="mt-2 text-sm text-muted-foreground">
-              No automation recommendations are listed.
+              No technical changes were recommended. Non-technical changes are
+              on the Recommendations tab.
             </p>
           ) : (
             <>
@@ -766,14 +767,14 @@ function AutomationSection({
                   </li>
                 ))}
               </ul>
-              {onOpenAutomations && (
+              {onOpenRecommendations && (
                 <Button
                   variant="outline"
                   size="sm"
                   className="mt-3 gap-1.5"
-                  onClick={onOpenAutomations}
+                  onClick={onOpenRecommendations}
                 >
-                  Open Automations
+                  Open Recommendations
                   <ArrowUpRight className="size-3.5" />
                 </Button>
               )}
@@ -1118,7 +1119,7 @@ export function ProcessInsightsTab({
   canGenerate,
   isActive,
   onOpenProcessFlow,
-  onOpenAutomations,
+  onOpenRecommendations,
 }: ProcessInsightsTabProps) {
   const flow = useQuery(
     api.processFlows.getProcessFlow,
@@ -1308,7 +1309,7 @@ export function ProcessInsightsTab({
         <KeyFindingsSummary
           result={keyFindings}
           onOpenNode={onOpenProcessFlow}
-          onOpenAutomations={onOpenAutomations}
+          onOpenRecommendations={onOpenRecommendations}
           onOpenProcessFlow={() => onOpenProcessFlow()}
         />
 
@@ -1484,7 +1485,7 @@ export function ProcessInsightsTab({
             isAnalysed={!automationUnreviewed}
             candidates={automationCandidates}
             onOpenNode={onOpenProcessFlow}
-            onOpenAutomations={onOpenAutomations}
+            onOpenRecommendations={onOpenRecommendations}
           />
         </div>
 

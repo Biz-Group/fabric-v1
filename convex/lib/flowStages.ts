@@ -32,22 +32,10 @@ export const NODE_DETAILS_MAX_RETRIES = 2;
 export const NODE_DETAILS_BATCH_SIZE = 6;
 
 /**
- * Raised from 2,048 after real runs truncated ("Automation-opportunity analysis
- * hit the token limit") — a process with a handful of substantial opportunities
- * does not fit 2k tokens of structured JSON. The timeout moves with it:
- * `minTimeoutMsForMaxTokens(4096)` is 130,031 ms, so 120 s would leave the call
- * over its time budget. Worst case is still (1 + 2) x 135 s = 405 s, inside the
- * 10-minute action ceiling.
- */
-export const INSIGHTS_MAX_TOKENS = 4096;
-export const INSIGHTS_TIMEOUT_MS = 135_000;
-export const INSIGHTS_MAX_RETRIES = 2;
-
-/**
  * Haiku 5.5 caps output tokens per minute, and the SDK's own retries all land
- * inside the same minute, so a 429 here outlasts them. A rate-limited analysis
- * is rescheduled after each delay in turn instead of finalizing without
- * opportunities. Together they stay well inside the flow watchdog's 10 minutes.
+ * inside the same minute, so a 429 outlasts them. A rate-limited recommendation
+ * run is rescheduled after each delay in turn instead of failing. Together they
+ * stay well inside the recommendation reaper's 10 minutes.
  */
 export const INSIGHTS_RATE_LIMIT_RETRY_DELAYS_MS = [60_000, 90_000, 120_000];
 
@@ -345,155 +333,11 @@ export function buildNodeDetailsAIRequest(userContent: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Stage 3 — automation opportunities across the finished graph.
-//
-// This is a dedicated call rather than a per-node field or a mechanical rollup
-// for two reasons. It needs to reason across steps: three manual approval
-// handoffs are one agent, not three opportunities. And it is the output the
-// product is for — downstream work (an agent library, workflow scaffolding)
-// builds from these, so they cannot be `label + first pain point` strings.
-//
-// It is its own stage so that failing it costs only the opportunities, not the
-// flow: finalize still lands the run, falling back to the mechanical rollup and
-// recording that it did.
+// Automation opportunities. The stage that produced these is replaced by the
+// recommendation stage (lib/recommendationStage.ts); its technical
+// recommendations are still written in this shape onto `insights`, so the
+// surfaces that read it keep working while they move over.
 // ---------------------------------------------------------------------------
-
-const INSIGHTS_TOOL_NAME = "return_automation_opportunities";
-
-export const INSIGHTS_SYSTEM_PROMPT = `You are an automation analyst reviewing a fully mapped business process to find where it could be transformed. You receive the process graph and the detailed description of every step, all grounded in employee interviews.
-
-Identify the automation opportunities a delivery team should act on. Think across steps, not step by step: several manual handoffs in a row are usually ONE opportunity, not several. Prefer a handful of substantial, buildable opportunities over a long list of thin ones.
-
-For each opportunity provide:
-- title: a short name for the thing that would be built (4-10 words)
-- kind: what sort of automation it is
-  - "agent": a conversational or task assistant that handles judgement, drafting, lookup, or Q&A on a person's behalf
-  - "workflow": a deterministic rule-based flow — triggers, approvals, routing, notifications, data movement between systems
-  - "integration": the work is mostly making two systems talk, removing manual re-entry
-  - "other": genuine automation potential that is none of the above
-- nodeIds: the graph node IDs this opportunity would replace or assist. Every ID must come from the graph you were given.
-- rationale: 2-3 sentences on what is manual today and what the automation would do instead. Ground it in what contributors actually said — cite the friction, not a generic benefit.
-- expectedBenefit: the concrete gain (time saved, errors avoided, wait removed) if the evidence supports one; omit it rather than inventing a number.
-- prerequisites: what has to be true before this could be built — system access, a data source, a decision rule someone has to write down. Empty if there are none.
-- confidence: "high" if multiple contributors described this friction, "medium" if one described it clearly, "low" if you are inferring it.
-
-Rules:
-- Ground every opportunity in the supplied evidence. Do not propose automation for steps nobody complained about and nothing suggests is repetitive.
-- Do not invent steps, systems, or node IDs.
-- A step already automated ("none" automation potential) is not an opportunity.
-- If the process genuinely has no good candidates, return an empty list rather than padding it.
-
-Use the provided tool to return the opportunities.`;
-
-const INSIGHTS_RESPONSE_SCHEMA: AIJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    opportunities: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          title: { type: "string" },
-          kind: {
-            type: "string",
-            enum: ["agent", "workflow", "integration", "other"],
-          },
-          nodeIds: { type: "array", items: { type: "string" } },
-          rationale: { type: "string" },
-          expectedBenefit: { type: "string" },
-          prerequisites: { type: "array", items: { type: "string" } },
-          confidence: { type: "string", enum: ["high", "medium", "low"] },
-        },
-        required: [
-          "title",
-          "kind",
-          "nodeIds",
-          "rationale",
-          "prerequisites",
-          "confidence",
-        ],
-      },
-    },
-  },
-  required: ["opportunities"],
-};
-
-export function buildFlowInsightsAIRequest(userContent: string) {
-  return {
-    capability: "synthesis" as const,
-    operation: "process-flow-automation-opportunities",
-    system: INSIGHTS_SYSTEM_PROMPT,
-    user: userContent,
-    maxTokens: INSIGHTS_MAX_TOKENS,
-    timeoutMs: INSIGHTS_TIMEOUT_MS,
-    maxRetries: INSIGHTS_MAX_RETRIES,
-    tool: {
-      name: INSIGHTS_TOOL_NAME,
-      description:
-        "Return the automation opportunities identified across this process.",
-      inputSchema: INSIGHTS_RESPONSE_SCHEMA,
-    },
-  };
-}
-
-const VALID_OPPORTUNITY_KINDS = new Set<string>([
-  "agent",
-  "workflow",
-  "integration",
-  "other",
-]);
-
-/**
- * Opportunities restricted to node ids that exist in the graph. An opportunity
- * pointing at an invented step cannot be built from, so its ids are dropped;
- * one left pointing at nothing is discarded entirely.
- */
-export function normalizeAutomationOpportunities(
-  payload: unknown,
-  knownNodeIds: readonly string[],
-): AutomationOpportunity[] {
-  const known = new Set(knownNodeIds);
-  const parsed = (payload ?? {}) as Record<string, unknown>;
-  const entries = Array.isArray(parsed.opportunities)
-    ? parsed.opportunities
-    : [];
-
-  const opportunities: AutomationOpportunity[] = [];
-
-  for (const raw of entries) {
-    const entry = (raw ?? {}) as Record<string, unknown>;
-    const title = String(entry.title ?? "").trim();
-    const rationale = String(entry.rationale ?? "").trim();
-    if (!title || !rationale) continue;
-
-    const nodeIds = asStringArray(entry.nodeIds).filter((id) => known.has(id));
-    if (nodeIds.length === 0) continue;
-
-    const kind = String(entry.kind);
-    const confidence = String(entry.confidence);
-    const expectedBenefit = entry.expectedBenefit
-      ? String(entry.expectedBenefit).trim()
-      : undefined;
-
-    opportunities.push({
-      title,
-      kind: (VALID_OPPORTUNITY_KINDS.has(kind)
-        ? kind
-        : "other") as AutomationOpportunityKind,
-      nodeIds,
-      rationale,
-      expectedBenefit: expectedBenefit || undefined,
-      prerequisites: asStringArray(entry.prerequisites),
-      confidence: (VALID_CONFIDENCE.has(confidence)
-        ? confidence
-        : "medium") as FlowConfidence,
-    });
-  }
-
-  return opportunities;
-}
 
 /** The one-line form the existing Insights tab renders. */
 export function summarizeAutomationOpportunity(

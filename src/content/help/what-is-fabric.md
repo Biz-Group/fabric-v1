@@ -33,7 +33,7 @@ Each process has five tabs:
 - **Contributions**: the conversations the brief is built from.
 - **Process Flow**: a diagram of the steps, decisions and handoffs.
 - **Insights**: where to investigate or improve, such as bottlenecks and handoffs.
-- **Automations**: ideas for what could be automated, with a brief you can copy.
+- **Recommendations**: what to change, from removing a step to building an agent, ranked by value and effort, with a plan or brief you can copy.
 
 Departments and functions get their own overviews that roll up the processes beneath them. You can also download a PDF report for a process.
 

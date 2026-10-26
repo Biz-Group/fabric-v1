@@ -131,6 +131,89 @@ export const automationOpportunityValidator = v.object({
 });
 
 /**
+ * The kinds of change a recommendation can propose, simplest first. The first
+ * five are non-technical; the recommendation stage has to consider them before
+ * the technical ones and say why a simpler change would not do.
+ */
+export const recommendationInterventionValidator = v.union(
+  v.literal("eliminate"),
+  v.literal("simplify"),
+  v.literal("standardise"),
+  v.literal("role_or_policy"),
+  v.literal("training"),
+  v.literal("workflow"),
+  v.literal("integration"),
+  v.literal("ai_assist"),
+  v.literal("agent"),
+);
+
+export const recommendationFrequencyValidator = v.union(
+  v.literal("daily"),
+  v.literal("weekly"),
+  v.literal("monthly"),
+  v.literal("quarterly"),
+  v.literal("annual"),
+  v.literal("ad_hoc"),
+  v.literal("unknown"),
+);
+
+export const recommendationDecisionStatusValidator = v.union(
+  v.literal("new"),
+  v.literal("shortlisted"),
+  v.literal("dismissed"),
+  v.literal("in_progress"),
+  v.literal("done"),
+);
+
+export const recommendationDismissReasonValidator = v.union(
+  v.literal("not_a_real_problem"),
+  v.literal("already_fixed"),
+  v.literal("too_costly"),
+  v.literal("not_a_priority"),
+  v.literal("wrong_recommendation"),
+);
+
+const recommendationScoreValidator = v.object({
+  level: v.union(
+    v.literal("high"),
+    v.literal("medium"),
+    v.literal("low"),
+    v.literal("unknown"),
+  ),
+  /** The two or three facts that drove the level, shown as chips. */
+  reasons: v.array(v.string()),
+});
+
+/** What the model wrote. Text refers to roles, never contributor names. */
+export const recommendationContentValidator = v.object({
+  problem: v.string(),
+  cause: v.string(),
+  causeBasis: v.union(
+    v.literal("reported"),
+    v.literal("inferred"),
+    v.literal("unknown"),
+  ),
+  intervention: recommendationInterventionValidator,
+  supportingInterventions: v.array(recommendationInterventionValidator),
+  proposedChange: v.string(),
+  /** Technical interventions only: why a non-technical change is not enough. */
+  whyNotSimpler: v.optional(v.string()),
+  pilot: v.object({ what: v.string(), measure: v.string() }),
+  openQuestions: v.array(v.string()),
+  risks: v.array(v.string()),
+  frequency: recommendationFrequencyValidator,
+});
+
+/** Computed in code from the flow, so every score can be explained. */
+export const recommendationScoresValidator = v.object({
+  value: recommendationScoreValidator,
+  effort: recommendationScoreValidator,
+  evidence: v.object({ interviews: v.number(), contributors: v.number() }),
+  /** Distinct actors on the covered steps, as contributors named them. */
+  peopleAffected: v.array(v.string()),
+});
+
+/**
  * The enrichable half of a flow node — everything the graph pass does *not*
  * produce. Shared between the aggregate row (where a legacy single-call
  * generation wrote it inline) and `processFlowNodeDetails` (where a staged
@@ -802,6 +885,138 @@ export default defineSchema({
       "generationId",
       "status",
     ]),
+
+  // One row per recommendation pass over a flow generation. The pass has its
+  // own lifecycle so a slow or failed analysis never holds the flow back, and a
+  // failed pass can be retried without regenerating the flow.
+  recommendationRuns: defineTable({
+    clerkOrgId: v.string(),
+    processId: v.id("processes"),
+    processFlowId: v.id("processFlows"),
+    // The flow generation analysed. Legacy single-call flows have none and
+    // use "legacy"; a publish is dropped when the flow has moved on.
+    flowGenerationId: v.string(),
+    runId: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      // `ready` with `resultCount: 0` is a real answer, not a failure.
+      v.literal("ready"),
+      v.literal("failed"),
+    ),
+    trigger: v.union(
+      v.literal("flow"),
+      v.literal("retry"),
+      v.literal("backfill"),
+    ),
+    attempts: v.number(),
+    errorMessage: v.optional(v.string()),
+    promptVersion: v.string(),
+    resultCount: v.optional(v.number()),
+    /** The flow's conversation count when the run started. */
+    conversationCount: v.number(),
+    createdAt: v.number(),
+    lastProgressAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_clerkOrgId_and_processId_and_createdAt", [
+      "clerkOrgId",
+      "processId",
+      "createdAt",
+    ])
+    .index("by_clerkOrgId_and_runId", ["clerkOrgId", "runId"])
+    // Reaper index; a system cron sweeps every tenant.
+    .index("by_status_and_lastProgressAt", ["status", "lastProgressAt"]),
+
+  // Durable recommendations, with a stable id that survives regeneration so
+  // decisions made about them are kept.
+  processRecommendations: defineTable({
+    clerkOrgId: v.string(),
+    processId: v.id("processes"),
+    // `legacy` rows are the automation opportunities stored before this
+    // existed, kept read-only for comparison. They never take decisions.
+    source: v.union(v.literal("v2"), v.literal("legacy")),
+    lifecycle: v.union(
+      v.literal("active"),
+      // Not returned by the latest run, but someone had decided something
+      // about it, so it stays visible.
+      v.literal("absent_from_latest"),
+      v.literal("superseded"),
+    ),
+    title: v.string(),
+    nodeIds: v.array(v.string()),
+    // Nested and optional as a unit: v2 rows carry `content` and `scores`,
+    // legacy rows carry `legacy`.
+    content: v.optional(recommendationContentValidator),
+    scores: v.optional(recommendationScoresValidator),
+    legacy: v.optional(automationOpportunityValidator),
+    /** A technical follow-on: the recommendation whose change it builds on. */
+    buildsOnId: v.optional(v.id("processRecommendations")),
+    /** Sorted node ids + intervention; the fallback identity across runs. */
+    matchKey: v.string(),
+    decisionStatus: recommendationDecisionStatusValidator,
+    dismissReason: v.optional(recommendationDismissReasonValidator),
+    flowGenerationId: v.optional(v.string()),
+    firstRunId: v.optional(v.string()),
+    latestRunId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_clerkOrgId_and_processId_and_source_and_lifecycle", [
+    "clerkOrgId",
+    "processId",
+    "source",
+    "lifecycle",
+  ]),
+
+  // Decision history: who moved a recommendation, from what, to what, and why.
+  recommendationDecisions: defineTable({
+    clerkOrgId: v.string(),
+    processId: v.id("processes"),
+    recommendationId: v.id("processRecommendations"),
+    from: recommendationDecisionStatusValidator,
+    to: recommendationDecisionStatusValidator,
+    reason: v.optional(recommendationDismissReasonValidator),
+    note: v.optional(v.string()),
+    actorUserId: v.id("users"),
+    actorName: v.string(),
+    createdAt: v.number(),
+  }).index("by_clerkOrgId_and_recommendationId_and_createdAt", [
+    "clerkOrgId",
+    "recommendationId",
+    "createdAt",
+  ]),
+
+  // "Was this useful?" — one rating per member per recommendation, viewers
+  // included.
+  recommendationReviews: defineTable({
+    clerkOrgId: v.string(),
+    recommendationId: v.id("processRecommendations"),
+    reviewerUserId: v.id("users"),
+    useful: v.boolean(),
+    comment: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_clerkOrgId_and_recommendationId_and_reviewerUserId", [
+    "clerkOrgId",
+    "recommendationId",
+    "reviewerUserId",
+  ]),
+
+  // Control row for the paced backfill that re-runs recommendations over every
+  // existing flow. Platform-level: it walks every tenant, one flow at a time.
+  recommendationBackfills: defineTable({
+    status: v.union(
+      v.literal("running"),
+      v.literal("paused"),
+      v.literal("done"),
+    ),
+    cursor: v.union(v.string(), v.null()),
+    delayMs: v.number(),
+    scheduled: v.number(),
+    skipped: v.number(),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+  }),
 
   // Durable orchestration state for Summary V2. `entity` is a strict union, so
   // a run can carry only the ID matching its discriminator. `entityKey` is the

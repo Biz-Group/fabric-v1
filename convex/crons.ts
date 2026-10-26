@@ -16,6 +16,16 @@ crons.interval(
   {},
 );
 
+// Recommendation runs hand off between a mutation and a scheduled action, so a
+// killed action leaves a run "running" with nothing behind it. Failing it
+// makes the tab's retry reachable.
+crons.interval(
+  "reap stuck recommendation runs",
+  { minutes: 5 },
+  internal.recommendations.reapStuckRecommendationRuns,
+  {},
+);
+
 crons.interval(
   "reap stuck process summary generations",
   { minutes: 5 },

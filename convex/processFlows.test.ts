@@ -2,11 +2,9 @@ import { describe, expect, test } from "vitest";
 import { parseFlowResponsePayload } from "./processFlows";
 import { isTokenLimitFinishReason, isWithinTimeBudget } from "./lib/aiProvider";
 import {
-  buildFlowInsightsAIRequest,
   buildGraphAIRequest,
   buildNodeDetailsAIRequest,
   deriveFlowInsights,
-  normalizeAutomationOpportunities,
   GRAPH_MAX_TOKENS,
   GRAPH_MAX_RETRIES,
   GRAPH_TIMEOUT_MS,
@@ -302,106 +300,6 @@ describe("insight derivation", () => {
     expect(insights.automationOpportunities).toEqual([]);
     expect(insights.topBottlenecks).toEqual([]);
     expect(insights.handoffCount).toBe(1);
-  });
-});
-
-describe("automation opportunity normalization", () => {
-  const knownNodeIds = ["intake", "triage", "resolve"];
-
-  const wellFormed = {
-    title: "Triage assistant",
-    kind: "agent",
-    nodeIds: ["triage"],
-    rationale: "The lead reads every ticket by hand.",
-    expectedBenefit: "Saves ~2 hours a day",
-    prerequisites: ["Jira API access"],
-    confidence: "high",
-  };
-
-  test("keeps well-formed opportunities with their structure intact", () => {
-    const [opportunity] = normalizeAutomationOpportunities(
-      { opportunities: [wellFormed] },
-      knownNodeIds,
-    );
-
-    expect(opportunity).toEqual({
-      title: "Triage assistant",
-      kind: "agent",
-      nodeIds: ["triage"],
-      rationale: "The lead reads every ticket by hand.",
-      expectedBenefit: "Saves ~2 hours a day",
-      prerequisites: ["Jira API access"],
-      confidence: "high",
-    });
-  });
-
-  test("spans multiple steps, because one opportunity often is several steps", () => {
-    const [opportunity] = normalizeAutomationOpportunities(
-      {
-        opportunities: [
-          { ...wellFormed, nodeIds: ["intake", "triage", "resolve"] },
-        ],
-      },
-      knownNodeIds,
-    );
-
-    expect(opportunity.nodeIds).toEqual(["intake", "triage", "resolve"]);
-  });
-
-  test("drops node ids that are not in the graph", () => {
-    // An opportunity pointing at an invented step cannot be built from.
-    const [opportunity] = normalizeAutomationOpportunities(
-      { opportunities: [{ ...wellFormed, nodeIds: ["triage", "invented"] }] },
-      knownNodeIds,
-    );
-
-    expect(opportunity.nodeIds).toEqual(["triage"]);
-  });
-
-  test("discards an opportunity left pointing at nothing", () => {
-    const opportunities = normalizeAutomationOpportunities(
-      { opportunities: [{ ...wellFormed, nodeIds: ["invented"] }] },
-      knownNodeIds,
-    );
-
-    expect(opportunities).toEqual([]);
-  });
-
-  test("discards opportunities with no title or no rationale", () => {
-    const opportunities = normalizeAutomationOpportunities(
-      {
-        opportunities: [
-          { ...wellFormed, title: "  " },
-          { ...wellFormed, rationale: "" },
-        ],
-      },
-      knownNodeIds,
-    );
-
-    expect(opportunities).toEqual([]);
-  });
-
-  test("coerces an unknown kind rather than dropping the opportunity", () => {
-    const [opportunity] = normalizeAutomationOpportunities(
-      { opportunities: [{ ...wellFormed, kind: "wizardry" }] },
-      knownNodeIds,
-    );
-
-    expect(opportunity.kind).toBe("other");
-    expect(opportunity.title).toBe("Triage assistant");
-  });
-
-  test("treats an empty list as a valid answer", () => {
-    expect(
-      normalizeAutomationOpportunities({ opportunities: [] }, knownNodeIds),
-    ).toEqual([]);
-    expect(normalizeAutomationOpportunities({}, knownNodeIds)).toEqual([]);
-  });
-
-  test("the insights request fits its time budget", () => {
-    const request = buildFlowInsightsAIRequest("enriched process");
-    expect(isWithinTimeBudget(request.maxTokens, request.timeoutMs)).toBe(true);
-    expect(request.tool.name).toBe("return_automation_opportunities");
   });
 });
 

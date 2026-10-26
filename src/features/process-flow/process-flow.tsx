@@ -1842,8 +1842,9 @@ function InsightsBar({
   // none — so it reads far higher on the same flow. Wording them alike made
   // the two look like the same count disagreeing.
   //
-  // The insights stage failing leaves behind placeholders that merely look
-  // automatable. Absent means a legacy row from before the field existed, which
+  // Until the recommendation run publishes — or if it fails — finalize leaves
+  // placeholders that merely look automatable; a published run replaces them
+  // with its technical recommendations. Absent means a legacy row from before the field existed, which
   // the Insights tab also reads as analysed — only an explicit "derived" is a
   // known-unreviewed list, and it must not be called a recommendation.
   const automationUnreviewed =

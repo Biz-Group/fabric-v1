@@ -12,6 +12,7 @@ import {
   clerkUserIdFromTokenIdentifier,
   normalizeEmail,
 } from "./lib/clerkApi";
+import { recommendationMatchKey } from "./lib/recommendationScoring";
 
 export const migrations = new Migrations<DataModel>(components.migrations);
 
@@ -659,3 +660,61 @@ export const prodImport_insertAll = internalMutation({
   },
 });
 
+
+// --- Recommendations: keep the earlier automation suggestions ---------------
+//
+// Copies every flow's analysed automation opportunities into
+// `processRecommendations` as read-only `legacy` rows, so they stay visible for
+// comparison once the recommendation stage has replaced them. Deterministic —
+// no model calls — and idempotent: a process that already has legacy rows, or
+// has had a recommendation run publish, is skipped (a published run has
+// overwritten the flow's opportunities with its own technical subset).
+//
+//   npx convex run migrations:run '{"fn":"migrations:backfillLegacyRecommendations"}'
+
+export const backfillLegacyRecommendations = migrations.define({
+  table: "processFlows",
+  migrateOne: async (ctx, flow) => {
+    if (flow.insights.automationOpportunitiesSource === "derived") return;
+    const opportunities = flow.insights.automationOpportunityDetails ?? [];
+    if (opportunities.length === 0) return;
+
+    const existingLegacy = await ctx.db
+      .query("processRecommendations")
+      .withIndex("by_clerkOrgId_and_processId_and_source_and_lifecycle", (q) =>
+        q
+          .eq("clerkOrgId", flow.clerkOrgId)
+          .eq("processId", flow.processId)
+          .eq("source", "legacy"),
+      )
+      .first();
+    if (existingLegacy) return;
+
+    const published = await ctx.db
+      .query("recommendationRuns")
+      .withIndex("by_clerkOrgId_and_processId_and_createdAt", (q) =>
+        q.eq("clerkOrgId", flow.clerkOrgId).eq("processId", flow.processId),
+      )
+      .order("desc")
+      .take(20);
+    if (published.some((run) => run.status === "ready")) return;
+
+    const at = flow.detailsGeneratedAt ?? flow.generatedAt;
+    for (const opportunity of opportunities) {
+      await ctx.db.insert("processRecommendations", {
+        clerkOrgId: flow.clerkOrgId,
+        processId: flow.processId,
+        source: "legacy",
+        lifecycle: "active",
+        title: opportunity.title,
+        nodeIds: opportunity.nodeIds,
+        legacy: opportunity,
+        matchKey: recommendationMatchKey(opportunity.nodeIds, opportunity.kind),
+        decisionStatus: "new",
+        flowGenerationId: flow.generationId ?? "legacy",
+        createdAt: at,
+        updatedAt: at,
+      });
+    }
+  },
+});

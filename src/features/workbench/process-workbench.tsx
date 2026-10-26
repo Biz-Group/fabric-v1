@@ -12,10 +12,10 @@ import { cn } from "@/lib/utils";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   BarChart3,
-  Bot,
   ChevronRight,
   Building2,
   Layers,
+  Lightbulb,
   Cog,
   FileText,
   House,
@@ -32,7 +32,7 @@ import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 import { ProcessConversationsTab } from "@/features/conversations/conversations-tab";
 import { ProcessFlowTab } from "@/features/process-flow/process-flow-tab";
 import { ProcessInsightsTab } from "@/features/insights/process-insights-tab";
-import { ProcessAutomationsTab } from "@/features/automations/process-automations-tab";
+import { ProcessRecommendationsTab } from "@/features/recommendations/process-recommendations-tab";
 import {
   HierarchyOverview,
   HierarchyOverviewCompactPreview,
@@ -207,7 +207,7 @@ export function ProcessWorkbench() {
   );
 
   // Active detail tab (0 = Overview, 1 = Contributions, 2 = Process Flow,
-  // 3 = Insights, 4 = Automations), seeded from the URL.
+  // 3 = Insights, 4 = Recommendations), seeded from the URL.
   const [detailTab, setDetailTab] = useState<number>(initialSelection.tab);
   const [flowNodeId, setFlowNodeId] = useState<string | null>(
     initialSelection.node,
@@ -1943,8 +1943,8 @@ export function ProcessWorkbench() {
                   Insights
                 </TabsTrigger>
                 <TabsTrigger value={4} className="gap-1.5 px-2 text-xs">
-                  <Bot className="size-3.5" />
-                  Automations
+                  <Lightbulb className="size-3.5" />
+                  Recommendations
                 </TabsTrigger>
               </TabsList>
             </ProcessTabStrip>
@@ -2037,14 +2037,14 @@ export function ProcessWorkbench() {
                 canGenerate={canEdit}
                 isActive={detailTab === 3}
                 onOpenProcessFlow={handleOpenProcessFlow}
-                onOpenAutomations={() => {
+                onOpenRecommendations={() => {
                   setFlowNodeId(null);
                   setDetailTab(4);
                 }}
               />
             </TabsContent>
 
-            {/* Automations tab */}
+            {/* Recommendations tab */}
             <TabsContent
               value={4}
               className={cn(
@@ -2052,7 +2052,7 @@ export function ProcessWorkbench() {
                 fabClearance(mobile),
               )}
             >
-              <ProcessAutomationsTab
+              <ProcessRecommendationsTab
                 key={selectedProcessId}
                 processId={selectedProcessId!}
                 processName={workbenchProcessName}

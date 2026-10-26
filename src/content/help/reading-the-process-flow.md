@@ -4,7 +4,7 @@ title: Reading the Process Flow
 summary: How to read the process diagram, open step details, spot bottlenecks and handoffs, and use the map controls.
 audience: [viewer, contributor, admin]
 tags: [process-flow, diagram, navigation]
-related: [reading-the-overview, insights-and-automations, after-you-contribute]
+related: [reading-the-overview, insights-and-recommendations, after-you-contribute]
 verifiedAgainst:
   - src/features/process-flow/process-flow.tsx
   - src/features/process-flow/process-flow-tab.tsx

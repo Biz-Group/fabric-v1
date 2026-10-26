@@ -4,7 +4,7 @@ title: Download a process report as a PDF
 summary: Download a PDF of a process with its overview, flow steps and insights, or export a single contribution.
 audience: [viewer, contributor, admin]
 tags: [pdf, export, report, sharing]
-related: [reading-the-overview, reading-the-process-flow, insights-and-automations]
+related: [reading-the-overview, reading-the-process-flow, insights-and-recommendations]
 verifiedAgainst:
   - src/features/workbench/process-header.tsx
   - src/features/workbench/process-pdf/use-process-pdf-download.ts
@@ -33,7 +33,7 @@ If something goes wrong, Fabric shows "Could not generate the PDF. Please try ag
 - **A contents list** showing whether the Process Flow and Flow Insights sections are included.
 - **Overview**: the process brief.
 - **Process Steps**: a readable sequence of the steps, with details such as actors, tools, pain points and risks.
-- **Flow Insights**: bottlenecks, automation opportunities, tools and systems, decision points, tribal knowledge risk and evidence coverage.
+- **Flow Insights**: a summary of the process's open recommendations, then bottlenecks, automation opportunities, tools and systems, decision points, tribal knowledge risk and evidence coverage. Change plans and build briefs stay in the app.
 
 If the process flow has not been built, or its steps have not been described yet, the report leaves out the flow sections and says so in the contents list.
 
