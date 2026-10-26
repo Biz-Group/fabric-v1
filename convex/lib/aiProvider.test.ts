@@ -192,6 +192,7 @@ describe("AI provider adapter", () => {
       name: "return_x",
       description: "Return x",
       inputSchema: { type: "object" as const, properties: {} },
+      strict: true,
     };
     const reasoned = await generateAICompletion({
       capability: "synthesis",
@@ -214,6 +215,7 @@ describe("AI provider adapter", () => {
     expect(bodies[0]).toMatchObject({
       output_config: { effort: "medium" },
       tool_choice: { type: "auto" },
+      tools: [{ name: "return_x", strict: true }],
     });
     // Haiku 5.5 thinks adaptively by default; nothing to send.
     expect(bodies[0]).not.toHaveProperty("thinking");

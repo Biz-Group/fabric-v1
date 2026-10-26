@@ -41,6 +41,7 @@ describe("recommendation request", () => {
     );
     expect(request.tool.name).toBe("return_process_recommendations");
     expect(request.operation).toBe("process-recommendations");
+    expect(request.tool.strict).toBe(true);
   });
 
   test("offers the whole ladder, non-technical rungs first", () => {
@@ -247,12 +248,71 @@ describe("technical follow-ons", () => {
     );
   });
 
+  test("reads the flat pilot fields the strict schema uses", () => {
+    const recs = normalizeRecommendations(
+      {
+        recommendations: [
+          {
+            ...wellFormed,
+            followOn: {
+              ...followOn,
+              pilot: undefined,
+              pilotWhat: "One queue for a month",
+              pilotMeasure: "Redirects typed by hand",
+            },
+          },
+        ],
+      },
+      KNOWN,
+    );
+    expect(recs[1].pilot).toEqual({
+      what: "One queue for a month",
+      measure: "Redirects typed by hand",
+    });
+  });
+
+  test("the follow-on object has every field required, as strict mode needs", () => {
+    const schema = buildRecommendationsAIRequest("x").tool.inputSchema as unknown as {
+      properties: {
+        recommendations: {
+          items: { properties: { followOn: { properties: object; required: string[] } } };
+        };
+      };
+    };
+    const followOnSchema = schema.properties.recommendations.items.properties.followOn;
+    expect(followOnSchema.required.sort()).toEqual(
+      Object.keys(followOnSchema.properties).sort(),
+    );
+  });
+
   test("the prompt requires the follow-on question for every recommendation", () => {
     const request = buildRecommendationsAIRequest("process");
     const schema = request.tool.inputSchema as unknown as {
       properties: { recommendations: { items: { required: string[] } } };
     };
     expect(schema.properties.recommendations.items.required).toContain("followOn");
+  });
+});
+
+describe("strict-mode schema", () => {
+  // Strict tool use rejects a schema with open objects or numeric and length
+  // constraints. Walk the whole schema so a later edit cannot slip one in.
+  test("every object is closed and nothing uses an unsupported constraint", () => {
+    const unsupported = ["minimum", "maximum", "multipleOf", "minLength", "maxLength", "minItems", "maxItems"];
+    const problems: string[] = [];
+    const walk = (node: unknown, path: string) => {
+      if (!node || typeof node !== "object") return;
+      const schema = node as Record<string, unknown>;
+      if (schema.type === "object" && schema.additionalProperties !== false) {
+        problems.push(`${path} is not closed`);
+      }
+      for (const key of unsupported) {
+        if (key in schema) problems.push(`${path} uses ${key}`);
+      }
+      for (const [key, value] of Object.entries(schema)) walk(value, `${path}.${key}`);
+    };
+    walk(buildRecommendationsAIRequest("x").tool.inputSchema, "schema");
+    expect(problems).toEqual([]);
   });
 });
 

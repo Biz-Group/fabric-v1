@@ -17,7 +17,7 @@ import type { FlowNodeCategory, FlowNodeDetail } from "./flowStages";
  */
 
 /** Bumped whenever the prompt or schema changes meaning. Stored on every run. */
-export const RECOMMENDATIONS_PROMPT_VERSION = "recommendations-v7-2026-10-26";
+export const RECOMMENDATIONS_PROMPT_VERSION = "recommendations-v9-2026-10-26";
 
 /**
  * This stage reasons before it answers (`RECOMMENDATIONS_REASONING`): deciding
@@ -146,7 +146,8 @@ Each step is marked as rule-based, partly rule-based, needing human judgement, o
 - previousRecommendationId: if this is the same recommendation as one listed under "Current recommendations", its id. Otherwise omit it.
 - followOn: once this change is in place, what technical change could build on it?
   - kind: "workflow", "integration", "ai_assist" or "agent" — or "none" when the work left over needs human judgement throughout, happens rarely, or is already handled. Always "none" when this recommendation is itself technical.
-  - When kind is not "none", also give: title; problem (the repetitive, rule-based or slow work the simpler change leaves undone); proposedChange; whyNotSimpler (why it is worth doing on top of the simpler change); nodeIds; pilot; openQuestions; risks; and previousRecommendationId if it matches a current recommendation.
+  - When kind is not "none", fill in: title; problem (the repetitive, rule-based or slow work the simpler change leaves undone); proposedChange; whyNotSimpler (why it is worth doing on top of the simpler change); nodeIds; pilotWhat and pilotMeasure; openQuestions; risks; and previousRecommendationId if it matches a current recommendation.
+  - When kind is "none", leave every other followOn field empty ("" or []).
   - Decide this for each recommendation on its merits. "none" is a real answer, but do not default to it.
 
 ## Rules
@@ -159,6 +160,23 @@ Each step is marked as rule-based, partly rule-based, needing human judgement, o
 Think it through first. Then call the return_process_recommendations tool exactly once with your answer — never answer in text.`);
 
 const INTERVENTION_ENUM = [...INTERVENTIONS];
+
+const FOLLOW_ON_PROPERTIES = {
+  kind: {
+    type: "string",
+    enum: ["none", "workflow", "integration", "ai_assist", "agent"],
+  },
+  title: { type: "string" },
+  problem: { type: "string" },
+  proposedChange: { type: "string" },
+  whyNotSimpler: { type: "string" },
+  nodeIds: { type: "array", items: { type: "string" } },
+  pilotWhat: { type: "string" },
+  pilotMeasure: { type: "string" },
+  openQuestions: { type: "array", items: { type: "string" } },
+  risks: { type: "array", items: { type: "string" } },
+  previousRecommendationId: { type: "string" },
+} as const;
 
 const RESPONSE_SCHEMA: AIJsonSchema = {
   type: "object",
@@ -198,33 +216,14 @@ const RESPONSE_SCHEMA: AIJsonSchema = {
           risks: { type: "array", items: { type: "string" } },
           frequency: { type: "string", enum: [...FREQUENCIES] },
           previousRecommendationId: { type: "string" },
+          // Every field required and nothing nested further: strict mode
+          // rejected the earlier shape (optional fields and a nested pilot)
+          // as "Schema is too complex". Empty values stand in for "none".
           followOn: {
             type: "object",
             additionalProperties: false,
-            properties: {
-              kind: {
-                type: "string",
-                enum: ["none", "workflow", "integration", "ai_assist", "agent"],
-              },
-              title: { type: "string" },
-              problem: { type: "string" },
-              proposedChange: { type: "string" },
-              whyNotSimpler: { type: "string" },
-              nodeIds: { type: "array", items: { type: "string" } },
-              pilot: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  what: { type: "string" },
-                  measure: { type: "string" },
-                },
-                required: ["what", "measure"],
-              },
-              openQuestions: { type: "array", items: { type: "string" } },
-              risks: { type: "array", items: { type: "string" } },
-              previousRecommendationId: { type: "string" },
-            },
-            required: ["kind"],
+            properties: FOLLOW_ON_PROPERTIES,
+            required: Object.keys(FOLLOW_ON_PROPERTIES),
           },
         },
         required: [
@@ -263,6 +262,10 @@ export function buildRecommendationsAIRequest(userContent: string) {
       description:
         "Return the improvement recommendations for this process, simplest effective change first.",
       inputSchema: RESPONSE_SCHEMA,
+      // The offered (not forced) call once sent `recommendations` as a string
+      // that was not valid JSON, twice in a row, failing the run. Strict mode
+      // makes the input match the schema.
+      strict: true,
     },
   };
 }
@@ -603,7 +606,12 @@ export function normalizeRecommendations(
     seenFollowOns.add(sameChange);
     seenFollowOns.add(sameTitle);
 
-    const pilot = (parseIfJsonString(raw.pilot) ?? {}) as Record<string, unknown>;
+    // Flat in the strict schema; a nested `pilot` is still read if it comes.
+    const nestedPilot = (parseIfJsonString(raw.pilot) ?? {}) as Record<string, unknown>;
+    const pilot = {
+      what: text(raw.pilotWhat) || text(nestedPilot.what),
+      measure: text(raw.pilotMeasure) || text(nestedPilot.measure),
+    };
     const previousRecommendationId = text(raw.previousRecommendationId);
     out.push({
       title,
@@ -617,7 +625,7 @@ export function normalizeRecommendations(
       proposedChange,
       whyNotSimpler: text(raw.whyNotSimpler) || undefined,
       nodeIds,
-      pilot: { what: text(pilot.what), measure: text(pilot.measure) },
+      pilot,
       openQuestions: textList(raw.openQuestions),
       risks: textList(raw.risks),
       frequency: parent.frequency,

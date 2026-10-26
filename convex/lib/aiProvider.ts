@@ -104,6 +104,13 @@ export type AITool = {
   name: string;
   description: string;
   inputSchema: AIJsonSchema;
+  /**
+   * Claude: constrain the tool input to the schema exactly. Without it, an
+   * unforced call can send a nested array as a JSON string. The schema must
+   * fit strict mode: `additionalProperties: false` on every object, and no
+   * numeric or length constraints.
+   */
+  strict?: boolean;
 };
 
 export type AIRequest = {
@@ -465,15 +472,18 @@ async function callFoundryClaude(
     timeout: request.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   });
 
-  const tools: Anthropic.Tool[] | undefined = request.tool
-    ? [
-        {
-          name: request.tool.name,
-          description: request.tool.description,
-          input_schema: request.tool.inputSchema as Anthropic.Tool.InputSchema,
-        },
-      ]
-    : undefined;
+  // SDK 0.72 predates the `strict` tool field; the API accepts it.
+  const tools: Array<Anthropic.Tool & { strict?: boolean }> | undefined =
+    request.tool
+      ? [
+          {
+            name: request.tool.name,
+            description: request.tool.description,
+            input_schema: request.tool.inputSchema as Anthropic.Tool.InputSchema,
+            ...(request.tool.strict ? { strict: true } : {}),
+          },
+        ]
+      : undefined;
 
   // SDK 0.72 predates `output_config.effort`; the API accepts it on Haiku 5.5.
   const params: Anthropic.MessageCreateParamsNonStreaming & {
