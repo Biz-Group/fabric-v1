@@ -83,7 +83,7 @@ export const TOKEN_RATES: Readonly<Record<string, TokenRate>> = {
     },
   },
 
-  // Haiku 4.5 (retired here 2026-10-08): $1.00 / $5.00 per MTok. Kept so rows
+  // Haiku 4.5 (prod moved to 5.5 on 2026-10-26): $1.00 / $5.00 per MTok. Kept so rows
   // written before the switch still resolve.
   "foundry-claude:foundry:claude-haiku-4-5@2": {
     input: 1.0,
