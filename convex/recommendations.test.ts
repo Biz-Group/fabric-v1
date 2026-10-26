@@ -504,6 +504,43 @@ describe("recommendation runs", () => {
   });
 });
 
+describe("recommendation backfill", () => {
+  test("a backfill started ahead of time waits for its start time", async () => {
+    const t = harness();
+    const startAt = Date.now() + 6 * 60 * 60 * 1000;
+
+    const result = await t.mutation(
+      internal.recommendations.startRecommendationBackfill,
+      { delayMs: 90_000, startAt },
+    );
+
+    expect(result).toMatchObject({ started: true, startsAt: startAt });
+    const jobs = await t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").collect(),
+    );
+    const step = jobs.find((job) => job.name.includes("stepRecommendationBackfill"));
+    expect(step?.scheduledTime).toBe(startAt);
+    expect(
+      await t.query(internal.recommendations.getRecommendationBackfillStatus, {}),
+    ).toMatchObject({ status: "running", startsAt: startAt, scheduled: 0 });
+  });
+
+  test("pausing before the start time means the first step does nothing", async () => {
+    const t = harness();
+    const { backfillId } = await t.mutation(
+      internal.recommendations.startRecommendationBackfill,
+      { startAt: Date.now() + 60_000 },
+    );
+    await t.mutation(internal.recommendations.pauseRecommendationBackfill, {});
+    await t.mutation(internal.recommendations.stepRecommendationBackfill, {
+      backfillId,
+    });
+    expect(
+      await t.query(internal.recommendations.getRecommendationBackfillStatus, {}),
+    ).toMatchObject({ status: "paused", scheduled: 0, skipped: 0 });
+  });
+});
+
 describe("tenant isolation for recommendations", () => {
   beforeEach(() => {
     process.env.AI_PROVIDER = "foundry";

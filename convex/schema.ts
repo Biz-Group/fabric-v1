@@ -1015,6 +1015,8 @@ export default defineSchema({
     scheduled: v.number(),
     skipped: v.number(),
     startedAt: v.number(),
+    /** When the first step runs, for a backfill started ahead of time. */
+    startsAt: v.optional(v.number()),
     updatedAt: v.number(),
   }),
 

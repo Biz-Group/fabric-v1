@@ -1210,6 +1210,8 @@ export const recommendationQualitySnapshot = internalQuery({
 //
 // Run by hand, dev first, then prod only on explicit go-ahead:
 //   npx convex run recommendations:startRecommendationBackfill '{"delayMs":90000}'
+//   # or start it later, e.g. overnight (epoch ms):
+//   npx convex run recommendations:startRecommendationBackfill '{"delayMs":90000,"startAt":1793048400000}'
 //   npx convex run recommendations:getRecommendationBackfillStatus
 //   npx convex run recommendations:pauseRecommendationBackfill
 //   npx convex run recommendations:resumeRecommendationBackfill
@@ -1223,13 +1225,22 @@ async function currentBackfill(ctx: { db: QueryCtx["db"] }) {
 }
 
 export const startRecommendationBackfill = internalMutation({
-  args: { delayMs: v.optional(v.number()) },
+  args: {
+    delayMs: v.optional(v.number()),
+    /**
+     * Epoch ms to begin at, for a run timed for a quiet period. Pausing before
+     * then cancels it: the first step finds the backfill paused and stops.
+     */
+    startAt: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const existing = await currentBackfill(ctx);
     if (existing && existing.status !== "done") {
-      return { backfillId: existing._id, started: false };
+      return { backfillId: existing._id, started: false, startsAt: existing.startsAt ?? null };
     }
     const now = Date.now();
+    const startsAt =
+      args.startAt !== undefined && args.startAt > now ? args.startAt : undefined;
     const backfillId = await ctx.db.insert("recommendationBackfills", {
       status: "running",
       cursor: null,
@@ -1237,14 +1248,15 @@ export const startRecommendationBackfill = internalMutation({
       scheduled: 0,
       skipped: 0,
       startedAt: now,
+      startsAt,
       updatedAt: now,
     });
-    await ctx.scheduler.runAfter(
-      0,
+    await ctx.scheduler.runAt(
+      startsAt ?? now,
       internal.recommendations.stepRecommendationBackfill,
       { backfillId },
     );
-    return { backfillId, started: true };
+    return { backfillId, started: true, startsAt: startsAt ?? null };
   },
 });
 
@@ -1331,6 +1343,7 @@ export const getRecommendationBackfillStatus = internalQuery({
     if (!backfill) return null;
     return {
       status: backfill.status,
+      startsAt: backfill.startsAt ?? null,
       scheduled: backfill.scheduled,
       skipped: backfill.skipped,
       startedAt: backfill.startedAt,
