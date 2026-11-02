@@ -137,6 +137,13 @@ describe("the catalog", () => {
       getTranscript: internal.askTools.conversations.getTranscript,
       getCoverage: internal.askTools.coverage.getCoverage,
       whatsNew: internal.askTools.coverage.whatsNew,
+      findHandoffs: internal.askTools.graph.findHandoffs,
+      findProcessesUsing: internal.askTools.graph.findProcessesUsing,
+      searchConversations: internal.askTools.conversations.searchConversations,
+      searchFabricHelp: internal.askTools.help.searchFabricHelp,
+      rankSignals: internal.askTools.signals.rankSignals,
+      listSystems: internal.askTools.systems.listSystems,
+      findSimilarWork: internal.askTools.systems.findSimilarWork,
     };
     for (const tool of ASK_TOOLS) {
       expect(getFunctionName(refs[tool.name] as never)).toBe(tool.executorPath);
@@ -168,6 +175,11 @@ describe("the catalog", () => {
       conversationId: "c",
       atSeconds: null,
       full: null,
+      party: "Finance",
+      tool: "Excel",
+      actor: null,
+      signals: ["friction", "bottleneck"],
+      limit: null,
     };
     for (const tool of ASK_TOOLS) {
       const label = tool.label(sample as never);

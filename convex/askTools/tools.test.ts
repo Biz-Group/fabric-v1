@@ -121,6 +121,10 @@ async function seedOrg(ctx: MutationCtx, orgId: string, label: string) {
     contributorName: `Ben ${label}`,
     status: "processing",
     clerkOrgId: orgId,
+    // convex-test tokenizes every row in a search query, so every row needs
+    // the searched fields (see verification-baseline notes).
+    title: `Returns intake ${label}`,
+    summary: "Not analysed yet.",
   });
   await ctx.db.insert("processFlows", {
     processId,
@@ -155,6 +159,19 @@ async function seedOrg(ctx: MutationCtx, orgId: string, label: string) {
       automationOpportunitiesSource: "ai",
       topBottlenecks: ["Build schedule"],
     },
+    clerkOrgId: orgId,
+  });
+  // A second flow sharing a system and a pain point, so duplication has a
+  // cross-process candidate. Its process still has no completed contribution.
+  await ctx.db.insert("processFlows", {
+    processId: emptyProcessId,
+    status: "ready",
+    stale: false,
+    generatedAt: NOW - 30 * 86_400_000,
+    conversationCount: 0,
+    nodes: [{ id: "log", label: "Re-key the return", category: "action", ...NODE }],
+    edges: [],
+    insights: { criticalPath: [], handoffCount: 0, toolCount: 1, automationOpportunities: [], topBottlenecks: [] },
     clerkOrgId: orgId,
   });
   return { functionId, departmentId, processId, emptyProcessId, conversationId };
@@ -194,6 +211,13 @@ function calls(s: Seeded): Record<string, Record<string, unknown>> {
     getTranscript: { conversationId: s.a.conversationId, atSeconds: null, query: null, full: null },
     getCoverage: { kind: null, id: null },
     whatsNew: { since: "2026-10-01", kind: null, id: null, cursor: null },
+    findHandoffs: { party: "Clerk" },
+    findProcessesUsing: { tool: "Excel", actor: null },
+    searchConversations: { query: "walkthrough", processId: null, since: null, cursor: null },
+    searchFabricHelp: { query: "process flow" },
+    rankSignals: { signals: ["friction", "bottleneck", "gap", "handoff", "manualRework"], kind: null, id: null, limit: null },
+    listSystems: { kind: null, id: null },
+    findSimilarWork: { kind: null, id: null },
   };
 }
 
@@ -208,6 +232,10 @@ function crossOrgCalls(s: Seeded): Record<string, Record<string, unknown>> {
     getTranscript: { conversationId: s.b.conversationId, atSeconds: null, query: null, full: null },
     getCoverage: { kind: "process", id: s.b.processId },
     whatsNew: { since: "2026-10-01", kind: "process", id: s.b.processId, cursor: null },
+    searchConversations: { query: "walkthrough", processId: s.b.processId, since: null, cursor: null },
+    rankSignals: { signals: ["friction"], kind: "process", id: s.b.processId, limit: null },
+    listSystems: { kind: "department", id: s.b.departmentId },
+    findSimilarWork: { kind: "function", id: s.b.functionId },
   };
 }
 

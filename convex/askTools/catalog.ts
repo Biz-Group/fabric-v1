@@ -14,7 +14,13 @@ import {
   getTranscriptInput,
   listConversations,
   listConversationsInput,
+  searchConversations,
+  searchConversationsInput,
 } from "./conversations";
+import { findHandoffs, findHandoffsInput, findProcessesUsing, findProcessesUsingInput } from "./graph";
+import { searchFabricHelp, searchFabricHelpInput } from "./help";
+import { rankSignals, rankSignalsInput, scopeInput, SIGNALS } from "./signals";
+import { findSimilarWork, listSystems } from "./systems";
 import { getCoverage, getCoverageInput, whatsNew, whatsNewInput } from "./coverage";
 import { DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS } from "./results";
 
@@ -207,6 +213,133 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     budgetTokens: DEFAULT_BUDGET_TOKENS,
     telemetryName: "whatsNew",
     label: (input) => `Checking what's new since ${input.since}`,
+  }),
+  defineTool({
+    name: "findHandoffs",
+    description:
+      "Find where work is handed to or from a party (a team, role or department, e.g. \"Finance\") across every process: flow steps where the work changes hands, and handoffs described in contributions.",
+    input: findHandoffsInput,
+    inputDescriptions: { party: "The team, role or department name, as people say it." },
+    access: "member",
+    executor: findHandoffs,
+    executorPath: "askTools/graph:findHandoffs",
+    output: "Processes with matching handoffs, each citing the steps or contributions.",
+    citationSources: ["flowNode", "conversation"],
+    budgetTokens: MAX_BUDGET_TOKENS,
+    telemetryName: "findHandoffs",
+    label: (input) => `Finding handoffs involving ${input.party}`,
+  }),
+  defineTool({
+    name: "findProcessesUsing",
+    description:
+      "Find processes and steps that use a tool or system, involve an actor or role, or both, across every process. For a ranked view of systems and their friction, use listSystems instead.",
+    input: findProcessesUsingInput,
+    inputDescriptions: {
+      tool: "The tool or system name, or null.",
+      actor: "The actor or role, or null. At least one of tool and actor is required.",
+    },
+    access: "member",
+    executor: findProcessesUsing,
+    executorPath: "askTools/graph:findProcessesUsing",
+    output: "Processes with matching steps or contributions.",
+    citationSources: ["flowNode", "conversation"],
+    budgetTokens: MAX_BUDGET_TOKENS,
+    telemetryName: "findProcessesUsing",
+    label: (input) =>
+      `Finding processes that involve ${[input.tool, input.actor].filter(Boolean).join(" and ") || "a tool"}`,
+  }),
+  defineTool({
+    name: "searchConversations",
+    description:
+      "Search completed contributions by title, contributor name or summary. Does not search transcript text; for what was said at a point in one contribution, use getTranscript with a query.",
+    input: searchConversationsInput,
+    inputDescriptions: {
+      query: "Words to find in titles, contributor names or summaries.",
+      processId: "Limit to this process, or null.",
+      since: "Only contributions recorded on or after this date (YYYY-MM-DD), or null.",
+      cursor: cursorDescription,
+    },
+    access: "member",
+    executor: searchConversations,
+    executorPath: "askTools/conversations:searchConversations",
+    output: "Up to 25 matching completed contributions.",
+    citationSources: ["conversation"],
+    budgetTokens: DEFAULT_BUDGET_TOKENS,
+    telemetryName: "searchConversations",
+    label: (input) => `Searching contributions for "${input.query}"`,
+  }),
+  defineTool({
+    name: "searchFabricHelp",
+    description:
+      "Search Fabric's product help: how to contribute, roles, reading overviews and flows, reports, admin tasks. Use it for any question about how Fabric works rather than about this organization's data.",
+    input: searchFabricHelpInput,
+    inputDescriptions: { query: "What the user wants to know how to do or understand." },
+    access: "member",
+    executor: searchFabricHelp,
+    executorPath: "askTools/help:searchFabricHelp",
+    output: "Up to 3 help articles written for the user's role.",
+    citationSources: ["help"],
+    budgetTokens: DEFAULT_BUDGET_TOKENS,
+    telemetryName: "searchFabricHelp",
+    label: (input) => `Searching Fabric help for "${input.query}"`,
+  }),
+  defineTool({
+    name: "rankSignals",
+    description: `Rank signals across every process in scope in one call, grouped by signal: ${SIGNALS.join(", ")}. Each item shows its score (3 × processes affected + 2 × distinct contributors + evidence weight) and where it occurs. manualRework is a keyword heuristic. For organization-wide questions, read the function overviews first.`,
+    input: rankSignalsInput,
+    inputDescriptions: {
+      signals: "1 to 7 signals to rank.",
+      kind: "Limit to this entity kind, or null for the whole organization.",
+      id: "The entity id, or null for the whole organization.",
+      limit: "Items per signal (default 8, at most 25), or null.",
+    },
+    access: "member",
+    executor: rankSignals,
+    executorPath: "askTools/signals:rankSignals",
+    output: "Ranked items per signal, each with its score inputs and up to 5 sources.",
+    citationSources: ["flowNode", "conversation", "finding", "entity"],
+    budgetTokens: MAX_BUDGET_TOKENS,
+    telemetryName: "rankSignals",
+    label: (input) =>
+      `Ranking ${input.signals.join(", ")} across ${input.kind === null ? "the organization" : `a ${input.kind}`}`,
+  }),
+  defineTool({
+    name: "listSystems",
+    description:
+      "List the systems and tools mentioned across the organization or one entity, ranked by evidenced friction: the processes and steps using each, mentions, pain points, manual re-keying and automation potential. Report evidence only; never recommend vendors or products.",
+    input: scopeInput,
+    inputDescriptions: {
+      kind: "Limit to this entity kind, or null for the whole organization.",
+      id: "The entity id, or null for the whole organization.",
+    },
+    access: "member",
+    executor: listSystems,
+    executorPath: "askTools/systems:listSystems",
+    output: "Up to 25 systems with usage and friction, each citing where it is used.",
+    citationSources: ["flowNode", "conversation"],
+    budgetTokens: MAX_BUDGET_TOKENS,
+    telemetryName: "listSystems",
+    label: (input) =>
+      `Listing the systems used across ${input.kind === null ? "the organization" : `a ${input.kind}`}`,
+  }),
+  defineTool({
+    name: "findSimilarWork",
+    description:
+      "Find possible duplication across processes: the same system on a similar step, the same handoff, or the same friction reported in several processes. Results are candidates to confirm, not conclusions; work described in different words is not detected.",
+    input: scopeInput,
+    inputDescriptions: {
+      kind: "Limit to this entity kind, or null for the whole organization.",
+      id: "The entity id, or null for the whole organization.",
+    },
+    access: "member",
+    executor: findSimilarWork,
+    executorPath: "askTools/systems:findSimilarWork",
+    output: "Up to 25 duplication candidates, each citing where it occurs.",
+    citationSources: ["flowNode", "conversation"],
+    budgetTokens: MAX_BUDGET_TOKENS,
+    telemetryName: "findSimilarWork",
+    label: (input) =>
+      `Looking for duplicated work across ${input.kind === null ? "the organization" : `a ${input.kind}`}`,
   }),
 ];
 

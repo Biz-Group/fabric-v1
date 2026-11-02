@@ -311,3 +311,83 @@ export const getTranscript = askToolQuery({
     });
   },
 });
+
+// ---- T12 searchConversations -------------------------------------------------
+
+/** Hits read per full-text index before merging. */
+const MAX_SEARCH_HITS = 50;
+
+export const searchConversationsInput = {
+  query: v.string(),
+  processId: v.union(v.string(), v.null()),
+  since: v.union(v.string(), v.null()),
+  cursor: v.union(v.string(), v.null()),
+};
+
+/**
+ * T12. Completed contributions whose title, contributor or summary match the
+ * query (FR-1.17, D34), through the existing full-text indexes, filtered to the
+ * viewer's org and to completed contributions on the index itself. Merged in
+ * index order (title, contributor, summary) and de-duplicated. Transcript text
+ * is not searched (Phase 2).
+ */
+export const searchConversations = askToolQuery({
+  input: searchConversationsInput,
+  handler: async (ctx, viewer, input) => {
+    const query = input.query.trim();
+    const builder = new ResultBuilder(DEFAULT_BUDGET_TOKENS);
+    if (!query) return builder.finish({ error: "query is empty" });
+
+    let processId: Id<"processes"> | null = null;
+    if (input.processId) {
+      const process = await getOrgEntity(ctx, viewer.orgId, "process", input.processId);
+      if (!process) return NOT_FOUND;
+      processId = process._id;
+    }
+
+    const indexes = [
+      ["search_title", "title"],
+      ["search_contributor", "contributorName"],
+      ["search_summary", "summary"],
+    ] as const;
+    const seen = new Set<Id<"conversations">>();
+    const hits: Doc<"conversations">[] = [];
+    for (const [index, field] of indexes) {
+      const rows = await ctx.db
+        .query("conversations")
+        .withSearchIndex(index, (q) => {
+          const base = q.search(field, query).eq("clerkOrgId", viewer.orgId).eq("status", "done");
+          return processId ? base.eq("processId", processId) : base;
+        })
+        .take(MAX_SEARCH_HITS);
+      for (const row of rows) {
+        if (seen.has(row._id)) continue;
+        seen.add(row._id);
+        hits.push(row);
+      }
+    }
+    const since = parseSince(input.since);
+    const matches = since === null ? hits : hits.filter((row) => row._creationTime >= since);
+
+    const offset = offsetFromCursor(input.cursor);
+    const names = new Map<Id<"processes">, string>();
+    for (const row of matches.slice(offset, offset + MAX_LIST_ITEMS)) {
+      const block = searchResult(
+        sources.conversation(row.processId, row._id),
+        conversationTitle(row) ?? `Contribution by ${row.contributorName}`,
+        `${describeConversation(row, await processName(ctx, names, row.processId))}${row.summary ? ` Summary: ${clipText(row.summary, 80)}` : ""}`,
+      );
+      if (!builder.add(block)) break;
+    }
+    const next = offset + builder.count;
+    return builder.finish(
+      {
+        query,
+        matches: matches.length,
+        ...(since !== null ? { recordedSince: isoDate(since) } : {}),
+        searched: "contribution titles, contributor names and summaries (not transcripts)",
+      },
+      next < matches.length ? cursorForOffset(next) : null,
+    );
+  },
+});
