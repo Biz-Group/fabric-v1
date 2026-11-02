@@ -25,6 +25,19 @@ import {
   summaryRunStateValidator,
 } from "./summaryV2";
 import { conversationFailureReasonValidator } from "./lib/conversationFailure";
+import {
+  askEntityRefValidator,
+  askErrorReasonValidator,
+  askMessagePartValidator,
+  askMessageStatusValidator,
+  askSharedToolCallValidator,
+  askSourceKindValidator,
+  askSuggestionCategoryValidator,
+  askThreadStatusValidator,
+  askToolTelemetryValidator,
+  askTurnQualityValidator,
+  askTurnUsageValidator,
+} from "./lib/askSchema";
 
 const rgbValidator = v.object({
   r: v.number(),
@@ -1278,4 +1291,150 @@ export default defineSchema({
       "operation",
       "model",
     ]),
+
+  // ---- AskFabric (docs/askfabric-prd.md §4.5) -----------------------------
+  // Every table carries `clerkOrgId` and `userId`: a thread belongs to one
+  // user in one org, and there is no admin read path to its content (D12).
+
+  askThreads: defineTable({
+    clerkOrgId: v.string(),
+    userId: v.id("users"),
+    title: v.string(),
+    status: askThreadStatusValidator,
+    // Set while pinned; at most 10 pinned threads per user (FR-3.3).
+    pinnedAt: v.optional(v.number()),
+    lastMessageAt: v.number(),
+    // The page the thread was started from ("Ask about this"); a reference
+    // only, re-validated against the viewer on every turn (FR-4.2).
+    contextRef: v.optional(askEntityRefValidator),
+  })
+    // The thread list: one status at a time, newest activity first (FR-3.2).
+    // Its (org, user) prefix also drives member-removal deletion (FR-3.6).
+    .index("by_clerkOrgId_and_userId_and_status_and_lastMessageAt", [
+      "clerkOrgId",
+      "userId",
+      "status",
+      "lastMessageAt",
+    ])
+    .index("by_clerkOrgId_and_userId_and_pinnedAt", [
+      "clerkOrgId",
+      "userId",
+      "pinnedAt",
+    ])
+    .searchIndex("search_title", {
+      searchField: "title",
+      filterFields: ["clerkOrgId", "userId", "status"],
+    }),
+
+  askMessages: defineTable({
+    threadId: v.id("askThreads"),
+    clerkOrgId: v.string(),
+    userId: v.id("users"),
+    role: v.union(v.literal("user"), v.literal("assistant")),
+    // A user message is one text part; an assistant message streams its
+    // reasoning, tool and text parts in order (FR-2.3).
+    parts: v.array(askMessagePartValidator),
+    // User messages only: what the user pointed at, as references.
+    contextRef: v.optional(askEntityRefValidator),
+    mentions: v.optional(v.array(askEntityRefValidator)),
+    // Assistant messages only.
+    status: v.optional(askMessageStatusValidator),
+    cancelRequested: v.optional(v.boolean()),
+    errorReason: v.optional(askErrorReasonValidator),
+    // System prompt version, so eval reports and regressions tie to it (Q4).
+    promptVersion: v.optional(v.string()),
+    // The metered model, e.g. `foundry:claude-sonnet-5-5@2`.
+    model: v.optional(v.string()),
+    usage: v.optional(askTurnUsageValidator),
+    toolTelemetry: v.optional(v.array(askToolTelemetryValidator)),
+    quality: v.optional(askTurnQualityValidator),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_threadId", ["threadId"])
+    // The watchdog's scan for turns stuck in `streaming` (FR-2.11).
+    .index("by_status", ["status"]),
+
+  askCitations: defineTable({
+    messageId: v.id("askMessages"),
+    threadId: v.id("askThreads"),
+    clerkOrgId: v.string(),
+    userId: v.id("users"),
+    // The chip number in the answer; repeated sources share one (FR-5.1).
+    ordinal: v.number(),
+    // The `search_result` source string, e.g. `fabric:finding/process/…`.
+    source: v.string(),
+    sourceKind: askSourceKindValidator,
+    sourceEntityId: v.string(),
+    title: v.string(),
+    // Cleared when the source entity is hard-deleted (FR-9.7).
+    citedText: v.optional(v.string()),
+  })
+    .index("by_messageId", ["messageId"])
+    // The final citation sweep after a thread is deleted (FR-2.12).
+    .index("by_threadId", ["threadId"])
+    .index("by_clerkOrgId_and_sourceKind_and_sourceEntityId", [
+      "clerkOrgId",
+      "sourceKind",
+      "sourceEntityId",
+    ]),
+
+  // Precomputed starter prompts (FR-6). No model call builds them.
+  askSuggestions: defineTable({
+    clerkOrgId: v.string(),
+    // Unset for the org-level default set shown on a first visit (FR-6.3).
+    userId: v.optional(v.id("users")),
+    prompts: v.array(
+      v.object({ text: v.string(), category: askSuggestionCategoryValidator }),
+    ),
+    // Keys of the signals the prompts were built from, so a recompute can tell
+    // whether anything changed.
+    signals: v.array(v.string()),
+    generatedAt: v.number(),
+    lastVisitedAt: v.optional(v.number()),
+    // The visit before `lastVisitedAt`, for "since your last visit" prompts.
+    previousVisitedAt: v.optional(v.number()),
+  })
+    .index("by_clerkOrgId_and_userId", ["clerkOrgId", "userId"])
+    // Recomputes run only for users who visited in the last 30 days.
+    .index("by_clerkOrgId_and_lastVisitedAt", ["clerkOrgId", "lastVisitedAt"]),
+
+  askFeedback: defineTable({
+    messageId: v.id("askMessages"),
+    threadId: v.id("askThreads"),
+    clerkOrgId: v.string(),
+    userId: v.id("users"),
+    rating: v.union(v.literal("up"), v.literal("down")),
+  })
+    .index("by_messageId", ["messageId"])
+    .index("by_threadId", ["threadId"])
+    // Thumbs counts for the admin usage card (FR-8.3).
+    .index("by_clerkOrgId", ["clerkOrgId"]),
+
+  // A thumbs-down exchange the user chose to share with the Fabric team (D20).
+  // A snapshot: no raw tool results, which never outlive the turn (FR-7.2).
+  askSharedExchanges: defineTable({
+    clerkOrgId: v.string(),
+    userId: v.id("users"),
+    threadId: v.id("askThreads"),
+    messageId: v.id("askMessages"),
+    question: v.string(),
+    answer: v.string(),
+    reasoning: v.array(v.string()),
+    citations: v.array(
+      v.object({
+        source: v.string(),
+        title: v.string(),
+        citedText: v.optional(v.string()),
+      }),
+    ),
+    toolCalls: v.array(askSharedToolCallValidator),
+    note: v.optional(v.string()),
+    sharedAt: v.number(),
+    // 90 days after sharing (D38).
+    expiresAt: v.number(),
+  })
+    .index("by_threadId", ["threadId"])
+    .index("by_messageId", ["messageId"])
+    .index("by_clerkOrgId_and_userId", ["clerkOrgId", "userId"])
+    .index("by_expiresAt", ["expiresAt"]),
 });

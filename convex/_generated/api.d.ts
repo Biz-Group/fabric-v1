@@ -9,6 +9,7 @@
  */
 
 import type * as aiUsage from "../aiUsage.js";
+import type * as ask from "../ask.js";
 import type * as cleanup from "../cleanup.js";
 import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
@@ -24,6 +25,8 @@ import type * as lib_aiPromptSafety from "../lib/aiPromptSafety.js";
 import type * as lib_aiProvider from "../lib/aiProvider.js";
 import type * as lib_aiUsageMeter from "../lib/aiUsageMeter.js";
 import type * as lib_aiUsageRollup from "../lib/aiUsageRollup.js";
+import type * as lib_askFabricFeature from "../lib/askFabricFeature.js";
+import type * as lib_askSchema from "../lib/askSchema.js";
 import type * as lib_audioPlaybackToken from "../lib/audioPlaybackToken.js";
 import type * as lib_audioRange from "../lib/audioRange.js";
 import type * as lib_audioUpload from "../lib/audioUpload.js";
@@ -40,9 +43,11 @@ import type * as lib_elevenLabsConversation from "../lib/elevenLabsConversation.
 import type * as lib_flowQuality from "../lib/flowQuality.js";
 import type * as lib_flowStages from "../lib/flowStages.js";
 import type * as lib_hierarchyOverviewV2 from "../lib/hierarchyOverviewV2.js";
+import type * as lib_insightsDerivations from "../lib/insightsDerivations.js";
 import type * as lib_memberProfile from "../lib/memberProfile.js";
 import type * as lib_onboarding from "../lib/onboarding.js";
 import type * as lib_orgAuth from "../lib/orgAuth.js";
+import type * as lib_orgRollout from "../lib/orgRollout.js";
 import type * as lib_processOverviewV2 from "../lib/processOverviewV2.js";
 import type * as lib_recommendationReconcile from "../lib/recommendationReconcile.js";
 import type * as lib_recommendationScoring from "../lib/recommendationScoring.js";
@@ -85,6 +90,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   aiUsage: typeof aiUsage;
+  ask: typeof ask;
   cleanup: typeof cleanup;
   conversations: typeof conversations;
   crons: typeof crons;
@@ -100,6 +106,8 @@ declare const fullApi: ApiFromModules<{
   "lib/aiProvider": typeof lib_aiProvider;
   "lib/aiUsageMeter": typeof lib_aiUsageMeter;
   "lib/aiUsageRollup": typeof lib_aiUsageRollup;
+  "lib/askFabricFeature": typeof lib_askFabricFeature;
+  "lib/askSchema": typeof lib_askSchema;
   "lib/audioPlaybackToken": typeof lib_audioPlaybackToken;
   "lib/audioRange": typeof lib_audioRange;
   "lib/audioUpload": typeof lib_audioUpload;
@@ -116,9 +124,11 @@ declare const fullApi: ApiFromModules<{
   "lib/flowQuality": typeof lib_flowQuality;
   "lib/flowStages": typeof lib_flowStages;
   "lib/hierarchyOverviewV2": typeof lib_hierarchyOverviewV2;
+  "lib/insightsDerivations": typeof lib_insightsDerivations;
   "lib/memberProfile": typeof lib_memberProfile;
   "lib/onboarding": typeof lib_onboarding;
   "lib/orgAuth": typeof lib_orgAuth;
+  "lib/orgRollout": typeof lib_orgRollout;
   "lib/processOverviewV2": typeof lib_processOverviewV2;
   "lib/recommendationReconcile": typeof lib_recommendationReconcile;
   "lib/recommendationScoring": typeof lib_recommendationScoring;

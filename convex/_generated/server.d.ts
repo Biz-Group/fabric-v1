@@ -30,6 +30,10 @@ import type { DataModel } from "./dataModel.js";
 type Env = {
   readonly CONVEX_CLOUD_URL: string;
   readonly CONVEX_SITE_URL: string;
+  readonly ASKFABRIC: string | undefined;
+  readonly ASKFABRIC_EVAL_DEPLOYMENTS: string | undefined;
+  readonly ASKFABRIC_FOUNDRY_DEPLOYMENT: string | undefined;
+  readonly ASKFABRIC_MODEL: string | undefined;
   readonly FOUNDRY_API_KEY: string | undefined;
   readonly FOUNDRY_CLAUDE_DEPLOYMENT: string | undefined;
   readonly FOUNDRY_ENDPOINT: string | undefined;

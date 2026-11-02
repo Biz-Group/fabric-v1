@@ -16,7 +16,7 @@
  */
 
 /** Bump on any rate change. Rows record the version they were priced at. */
-export const PRICE_VERSION = "2026-10-08";
+export const PRICE_VERSION = "2026-11-02";
 
 /**
  * Recorded instead of a version when no rate is known for a model. Such rows
@@ -90,6 +90,27 @@ export const TOKEN_RATES: Readonly<Record<string, TokenRate>> = {
     output: 5.0,
     cachedRead: 0.1,
     cacheWrite: 1.25,
+    inputIncludesCached: false,
+  },
+
+  // AskFabric (D46): Sonnet 5.5, $2.00 / $10.00 per MTok, cache reads $0.20,
+  // 5-minute cache writes 1.25x. Usage is passed through to the client, so
+  // these rows are the billing basis.
+  "foundry-claude:foundry:claude-sonnet-5-5@2": {
+    input: 2.0,
+    output: 10.0,
+    cachedRead: 0.2,
+    cacheWrite: 2.5,
+    inputIncludesCached: false,
+  },
+
+  // AskFabric's dev eval judge (D48): Opus 5.5, $4.00 / $20.00 per MTok,
+  // cache reads $0.20 (0.05x on this model), 5-minute cache writes 1.25x.
+  "foundry-claude:foundry:claude-opus-5-5@2": {
+    input: 4.0,
+    output: 20.0,
+    cachedRead: 0.2,
+    cacheWrite: 5.0,
     inputIncludesCached: false,
   },
 

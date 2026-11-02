@@ -1,3 +1,4 @@
+import { v } from "convex/values";
 import { QueryCtx, MutationCtx, ActionCtx } from "../_generated/server";
 import { Doc, Id } from "../_generated/dataModel";
 import { authError } from "./authErrors";
@@ -64,6 +65,95 @@ export function isActiveMembership(
 }
 
 /**
+ * A server-resolved identity for work that runs without an auth token, such as
+ * a scheduled action. Only ever built from `requireOrgMember`'s result and
+ * passed to internal functions, so a client can never supply one.
+ */
+export type OrgViewer = { tokenIdentifier: string; orgId: string };
+
+export const orgViewerValidator = v.object({
+  tokenIdentifier: v.string(),
+  orgId: v.string(),
+});
+
+export type ResolvedViewer = {
+  tokenIdentifier: string;
+  orgId: string;
+  user: Doc<"users">;
+  membership: Doc<"memberships">;
+  role: Role;
+};
+
+type ViewerLookup =
+  | { ok: true; viewer: ResolvedViewer }
+  | { ok: false; code: "NOT_MEMBER" | "REMOVED"; message: string };
+
+async function lookupOrgViewer(
+  ctx: QueryCtx | MutationCtx,
+  { tokenIdentifier, orgId }: OrgViewer,
+): Promise<ViewerLookup> {
+  const user = await ctx.db
+    .query("users")
+    .withIndex("by_tokenIdentifier", (q) =>
+      q.eq("tokenIdentifier", tokenIdentifier),
+    )
+    .unique();
+  if (!user) {
+    return { ok: false, code: "NOT_MEMBER", message: "User record not found" };
+  }
+  if (user.deletedAt !== undefined) {
+    return { ok: false, code: "REMOVED", message: "User record not found" };
+  }
+
+  const membership = await ctx.db
+    .query("memberships")
+    .withIndex("by_tokenIdentifier_and_clerkOrgId", (q) =>
+      q.eq("tokenIdentifier", tokenIdentifier).eq("clerkOrgId", orgId),
+    )
+    .unique();
+  if (!isActiveMembership(membership)) {
+    // A tombstoned row means an admin is removing this member right now.
+    return {
+      ok: false,
+      code: membership ? "REMOVED" : "NOT_MEMBER",
+      message: "Not a member of this organization",
+    };
+  }
+
+  return {
+    ok: true,
+    viewer: { tokenIdentifier, orgId, user, membership, role: membership.role },
+  };
+}
+
+/**
+ * The shared resolver: maps a viewer to its active user, membership and role
+ * with the same lookup and `isActiveMembership` rule as `requireOrgMember`.
+ * Returns null when the viewer is not (or no longer) an active member.
+ */
+export async function resolveOrgViewer(
+  ctx: QueryCtx | MutationCtx,
+  viewer: OrgViewer,
+): Promise<ResolvedViewer | null> {
+  const found = await lookupOrgViewer(ctx, viewer);
+  return found.ok ? found.viewer : null;
+}
+
+/**
+ * `requireOrgMember` for internal functions that receive a viewer instead of
+ * an auth token. Re-resolves membership on every call, so a member removed
+ * mid-task loses access at their next read.
+ */
+export async function requireOrgViewer(
+  ctx: QueryCtx | MutationCtx,
+  viewer: OrgViewer,
+): Promise<ResolvedViewer> {
+  const found = await lookupOrgViewer(ctx, viewer);
+  if (!found.ok) throw authError(found.code, found.message);
+  return found.viewer;
+}
+
+/**
  * Resolves identity + Fabric membership for the caller's active Clerk org.
  * Throws if not authenticated, no active org, user record missing, or no
  * membership row for that org. No platformRole bypass — super-admins access
@@ -78,30 +168,10 @@ export async function requireOrgMember(
   const { orgId, orgSlug } = getActiveOrgClaims(identity);
   if (!orgId) throw authError("NO_ACTIVE_ORG", "No active organization");
 
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_tokenIdentifier", (q) =>
-      q.eq("tokenIdentifier", identity.tokenIdentifier),
-    )
-    .unique();
-  if (!user) throw authError("NOT_MEMBER", "User record not found");
-  if (user.deletedAt !== undefined) {
-    throw authError("REMOVED", "User record not found");
-  }
-
-  const membership = await ctx.db
-    .query("memberships")
-    .withIndex("by_tokenIdentifier_and_clerkOrgId", (q) =>
-      q.eq("tokenIdentifier", identity.tokenIdentifier).eq("clerkOrgId", orgId),
-    )
-    .unique();
-  if (!isActiveMembership(membership)) {
-    // A tombstoned row means an admin is removing this member right now.
-    throw authError(
-      membership ? "REMOVED" : "NOT_MEMBER",
-      "Not a member of this organization",
-    );
-  }
+  const { user, membership } = await requireOrgViewer(ctx, {
+    tokenIdentifier: identity.tokenIdentifier,
+    orgId,
+  });
 
   return {
     tokenIdentifier: identity.tokenIdentifier,

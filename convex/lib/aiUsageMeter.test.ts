@@ -5,6 +5,7 @@ import {
   PROVIDER_REPORTED_VERSION,
   buildCompletionUsageEvent,
   buildVoiceUsageEvent,
+  meteredStream,
   recordAgentConversationUsage,
   resetDeploymentLabelWarning,
   resolveDeploymentLabel,
@@ -380,5 +381,111 @@ describe("resolveDeploymentLabel", () => {
     resolveDeploymentLabel();
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
+  });
+});
+
+describe("meteredStream", () => {
+  function captureCtx() {
+    const written: Record<string, unknown>[] = [];
+    const ctx = {
+      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+        written.push(args);
+      },
+    } as unknown as Parameters<typeof meteredStream>[0];
+    return { ctx, written };
+  }
+
+  const TURN_ATTRIBUTION: UsageAttribution = {
+    clerkOrgId: "org_123",
+    entityType: "askThread",
+    entityId: "thread_1",
+    actorUserId: "user_xyz",
+    runId: "message_1",
+  };
+
+  function meta(stepIndex: number) {
+    return {
+      operation: "askfabric.turn",
+      provider: "foundry-claude",
+      model: "foundry:claude-sonnet-5-5@2",
+      providerDeployment: "askfabric-claude-sonnet-5-5",
+      stepIndex,
+    };
+  }
+
+  test("writes one priced row per call of a scripted turn, with cache tokens", async () => {
+    const { ctx, written } = captureCtx();
+    const steps = [
+      { inputTokens: 99, outputTokens: 166, cachedReadTokens: 0, cacheWriteTokens: 1_098 },
+      { inputTokens: 2_154, outputTokens: 91, cachedReadTokens: 1_098, cacheWriteTokens: 1_888 },
+      { inputTokens: 3_714, outputTokens: 1_008, cachedReadTokens: 1_888, cacheWriteTokens: 0 },
+    ];
+
+    for (const [index, usage] of steps.entries()) {
+      await meteredStream(ctx, TURN_ATTRIBUTION, meta(index), async () => ({
+        usage,
+        finishReason: index < 2 ? "tool_use" : "end_turn",
+        requestId: `req_${index}`,
+      }));
+    }
+
+    expect(written).toHaveLength(3);
+    expect(written.map((row) => row.operation)).toEqual([
+      "askfabric.turn",
+      "askfabric.turn",
+      "askfabric.turn",
+    ]);
+    expect(written.every((row) => row.runId === "message_1")).toBe(true);
+    expect(written[1]).toMatchObject({
+      status: "ok",
+      provider: "foundry-claude",
+      model: "foundry:claude-sonnet-5-5@2",
+      providerDeployment: "askfabric-claude-sonnet-5-5",
+      inputTokens: 2_154,
+      cachedReadTokens: 1_098,
+      cacheWriteTokens: 1_888,
+      // 2154 × $2 + 91 × $10 + 1098 × $0.20 + 1888 × $2.50 per MTok.
+      costMicroUsd: Math.round(2_154 * 2 + 91 * 10 + 1_098 * 0.2 + 1_888 * 2.5),
+      priceVersion: PRICE_VERSION,
+      finishReason: "tool_use",
+      requestId: "req_1",
+    });
+    expect(String(written[1].idempotencyKey)).toContain(":message_1:1:");
+    expect(new Set(written.map((row) => row.idempotencyKey)).size).toBe(3);
+  });
+
+  test("marks a call that hit max_tokens as truncated", async () => {
+    const { ctx, written } = captureCtx();
+    await meteredStream(ctx, TURN_ATTRIBUTION, meta(0), async () => ({
+      usage: { inputTokens: 10, outputTokens: 16_000 },
+      finishReason: "max_tokens",
+      requestId: null,
+    }));
+    expect(written[0].status).toBe("truncated");
+  });
+
+  test("records a stopped call with the usage seen so far, and re-throws", async () => {
+    const { ctx, written } = captureCtx();
+    const aborted = new Error("Request was aborted.");
+    aborted.name = "APIUserAbortError";
+
+    await expect(
+      meteredStream(
+        ctx,
+        TURN_ATTRIBUTION,
+        { ...meta(2), partialUsage: () => ({ inputTokens: 500, outputTokens: 0, cachedReadTokens: 4_000 }) },
+        async () => {
+          throw aborted;
+        },
+      ),
+    ).rejects.toBe(aborted);
+
+    expect(written[0]).toMatchObject({
+      status: "failed",
+      errorType: "APIUserAbortError",
+      inputTokens: 500,
+      cachedReadTokens: 4_000,
+      costMicroUsd: Math.round(500 * 2 + 4_000 * 0.2),
+    });
   });
 });

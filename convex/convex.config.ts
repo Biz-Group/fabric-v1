@@ -20,6 +20,19 @@ const app = defineApp({
     // Clerk organization allowlist for staged rollout on the shared prod
     // deployment. See lib/summaryV2Feature.ts.
     SUMMARY_V2: v.optional(v.string()),
+    // AskFabric rollout switch, same three forms as SUMMARY_V2. See
+    // lib/askFabricFeature.ts.
+    ASKFABRIC: v.optional(v.string()),
+    // AskFabric's own Foundry deployment and its canonical model ID (for
+    // example `askfabric-claude-sonnet-5-5` and `claude-sonnet-5-5`). It reuses
+    // FOUNDRY_ENDPOINT and FOUNDRY_API_KEY but never the pipeline deployment:
+    // a missing value makes AskFabric unavailable instead of falling back.
+    ASKFABRIC_FOUNDRY_DEPLOYMENT: v.optional(v.string()),
+    ASKFABRIC_MODEL: v.optional(v.string()),
+    // Dev only: comma-separated `deployment=model` pairs the eval harness may
+    // run against, so each run is priced at its own model's rate. Production
+    // never reads it.
+    ASKFABRIC_EVAL_DEPLOYMENTS: v.optional(v.string()),
     // Tags every AI usage ledger row with the deployment that produced it, so
     // the platform console can show prod and dev in one merged view.
     // Unset defaults to "dev" — deliberately the safe direction: an

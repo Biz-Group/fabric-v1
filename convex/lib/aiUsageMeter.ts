@@ -14,6 +14,7 @@ import {
   microUsdFromUsd,
   priceTokenUsage,
   priceVoiceUsage,
+  type TokenUsageForPricing,
 } from "./aiPricing";
 import { agentModelLabel, parseAgentCharging } from "./elevenLabsCharging";
 
@@ -418,6 +419,156 @@ export async function recordAgentConversationUsage(
 
     requestId: args.elevenlabsConversationId,
   });
+}
+
+/** What a streamed call reports once it ends: the final message's fields. */
+export type StreamedCallResult = {
+  usage?: TokenUsageForPricing;
+  finishReason: string | null;
+  requestId: string | null;
+};
+
+export type StreamedCallMeta = {
+  operation: string;
+  provider: string;
+  /** The metered model, matching a `TOKEN_RATES` key. */
+  model: string;
+  providerDeployment: string;
+  /**
+   * The call's position in a multi-call run (an AskFabric turn's model step).
+   * Rows in one run share `runId` and run in sequence, so `createdAt` order is
+   * the step order; the index also goes into the idempotency key. It is not a
+   * ledger field because prod's ingest validator would reject forwarded dev
+   * rows carrying a field it doesn't know yet.
+   */
+  stepIndex?: number;
+  /**
+   * Usage seen before a failure or abort, e.g. the input tokens reported at
+   * `message_start`. Recorded on the failed row; omitted, the row reads zero.
+   */
+  partialUsage?: () => TokenUsageForPricing | undefined;
+};
+
+type StreamedEventInput = {
+  attribution: UsageAttribution;
+  meta: StreamedCallMeta;
+  deployment: DeploymentLabel;
+  idempotencyKey: string;
+  startedAt: number;
+  endedAt: number;
+  result?: StreamedCallResult;
+  error?: unknown;
+};
+
+/** Pure: turns one streamed call into a ledger row. */
+export function buildStreamedUsageEvent(
+  input: StreamedEventInput,
+): AiUsageEvent {
+  const { attribution, meta, result, error } = input;
+  const usage =
+    error === undefined ? result?.usage : meta.partialUsage?.() ?? undefined;
+  const status: AiUsageEvent["status"] =
+    error !== undefined
+      ? "failed"
+      : isTokenLimitFinishReason(result?.finishReason ?? null)
+        ? "truncated"
+        : "ok";
+  const priced = usage
+    ? priceTokenUsage(meta.provider, meta.model, usage)
+    : { costMicroUsd: 0, priceVersion: PRICE_VERSION };
+  const failure = error === undefined ? undefined : errorDetails(error);
+
+  return {
+    deployment: input.deployment,
+    idempotencyKey: input.idempotencyKey,
+    createdAt: input.startedAt,
+
+    clerkOrgId: attribution.clerkOrgId,
+    tenantName: attribution.tenantName,
+
+    unit: "tokens",
+    operation: meta.operation,
+    provider: meta.provider,
+    model: meta.model,
+    providerDeployment: meta.providerDeployment,
+    status,
+
+    inputTokens: usage?.inputTokens,
+    outputTokens: usage?.outputTokens,
+    cachedReadTokens: usage?.cachedReadTokens,
+    cacheWriteTokens: usage?.cacheWriteTokens,
+    tokenClass: "fabric-synthesis",
+
+    ...priced,
+    costSource: "computed",
+
+    entityType: attribution.entityType,
+    entityId: attribution.entityId,
+    entityLabel: attribution.entityLabel,
+    actorUserId: attribution.actorUserId,
+    actorName: attribution.actorName,
+    runId: attribution.runId,
+
+    latencyMs: input.endedAt - input.startedAt,
+    finishReason: result?.finishReason ?? undefined,
+    requestId: result?.requestId ?? failure?.requestId,
+    errorType: failure?.errorType,
+  };
+}
+
+/**
+ * `meteredCompletion` for a call whose stream the caller drives itself (the
+ * AskFabric loop, FR-8.1). `run` streams the call and returns the final
+ * message's usage; one ledger row is recorded for either outcome, and a
+ * failure, including an abort, is re-thrown unchanged.
+ */
+export async function meteredStream<T extends StreamedCallResult>(
+  ctx: ActionCtx,
+  attribution: UsageAttribution,
+  meta: StreamedCallMeta,
+  run: () => Promise<T>,
+): Promise<T> {
+  const deployment = resolveDeploymentLabel();
+  const startedAt = Date.now();
+  const key = (requestId: string | null | undefined) =>
+    `${deployment}:${meta.operation}:${attribution.runId ?? "-"}:${
+      meta.stepIndex ?? 0
+    }:${startedAt}:${requestId ?? crypto.randomUUID()}`;
+
+  let result: T;
+  try {
+    result = await run();
+  } catch (error) {
+    await recordSafely(
+      ctx,
+      buildStreamedUsageEvent({
+        attribution,
+        meta,
+        deployment,
+        idempotencyKey: key(
+          error instanceof AIRequestError ? error.requestId : null,
+        ),
+        startedAt,
+        endedAt: Date.now(),
+        error,
+      }),
+    );
+    throw error;
+  }
+
+  await recordSafely(
+    ctx,
+    buildStreamedUsageEvent({
+      attribution,
+      meta,
+      deployment,
+      idempotencyKey: key(result.requestId),
+      startedAt,
+      endedAt: Date.now(),
+      result,
+    }),
+  );
+  return result;
 }
 
 /**
