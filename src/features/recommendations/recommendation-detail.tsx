@@ -41,7 +41,7 @@ import {
   type BriefOverview,
   composeOpportunityBrief,
 } from "@/features/automations/opportunity-brief";
-import type { FlowEdge, FlowNode } from "@/features/insights/insights-derivations";
+import type { FlowEdge, FlowNode } from "../../../convex/lib/insightsDerivations";
 import type { StatusTone } from "@/features/status/status-meta";
 import { composeChangePlan } from "./change-plan";
 import {

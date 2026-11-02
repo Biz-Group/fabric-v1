@@ -4,7 +4,7 @@ import {
   deriveHandoffs,
   deriveToolUsage,
   type ProcessFlow,
-} from "@/features/insights/insights-derivations";
+} from "../../../convex/lib/insightsDerivations";
 
 export type FlowSpotlightMode =
   "bottlenecks" | "handoffs" | "automation" | "tools";

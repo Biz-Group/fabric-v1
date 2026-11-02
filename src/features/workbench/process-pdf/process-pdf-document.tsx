@@ -30,7 +30,7 @@ import {
   type FlowNode,
   pluralize,
   uniqueStrings,
-} from "@/features/insights/insights-derivations";
+} from "../../../../convex/lib/insightsDerivations";
 
 // ---------------------------------------------------------------------------
 // Formatting

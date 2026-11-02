@@ -9,7 +9,7 @@ import {
   isNodeDescribed,
   type FlowNode,
   type ProcessFlow,
-} from "./insights-derivations";
+} from "./insightsDerivations";
 
 /**
  * These guard the hazard the staged pipeline introduces: a node awaiting or

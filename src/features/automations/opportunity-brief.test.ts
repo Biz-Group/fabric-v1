@@ -8,7 +8,7 @@ import {
 import type {
   FlowEdge,
   FlowNode,
-} from "@/features/insights/insights-derivations";
+} from "../../../convex/lib/insightsDerivations";
 
 /**
  * Fixtures mirror the shape of the real `Product Building` flow read out of the

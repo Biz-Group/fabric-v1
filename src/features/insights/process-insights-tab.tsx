@@ -66,7 +66,7 @@ import {
   getNodeMap,
   pluralize,
   uniqueStrings,
-} from "@/features/insights/insights-derivations";
+} from "../../../convex/lib/insightsDerivations";
 
 type ProcessInsightsTabProps = {
   processId: Id<"processes">;

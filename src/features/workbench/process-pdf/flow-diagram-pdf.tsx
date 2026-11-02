@@ -1,7 +1,7 @@
 import { Svg, Line, Polygon, Text, View } from "@react-pdf/renderer";
 import { CATEGORY_LABELS, CATEGORY_TONES, COLORS } from "./pdf-theme";
 import type { ProcessPdfData, StepNode } from "./build-process-pdf-data";
-import type { FlowEdge, FlowNode } from "@/features/insights/insights-derivations";
+import type { FlowEdge, FlowNode } from "../../../../convex/lib/insightsDerivations";
 
 // The flow is rendered as a clean vertical flowchart: full-width, legible node
 // cards connected by arrows, with branches/exceptions annotated. Unlike a

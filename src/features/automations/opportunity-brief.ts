@@ -19,7 +19,7 @@ import {
   isNodeDescribed,
   pluralize,
   uniqueStrings,
-} from "@/features/insights/insights-derivations";
+} from "../../../convex/lib/insightsDerivations";
 import { effectiveOpportunityConfidence } from "@/features/automations/opportunity-confidence";
 
 export type AutomationOpportunity = NonNullable<

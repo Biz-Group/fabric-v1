@@ -1,15 +1,27 @@
-import type { FunctionReturnType } from "convex/server";
-import type { api } from "../../../convex/_generated/api";
+import type { Doc } from "../_generated/dataModel";
 
 // Pure, presentation-agnostic derivations over a generated process flow.
-// Shared by the Insights tab (web cards) and the process PDF export so both
-// surfaces compute handoffs, tools, bottlenecks, automation candidates, etc.
-// from a single source of truth.
+// Shared by the Insights tab (web cards), the process PDF export and
+// AskFabric's flow tool, so every surface computes handoffs, tools,
+// bottlenecks, automation candidates and key findings from a single source of
+// truth.
 
-export type ProcessFlow = NonNullable<
-  FunctionReturnType<typeof api.processFlows.getProcessFlow>
->;
-export type FlowNode = ProcessFlow["nodes"][number];
+type FlowDoc = Doc<"processFlows">;
+
+/**
+ * A flow as `processFlows.getProcessFlow` returns it: the stored row with each
+ * node's detail status merged in. Typed from the schema rather than the
+ * query's return type so server code can import this module without a cycle
+ * through `api`.
+ */
+export type FlowNode = FlowDoc["nodes"][number] & {
+  detailStatus: Doc<"processFlowNodeDetails">["status"] | "ready" | "pending";
+  detailErrorMessage: string | undefined;
+};
+export type ProcessFlow = Omit<FlowDoc, "nodes" | "detailsStatus"> & {
+  detailsStatus: NonNullable<FlowDoc["detailsStatus"]> | "ready";
+  nodes: FlowNode[];
+};
 export type FlowEdge = ProcessFlow["edges"][number];
 export type Confidence = FlowNode["confidence"];
 export type AutomationPotential = FlowNode["automationPotential"];

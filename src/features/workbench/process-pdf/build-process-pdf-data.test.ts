@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { ProcessOverviewArtifactV2 } from "../../../../convex/summaryV2";
-import type { ProcessFlow } from "@/features/insights/insights-derivations";
+import type { ProcessFlow } from "../../../../convex/lib/insightsDerivations";
 import {
   buildProcessPdfData,
   type ProcessOverviewInput,

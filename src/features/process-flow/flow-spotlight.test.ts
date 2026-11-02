@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ProcessFlow } from "@/features/insights/insights-derivations";
+import type { ProcessFlow } from "../../../convex/lib/insightsDerivations";
 import { deriveFlowSpotlights, spotlightStatusText } from "./flow-spotlight";
 
 function createFlow(): ProcessFlow {

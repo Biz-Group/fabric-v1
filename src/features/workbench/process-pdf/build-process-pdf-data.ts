@@ -15,7 +15,7 @@ import {
   type HandoffItem,
   type ToolUsage,
   type HeavyArea,
-} from "@/features/insights/insights-derivations";
+} from "../../../../convex/lib/insightsDerivations";
 import { flowStage, isFlowRenderable, type FlowStage } from "@/lib/flow-status";
 import {
   DECISION_LABEL,

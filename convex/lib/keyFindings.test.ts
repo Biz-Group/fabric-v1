@@ -5,7 +5,7 @@ import {
   MAX_KEY_FINDINGS,
   type FlowNode,
   type ProcessFlow,
-} from "./insights-derivations";
+} from "./insightsDerivations";
 
 function node(overrides: Partial<FlowNode> & { id: string }): FlowNode {
   return {

@@ -31,7 +31,7 @@ import {
   flowHasIncompleteDetails,
   flowStage,
 } from "@/lib/flow-status";
-import { pluralize } from "@/features/insights/insights-derivations";
+import { pluralize } from "../../../convex/lib/insightsDerivations";
 import { STATUS_TONE_SURFACE, type StatusTone } from "@/features/status/status-meta";
 import { useSummaryOverview } from "@/features/workbench/use-summary-overview";
 import { RecommendationDetail } from "./recommendation-detail";

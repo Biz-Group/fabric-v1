@@ -3,7 +3,7 @@ import type {
   AutomationPotential,
   Confidence,
   FlowNode,
-} from "@/features/insights/insights-derivations";
+} from "../../../../convex/lib/insightsDerivations";
 import type { OverviewState } from "@/features/overview/overview-view-model";
 import type { SummaryEvidenceLevel } from "../../../../convex/summaryV2";
 
