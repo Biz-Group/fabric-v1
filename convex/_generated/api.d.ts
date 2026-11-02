@@ -10,6 +10,16 @@
 
 import type * as aiUsage from "../aiUsage.js";
 import type * as ask from "../ask.js";
+import type * as askTools_catalog from "../askTools/catalog.js";
+import type * as askTools_conversations from "../askTools/conversations.js";
+import type * as askTools_coverage from "../askTools/coverage.js";
+import type * as askTools_executor from "../askTools/executor.js";
+import type * as askTools_flow from "../askTools/flow.js";
+import type * as askTools_hierarchy from "../askTools/hierarchy.js";
+import type * as askTools_overview from "../askTools/overview.js";
+import type * as askTools_registry from "../askTools/registry.js";
+import type * as askTools_results from "../askTools/results.js";
+import type * as askTools_scope from "../askTools/scope.js";
 import type * as cleanup from "../cleanup.js";
 import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
@@ -91,6 +101,16 @@ import type {
 declare const fullApi: ApiFromModules<{
   aiUsage: typeof aiUsage;
   ask: typeof ask;
+  "askTools/catalog": typeof askTools_catalog;
+  "askTools/conversations": typeof askTools_conversations;
+  "askTools/coverage": typeof askTools_coverage;
+  "askTools/executor": typeof askTools_executor;
+  "askTools/flow": typeof askTools_flow;
+  "askTools/hierarchy": typeof askTools_hierarchy;
+  "askTools/overview": typeof askTools_overview;
+  "askTools/registry": typeof askTools_registry;
+  "askTools/results": typeof askTools_results;
+  "askTools/scope": typeof askTools_scope;
   cleanup: typeof cleanup;
   conversations: typeof conversations;
   crons: typeof crons;

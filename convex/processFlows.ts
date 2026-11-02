@@ -1397,81 +1397,94 @@ export const deleteForProcess = internalMutation({
 // Public query: read the flow for a process
 // ---------------------------------------------------------------------------
 
+/**
+ * A process's flow with each node's detail merged in, as the workbench reads
+ * it. Shared with AskFabric's flow tool, which must see exactly this. Callers
+ * check that the process belongs to `orgId` first.
+ */
+export async function readProcessFlow(
+  ctx: QueryCtx,
+  orgId: string,
+  processId: Id<"processes">,
+) {
+  const flow = await ctx.db
+    .query("processFlows")
+    .withIndex("by_clerkOrgId_and_processId", (q) =>
+      q.eq("clerkOrgId", orgId).eq("processId", processId),
+    )
+    .first();
+  if (!flow) return null;
+
+  // A legacy single-call flow already carries its details inline. Absent
+  // `generationVersion` is the discriminator; every node reads as ready, and
+  // the shape returned is byte-for-byte what it was before staging existed.
+  if (
+    flow.generationVersion === undefined ||
+    flow.generationId === undefined
+  ) {
+    return {
+      ...flow,
+      detailsStatus: "ready" as const,
+      nodes: flow.nodes.map((node) => ({
+        ...node,
+        detailStatus: "ready" as const,
+        detailErrorMessage: undefined as string | undefined,
+      })),
+    };
+  }
+
+  // Staged flow: the aggregate row holds the topology with placeholder
+  // details, and the real details live in the child table scoped to this
+  // generation. Filtering on `generationId` is what stops a superseded run's
+  // rows from bleeding into the read.
+  const detailRows = await ctx.db
+    .query("processFlowNodeDetails")
+    .withIndex(
+      "by_clerkOrgId_and_processFlowId_and_generationId_and_nodeId",
+      (q) =>
+        q
+          .eq("clerkOrgId", orgId)
+          .eq("processFlowId", flow._id)
+          .eq("generationId", flow.generationId!),
+    )
+    .take(SOFT_MAX_NODES * 4);
+
+  const rowByNodeId = new Map(detailRows.map((row) => [row.nodeId, row]));
+
+  return {
+    ...flow,
+    detailsStatus: flow.detailsStatus ?? "pending",
+    nodes: flow.nodes.map((node) => {
+      const row = rowByNodeId.get(node.id);
+      // No row at all means the graph landed but this node was never seeded —
+      // report it as pending rather than silently as ready.
+      if (!row) {
+        return {
+          ...node,
+          detailStatus: "pending" as const,
+          detailErrorMessage: undefined as string | undefined,
+        };
+      }
+      return {
+        ...node,
+        ...(row.detail ?? {}),
+        detailStatus: row.status,
+        detailErrorMessage: row.errorMessage,
+      };
+    }),
+  };
+}
+
 export const getProcessFlow = query({
   args: { processId: v.id("processes") },
   handler: async (ctx, args) => {
     const caller = await requireOrgMember(ctx);
     const process = await ctx.db.get(args.processId);
     if (!process || process.clerkOrgId !== caller.orgId) return null;
-
-    const flow = await ctx.db
-      .query("processFlows")
-      .withIndex("by_clerkOrgId_and_processId", (q) =>
-        q.eq("clerkOrgId", caller.orgId).eq("processId", args.processId),
-      )
-      .first();
-    if (!flow) return null;
-
-    // A legacy single-call flow already carries its details inline. Absent
-    // `generationVersion` is the discriminator; every node reads as ready, and
-    // the shape returned is byte-for-byte what it was before staging existed.
-    if (
-      flow.generationVersion === undefined ||
-      flow.generationId === undefined
-    ) {
-      return {
-        ...flow,
-        detailsStatus: "ready" as const,
-        nodes: flow.nodes.map((node) => ({
-          ...node,
-          detailStatus: "ready" as const,
-          detailErrorMessage: undefined as string | undefined,
-        })),
-      };
-    }
-
-    // Staged flow: the aggregate row holds the topology with placeholder
-    // details, and the real details live in the child table scoped to this
-    // generation. Filtering on `generationId` is what stops a superseded run's
-    // rows from bleeding into the read.
-    const detailRows = await ctx.db
-      .query("processFlowNodeDetails")
-      .withIndex(
-        "by_clerkOrgId_and_processFlowId_and_generationId_and_nodeId",
-        (q) =>
-          q
-            .eq("clerkOrgId", caller.orgId)
-            .eq("processFlowId", flow._id)
-            .eq("generationId", flow.generationId!),
-      )
-      .take(SOFT_MAX_NODES * 4);
-
-    const rowByNodeId = new Map(detailRows.map((row) => [row.nodeId, row]));
-
-    return {
-      ...flow,
-      detailsStatus: flow.detailsStatus ?? "pending",
-      nodes: flow.nodes.map((node) => {
-        const row = rowByNodeId.get(node.id);
-        // No row at all means the graph landed but this node was never seeded —
-        // report it as pending rather than silently as ready.
-        if (!row) {
-          return {
-            ...node,
-            detailStatus: "pending" as const,
-            detailErrorMessage: undefined as string | undefined,
-          };
-        }
-        return {
-          ...node,
-          ...(row.detail ?? {}),
-          detailStatus: row.status,
-          detailErrorMessage: row.errorMessage,
-        };
-      }),
-    };
+    return await readProcessFlow(ctx, caller.orgId, args.processId);
   },
 });
+
 
 // ---------------------------------------------------------------------------
 // Internal action: the actual LLM call (expects clerkOrgId threaded through)

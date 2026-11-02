@@ -334,7 +334,7 @@ function overviewRefreshAvailable(
   return content.format !== "v2";
 }
 
-type OverviewSnapshot = {
+export type OverviewSnapshot = {
   owner: SummaryOwner;
   run: Doc<"summaryRuns"> | null;
   content: SummaryCompatibilityRead;
@@ -420,9 +420,10 @@ async function rollupHasReadableChild(
 /**
  * The one read behind both the overview surface and the rebuild gate, so the
  * disabled control and the refused mutation can never disagree about whether
- * an overview has anything left to build from.
+ * an overview has anything left to build from. AskFabric's overview tool reads
+ * through it too, so the agent sees exactly what the overview page shows.
  */
-async function readOverviewSnapshot(
+export async function readOverviewSnapshot(
   ctx: Pick<QueryCtx, "db">,
   orgId: string,
   entity: SummaryEntityRef,
