@@ -1,7 +1,7 @@
 [
   {
     "id": "intro",
-    "text": "[warm] Hi, and welcome to Fabric! [excited] In the next two minutes, I'll show you how Fabric turns everyday conversations about your work... into clear, living process maps."
+    "text": "[warm] Hi, and welcome to Fabric! [excited] In the next two minutes, I'll show you how Fabric turns everyday conversations about your work... into clear, living process maps, and practical ways to improve them."
   },
   {
     "id": "tree",
@@ -12,12 +12,12 @@
     "text": "Every process has its own page, [confident] and this is where it all starts. Hit Start AI interview, and Fabric's voice agent will talk you through how the work really gets done: the steps, the tools, the handoffs. [casual] Prefer to go solo? Record a voice note, or upload a recording you already have."
   },
   {
-    "id": "conversations",
-    "text": "Every interview lands in the Conversations tab, with the audio, an AI summary, and a full transcript you can read and replay."
+    "id": "contributions",
+    "text": "Every interview lands in the Contributions tab, with the audio, an AI summary, and a full transcript you can read and replay."
   },
   {
     "id": "overview",
-    "text": "[impressed] Now here's where it gets interesting. Fabric reads across every conversation and writes a single overview of the process. It shows where people agree, [thoughtful] where their accounts differ... and which sources back up each point. The more people you interview, the sharper the picture gets."
+    "text": "[impressed] Now here's where it gets interesting. Fabric reads across every contribution and writes a single overview of the process: the key facts up top, then the full story. [thoughtful] Further down, it shows where people agree, where their accounts differ... and which sources back up each point. The more people you interview, the sharper the picture gets."
   },
   {
     "id": "flow",
@@ -25,11 +25,11 @@
   },
   {
     "id": "insights",
-    "text": "Insights rolls it all up into the numbers: steps, handoffs, tools, decisions, and pain points, each one traced back to the evidence."
+    "text": "Insights starts with key findings: the places worth a closer look. Then it rolls everything up into the numbers: steps, handoffs, tools, decisions, and bottlenecks, each traced back to the evidence."
   },
   {
-    "id": "automations",
-    "text": "[excited] And finally, Automations. Fabric recommends where workflows and AI agents could take work off people's plates... and writes a ready-to-paste brief for Copilot Studio."
+    "id": "recommendations",
+    "text": "[excited] And finally, Recommendations: what to change, and why. Fabric suggests practical fixes, from a clear handover rule to a new workflow, each ranked by value and effort, and backed by what people actually said. [confident] Every recommendation comes with a small pilot to try... and a change plan you can copy and share with your team."
   },
   {
     "id": "outro",

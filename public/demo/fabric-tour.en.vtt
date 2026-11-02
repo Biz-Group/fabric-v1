@@ -1,181 +1,221 @@
 WEBVTT
 
 1
-00:00:01.280 --> 00:00:03.749
+00:00:01.280 --> 00:00:03.669
 Hi, and welcome to Fabric!
 
 2
-00:00:03.749 --> 00:00:04.960
+00:00:03.669 --> 00:00:04.880
 In the next two minutes,
 
 3
-00:00:04.960 --> 00:00:09.200
+00:00:04.880 --> 00:00:09.093
 I'll show you how Fabric turns everyday conversations about your work…
 
 4
-00:00:09.200 --> 00:00:11.770
-into clear, living process maps.
+00:00:09.093 --> 00:00:11.320
+into clear, living process maps,
 
 5
-00:00:12.577 --> 00:00:14.337
-This is your workspace.
+00:00:11.320 --> 00:00:13.530
+and practical ways to improve them.
 
 6
-00:00:14.337 --> 00:00:16.657
-On the left is the Process Tree:
+00:00:15.492 --> 00:00:17.252
+This is your workspace.
 
 7
-00:00:16.657 --> 00:00:19.627
-your organization, laid out as functions,
+00:00:17.252 --> 00:00:19.572
+On the left is the Process Tree:
 
 8
-00:00:19.697 --> 00:00:22.377
-departments, and the processes inside them.
+00:00:19.572 --> 00:00:22.542
+your organization, laid out as functions,
 
 9
-00:00:22.377 --> 00:00:24.537
-Click to expand any branch…
+00:00:22.612 --> 00:00:25.292
+departments, and the processes inside them.
 
 10
-00:00:24.537 --> 00:00:28.507
-or press Control K to jump straight to a process by name.
+00:00:25.292 --> 00:00:27.452
+Click to expand any branch…
 
 11
-00:00:29.075 --> 00:00:31.601
-Every process has its own page,
+00:00:27.452 --> 00:00:31.422
+or press Control K to jump straight to a process by name.
 
 12
-00:00:31.601 --> 00:00:33.915
-and this is where it all starts.
+00:00:31.990 --> 00:00:34.516
+Every process has its own page,
 
 13
-00:00:33.915 --> 00:00:35.635
-Hit Start AI interview,
+00:00:34.516 --> 00:00:36.830
+and this is where it all starts.
 
 14
-00:00:35.635 --> 00:00:39.715
-and Fabric's voice agent will talk you through how the work really gets done:
+00:00:36.830 --> 00:00:38.550
+Hit Start AI interview,
 
 15
-00:00:39.715 --> 00:00:41.275
-the steps, the tools,
+00:00:38.550 --> 00:00:42.630
+and Fabric's voice agent will talk you through how the work really gets done:
 
 16
-00:00:41.275 --> 00:00:42.492
-the handoffs.
+00:00:42.630 --> 00:00:44.190
+the steps, the tools,
 
 17
-00:00:42.492 --> 00:00:43.875
-Prefer to go solo?
+00:00:44.190 --> 00:00:45.407
+the handoffs.
 
 18
-00:00:43.875 --> 00:00:44.875
-Record a voice note,
+00:00:45.407 --> 00:00:46.790
+Prefer to go solo?
 
 19
-00:00:44.875 --> 00:00:47.325
-or upload a recording you already have.
+00:00:46.790 --> 00:00:47.790
+Record a voice note,
 
 20
-00:00:47.871 --> 00:00:50.831
-Every interview lands in the Conversations tab,
+00:00:47.790 --> 00:00:50.240
+or upload a recording you already have.
 
 21
-00:00:50.831 --> 00:00:53.031
-with the audio, an AI summary,
+00:00:50.786 --> 00:00:53.746
+Every interview lands in the Contributions tab,
 
 22
-00:00:53.031 --> 00:00:56.121
-and a full transcript you can read and replay.
+00:00:53.746 --> 00:00:55.866
+with the audio, an AI summary,
 
 23
-00:00:56.768 --> 00:00:59.458
-Now here's where it gets interesting.
+00:00:55.866 --> 00:00:59.036
+and a full transcript you can read and replay.
 
 24
-00:00:59.488 --> 00:01:04.795
-Fabric reads across every conversation and writes a single overview of the process.
+00:00:59.683 --> 00:01:02.093
+Now here's where it gets interesting.
 
 25
-00:01:04.795 --> 00:01:06.581
-It shows where people agree,
+00:01:02.323 --> 00:01:07.563
+Fabric reads across every contribution and writes a single overview of the process:
 
 26
-00:01:06.581 --> 00:01:08.328
-where their accounts differ…
+00:01:07.563 --> 00:01:09.163
+the key facts up top,
 
 27
-00:01:08.328 --> 00:01:10.768
-and which sources back up each point.
+00:01:09.163 --> 00:01:10.640
+then the full story.
 
 28
-00:01:10.768 --> 00:01:12.368
-The more people you interview,
+00:01:10.803 --> 00:01:13.683
+Further down, it shows where people agree,
 
 29
-00:01:12.368 --> 00:01:14.218
-the sharper the picture gets.
+00:01:13.683 --> 00:01:15.283
+where their accounts differ…
 
 30
-00:01:14.779 --> 00:01:18.139
-Open Process Flow to see it all as a map:
+00:01:15.283 --> 00:01:17.643
+and which sources back up each point.
 
 31
-00:01:18.139 --> 00:01:20.899
-every step, decision, and handoff,
+00:01:17.643 --> 00:01:19.243
+The more people you interview,
 
 32
-00:01:20.899 --> 00:01:23.259
-built from what people actually said.
+00:01:19.243 --> 00:01:21.133
+the sharper the picture gets.
 
 33
-00:01:23.259 --> 00:01:25.499
-Bottlenecks are flagged right on the steps,
+00:01:21.691 --> 00:01:25.051
+Open Process Flow to see it all as a map:
 
 34
-00:01:25.499 --> 00:01:27.989
-so you can spot the friction at a glance.
+00:01:25.051 --> 00:01:27.811
+every step, decision, and handoff,
 
 35
-00:01:28.560 --> 00:01:31.600
-Insights rolls it all up into the numbers:
+00:01:27.811 --> 00:01:30.171
+built from what people actually said.
 
 36
-00:01:31.600 --> 00:01:34.560
-steps, handoffs, tools, decisions,
+00:01:30.171 --> 00:01:32.411
+Bottlenecks are flagged right on the steps,
 
 37
-00:01:34.560 --> 00:01:38.650
-and pain points, each one traced back to the evidence.
+00:01:32.411 --> 00:01:34.901
+so you can spot the friction at a glance.
 
 38
-00:01:39.412 --> 00:01:41.846
-And finally, Automations.
+00:01:35.471 --> 00:01:38.004
+Insights starts with key findings:
 
 39
-00:01:41.846 --> 00:01:46.966
-Fabric recommends where workflows and AI agents could take work off people's plates…
+00:01:38.004 --> 00:01:40.471
+the places worth a closer look.
 
 40
-00:01:46.966 --> 00:01:50.656
-and writes a ready-to-paste brief for Copilot Studio.
+00:01:40.471 --> 00:01:43.551
+Then it rolls everything up into the numbers:
 
 41
-00:01:51.448 --> 00:01:52.888
-So that's Fabric.
+00:01:43.551 --> 00:01:46.231
+steps, handoffs, tools, decisions,
 
 42
-00:01:52.888 --> 00:01:54.688
-Pick a process you know well,
+00:01:46.231 --> 00:01:49.801
+and bottlenecks, each traced back to the evidence.
 
 43
-00:01:54.688 --> 00:01:56.448
-hit Start AI interview,
+00:01:50.555 --> 00:01:53.069
+And finally, Recommendations:
 
 44
-00:01:56.448 --> 00:01:57.677
-and just talk.
+00:01:53.069 --> 00:01:54.999
+what to change, and why.
 
 45
-00:01:57.677 --> 00:01:59.298
+00:01:55.309 --> 00:01:57.629
+Fabric suggests practical fixes,
+
+46
+00:01:57.629 --> 00:02:00.589
+from a clear handover rule to a new workflow,
+
+47
+00:02:00.589 --> 00:02:02.629
+each ranked by value and effort,
+
+48
+00:02:02.629 --> 00:02:05.199
+and backed by what people actually said.
+
+49
+00:02:05.229 --> 00:02:08.469
+Every recommendation comes with a small pilot to try…
+
+50
+00:02:08.469 --> 00:02:11.879
+and a change plan you can copy and share with your team.
+
+51
+00:02:12.675 --> 00:02:14.115
+So that's Fabric.
+
+52
+00:02:14.115 --> 00:02:15.915
+Pick a process you know well,
+
+53
+00:02:15.915 --> 00:02:17.675
+hit Start AI interview,
+
+54
+00:02:17.675 --> 00:02:18.904
+and just talk.
+
+55
+00:02:18.904 --> 00:02:20.525
 We'll take care of the rest!

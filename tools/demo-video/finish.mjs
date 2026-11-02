@@ -23,7 +23,8 @@ run("ffmpeg", [
   `${DEST}/fabric-tour.mp4`,
 ]);
 
-// Poster: the intro title card once its tagline is fully on screen.
-run("ffmpeg", ["-v", "error", "-y", "-ss", "9.6", "-i", MASTER, "-frames:v", "1", "-vf", "scale=1280:-2", "-q:v", "3", `${DEST}/fabric-tour-poster.jpg`]);
+// Poster: the intro title card once its tagline is fully on screen (time written by gen-vtt).
+const posterAt = fs.readFileSync("out/poster-at.txt", "utf8").trim();
+run("ffmpeg", ["-v", "error", "-y", "-ss", posterAt, "-i", MASTER, "-frames:v", "1", "-vf", "scale=1280:-2", "-q:v", "3", `${DEST}/fabric-tour-poster.jpg`]);
 
 for (const f of fs.readdirSync(DEST)) console.log(f, (fs.statSync(`${DEST}/${f}`).size / 1e6).toFixed(1), "MB");

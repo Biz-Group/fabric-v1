@@ -28,8 +28,14 @@ npm install
    gitignored.
 3. **Capture.** Run `npm run capture`. It walks the tenant headlessly at 2× density and
    writes the stills, the scroll/pan frame sequences, and `manifest.json` to
-   `public/cap/`. The run aborts if any real name from `mask-names.json` is still on
-   screen in any state.
+   `public/cap/`. It also takes a hover still before each click and one still per
+   keystroke in the command palette. The run aborts if any real name from
+   `mask-names.json` is still on screen in any state.
+   - The check only knows the listed names. Look over new screens for anyone else,
+     such as people named in recommendations.
+   - It only views. It never clicks a decision, rating or regenerate control.
+   - It clears any page zoom saved in `profile/`. A Ctrl+ during sign-in would
+     otherwise rescale every capture.
 4. **Voiceover.** Run:
    ```sh
    ELEVENLABS_API_KEY=$(npx convex env get ELEVENLABS_API_KEY) npm run voice
@@ -40,19 +46,38 @@ npm install
    - The `[tags]` in the script are Eleven v4 audio tags. They are performance
      direction, not words, and they are stripped from the captions.
    - Pass scene ids to regenerate only some scenes, for example `npm run voice -- intro`.
-5. **Preview.** Run `npm run studio` to scrub the timeline.
-6. **Render.** Run `npm run render`, then `npm run finish`. These write
+5. **Sound effects.** Run `npm run sfx`. It downloads the click and whoosh (CC0, from
+   `@remotion/sfx`) into `public/sfx/`.
+6. **Preview.** Run `npm run studio` to scrub the timeline.
+7. **Render.** Run `npm run render`, then `npm run finish`. These write
    `fabric-tour.mp4`, `fabric-tour-poster.jpg`, and `fabric-tour.en.vtt` into
-   `../../public/demo/`.
+   `../../public/demo/`. The render takes about 4 minutes.
 
 ## When the UI changes
 
 All visual cues in `src/Demo.tsx` are timed off spoken words through `w(scene, phrase)`,
 so editing the script re-times the video automatically.
 
-Cursor targets, highlights, and zooms use element boxes in 1920×1080 CSS pixels:
+Cursor targets, highlights, and zooms use element boxes in 1920×1080 CSS pixels. They
+all come from `public/cap/manifest.json`, which `capture.mjs` measures from the live DOM.
+After a layout change, run the capture again. Then check the boxes by drawing them over
+their stills before you render.
 
-- Most boxes come from `public/cap/manifest.json`.
-- A few were measured by hand from the stills, for example the evidence pills and the
-  insight cards. These are marked in `B` in `src/Demo.tsx`. Re-check them after a
-  layout change.
+## Notes
+
+- There is deliberately no motion blur, light leak or text shine. They were tried in
+  November 2026 and taken out:
+  - `CameraMotionBlur` blends a stack of layers, which washed out and tinted frames as it
+    switched on and off.
+  - `HtmlInCanvasMotionBlur` fails to render on Windows in 4.0.539.
+  - The `@remotion/effects` light leak shifted hue from frame to frame.
+- To catch flashes before shipping, run `ffmpeg ... -vf signalstats` on the web MP4 and
+  look for frames whose average colour jumps away and straight back.
+- Highlights are drawn as depth of field. The target is a sharp copy of the screen,
+  clipped to its box and lifted off a blurred, faded page.
+  - Small targets inside a focused one use `ring: true`.
+  - Back-to-back highlights share one focus span, so the page doesn't sharpen between
+    them.
+- The intro rings must stay strong enough to survive the web encode. At their earlier
+  strength they sat 2–3 brightness levels off the paper and vanished.
+- Remotion needs a Company License for organizations with more than 3 employees.

@@ -7,18 +7,19 @@
     "login": "node login.mjs",
     "capture": "node capture.mjs",
     "voice": "node tts.mjs",
+    "sfx": "node sfx.mjs",
     "studio": "remotion studio src/index.ts",
     "render": "remotion render src/index.ts FabricDemo out/fabric-demo-master.mp4 --codec=h264 --crf=16 --audio-bitrate=192k",
     "finish": "node finish.mjs"
   },
   "dependencies": {
-    "@remotion/cli": "4.0.533",
-    "@remotion/google-fonts": "4.0.533",
+    "@remotion/cli": "4.0.539",
+    "@remotion/google-fonts": "4.0.539",
     "esbuild": "0.28.1",
     "playwright": "1.63.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "remotion": "4.0.533"
+    "remotion": "4.0.539"
   },
   "allowScripts": {
     "esbuild@0.28.1": true

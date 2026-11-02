@@ -3,11 +3,11 @@
 import intro from "../public/vo/intro.json";
 import tree from "../public/vo/tree.json";
 import capture from "../public/vo/capture.json";
-import conversations from "../public/vo/conversations.json";
+import contributions from "../public/vo/contributions.json";
 import overview from "../public/vo/overview.json";
 import flow from "../public/vo/flow.json";
 import insights from "../public/vo/insights.json";
-import automations from "../public/vo/automations.json";
+import recommendations from "../public/vo/recommendations.json";
 import outro from "../public/vo/outro.json";
 import durations from "../public/vo/durations.json";
 
@@ -25,14 +25,16 @@ const DURATIONS = durations as Record<(typeof ORDER)[number], number>;
 export type SceneId = (typeof ORDER)[number];
 
 const ALIGN: Record<SceneId, Alignment> = {
-  intro, tree, capture, conversations, overview, flow, insights, automations, outro,
+  intro, tree, capture, contributions, overview, flow, insights, recommendations, outro,
 } as Record<SceneId, Alignment>;
 
 export const ORDER = [
-  "intro", "tree", "capture", "conversations", "overview", "flow", "insights", "automations", "outro",
+  "intro", "tree", "capture", "contributions", "overview", "flow", "insights", "recommendations", "outro",
 ] as const;
 
 const LEAD: Partial<Record<SceneId, number>> = { intro: 1.2 };
+// The intro card holds its finished tagline for a beat before the app comes in.
+const TAIL: Partial<Record<SceneId, number>> = { intro: 1.4 };
 const GAP = 0.55;
 export const END_CARD = 3.2;
 
@@ -41,7 +43,7 @@ export const SCENES = (() => {
   const out = {} as Record<SceneId, { start: number; vo: number; end: number; dur: number }>;
   for (const id of ORDER) {
     const vo = t + (LEAD[id] ?? 0.3);
-    const end = vo + DURATIONS[id] + GAP;
+    const end = vo + DURATIONS[id] + GAP + (TAIL[id] ?? 0);
     out[id] = { start: t, vo, end, dur: DURATIONS[id] };
     t = end;
   }
@@ -62,6 +64,9 @@ export function w(scene: SceneId, phrase: string, edge: "start" | "end" = "start
       : a.character_end_times_seconds[i + phrase.length - 1];
   return SCENES[scene].vo + local;
 }
+
+/** Poster frame: the intro card once the last tagline word has settled. */
+export const posterAt = () => w("intro", "improve", "end") + 0.7;
 
 /** Spoken cues (tags stripped) with absolute times, for building WebVTT captions. */
 export function captionCues(maxWords = 14) {

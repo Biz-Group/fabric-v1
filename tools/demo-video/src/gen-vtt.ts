@@ -1,6 +1,6 @@
 // Writes WebVTT captions (audio tags stripped) aligned to the rendered video.
 import fs from "node:fs";
-import { captionCues } from "./timeline";
+import { captionCues, posterAt } from "./timeline";
 
 const ts = (s: number) => {
   const ms = Math.round(s * 1000);
@@ -12,4 +12,5 @@ const ts = (s: number) => {
 const cues = captionCues();
 const body = cues.map((c, i) => `${i + 1}\n${ts(c.start)} --> ${ts(Math.min(Math.max(c.end + 0.25, c.start + 1), cues[i + 1]?.start ?? Infinity))}\n${c.text}`).join("\n\n");
 fs.writeFileSync("out/fabric-tour.en.vtt", `WEBVTT\n\n${body}\n`);
+fs.writeFileSync("out/poster-at.txt", posterAt().toFixed(2));
 console.log(cues.length, "cues");
