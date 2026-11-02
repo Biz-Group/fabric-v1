@@ -231,7 +231,7 @@ describe("Recommendations tab", () => {
     state.recommendations = view({ recommendations: [TECHNICAL] });
     const html = render();
     expect(html).toContain("Copy for Copilot Studio");
-    expect(html).toContain("Why not something simpler");
+    expect(html).toContain("Why this change");
   });
 
   it("says when new interviews have landed since the recommendations", () => {

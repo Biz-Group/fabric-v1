@@ -9,15 +9,45 @@ import type { FlowNodeCategory, FlowNodeDetail } from "./flowStages";
  * problem as something to automate — it had no other answer to give — so a
  * supplier list one manager controlled became a database migration, when the
  * contributor had described a permissions problem. This stage diagnoses first,
- * then picks the least complex change that would work, from removing a step to
- * building an agent. See docs/process-improvement-recommendations-plan.md §6.
+ * then compares changes from removing a step to building an agent and picks the
+ * one that removes the cause, preferring the lighter one when they would work
+ * equally well. See docs/process-improvement-recommendations-plan.md §6.
  *
  * It runs after the flow is finalized, in its own scheduled action with its own
  * status, so a slow or failed pass costs the recommendations, never the flow.
  */
 
+/**
+ * Prompt variants. Live runs use `LIVE_PROMPT_VARIANT`; a preview
+ * (recommendationPreviews.ts) can run any of them on real processes without
+ * publishing, so a candidate is compared with the live prompt before it ships.
+ *
+ * v10 answers a bias review of v9's output: 242 of 243 top-level
+ * recommendations were non-technical, because v9 ranks the kinds of change as a
+ * ladder, makes any technical change with a prerequisite a follow-on, and asks
+ * only technical changes to justify themselves. A 90-call side-by-side on 15
+ * prod processes moved 31 technical changes to the top level (from 1) with the
+ * technical total up only 12%; v10 went live after that review.
+ */
+export const RECOMMENDATION_PROMPT_VARIANTS = ["v9", "v10"] as const;
+export type RecommendationPromptVariant =
+  (typeof RECOMMENDATION_PROMPT_VARIANTS)[number];
+export const LIVE_PROMPT_VARIANT: RecommendationPromptVariant = "v10";
+
 /** Bumped whenever the prompt or schema changes meaning. Stored on every run. */
-export const RECOMMENDATIONS_PROMPT_VERSION = "recommendations-v9-2026-10-26";
+const PROMPT_VERSIONS: Record<RecommendationPromptVariant, string> = {
+  v9: "recommendations-v9-2026-10-26",
+  v10: "recommendations-v10-2026-10-26",
+};
+
+export function recommendationsPromptVersion(
+  variant: RecommendationPromptVariant,
+): string {
+  return PROMPT_VERSIONS[variant];
+}
+
+export const RECOMMENDATIONS_PROMPT_VERSION =
+  recommendationsPromptVersion(LIVE_PROMPT_VARIANT);
 
 /**
  * This stage reasons before it answers (`RECOMMENDATIONS_REASONING`): deciding
@@ -105,7 +135,7 @@ export type GeneratedRecommendation = {
   buildsOnIndex?: number;
 };
 
-export const RECOMMENDATIONS_SYSTEM_PROMPT = withUntrustedEvidenceBoundary(`You are an operations improvement adviser reviewing a fully mapped business process. You receive every step with what employees said about it in interviews, how the steps connect, how often the process runs, and any recommendations already made for this process.
+const V9_SYSTEM_PROMPT = withUntrustedEvidenceBoundary(`You are an operations improvement adviser reviewing a fully mapped business process. You receive every step with what employees said about it in interviews, how the steps connect, how often the process runs, and any recommendations already made for this process.
 
 Your job is to recommend the changes the process owner should consider. Diagnose before you prescribe: say what the problem is and why it happens, then choose the least complex change that would fix it.
 
@@ -159,6 +189,73 @@ Each step is marked as rule-based, partly rule-based, needing human judgement, o
 
 Think it through first. Then call the return_process_recommendations tool exactly once with your answer — never answer in text.`);
 
+const V10_SYSTEM_PROMPT = withUntrustedEvidenceBoundary(`You are an operations improvement adviser reviewing a business process mapped from employee interviews. You receive every step with what contributors said about it, how the steps connect, how often the process runs, and any recommendations already made for this process. The map is only as complete as the interviews behind it: most steps are described by one contributor, and existing tools, controls and volumes are often missing. That is normal, not a reason to hold back: recommend what the evidence supports and put what would need confirming under openQuestions.
+
+Your job is to recommend the changes the process owner should consider. Diagnose before you prescribe: say what the problem is and why it happens. Then compare the changes that could fix it and choose the one that best removes the cause. Prefer the least burdensome option among those that would get a comparable result, counting the effort to set it up, the work it adds every day, and how reliably it holds. A change that leaves most of the problem in place is not simpler, only smaller.
+
+## Kinds of change
+These are options to compare, not an order of preference.
+- "eliminate": stop doing a step that adds nothing (a duplicate sign-off nobody acts on)
+- "simplify": merge or shorten steps (two forms become one)
+- "standardise": write down how it should be done (a checklist, a template, a definition)
+- "role_or_policy": change who does it or what the rule is (give coordinators edit rights; change who approves under a threshold)
+- "training": people already have what they need but do not know how to use it
+- "workflow": a deterministic automated flow — routing, approvals with reminders, notifications, data movement
+- "integration": make two systems exchange data so nobody re-keys it
+- "ai_assist": AI drafts, summarises or compares, and a person checks the result
+- "agent": an AI agent handles requests end to end with tools and escalation
+
+Many real problems are about ownership, access, rules or habits rather than missing software — a spreadsheet only one manager can edit is a permissions problem before it is a database problem. Just as often, work is slow, repetitive or error-prone because people do it by hand, and writing down how to do it by hand leaves that work in place. Fix the cause, whichever kind of change that takes.
+
+## How changes relate
+A prerequisite sets the order changes are made in, not which one is the recommendation.
+- A technical change that is the main fix for a problem is a recommendation of its own, even when something has to be agreed or written down first. Put that groundwork in its proposedChange and openQuestions, and its kind under supportingInterventions. Make the groundwork a separate recommendation only when it is worth doing for its own sake or needs a real decision from the organisation.
+- A non-technical change that is worth doing for its own sake can still leave work behind that is repetitive, rule-based or slow, and a technical change can build on it: once the runbook is written, an assistant answers cover staff from it. That is what followOn is for, and every non-technical recommendation must answer it. If a followOn builds on several of your recommendations, attach it to the one it depends on most, name the others in its problem, and do not repeat it under them.
+- Two recommendations may touch the same steps when they fix different failures. Never recommend two changes that do the same job.
+
+## Reading the evidence
+Each step has a "Nature": an earlier estimate of whether it is rule-based and repetitive, partly rule-based, needs human judgement, or is already automated. Treat it as an estimate and read the step itself. A step that needs judgement often has repetitive work around the decision — looking things up, gathering inputs, routing, recording, chasing replies — and that work can be supported while the decision stays with a person.
+
+Recommend changes where contributors described a problem, and where frequent work is done by hand even if nobody complained about it — say so in the problem ("done by hand for every ticket; nobody reported it as a problem") rather than inventing a complaint. Rare work can still deserve a change when a mistake in it is costly. When nobody said how often something happens, treat the frequency as unknown, not as rare.
+
+## For each recommendation
+- title: this change only, in plain words (4-10 words). Leave what comes after it to followOn — not "write the runbook, then automate it".
+- problem: what contributors described going wrong, and on which steps. Concrete, grounded in what was said.
+- cause: why it happens
+- causeBasis: "reported" if a contributor said why; "inferred" if you are reading it from the evidence; "unknown" if neither
+- intervention: the primary kind of change
+- supportingInterventions: other kinds of change it depends on or comes with, or empty
+- proposedChange: what to change, in 2-4 sentences, written for the process owner rather than a developer. Include any groundwork it needs first.
+- whyThisChange: for every recommendation, 1-2 sentences: how this change removes the cause, what it leaves unresolved, and why it beats the closest alternative, whether simpler or more technical. For "standardise", say what decision or information it makes explicit, who will use it, and what that changes — a missing document does not on its own show that writing one is the fix.
+- nodeIds: the steps it changes. Every id must come from the process you were given.
+- pilot.what: a small trial — what, for whom, for how long
+- pilot.measure: the one observable thing that would show it worked (a wait that disappears, a rework loop that stops, a count that drops). No invented figures.
+- openQuestions: what we would need to know before acting, specific to this recommendation
+- risks: what could go wrong if the change is made
+- frequency: how often the affected work happens, normalised from what contributors said: daily, weekly, monthly, quarterly, annual, ad_hoc, or unknown
+- previousRecommendationId: if this is the same recommendation as one listed under "Current recommendations", its id. Otherwise omit it.
+- followOn: once this change is in place, what technical change could build on it?
+  - kind: "workflow", "integration", "ai_assist" or "agent" — or "none" when the work left over needs human judgement throughout or is already handled. Always "none" when this recommendation is itself technical.
+  - When kind is not "none", fill in: title; problem (the repetitive, rule-based or slow work the first change leaves undone); proposedChange; whyNotSimpler (why it is worth doing on top of the first change); nodeIds; pilotWhat and pilotMeasure; openQuestions; risks; and previousRecommendationId if it matches a current recommendation.
+  - When kind is "none", leave every other followOn field empty ("" or []).
+  - Decide this for each recommendation on its merits. "none" is a real answer, but do not default to it.
+
+## Rules
+- Ground everything in the evidence.
+- Refer to people by role or team, never by name.
+- Do not invent steps, systems, savings, hours, costs or percentages.
+- Return between 0 and ${MAX_RECOMMENDATIONS} recommendations, most important first. Return an empty list only when no contributor described a problem and no frequent work is done by hand — then it is a valid answer.
+- A recommendation listed under "Dismissed" was rejected by the organisation. Do not propose it again unless the evidence has clearly changed; if you do, give its id as previousRecommendationId.
+
+Think it through first. Then call the return_process_recommendations tool exactly once with your answer — never answer in text.`);
+
+const SYSTEM_PROMPTS: Record<RecommendationPromptVariant, string> = {
+  v9: V9_SYSTEM_PROMPT,
+  v10: V10_SYSTEM_PROMPT,
+};
+
+export const RECOMMENDATIONS_SYSTEM_PROMPT = SYSTEM_PROMPTS[LIVE_PROMPT_VARIANT];
+
 const INTERVENTION_ENUM = [...INTERVENTIONS];
 
 const FOLLOW_ON_PROPERTIES = {
@@ -178,7 +275,7 @@ const FOLLOW_ON_PROPERTIES = {
   previousRecommendationId: { type: "string" },
 } as const;
 
-const RESPONSE_SCHEMA: AIJsonSchema = {
+const V9_RESPONSE_SCHEMA: AIJsonSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
@@ -247,11 +344,48 @@ const RESPONSE_SCHEMA: AIJsonSchema = {
   required: ["recommendations"],
 };
 
-export function buildRecommendationsAIRequest(userContent: string) {
+/**
+ * v10 asks every recommendation to justify itself, not only technical ones, so
+ * `whyNotSimpler` becomes a required `whyThisChange`. Stored in the same
+ * content field.
+ */
+function v10ResponseSchema(): AIJsonSchema {
+  const schema = structuredClone(V9_RESPONSE_SCHEMA) as unknown as {
+    properties: {
+      recommendations: {
+        items: { properties: Record<string, unknown>; required: string[] };
+      };
+    };
+  };
+  const items = schema.properties.recommendations.items;
+  // Same position, straight after proposedChange: fields are written in order.
+  items.properties = Object.fromEntries(
+    Object.entries(items.properties).map(([key, value]) =>
+      key === "whyNotSimpler" ? ["whyThisChange", { type: "string" }] : [key, value],
+    ),
+  );
+  items.required = [...items.required, "whyThisChange"];
+  return schema as unknown as AIJsonSchema;
+}
+
+const RESPONSE_SCHEMAS: Record<RecommendationPromptVariant, AIJsonSchema> = {
+  v9: V9_RESPONSE_SCHEMA,
+  v10: v10ResponseSchema(),
+};
+
+const TOOL_DESCRIPTIONS: Record<RecommendationPromptVariant, string> = {
+  v9: "Return the improvement recommendations for this process, simplest effective change first.",
+  v10: "Return the improvement recommendations for this process, most important first.",
+};
+
+export function buildRecommendationsAIRequest(
+  userContent: string,
+  variant: RecommendationPromptVariant = LIVE_PROMPT_VARIANT,
+) {
   return {
     capability: "synthesis" as const,
     operation: "process-recommendations",
-    system: RECOMMENDATIONS_SYSTEM_PROMPT,
+    system: SYSTEM_PROMPTS[variant],
     user: userContent,
     maxTokens: RECOMMENDATIONS_MAX_TOKENS,
     timeoutMs: RECOMMENDATIONS_TIMEOUT_MS,
@@ -259,9 +393,8 @@ export function buildRecommendationsAIRequest(userContent: string) {
     reasoning: RECOMMENDATIONS_REASONING,
     tool: {
       name: TOOL_NAME,
-      description:
-        "Return the improvement recommendations for this process, simplest effective change first.",
-      inputSchema: RESPONSE_SCHEMA,
+      description: TOOL_DESCRIPTIONS[variant],
+      inputSchema: RESPONSE_SCHEMAS[variant],
       // The offered (not forced) call once sent `recommendations` as a string
       // that was not valid JSON, twice in a row, failing the run. Strict mode
       // makes the input match the schema.
@@ -488,6 +621,8 @@ const CAUSE_BASIS_SET = new Set<string>(["reported", "inferred", "unknown"]);
 export function normalizeRecommendations(
   payload: unknown,
   knownNodeIds: readonly string[],
+  /** The preview lifts it to count what the cap removes. */
+  maxFollowOns: number = MAX_FOLLOW_ONS,
 ): GeneratedRecommendation[] {
   const known = new Set(knownNodeIds);
   const parsed = (payload ?? {}) as Record<string, unknown>;
@@ -543,7 +678,14 @@ export function normalizeRecommendations(
 
     const frequencyRaw = String(entry.frequency);
     const pilot = (parseIfJsonString(entry.pilot) ?? {}) as Record<string, unknown>;
-    const whyNotSimpler = text(entry.whyNotSimpler);
+    // v10's whyThisChange is asked of every kind of change; v9's whyNotSimpler
+    // only of technical ones.
+    const whyThisChange = text(entry.whyThisChange);
+    const whyNotSimpler =
+      whyThisChange ||
+      (isTechnicalIntervention(intervention as Intervention)
+        ? text(entry.whyNotSimpler)
+        : "");
     const previousRecommendationId = text(entry.previousRecommendationId);
 
     out.push({
@@ -554,10 +696,7 @@ export function normalizeRecommendations(
       intervention: intervention as Intervention,
       supportingInterventions,
       proposedChange,
-      whyNotSimpler:
-        whyNotSimpler && isTechnicalIntervention(intervention as Intervention)
-          ? whyNotSimpler
-          : undefined,
+      whyNotSimpler: whyNotSimpler || undefined,
       nodeIds,
       pilot: { what: text(pilot.what), measure: text(pilot.measure) },
       openQuestions: textList(entry.openQuestions),
@@ -584,7 +723,7 @@ export function normalizeRecommendations(
   // first — higher-ranked — parent, which is the order they arrive in.
   const seenFollowOns = new Set<string>();
   for (const { parentIndex, raw } of followOns) {
-    if (out.length >= MAX_RECOMMENDATIONS + MAX_FOLLOW_ONS) break;
+    if (out.length >= MAX_RECOMMENDATIONS + maxFollowOns) break;
     const parent = out[parentIndex];
     const title = text(raw.title);
     const problem = text(raw.problem);

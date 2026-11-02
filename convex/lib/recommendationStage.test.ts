@@ -7,8 +7,12 @@ import {
   MAX_FOLLOW_ONS,
   MAX_RECOMMENDATIONS,
   normalizeRecommendations,
+  LIVE_PROMPT_VARIANT,
   readRecommendationsPayload,
   RECOMMENDATIONS_MAX_RETRIES,
+  RECOMMENDATIONS_PROMPT_VERSION,
+  RECOMMENDATIONS_SYSTEM_PROMPT,
+  recommendationsPromptVersion,
   RECOMMENDATIONS_TIMEOUT_MS,
   scrubContributorNames,
   toAutomationOpportunity,
@@ -44,14 +48,15 @@ describe("recommendation request", () => {
     expect(request.tool.strict).toBe(true);
   });
 
-  test("offers the whole ladder, non-technical rungs first", () => {
+  test("offers every kind of change, to compare rather than rank", () => {
     const request = buildRecommendationsAIRequest("process");
-    expect(request.system.indexOf('"eliminate"')).toBeLessThan(
-      request.system.indexOf('"agent"'),
-    );
+    for (const kind of ['"eliminate"', '"standardise"', '"workflow"', '"agent"']) {
+      expect(request.system).toContain(kind);
+    }
+    expect(request.system).toContain("not an order of preference");
     expect(request.system).toContain("never by name");
     // A simple fix does not rule out a technical one that builds on it.
-    expect(request.system).toContain("The ladder is a sequence, not a choice of one.");
+    expect(request.system).toContain("That is what followOn is for");
   });
 });
 
@@ -217,6 +222,14 @@ describe("technical follow-ons", () => {
     expect(recs).toHaveLength(MAX_RECOMMENDATIONS + MAX_FOLLOW_ONS);
     expect(recs.slice(0, 5).every((rec) => rec.buildsOnIndex === undefined)).toBe(true);
     expect(recs.slice(5).map((rec) => rec.buildsOnIndex)).toEqual([0, 1, 2]);
+
+    // Lifted, as the preview does to count what the cap removed.
+    const uncapped = normalizeRecommendations(
+      { recommendations: many },
+      KNOWN,
+      Number.POSITIVE_INFINITY,
+    );
+    expect(uncapped.filter((rec) => rec.buildsOnIndex !== undefined)).toHaveLength(5);
   });
 
   test("the same next step proposed under two recommendations is kept once, under the first", () => {
@@ -242,8 +255,13 @@ describe("technical follow-ons", () => {
     expect(recs[2].buildsOnIndex).toBe(0);
   });
 
-  test("a technical change that needs a simpler one first is told to be its follow-on", () => {
-    expect(buildRecommendationsAIRequest("process").system).toContain(
+  test("a technical change that is the main fix stands on its own, groundwork included", () => {
+    const system = buildRecommendationsAIRequest("process").system;
+    expect(system).toContain(
+      "A technical change that is the main fix for a problem is a recommendation of its own",
+    );
+    // v9's rule, which hid technical fixes under their groundwork, is gone.
+    expect(system).not.toContain(
       "make the simpler change the recommendation and the technical change its followOn",
     );
   });
@@ -470,5 +488,88 @@ describe("automation-opportunity shape", () => {
         content: { ...base.content, intervention: "simplify" },
       }),
     ).toBeNull();
+  });
+});
+
+describe("prompt variants", () => {
+  type Items = { properties: Record<string, unknown>; required: string[] };
+  const itemsOf = (variant: "v9" | "v10") =>
+    (
+      buildRecommendationsAIRequest("x", variant).tool.inputSchema as unknown as {
+        properties: { recommendations: { items: Items } };
+      }
+    ).properties.recommendations.items;
+
+  test("live runs use the live variant unless told otherwise", () => {
+    const request = buildRecommendationsAIRequest("process");
+    expect(request.system).toBe(RECOMMENDATIONS_SYSTEM_PROMPT);
+    expect(request.system).toBe(
+      buildRecommendationsAIRequest("process", LIVE_PROMPT_VARIANT).system,
+    );
+    expect(RECOMMENDATIONS_PROMPT_VERSION).toBe(
+      recommendationsPromptVersion(LIVE_PROMPT_VARIANT),
+    );
+    expect(recommendationsPromptVersion("v10")).not.toBe(
+      recommendationsPromptVersion("v9"),
+    );
+  });
+
+  test("v10 compares the kinds of change instead of ranking them", () => {
+    const system = buildRecommendationsAIRequest("process", "v10").system;
+    expect(system).toContain("not an order of preference");
+    expect(system).not.toContain("Consider them in this order");
+    // A prerequisite no longer turns a technical fix into a follow-on.
+    expect(system).toContain(
+      "A prerequisite sets the order changes are made in, not which one is the recommendation.",
+    );
+    expect(system).not.toContain("only when nothing simpler has to happen first");
+    expect(system).toContain("never by name");
+  });
+
+  test("v10 asks every recommendation for whyThisChange, in whyNotSimpler's place", () => {
+    const items = itemsOf("v10");
+    const keys = Object.keys(items.properties);
+    expect(keys).not.toContain("whyNotSimpler");
+    expect(items.required).toContain("whyThisChange");
+    expect(keys.indexOf("whyThisChange")).toBe(keys.indexOf("proposedChange") + 1);
+    // The live schema is untouched by deriving v10 from it.
+    expect(Object.keys(itemsOf("v9").properties)).toContain("whyNotSimpler");
+    expect(itemsOf("v9").required).not.toContain("whyThisChange");
+  });
+
+  test("v10's schema is still strict-mode safe", () => {
+    const problems: string[] = [];
+    const walk = (node: unknown, path: string) => {
+      if (!node || typeof node !== "object") return;
+      const schema = node as Record<string, unknown>;
+      if (schema.type === "object" && schema.additionalProperties !== false) {
+        problems.push(`${path} is not closed`);
+      }
+      for (const [key, value] of Object.entries(schema)) walk(value, `${path}.${key}`);
+    };
+    walk(buildRecommendationsAIRequest("x", "v10").tool.inputSchema, "schema");
+    expect(problems).toEqual([]);
+    const followOn = itemsOf("v10").properties.followOn as {
+      properties: object;
+      required: string[];
+    };
+    expect([...followOn.required].sort()).toEqual(Object.keys(followOn.properties).sort());
+  });
+
+  test("whyThisChange is kept for a non-technical change too", () => {
+    const [rec] = normalizeRecommendations(
+      {
+        recommendations: [
+          {
+            ...wellFormed,
+            intervention: "standardise",
+            whyNotSimpler: undefined,
+            whyThisChange: "Makes the vetting rule explicit for every coordinator.",
+          },
+        ],
+      },
+      KNOWN,
+    );
+    expect(rec.whyNotSimpler).toBe("Makes the vetting rule explicit for every coordinator.");
   });
 });

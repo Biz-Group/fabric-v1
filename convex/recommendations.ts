@@ -5,6 +5,7 @@ import {
   internalQuery,
   mutation,
   query,
+  type ActionCtx,
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
@@ -19,8 +20,9 @@ import {
   isAIConfigured,
   isTokenLimitFinishReason,
   type AICompletion,
+  type AIRequest,
 } from "./lib/aiProvider";
-import { meteredCompletion } from "./lib/aiUsageMeter";
+import { meteredCompletion, type UsageAttribution } from "./lib/aiUsageMeter";
 import { extractDataCollection } from "./lib/conversationAnalysis";
 import {
   INSIGHTS_RATE_LIMIT_RETRY_DELAYS_MS,
@@ -94,7 +96,7 @@ function flowGenerationKey(flow: Doc<"processFlows">): string {
 }
 
 /** A flow worth recommending from: a graph, and descriptions that finished. */
-function isFlowUsable(flow: Doc<"processFlows">): boolean {
+export function isFlowUsable(flow: Doc<"processFlows">): boolean {
   if (flow.status !== "ready" || flow.nodes.length === 0) return false;
   if (flow.generationVersion === undefined) return true;
   return flow.detailsStatus === "ready" || flow.detailsStatus === "partial";
@@ -135,7 +137,7 @@ async function loadFlowNodes(
   }));
 }
 
-async function getFlow(
+export async function getFlow(
   ctx: { db: QueryCtx["db"] },
   clerkOrgId: string,
   processId: Id<"processes">,
@@ -211,6 +213,8 @@ export async function startRecommendationRunForOrg(
     clerkOrgId: string;
     processId: Id<"processes">;
     trigger: Doc<"recommendationRuns">["trigger"];
+    /** See `recommendationRuns.includeExisting`. Defaults to shown. */
+    includeExisting?: boolean;
   },
 ): Promise<{ runId: string; joined: boolean } | null> {
   const flow = await getFlow(ctx, args.clerkOrgId, args.processId);
@@ -240,6 +244,7 @@ export async function startRecommendationRunForOrg(
     attempts: 0,
     promptVersion: RECOMMENDATIONS_PROMPT_VERSION,
     conversationCount: flow.conversationCount,
+    ...(args.includeExisting === false ? { includeExisting: false } : {}),
     createdAt: now,
     lastProgressAt: now,
   });
@@ -322,6 +327,110 @@ function contextValue(value: unknown): string | undefined {
 }
 
 /**
+ * What the stage sends the model for one flow. `includeExisting: false` leaves
+ * out the stored recommendations, for a preview or a fresh backfill that should
+ * not be anchored to what an earlier prompt produced. Dismissals always go in.
+ */
+export async function loadRecommendationInput(
+  ctx: { db: QueryCtx["db"] },
+  args: {
+    clerkOrgId: string;
+    processId: Id<"processes">;
+    flow: Doc<"processFlows">;
+    includeExisting: boolean;
+  },
+) {
+  const { flow } = args;
+  const nodes = await loadFlowNodes(ctx, flow);
+
+  const conversations = await ctx.db
+    .query("conversations")
+    .withIndex("by_clerkOrgId_and_processId_and_status", (q) =>
+      q
+        .eq("clerkOrgId", args.clerkOrgId)
+        .eq("processId", args.processId)
+        .eq("status", "done"),
+    )
+    .order("asc")
+    .take(MAX_CONVERSATIONS_PER_FLOW);
+
+  // Same numbering the flow's evidence uses, so "Conv. 2" here is the
+  // "Conv. 2" in each step's sources.
+  const contexts: RecommendationInputContext[] = conversations.map(
+    (conversation, index) => {
+      const dc = extractDataCollection(conversation.analysis) ?? {};
+      return {
+        ref: `Conv. ${index + 1}`,
+        frequency: contextValue(dc.frequency),
+        volume: contextValue(dc.volume),
+        totalDuration: contextValue(dc.total_process_duration),
+        approvals: contextValue(dc.compliance_or_approvals),
+        edgeCases: contextValue(dc.edge_cases),
+        dependencies: contextValue(dc.dependencies),
+      };
+    },
+  );
+
+  const stored = [
+    ...(await storedRecommendations(
+      ctx,
+      args.clerkOrgId,
+      args.processId,
+      "v2",
+      "active",
+    )),
+    ...(await storedRecommendations(
+      ctx,
+      args.clerkOrgId,
+      args.processId,
+      "v2",
+      "absent_from_latest",
+    )),
+  ];
+  const summarize = (
+    row: Doc<"processRecommendations">,
+  ): ExistingRecommendationSummary => ({
+    id: row._id,
+    title: row.title,
+    problem: row.content?.problem ?? "",
+    decisionStatus: row.decisionStatus,
+    dismissReason: row.dismissReason,
+  });
+
+  return {
+    processId: args.processId,
+    flowGenerationId: flowGenerationKey(flow),
+    nodes,
+    edges: flow.edges.map((edge) => ({
+      source: edge.source,
+      target: edge.target,
+      type: edge.type,
+      label: edge.label,
+    })),
+    contexts,
+    current: args.includeExisting
+      ? stored
+          .filter(
+            (row) =>
+              row.lifecycle === "active" && row.decisionStatus !== "dismissed",
+          )
+          .map(summarize)
+      : [],
+    // Dismissals are the organisation's answer, so a preview keeps them too.
+    dismissed: stored
+      .filter((row) => row.decisionStatus === "dismissed")
+      .map(summarize),
+    contributorNames: [
+      ...new Set(conversations.map((c) => c.contributorName)),
+    ],
+  };
+}
+
+export type RecommendationInput = Awaited<
+  ReturnType<typeof loadRecommendationInput>
+>;
+
+/**
  * Everything the stage needs, or null when the run no longer owns the
  * process: a newer run started, or the flow was regenerated underneath it.
  */
@@ -343,87 +452,12 @@ export const getRecommendationRunInput = internalQuery({
     ) {
       return null;
     }
-
-    const nodes = await loadFlowNodes(ctx, flow);
-
-    const conversations = await ctx.db
-      .query("conversations")
-      .withIndex("by_clerkOrgId_and_processId_and_status", (q) =>
-        q
-          .eq("clerkOrgId", args.clerkOrgId)
-          .eq("processId", run.processId)
-          .eq("status", "done"),
-      )
-      .order("asc")
-      .take(MAX_CONVERSATIONS_PER_FLOW);
-
-    // Same numbering the flow's evidence uses, so "Conv. 2" here is the
-    // "Conv. 2" in each step's sources.
-    const contexts: RecommendationInputContext[] = conversations.map(
-      (conversation, index) => {
-        const dc = extractDataCollection(conversation.analysis) ?? {};
-        return {
-          ref: `Conv. ${index + 1}`,
-          frequency: contextValue(dc.frequency),
-          volume: contextValue(dc.volume),
-          totalDuration: contextValue(dc.total_process_duration),
-          approvals: contextValue(dc.compliance_or_approvals),
-          edgeCases: contextValue(dc.edge_cases),
-          dependencies: contextValue(dc.dependencies),
-        };
-      },
-    );
-
-    const stored = [
-      ...(await storedRecommendations(
-        ctx,
-        args.clerkOrgId,
-        run.processId,
-        "v2",
-        "active",
-      )),
-      ...(await storedRecommendations(
-        ctx,
-        args.clerkOrgId,
-        run.processId,
-        "v2",
-        "absent_from_latest",
-      )),
-    ];
-    const summarize = (
-      row: Doc<"processRecommendations">,
-    ): ExistingRecommendationSummary => ({
-      id: row._id,
-      title: row.title,
-      problem: row.content?.problem ?? "",
-      decisionStatus: row.decisionStatus,
-      dismissReason: row.dismissReason,
-    });
-
-    return {
+    return await loadRecommendationInput(ctx, {
+      clerkOrgId: args.clerkOrgId,
       processId: run.processId,
-      flowGenerationId: run.flowGenerationId,
-      nodes,
-      edges: flow.edges.map((edge) => ({
-        source: edge.source,
-        target: edge.target,
-        type: edge.type,
-        label: edge.label,
-      })),
-      contexts,
-      current: stored
-        .filter(
-          (row) =>
-            row.lifecycle === "active" && row.decisionStatus !== "dismissed",
-        )
-        .map(summarize),
-      dismissed: stored
-        .filter((row) => row.decisionStatus === "dismissed")
-        .map(summarize),
-      contributorNames: [
-        ...new Set(conversations.map((c) => c.contributorName)),
-      ],
-    };
+      flow,
+      includeExisting: run.includeExisting ?? true,
+    });
   },
 });
 
@@ -618,6 +652,59 @@ export const touchRecommendationRun = internalMutation({
   },
 });
 
+/**
+ * One recommendation request. The tool is offered, not forced, so the model can
+ * reason first; an answer in text instead is asked again rather than failed
+ * outright. Provider errors are thrown for the caller to handle.
+ */
+export async function askForRecommendations(
+  ctx: ActionCtx,
+  attribution: UsageAttribution,
+  request: AIRequest,
+): Promise<{
+  completion: AICompletion;
+  payload: { recommendations: unknown[] } | null;
+}> {
+  for (let ask = 1; ; ask++) {
+    const completion = await meteredCompletion(ctx, attribution, request);
+    const raw = completion.toolInput ?? parseTextPayload(completion.text);
+    const payload = readRecommendationsPayload(raw);
+    if (
+      payload ||
+      isTokenLimitFinishReason(completion.finishReason) ||
+      ask >= RECOMMENDATIONS_MAX_ASKS
+    ) {
+      return { completion, payload };
+    }
+    console.warn("Recommendation stage returned no usable list; asking again", {
+      finishReason: completion.finishReason,
+      calledTool: completion.toolInput !== null,
+      recommendationsWas: describePayloadShape(raw),
+    });
+  }
+}
+
+/**
+ * What the model said about each follow-on: tells "it answered none" apart
+ * from "it answered, and the answer was incomplete". Kinds and counts only, no
+ * content.
+ */
+export function describeFollowOnProposals(payload: {
+  recommendations: unknown[];
+}): string[] {
+  return payload.recommendations.map((raw) => {
+    const value = ((raw ?? {}) as Record<string, unknown>).followOn;
+    const followOn = (
+      typeof value === "string" ? parseTextPayload(value) : value
+    ) as Record<string, unknown> | undefined;
+    if (!followOn) return "missing";
+    const filled = ["title", "problem", "proposedChange"].filter(
+      (field) => typeof followOn[field] === "string" && followOn[field] !== "",
+    ).length;
+    return `${String(followOn.kind)}${followOn.kind === "none" ? "" : `(${filled}/3 fields)`}`;
+  });
+}
+
 export const generateRecommendationsInternal = internalAction({
   args: {
     clerkOrgId: v.string(),
@@ -662,36 +749,18 @@ export const generateRecommendationsInternal = internalAction({
       buildRecommendationsUserContent(input),
     );
     let completion: AICompletion;
-    let payload: { recommendations: unknown[] } | null = null;
+    let payload: { recommendations: unknown[] } | null;
     try {
-      // The tool is offered, not forced, so the model can reason first; an
-      // answer in text instead is asked again rather than failed outright.
-      for (let ask = 1; ; ask++) {
-        completion = await meteredCompletion(
-          ctx,
-          {
-            clerkOrgId: args.clerkOrgId,
-            entityType: "process",
-            entityId: input.processId,
-            runId: args.runId,
-          },
-          request,
-        );
-        const raw = completion.toolInput ?? parseTextPayload(completion.text);
-        payload = readRecommendationsPayload(raw);
-        if (
-          payload ||
-          isTokenLimitFinishReason(completion.finishReason) ||
-          ask >= RECOMMENDATIONS_MAX_ASKS
-        ) {
-          break;
-        }
-        console.warn("Recommendation stage returned no usable list; asking again", {
-          finishReason: completion.finishReason,
-          calledTool: completion.toolInput !== null,
-          recommendationsWas: describePayloadShape(raw),
-        });
-      }
+      ({ completion, payload } = await askForRecommendations(
+        ctx,
+        {
+          clerkOrgId: args.clerkOrgId,
+          entityType: "process",
+          entityId: input.processId,
+          runId: args.runId,
+        },
+        request,
+      ));
     } catch (error) {
       const attempt = args.rateLimitAttempt ?? 0;
       const delayMs = INSIGHTS_RATE_LIMIT_RETRY_DELAYS_MS[attempt];
@@ -742,23 +811,10 @@ export const generateRecommendationsInternal = internalAction({
       payload,
       input.nodes.map((node) => node.id),
     );
-    // What the model said about follow-ons, against what survived
-    // normalizing: tells "it answered none" apart from "it answered, and the
-    // answer was incomplete". Kinds and counts only, no content.
-    const followOnKinds = payload.recommendations.map((raw) => {
-      const value = ((raw ?? {}) as Record<string, unknown>).followOn;
-      const followOn = (
-        typeof value === "string" ? parseTextPayload(value) : value
-      ) as Record<string, unknown> | undefined;
-      if (!followOn) return "missing";
-      const filled = ["title", "problem", "proposedChange"].filter(
-        (field) => typeof followOn[field] === "string" && followOn[field] !== "",
-      ).length;
-      return `${String(followOn.kind)}${followOn.kind === "none" ? "" : `(${filled}/3 fields)`}`;
-    });
+    // What the model said about follow-ons, against what survived normalizing.
     console.info("Recommendation follow-ons", {
       processId: input.processId,
-      proposed: followOnKinds,
+      proposed: describeFollowOnProposals(payload),
       kept: normalized.filter((rec) => rec.buildsOnIndex !== undefined).length,
     });
     const { recommendations, replacements } = scrubContributorNames(
@@ -1139,9 +1195,18 @@ export const deleteForProcess = internalMutation({
       .take(DELETE_BATCH * 4);
     for (const run of runs) await ctx.db.delete(run._id);
 
+    const previews = await ctx.db
+      .query("recommendationPreviews")
+      .withIndex("by_clerkOrgId_and_processId", (q) =>
+        q.eq("clerkOrgId", args.clerkOrgId).eq("processId", args.processId),
+      )
+      .take(DELETE_BATCH * 4);
+    for (const preview of previews) await ctx.db.delete(preview._id);
+
     if (
       recommendations.length === DELETE_BATCH ||
-      runs.length === DELETE_BATCH * 4
+      runs.length === DELETE_BATCH * 4 ||
+      previews.length === DELETE_BATCH * 4
     ) {
       await ctx.scheduler.runAfter(
         0,
@@ -1212,6 +1277,8 @@ export const recommendationQualitySnapshot = internalQuery({
 //   npx convex run recommendations:startRecommendationBackfill '{"delayMs":90000}'
 //   # or start it later, e.g. overnight (epoch ms):
 //   npx convex run recommendations:startRecommendationBackfill '{"delayMs":90000,"startAt":1793048400000}'
+//   # after a prompt change, so the new prompt is not anchored to the old answers:
+//   npx convex run recommendations:startRecommendationBackfill '{"delayMs":90000,"fresh":true}'
 //   npx convex run recommendations:getRecommendationBackfillStatus
 //   npx convex run recommendations:pauseRecommendationBackfill
 //   npx convex run recommendations:resumeRecommendationBackfill
@@ -1232,6 +1299,12 @@ export const startRecommendationBackfill = internalMutation({
      * then cancels it: the first step finds the backfill paused and stops.
      */
     startAt: v.optional(v.number()),
+    /**
+     * Don't show the model the stored recommendations. Identity then carries
+     * over by steps and kind of change only, so use it only while few
+     * recommendations have decisions on them.
+     */
+    fresh: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const existing = await currentBackfill(ctx);
@@ -1249,6 +1322,7 @@ export const startRecommendationBackfill = internalMutation({
       skipped: 0,
       startedAt: now,
       startsAt,
+      ...(args.fresh ? { fresh: true } : {}),
       updatedAt: now,
     });
     await ctx.scheduler.runAt(
@@ -1283,6 +1357,7 @@ export const stepRecommendationBackfill = internalMutation({
           clerkOrgId: flow.clerkOrgId,
           processId: flow.processId,
           trigger: "backfill",
+          includeExisting: !backfill.fresh,
         });
         scheduledRun = started !== null && !started.joined;
       }
@@ -1344,6 +1419,7 @@ export const getRecommendationBackfillStatus = internalQuery({
     return {
       status: backfill.status,
       startsAt: backfill.startsAt ?? null,
+      fresh: backfill.fresh ?? false,
       scheduled: backfill.scheduled,
       skipped: backfill.skipped,
       startedAt: backfill.startedAt,

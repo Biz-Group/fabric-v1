@@ -502,6 +502,184 @@ describe("recommendation runs", () => {
     }));
     expect(counts).toEqual({ recommendations: 0, decisions: 0, reviews: 0, runs: 0 });
   });
+
+  test("a fresh backfill runs without showing the model the current recommendations", async () => {
+    const t = harness();
+    const { processId } = await t.run((ctx) => seedOrg(ctx));
+    await runRecommendations(t, processId);
+    // As on prod after a prompt change: the stored run is from the old prompt.
+    await t.run(async (ctx) => {
+      const previous = await ctx.db.query("recommendationRuns").first();
+      await ctx.db.patch(previous!._id, { promptVersion: "recommendations-v9-2026-10-26" });
+    });
+    const fetchMock = stubClaude();
+
+    const { backfillId } = await t.mutation(
+      internal.recommendations.startRecommendationBackfill,
+      { fresh: true },
+    );
+    await t.mutation(internal.recommendations.stepRecommendationBackfill, {
+      backfillId,
+    });
+    const run = await t.run((ctx) =>
+      ctx.db.query("recommendationRuns").order("desc").first(),
+    );
+    expect(run?.trigger).toBe("backfill");
+    expect(run?.includeExisting).toBe(false);
+
+    await t.action(internal.recommendations.generateRecommendationsInternal, {
+      clerkOrgId: ORG,
+      runId: run!.runId,
+    });
+    const [input, init] = fetchMock.mock.calls[0];
+    const request = input instanceof Request ? input : new Request(input, init);
+    const body = JSON.stringify(await request.clone().json());
+    expect(body).not.toContain("## Current recommendations");
+
+    // Same steps and kind of change, so the recommendation keeps its identity.
+    const view = await readView(t, processId);
+    expect(view?.run?.status).toBe("ready");
+    expect(view?.recommendations.map((rec) => rec.title)).toEqual([ROUTE.title]);
+  });
+
+  test("a normal re-run still shows the model the current recommendations", async () => {
+    const t = harness();
+    const { processId } = await t.run((ctx) => seedOrg(ctx));
+    await runRecommendations(t, processId);
+    const fetchMock = stubClaude();
+    await runRecommendations(t, processId);
+    const [input, init] = fetchMock.mock.calls[0];
+    const request = input instanceof Request ? input : new Request(input, init);
+    expect(JSON.stringify(await request.clone().json())).toContain("## Current recommendations");
+  });
+
+  /** Starts a preview and drives each call, the way the scheduler would. */
+  async function runPreview(
+    t: Harness,
+    processId: Id<"processes">,
+    variants: string[],
+  ) {
+    const { batchId } = await t.mutation(
+      internal.recommendationPreviews.startRecommendationPreview,
+      { processes: [{ clerkOrgId: ORG, processId }], variants, runs: 1 },
+    );
+    const previews = await t.run((ctx) =>
+      ctx.db.query("recommendationPreviews").collect(),
+    );
+    for (const preview of previews) {
+      await t.action(internal.recommendationPreviews.runRecommendationPreview, {
+        previewId: preview._id,
+      });
+    }
+    return batchId;
+  }
+
+  test("a preview runs each prompt variant and publishes nothing", async () => {
+    const t = harness();
+    const { processId } = await t.run((ctx) => seedOrg(ctx));
+    const fetchMock = stubClaude();
+    nextAnswer = { recommendations: [CHECKLIST, ROUTE] };
+
+    const batchId = await runPreview(t, processId, ["v9", "v10"]);
+
+    // Each variant sent its own prompt and schema.
+    const schemas = await Promise.all(
+      fetchMock.mock.calls.map(async ([input, init]) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const body = (await request.clone().json()) as {
+          tools: Array<{ input_schema: { properties: { recommendations: { items: { properties: object } } } } }>;
+        };
+        return Object.keys(body.tools[0].input_schema.properties.recommendations.items.properties);
+      }),
+    );
+    expect(schemas.filter((keys) => keys.includes("whyThisChange"))).toHaveLength(1);
+    expect(schemas.filter((keys) => keys.includes("whyNotSimpler"))).toHaveLength(1);
+
+    // Nothing reaches the organisation.
+    const published = await t.run(async (ctx) => ({
+      recommendations: (await ctx.db.query("processRecommendations").collect()).length,
+      runs: (await ctx.db.query("recommendationRuns").collect()).length,
+    }));
+    expect(published).toEqual({ recommendations: 0, runs: 0 });
+
+    const report = await t.query(
+      internal.recommendationPreviews.getRecommendationPreviewReport,
+      { batchId, includeItems: true },
+    );
+    for (const variant of ["v9", "v10"]) {
+      expect(report.totals[variant]).toMatchObject({
+        runs: { ready: 1, failed: 0, pending: 0 },
+        recommendations: 2,
+        technicalTopLevel: 1,
+        runsWithNoTechnical: 0,
+      });
+    }
+    expect(report.technicalPerRunByProcess).toEqual([
+      { processId, name: "Ticket triage", byVariant: { v9: [1], v10: [1] } },
+    ]);
+    expect(report.items?.[0].recommendations.map((rec) => rec.title).sort()).toEqual(
+      [CHECKLIST.title, ROUTE.title].sort(),
+    );
+
+    // Deleting the process takes its previews with it.
+    await t.mutation(internal.recommendations.deleteForProcess, {
+      processId,
+      clerkOrgId: ORG,
+    });
+    expect(
+      await t.run(async (ctx) => (await ctx.db.query("recommendationPreviews").collect()).length),
+    ).toBe(0);
+  });
+
+  test("the preview report counts the follow-ons the eight-item cap removed", async () => {
+    const t = harness();
+    const { processId } = await t.run((ctx) => seedOrg(ctx));
+    const kinds = ["workflow", "integration", "agent", "ai_assist", "workflow"];
+    const nodes = ["intake", "triage", "resolve"];
+    nextAnswer = {
+      recommendations: kinds.map((kind, i) => ({
+        ...CHECKLIST,
+        title: `Change ${i}`,
+        followOn: {
+          kind,
+          title: `Next step ${i}`,
+          problem: "Still done by hand.",
+          proposedChange: "Automate what the change leaves.",
+          whyNotSimpler: "",
+          nodeIds: [nodes[i % 3]],
+          pilotWhat: "",
+          pilotMeasure: "",
+          openQuestions: [],
+          risks: [],
+          previousRecommendationId: "",
+        },
+      })),
+    };
+
+    const batchId = await runPreview(t, processId, ["v9"]);
+    const report = await t.query(
+      internal.recommendationPreviews.getRecommendationPreviewReport,
+      { batchId },
+    );
+
+    expect(report.totals.v9).toMatchObject({
+      recommendations: 5,
+      followOns: 3,
+      followOnsCapped: 2,
+      runsHittingCap: 1,
+    });
+  });
+
+  test("a preview refuses a prompt variant that does not exist", async () => {
+    const t = harness();
+    const { processId } = await t.run((ctx) => seedOrg(ctx));
+    await expect(
+      t.mutation(internal.recommendationPreviews.startRecommendationPreview, {
+        processes: [{ clerkOrgId: ORG, processId }],
+        variants: ["v9", "v99"],
+      }),
+    ).rejects.toThrow(/Variants must be/);
+  });
 });
 
 describe("recommendation backfill", () => {

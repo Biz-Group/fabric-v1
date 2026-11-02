@@ -915,6 +915,12 @@ export default defineSchema({
     resultCount: v.optional(v.number()),
     /** The flow's conversation count when the run started. */
     conversationCount: v.number(),
+    /**
+     * False when the model was not shown the stored recommendations: a fresh
+     * backfill after a prompt change, so the new prompt is not anchored to the
+     * old one's answers. Absent means shown.
+     */
+    includeExisting: v.optional(v.boolean()),
     createdAt: v.number(),
     lastProgressAt: v.number(),
     completedAt: v.optional(v.number()),
@@ -1002,6 +1008,39 @@ export default defineSchema({
     "reviewerUserId",
   ]),
 
+  // A recommendation pass run for comparison only: never published, never shown
+  // to the organisation. Each batch runs prompt variants side by side on the
+  // same processes. Deleted with the batch, and with the process.
+  recommendationPreviews: defineTable({
+    clerkOrgId: v.string(),
+    processId: v.id("processes"),
+    batchId: v.string(),
+    variant: v.string(),
+    promptVersion: v.string(),
+    /** Repeat number within the batch, for run-to-run variation. */
+    runIndex: v.number(),
+    /** Whether the model saw the stored recommendations, as a live run does. */
+    includeExisting: v.boolean(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("ready"),
+      v.literal("failed"),
+    ),
+    errorMessage: v.optional(v.string()),
+    rateLimitAttempts: v.number(),
+    /** The normalized recommendations as JSON, as a live run would publish them. */
+    output: v.optional(v.string()),
+    /** The model's answer per followOn, e.g. "none" or "workflow(3/3 fields)". */
+    followOnProposals: v.optional(v.array(v.string())),
+    /** Follow-ons the eight-item cap removed. */
+    followOnsCapped: v.optional(v.number()),
+    durationMs: v.optional(v.number()),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_batchId", ["batchId"])
+    .index("by_clerkOrgId_and_processId", ["clerkOrgId", "processId"]),
+
   // Control row for the paced backfill that re-runs recommendations over every
   // existing flow. Platform-level: it walks every tenant, one flow at a time.
   recommendationBackfills: defineTable({
@@ -1017,6 +1056,8 @@ export default defineSchema({
     startedAt: v.number(),
     /** When the first step runs, for a backfill started ahead of time. */
     startsAt: v.optional(v.number()),
+    /** Runs without showing the model the stored recommendations. */
+    fresh: v.optional(v.boolean()),
     updatedAt: v.number(),
   }),
 

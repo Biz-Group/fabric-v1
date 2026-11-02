@@ -39,12 +39,12 @@ If Key findings reports nothing, that reflects what contributors described. It d
 
 Recommendations are worked out after the Process Flow is ready, so the flow is usable while they are still being prepared. A process gets between zero and five. Zero is a real answer: nothing contributors described needs changing.
 
-Each recommendation is one kind of change, simplest first:
+Each recommendation is one kind of change:
 
 - **Non-technical**: Remove a step, Simplify, Standardise, Role or policy, Training.
 - **Technical**: Workflow, Integration, AI assist, Agent.
 
-A technical recommendation explains why a simpler, non-technical change would not be enough.
+Each recommendation says why this change: how it fixes the problem, what it leaves unresolved, and why it beats the closest alternative. Fabric prefers the lighter change when two would work equally well, but a technical change that is the main fix is recommended on its own, not hidden behind the groundwork it needs.
 
 The list is ranked by **Value**, then **Effort**. Both are worked out from the flow, not guessed, and each shows the facts behind it:
 

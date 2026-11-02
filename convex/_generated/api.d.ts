@@ -63,6 +63,7 @@ import type * as processFlows from "../processFlows.js";
 import type * as processSummaryV2 from "../processSummaryV2.js";
 import type * as processes from "../processes.js";
 import type * as readModelHelpers from "../readModelHelpers.js";
+import type * as recommendationPreviews from "../recommendationPreviews.js";
 import type * as recommendations from "../recommendations.js";
 import type * as seed from "../seed.js";
 import type * as summaries from "../summaries.js";
@@ -138,6 +139,7 @@ declare const fullApi: ApiFromModules<{
   processSummaryV2: typeof processSummaryV2;
   processes: typeof processes;
   readModelHelpers: typeof readModelHelpers;
+  recommendationPreviews: typeof recommendationPreviews;
   recommendations: typeof recommendations;
   seed: typeof seed;
   summaries: typeof summaries;

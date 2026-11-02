@@ -326,7 +326,7 @@ function CurrentRecommendation({
           ) : null}
           {content.whyNotSimpler ? (
             <div className="mt-3 rounded-md border bg-muted/40 px-3 py-2">
-              <p className="text-xs font-medium">Why not something simpler</p>
+              <p className="text-xs font-medium">Why this change</p>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 {content.whyNotSimpler}
               </p>
