@@ -47,7 +47,7 @@ function AssistantMessage({
     <Message from="assistant" className="py-3">
       <MessageContent variant="flat" className="w-full max-w-none gap-0 overflow-visible">
         <AskThoughtTrace parts={message.parts} status={status} completedAt={message.completedAt} />
-        {status === "streaming" && <AskStatusLine parts={message.parts} status={status} />}
+        {status === "streaming" && <AskStatusLine parts={message.parts} status={status} startedAt={message._creationTime} />}
         {text && <AskAnswer text={text} citations={message.citations} onOpenHelp={onOpenHelp} />}
         {status === "stopped" && <p className="mt-2 text-xs text-muted-foreground">Stopped.</p>}
         {status === "error" && (

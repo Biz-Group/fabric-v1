@@ -90,16 +90,28 @@ function firstSentence(text: string): string {
 }
 
 /**
+ * Before the first step there is nothing to show but time: the model is
+ * planning which tools to call. Usually a few seconds; rarely half a minute,
+ * when the model service is slow. Each line says what is true at that point.
+ */
+export function waitingLine(elapsedMs: number): string {
+  if (elapsedMs < 8_000) return "Thinking…";
+  if (elapsedMs < 20_000) return "Working out where to look…";
+  return "Still working. Some answers take up to a minute…";
+}
+
+/**
  * The one-line status under the question while the answer is being worked on:
- * "Thinking…" until something happens, then the active tool's label or the
- * latest reasoning's first sentence. Null once answer text exists or the turn
+ * the waiting line until something happens, then the active tool's label, the
+ * latest reasoning's first sentence, or "Reading what it found…" between a
+ * finished tool and the next step. Null once answer text exists or the turn
  * is over.
  */
-export function statusLine(parts: AskMessagePart[], status: MessageStatus): string | null {
+export function statusLine(parts: AskMessagePart[], status: MessageStatus, elapsedMs = 0): string | null {
   if (status !== "streaming" || answerText(parts) !== "") return null;
   const last = [...parts].reverse().find((part) => part.type !== "text");
-  if (!last) return "Thinking…";
-  if (last.type === "tool") return last.status === "running" ? `${last.label}…` : "Thinking…";
+  if (!last) return waitingLine(elapsedMs);
+  if (last.type === "tool") return last.status === "running" ? `${last.label}…` : "Reading what it found…";
   if (last.type === "reasoning") return firstSentence(last.text) || "Thinking…";
   return "Thinking…";
 }

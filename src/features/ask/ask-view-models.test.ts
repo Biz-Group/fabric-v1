@@ -103,6 +103,17 @@ describe("thought trace (FR-2.15)", () => {
     expect(statusLine([tool("Checking coverage across the organization", "running", 0)], "streaming")).toBe(
       "Checking coverage across the organization…",
     );
+    expect(statusLine([tool("Checking coverage across the organization", "done", 0, 1)], "streaming")).toBe(
+      "Reading what it found…",
+    );
+  });
+
+  test("a long wait before the first step says what is true at each stage", () => {
+    expect(statusLine([], "streaming", 2_000)).toBe("Thinking…");
+    expect(statusLine([], "streaming", 12_000)).toBe("Working out where to look…");
+    expect(statusLine([], "streaming", 25_000)).toBe("Still working. Some answers take up to a minute…");
+    // Once a step exists, it shows instead, however long the wait.
+    expect(statusLine([reasoning("Reading the overviews.", 0)], "streaming", 25_000)).toBe("Reading the overviews.");
   });
 
   test("the status line goes once the answer starts or the turn ends", () => {

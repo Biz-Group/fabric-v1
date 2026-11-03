@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { ChevronRight, CircleAlert, Lightbulb, Loader2, Search } from "lucide-react";
 import type { AskMessagePart } from "../../../convex/lib/askSchema";
@@ -103,11 +103,36 @@ export function AskThoughtTrace({
  * A polite live region, so screen readers hear each step once rather than
  * every streamed character.
  */
-export function AskStatusLine({ parts, status }: { parts: AskMessagePart[]; status: MessageStatus }) {
-  const line = statusLine(parts, status);
+/** Seconds since the question was asked, shown once a wait is noticeable. */
+const SHOW_ELAPSED_AFTER_MS = 3_000;
+
+export function AskStatusLine({
+  parts,
+  status,
+  startedAt,
+}: {
+  parts: AskMessagePart[];
+  status: MessageStatus;
+  startedAt: number;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (status !== "streaming") return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [status]);
+  // Clock skew can put the server's start a moment in the future.
+  const elapsedMs = Math.max(0, now - startedAt);
+  const line = statusLine(parts, status, elapsedMs);
   return (
-    <div aria-live="polite" className="min-h-5 text-sm">
-      {line && <ShimmeringText text={line} className="text-sm" />}
+    <div className="flex min-h-5 items-baseline gap-2 text-sm">
+      {/* Only the words are announced; the ticking seconds would be noise. */}
+      <span aria-live="polite">{line && <ShimmeringText text={line} className="text-sm" />}</span>
+      {line && elapsedMs >= SHOW_ELAPSED_AFTER_MS && (
+        <span className="text-xs tabular-nums text-muted-foreground" aria-hidden>
+          {Math.floor(elapsedMs / 1_000)}s
+        </span>
+      )}
     </div>
   );
 }
