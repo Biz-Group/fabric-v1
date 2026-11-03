@@ -124,7 +124,9 @@ export function AskConversation({
 }) {
   const thread = useQuery(api.ask.getThread, threadId ? { threadId } : "skip");
   const stored = useQuery(api.askSuggestions.getSuggestions, threadId ? "skip" : {});
-  const prompts = stored && stored.length > 0 ? stored.map((s) => s.text) : DEFAULT_PROMPTS;
+  // Null while loading, so the defaults never flash before the member's own
+  // prompts; the defaults are only for a member with none stored yet.
+  const prompts = stored === undefined ? null : stored.length > 0 ? stored.map((s) => s.text) : DEFAULT_PROMPTS;
   const allowance = useQuery(api.ask.getDailyAllowance);
   const sendMessage = useMutation(api.ask.sendMessage);
   const stopTurn = useMutation(api.ask.stopTurn);
@@ -185,8 +187,14 @@ export function AskConversation({
                   Answers come from your workspace&apos;s contributions, overviews and flows, with sources.
                 </p>
               </div>
-              <ul className="grid w-full max-w-2xl gap-2 sm:grid-cols-2">
-                {prompts.map((prompt) => (
+              <ul className="grid w-full max-w-2xl gap-2 sm:grid-cols-2" aria-busy={prompts === null}>
+                {prompts === null &&
+                  Array.from({ length: 4 }, (_, index) => (
+                    <li key={index}>
+                      <Skeleton className="h-16 w-full rounded-lg" />
+                    </li>
+                  ))}
+                {prompts?.map((prompt) => (
                   <li key={prompt}>
                     <button
                       type="button"
