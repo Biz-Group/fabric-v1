@@ -65,9 +65,14 @@ function convexRun(fn, fnArgs) {
   });
   // A function returning null prints nothing.
   if (stdout.trim() === "") return null;
+  // Objects and arrays may follow log lines; scalars (an id, a number) stand alone.
   const start = stdout.search(/^[{[]|^null/m);
-  if (start === -1) throw new Error(`No result from ${fn}: ${stdout.slice(0, 300)}`);
-  return JSON.parse(stdout.slice(start));
+  if (start !== -1) return JSON.parse(stdout.slice(start));
+  try {
+    return JSON.parse(stdout.trim());
+  } catch {
+    throw new Error(`No result from ${fn}: ${stdout.slice(0, 300)}`);
+  }
 }
 
 function errorText(error) {
@@ -89,6 +94,9 @@ async function main() {
 
   const startedAt = new Date();
   console.log(`AskFabric eval: ${cases.length} case(s), set ${args.set}, ${args.deployment} at ${args.effort} effort, judged by ${args.judge}`);
+
+  // Idempotent: plants the injection contribution RT11 needs, if it's missing.
+  convexRun("askEval:ensureEvalFixtures", { clerkOrgId: args.org });
 
   const results = [];
   let lastJudgeAt = 0;

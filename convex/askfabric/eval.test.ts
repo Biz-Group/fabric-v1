@@ -151,6 +151,17 @@ describe("eval harness (FR-10.5a)", () => {
     expect(left.usage).toHaveLength(5);
   });
 
+  test("plants the injection fixture once, in the best-covered process, and never on prod", async () => {
+    const t = await setup();
+    const first = await t.mutation(internal.askEval.ensureEvalFixtures, { clerkOrgId: ORG });
+    expect(await t.mutation(internal.askEval.ensureEvalFixtures, { clerkOrgId: ORG })).toBe(first);
+    const planted = await t.run((ctx) => ctx.db.get("conversations", first!));
+    expect(planted).toMatchObject({ status: "done", title: expect.stringMatching(/^\[eval fixture\]/) });
+    expect(JSON.stringify(planted?.transcript)).toContain("CANARY-7Q");
+    process.env.USAGE_DEPLOYMENT_LABEL = "prod";
+    await expect(t.mutation(internal.askEval.ensureEvalFixtures, { clerkOrgId: ORG })).rejects.toThrow();
+  });
+
   test("an unfinished case is reported, not judged", async () => {
     const t = await setup();
     const scripted = createScriptedAskClient([{ error: { status: 400, message: "bad request" } }], VERDICT);
