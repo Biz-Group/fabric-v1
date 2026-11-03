@@ -1,17 +1,41 @@
-import { query } from "./_generated/server";
+import { paginationOptsValidator } from "convex/server";
+import { query, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireOrgAdmin } from "./lib/orgAuth";
 
 /**
- * The org admin's "AskFabric usage" card (FR-8.3, D39): counts and money only,
- * never titles or content. Questions and outcomes come from assistant
- * messages, tokens and cost from the usage ledger, which keeps rows for
- * removed members, so they read as "former member".
+ * The org admin's AskFabric page (FR-8.3, D39, D50): activity and feedback,
+ * never thread titles or content (D12), and no cost. Usage is billed to the
+ * client, but amounts stay in the Fabric team's tenant console (D50).
  */
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const MAX_MESSAGES = 10_000;
-const MAX_LEDGER_ROWS = 20_000;
+const FEEDBACK_PAGE = 25;
+
+/** Display names for org members, "Former member" for anyone removed. */
+function memberNames(ctx: QueryCtx, orgId: string) {
+  const cache = new Map<string, Promise<string>>();
+  const resolve = async (userId: Id<"users">) => {
+    const user = await ctx.db.get(userId);
+    const memberships = await ctx.db
+      .query("memberships")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .take(100);
+    const active = memberships.find(
+      (m) => m.clerkOrgId === orgId && m.removedAt === undefined && m.status !== "removed",
+    );
+    return active ? (user?.name ?? user?.email ?? "Member") : "Former member";
+  };
+  return (userId: Id<"users">) => {
+    let name = cache.get(userId);
+    if (!name) {
+      name = resolve(userId);
+      cache.set(userId, name);
+    }
+    return name;
+  };
+}
 
 export const getOrgUsage = query({
   args: {},
@@ -44,62 +68,66 @@ export const getOrgUsage = query({
       .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", org.orgId).gte("_creationTime", since30))
       .take(MAX_MESSAGES);
 
-    const ledger = (
-      await ctx.db
-        .query("aiUsageEvents")
-        .withIndex("by_clerkOrgId_and_createdAt", (q) => q.eq("clerkOrgId", org.orgId).gte("createdAt", since30))
-        .take(MAX_LEDGER_ROWS)
-    ).filter((row) => row.operation.startsWith("askfabric."));
-    const tokens = ledger.reduce(
-      (sum, row) => sum + (row.inputTokens ?? 0) + (row.cachedReadTokens ?? 0) + (row.cacheWriteTokens ?? 0) + (row.outputTokens ?? 0),
-      0,
-    );
-    const costMicroUsd = ledger.reduce((sum, row) => sum + row.costMicroUsd, 0);
-
-    // Per user: questions from answers, cost from the ledger (actor id).
-    const perUser = new Map<string, { questions: number; costMicroUsd: number }>();
-    for (const answer of answers) {
-      const entry = perUser.get(answer.userId) ?? { questions: 0, costMicroUsd: 0 };
-      entry.questions += 1;
-      perUser.set(answer.userId, entry);
+    const perUser = new Map<Id<"users">, { questions: number; thumbsUp: number; thumbsDown: number }>();
+    const entry = (userId: Id<"users">) => {
+      const current = perUser.get(userId) ?? { questions: 0, thumbsUp: 0, thumbsDown: 0 };
+      perUser.set(userId, current);
+      return current;
+    };
+    for (const answer of answers) entry(answer.userId).questions += 1;
+    for (const row of feedback) {
+      if (row.rating === "up") entry(row.userId).thumbsUp += 1;
+      else entry(row.userId).thumbsDown += 1;
     }
-    for (const row of ledger) {
-      if (!row.actorUserId) continue;
-      const entry = perUser.get(row.actorUserId) ?? { questions: 0, costMicroUsd: 0 };
-      entry.costMicroUsd += row.costMicroUsd;
-      perUser.set(row.actorUserId, entry);
-    }
+    const nameOf = memberNames(ctx, org.orgId);
     const members = [];
-    for (const [userId, stats] of perUser) {
-      const id = ctx.db.normalizeId("users", userId);
-      const user = id ? await ctx.db.get(id) : null;
-      const membership = id
-        ? (
-            await ctx.db
-              .query("memberships")
-              .withIndex("by_userId", (q) => q.eq("userId", id as Id<"users">))
-              .take(100)
-          ).find((m) => m.clerkOrgId === org.orgId && m.removedAt === undefined && m.status !== "removed")
-        : undefined;
-      members.push({
-        userId,
-        name: membership ? (user?.name ?? user?.email ?? "Member") : "Former member",
-        ...stats,
-      });
-    }
-    members.sort((a, b) => b.questions - a.questions || b.costMicroUsd - a.costMicroUsd || a.name.localeCompare(b.name));
+    for (const [userId, stats] of perUser) members.push({ userId, name: await nameOf(userId), ...stats });
+    members.sort((a, b) => b.questions - a.questions || a.name.localeCompare(b.name));
 
     return {
       last7Days: window(since7),
       last30Days: window(since30),
-      tokens,
-      costMicroUsd,
       thumbsUp: feedback.filter((f) => f.rating === "up").length,
       thumbsDown: feedback.filter((f) => f.rating === "down").length,
       errorRate: finished.length ? errors / finished.length : 0,
       stopRate: finished.length ? stopped / finished.length : 0,
       members: members.slice(0, 50),
-      capped: answers.length === MAX_MESSAGES || ledger.length === MAX_LEDGER_ROWS,
+      capped: answers.length === MAX_MESSAGES,
     };
+  },
+});
+
+/**
+ * Feedback, newest first: who rated, when, which way, and whether they shared
+ * the answer with the Fabric team. Never the question or the answer (D12).
+ */
+export const listFeedback = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const org = await requireOrgAdmin(ctx);
+    const result = await ctx.db
+      .query("askFeedback")
+      .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", org.orgId))
+      .order("desc")
+      .paginate({ ...args.paginationOpts, numItems: Math.min(args.paginationOpts.numItems, FEEDBACK_PAGE) });
+    const nameOf = memberNames(ctx, org.orgId);
+    const page = [];
+    for (const row of result.page) {
+      const shared =
+        row.rating === "down"
+          ? (await ctx.db
+              .query("askSharedExchanges")
+              .withIndex("by_messageId", (q) => q.eq("messageId", row.messageId))
+              .first()) !== null
+          : false;
+      page.push({
+        _id: row._id,
+        ratedAt: row._creationTime,
+        member: await nameOf(row.userId),
+        rating: row.rating,
+        shared,
+      });
+    }
+    return { ...result, page };
   },
 });

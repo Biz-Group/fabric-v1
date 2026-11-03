@@ -2,7 +2,7 @@
 
 import { useQuery } from "convex/react";
 import Link from "next/link";
-import { Home, MessageSquare, Palette, Users } from "lucide-react";
+import { Home, MessageSquare, Palette, Sparkles, Users } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import { buttonVariants } from "@/components/ui/button";
 import { PageTitle } from "@/components/ui/page-title";
@@ -71,6 +71,12 @@ export default function AdminLayout({
           icon: MessageSquare,
           label: "Contributions",
           active: routes.isActivePath("/admin/conversations", { exact: true }),
+        },
+        {
+          href: routes.adminAskFabricHref,
+          icon: Sparkles,
+          label: "AskFabric",
+          active: routes.isActivePath("/admin/askfabric", { exact: true }),
         },
         {
           href: routes.adminAppearanceHref,

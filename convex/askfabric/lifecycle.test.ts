@@ -273,15 +273,22 @@ describe("feedback and sharing (FR-7)", () => {
     expect(audit.filter((a) => a.action === "sharedExchangeViewed")).toHaveLength(1);
   });
 
-  test("the admin usage card counts without content, and members can't read it", async () => {
+  test("the admin AskFabric page counts without content or cost, and members can't read it", async () => {
     const { t, ids, ana } = await answered();
     await ana.mutation(api.askFeedback.setFeedback, { messageId: ids.messageId, rating: "up" });
     const admin = await t.run((ctx) => member(ctx, "user_orgadmin", ORG, "admin"));
     const asAdmin = t.withIdentity({ tokenIdentifier: admin.tokenIdentifier, subject: "a", issuer: ISSUER, orgId: ORG, orgSlug: ORG });
     const usage = await asAdmin.query(api.askUsage.getOrgUsage, {});
     expect(usage).toMatchObject({ last30Days: { questions: 1, threads: 1, activeUsers: 1 }, thumbsUp: 1, thumbsDown: 0, errorRate: 0 });
-    expect(JSON.stringify(usage)).not.toMatch(/dispatch|Re-keying|"t"/i);
+    expect(JSON.stringify(usage)).not.toMatch(/dispatch|Re-keying|"t"|cost|token/i);
+    expect(usage.members).toEqual([{ userId: ids.ana.userId, name: "user_ana", questions: 1, thumbsUp: 1, thumbsDown: 0 }]);
+    const feedback = await asAdmin.query(api.askUsage.listFeedback, { paginationOpts: { numItems: 25, cursor: null } });
+    expect(feedback.page.map(({ member, rating, shared }) => ({ member, rating, shared }))).toEqual([
+      { member: "user_ana", rating: "up", shared: false },
+    ]);
+    expect(JSON.stringify(feedback.page)).not.toMatch(/dispatch|Re-keying/i);
     await expect(ana.query(api.askUsage.getOrgUsage, {})).rejects.toThrow();
+    await expect(ana.query(api.askUsage.listFeedback, { paginationOpts: { numItems: 25, cursor: null } })).rejects.toThrow();
   });
 });
 

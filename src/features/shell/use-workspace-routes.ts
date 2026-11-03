@@ -95,6 +95,7 @@ export function useWorkspaceRoutes() {
       adminUsersHref: withWorkspacePath("/admin/users"),
       adminConversationsHref: withWorkspacePath("/admin/conversations"),
       adminAppearanceHref: withWorkspacePath("/admin/appearance"),
+      adminAskFabricHref: withWorkspacePath("/admin/askfabric"),
       isActivePath,
       isAdminPath: isActivePath("/admin"),
       withWorkspacePath,
