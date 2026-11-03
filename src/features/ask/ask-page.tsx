@@ -1,8 +1,8 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { MessagesSquare } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -21,6 +21,11 @@ function AskWorkspace() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [threadsOpen, setThreadsOpen] = useState(false);
+  const markVisited = useMutation(api.askSuggestions.markVisited);
+  // Records the visit and refreshes stale starter prompts (FR-6.3).
+  useEffect(() => {
+    void markVisited({}).catch(() => {});
+  }, [markVisited]);
   const threadId = (searchParams.get(THREAD_PARAM) as Id<"askThreads"> | null) ?? null;
 
   // The thread lives in the URL, so Back from a citation returns to it (FR-5.6).

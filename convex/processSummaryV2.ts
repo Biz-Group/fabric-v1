@@ -45,6 +45,7 @@ import {
   type SummaryRunError,
   type SummarySourceKeyMap,
 } from "./summaryV2";
+import { requestSuggestionsRefresh } from "./askSuggestions";
 
 const SOURCE_SCAN_PAGE_SIZE = 20;
 const RUN_STALE_MS = 10 * 60_000;
@@ -1115,6 +1116,8 @@ export const saveProcessFinal = internalMutation({
       process.summaryV2?.provenance.sourceSnapshotHash !==
       args.artifact.provenance.sourceSnapshotHash;
     const now = Date.now();
+    // New evidence can change AskFabric's starter prompts (FR-6.3).
+    await requestSuggestionsRefresh(ctx, run.clerkOrgId);
     await ctx.db.patch(process._id, {
       summaryV2: args.artifact,
       summaryV2SourceRevision: args.sourceRevision,

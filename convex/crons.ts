@@ -50,6 +50,23 @@ crons.interval(
   {},
 );
 
+// Shared AskFabric exchanges are kept 90 days (FR-7.4, D38).
+crons.cron(
+  "expire shared AskFabric exchanges",
+  "15 2 * * *",
+  internal.askFeedback.expireSharedExchanges,
+  {},
+);
+
+// AskFabric starter prompts are rebuilt daily for orgs with recent visitors
+// (FR-6.3); pipeline completions also trigger a debounced rebuild.
+crons.cron(
+  "rebuild AskFabric starter prompts",
+  "45 2 * * *",
+  internal.askSuggestions.recomputeActiveOrgs,
+  {},
+);
+
 // Ships dev-deployment AI usage rows to the prod sink so the platform console
 // can show one merged view. A no-op on the sink itself (USAGE_SINK_URL unset).
 // Deliberately not inline with the AI call: a cross-deployment request on the

@@ -252,8 +252,23 @@ export const getThread = query({
               .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
               .take(200)
           : [];
+      const feedback =
+        message.role === "assistant"
+          ? await ctx.db
+              .query("askFeedback")
+              .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
+              .first()
+          : null;
+      const shared =
+        feedback?.rating === "down"
+          ? await ctx.db
+              .query("askSharedExchanges")
+              .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
+              .first()
+          : null;
       withCitations.push({
         _id: message._id,
+        feedback: feedback ? { rating: feedback.rating, shared: shared !== null } : null,
         _creationTime: message._creationTime,
         role: message.role,
         parts: message.parts,

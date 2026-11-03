@@ -20,6 +20,7 @@ import {
 import { authError } from "./lib/authErrors";
 import { userError } from "./lib/userError";
 import { conversationTitle } from "./lib/conversationTitle";
+import { clearCitedTextFor } from "./askLifecycle";
 
 const DEFAULT_COMPACT_CONVERSATION_LIMIT = 50;
 const MAX_COMPACT_CONVERSATION_LIMIT = 100;
@@ -681,6 +682,8 @@ export const deleteForAdmin = mutation({
       }
     }
     await ctx.db.delete(args.conversationId);
+    // AskFabric stops quoting it (FR-9.7).
+    await clearCitedTextFor(ctx, caller.orgId, "conversation", args.conversationId);
 
     if (!deletedDoneConversation) return;
 

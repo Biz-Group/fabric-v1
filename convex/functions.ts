@@ -8,6 +8,7 @@ import {
 } from "./lib/orgAuth";
 import { toLightweightSummaryListRow } from "./summaryV2";
 import { withSummaryV2ReadGate } from "./lib/summaryV2Feature";
+import { clearCitedTextFor } from "./askLifecycle";
 
 export const list = query({
   args: {},
@@ -177,5 +178,6 @@ export const remove = mutation({
       },
     );
     await ctx.db.delete(args.functionId);
+    await clearCitedTextFor(ctx, caller.orgId, "function", args.functionId);
   },
 });

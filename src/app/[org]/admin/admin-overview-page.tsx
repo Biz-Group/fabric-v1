@@ -14,6 +14,7 @@ import { PageTitle } from "@/components/ui/page-title";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 import { StatusBadge } from "@/features/status/status-badge";
 import { conversationStatusMeta } from "@/features/status/status-meta";
+import { AskFabricUsageCard } from "@/features/admin/askfabric-usage-card";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -140,6 +141,8 @@ export default function AdminOverviewPage() {
           }
         />
       </div>
+
+      <AskFabricUsageCard />
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">

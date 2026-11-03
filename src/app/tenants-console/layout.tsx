@@ -89,6 +89,7 @@ function ConsoleHeader({ email }: { email: string }) {
     { href: "/", label: "Tenants", active: path === "/" || path.startsWith("/new") },
     { href: "/usage", label: "Usage", active: path.startsWith("/usage") },
     { href: "/team", label: "Platform team", active: path.startsWith("/team") },
+    { href: "/shared", label: "Shared answers", active: path.startsWith("/shared") },
   ];
 
   return (

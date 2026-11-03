@@ -462,6 +462,8 @@ export default defineSchema({
       v.literal("blockedJoin"),
       v.literal("superAdminFanOut"),
       v.literal("reconcile"),
+      // A Fabric team member opened an AskFabric exchange a user shared (FR-7.3).
+      v.literal("sharedExchangeViewed"),
     ),
     detail: v.optional(v.string()),
     createdAt: v.number(),
@@ -1352,7 +1354,9 @@ export default defineSchema({
   })
     .index("by_threadId", ["threadId"])
     // The watchdog's scan for turns stuck in `streaming` (FR-2.11).
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    // The admin usage card: an org's answers over a window (FR-8.3).
+    .index("by_clerkOrgId_and_role", ["clerkOrgId", "role"]),
 
   askCitations: defineTable({
     messageId: v.id("askMessages"),
@@ -1393,6 +1397,8 @@ export default defineSchema({
     lastVisitedAt: v.optional(v.number()),
     // The visit before `lastVisitedAt`, for "since your last visit" prompts.
     previousVisitedAt: v.optional(v.number()),
+    // Org default row only: a debounced rebuild is queued until then.
+    refreshScheduledAt: v.optional(v.number()),
   })
     .index("by_clerkOrgId_and_userId", ["clerkOrgId", "userId"])
     // Recomputes run only for users who visited in the last 30 days.

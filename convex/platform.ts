@@ -22,6 +22,7 @@ import {
   isClerkApiErrorCode,
   normalizeEmail,
 } from "./lib/clerkApi";
+import { purgeAskFabricForMember } from "./askLifecycle";
 
 // ---------------------------------------------------------------------------
 // Platform-role management (super-admin layer)
@@ -568,6 +569,7 @@ export const completeFanOutRemoval = internalMutation({
       return;
     }
     await ctx.db.delete(membership._id);
+    await purgeAskFabricForMember(ctx, membership.clerkOrgId, membership.userId);
     await patchStatsIfPresent(ctx, membership.clerkOrgId, {
       active: -1,
       ...roleDelta(membership.role, -1),

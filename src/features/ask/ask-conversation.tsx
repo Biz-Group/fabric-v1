@@ -13,13 +13,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { describeError } from "@/lib/user-error-message";
 import { AskAnswer, AskSources, HelpDialogHost } from "./ask-citations";
 import { AskComposer, type Mention } from "./ask-composer";
+import { AskFeedback } from "./ask-feedback";
 import { AskStatusLine, AskThoughtTrace } from "./ask-thought-trace";
 import { answerText, errorMessage, type MessageStatus } from "./trace-view-model";
 
 type Thread = NonNullable<FunctionReturnType<typeof api.ask.getThread>>;
 type ThreadMessage = Thread["messages"][number];
 
-/** Default prompts until per-viewer starter prompts land (1F.1): the org-wide seed questions. */
+/**
+ * Shown only until the first stored set exists (FR-6.3): the org-wide seed
+ * questions, so the empty state never waits on a query.
+ */
 const DEFAULT_PROMPTS = [
   "What are the things that are consistently slowing us down or creating friction in the business?",
   "What would be the three most impactful moves we could make?",
@@ -60,6 +64,7 @@ function AssistantMessage({
           </div>
         )}
         {text && status !== "streaming" && <AskSources citations={message.citations} onOpenHelp={onOpenHelp} />}
+        {text && status !== "streaming" && <AskFeedback messageId={message._id} feedback={message.feedback} />}
       </MessageContent>
     </Message>
   );
@@ -94,6 +99,8 @@ export function AskConversation({
   onThreadCreated: (threadId: Id<"askThreads">) => void;
 }) {
   const thread = useQuery(api.ask.getThread, threadId ? { threadId } : "skip");
+  const stored = useQuery(api.askSuggestions.getSuggestions, threadId ? "skip" : {});
+  const prompts = stored && stored.length > 0 ? stored.map((s) => s.text) : DEFAULT_PROMPTS;
   const sendMessage = useMutation(api.ask.sendMessage);
   const stopTurn = useMutation(api.ask.stopTurn);
 
@@ -148,7 +155,7 @@ export function AskConversation({
                 </p>
               </div>
               <ul className="grid w-full max-w-2xl gap-2 sm:grid-cols-2">
-                {DEFAULT_PROMPTS.map((prompt) => (
+                {prompts.map((prompt) => (
                   <li key={prompt}>
                     <button
                       type="button"

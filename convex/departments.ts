@@ -22,6 +22,7 @@ import {
 import { toLightweightSummaryListRow } from "./summaryV2";
 import { clearPlacementsForDepartment } from "./users";
 import { withSummaryV2ReadGate } from "./lib/summaryV2Feature";
+import { clearCitedTextFor } from "./askLifecycle";
 
 export const listByFunction = query({
   args: { functionId: v.id("functions") },
@@ -408,6 +409,7 @@ export const remove = mutation({
       },
     );
     await ctx.db.delete(args.departmentId);
+    await clearCitedTextFor(ctx, caller.orgId, "department", args.departmentId);
     // Members placed here fall back to "unset" and are asked again on their
     // next visit. Members are not children of a department, so they never
     // block deletion the way processes do.

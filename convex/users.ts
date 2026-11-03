@@ -40,6 +40,7 @@ import {
   markTenantDeleted,
   upsertTenantFromClerkOrg,
 } from "./tenants";
+import { purgeAskFabricForMember, purgeAskFabricForOrg } from "./askLifecycle";
 
 const roleValidator = v.union(
   v.literal("admin"),
@@ -1591,6 +1592,7 @@ export const completeMemberRemoval = internalMutation({
       .unique();
     await ctx.db.delete(target._id);
     await patchStatsIfPresent(ctx, args.orgId, roleDelta(target.role, -1));
+    await purgeAskFabricForMember(ctx, args.orgId, target.userId);
     await writeAudit(ctx, {
       clerkOrgId: args.orgId,
       actorUserId: actor?._id,
@@ -1972,6 +1974,7 @@ export const handleClerkWebhook = internalMutation({
             .take(1000);
           for (const membership of memberships) {
             await ctx.db.delete(membership._id);
+            await purgeAskFabricForMember(ctx, membership.clerkOrgId, user._id);
             await patchStatsIfPresent(
               ctx,
               membership.clerkOrgId,
@@ -2030,6 +2033,7 @@ export const handleClerkWebhook = internalMutation({
           .unique();
         if (existingMembership) {
           await ctx.db.delete(existingMembership._id);
+          await purgeAskFabricForMember(ctx, membership.clerkOrgId, existingMembership.userId);
           await patchStatsIfPresent(
             ctx,
             membership.clerkOrgId,
@@ -2079,6 +2083,7 @@ export const handleClerkWebhook = internalMutation({
       const clerkOrgId = getString(data.id);
       if (clerkOrgId) {
         await markTenantDeleted(ctx, clerkOrgId);
+        await purgeAskFabricForOrg(ctx, clerkOrgId);
       }
     }
 

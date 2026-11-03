@@ -29,6 +29,7 @@ import {
   PENDING_WORK_LABELS,
   summarizeFlow,
 } from "./readModelHelpers";
+import { clearCitedTextFor } from "./askLifecycle";
 
 export const listByDepartment = query({
   args: { departmentId: v.id("departments") },
@@ -609,6 +610,7 @@ export const remove = mutation({
       clerkOrgId: caller.orgId,
     });
     await ctx.db.delete(args.processId);
+    await clearCitedTextFor(ctx, caller.orgId, "process", args.processId);
 
     // Clean up department summary
     const department = await ctx.db.get(departmentId);

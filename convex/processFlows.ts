@@ -46,6 +46,7 @@ import {
   flowNodeDetailFields,
 } from "./schema";
 import { flowSummarySourceSnapshotValidator } from "./summaryV2";
+import { requestSuggestionsRefresh } from "./askSuggestions";
 
 // ---------------------------------------------------------------------------
 // Response parsing shared by both generation stages.
@@ -742,6 +743,8 @@ export const saveFlowGraph = internalMutation({
     }
 
     const now = Date.now();
+    // A new flow can change AskFabric's starter prompts (FR-6.3).
+    await requestSuggestionsRefresh(ctx, args.clerkOrgId);
     await ctx.db.patch(flow._id, {
       status: "ready",
       stale: false,

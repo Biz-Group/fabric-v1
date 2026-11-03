@@ -10,6 +10,10 @@
 
 import type * as aiUsage from "../aiUsage.js";
 import type * as ask from "../ask.js";
+import type * as askFeedback from "../askFeedback.js";
+import type * as askLifecycle from "../askLifecycle.js";
+import type * as askShared from "../askShared.js";
+import type * as askSuggestions from "../askSuggestions.js";
 import type * as askThreads from "../askThreads.js";
 import type * as askTools_catalog from "../askTools/catalog.js";
 import type * as askTools_conversations from "../askTools/conversations.js";
@@ -27,11 +31,13 @@ import type * as askTools_results from "../askTools/results.js";
 import type * as askTools_scope from "../askTools/scope.js";
 import type * as askTools_signals from "../askTools/signals.js";
 import type * as askTools_systems from "../askTools/systems.js";
+import type * as askUsage from "../askUsage.js";
 import type * as askfabric_citationAccess from "../askfabric/citationAccess.js";
 import type * as askfabric_context from "../askfabric/context.js";
 import type * as askfabric_loop from "../askfabric/loop.js";
 import type * as askfabric_modelClient from "../askfabric/modelClient.js";
 import type * as askfabric_parts from "../askfabric/parts.js";
+import type * as askfabric_suggestions from "../askfabric/suggestions.js";
 import type * as askfabric_systemPrompt from "../askfabric/systemPrompt.js";
 import type * as cleanup from "../cleanup.js";
 import type * as conversations from "../conversations.js";
@@ -115,6 +121,10 @@ import type {
 declare const fullApi: ApiFromModules<{
   aiUsage: typeof aiUsage;
   ask: typeof ask;
+  askFeedback: typeof askFeedback;
+  askLifecycle: typeof askLifecycle;
+  askShared: typeof askShared;
+  askSuggestions: typeof askSuggestions;
   askThreads: typeof askThreads;
   "askTools/catalog": typeof askTools_catalog;
   "askTools/conversations": typeof askTools_conversations;
@@ -132,11 +142,13 @@ declare const fullApi: ApiFromModules<{
   "askTools/scope": typeof askTools_scope;
   "askTools/signals": typeof askTools_signals;
   "askTools/systems": typeof askTools_systems;
+  askUsage: typeof askUsage;
   "askfabric/citationAccess": typeof askfabric_citationAccess;
   "askfabric/context": typeof askfabric_context;
   "askfabric/loop": typeof askfabric_loop;
   "askfabric/modelClient": typeof askfabric_modelClient;
   "askfabric/parts": typeof askfabric_parts;
+  "askfabric/suggestions": typeof askfabric_suggestions;
   "askfabric/systemPrompt": typeof askfabric_systemPrompt;
   cleanup: typeof cleanup;
   conversations: typeof conversations;
