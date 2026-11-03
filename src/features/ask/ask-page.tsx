@@ -52,7 +52,8 @@ function AskWorkspace() {
       headerActions={
         <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setThreadsOpen(true)}>
           <MessagesSquare className="size-4" aria-hidden />
-          Threads
+          {/* Icon only on phones, so the page title keeps its room. */}
+          <span className="max-sm:sr-only">Threads</span>
         </Button>
       }
     >

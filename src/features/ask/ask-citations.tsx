@@ -166,7 +166,9 @@ export function AskSources({
                 <CitationChip key={citation.ordinal} citation={citation} onOpenHelp={onOpenHelp} />
               ))}
             </span>
-            <span className="min-w-0 truncate">{group.citations[0].title}</span>
+            <span className="min-w-0 truncate" title={group.citations.map((c) => `${c.ordinal}. ${c.title}`).join("\n")}>
+              {group.label}
+            </span>
           </li>
         ))}
       </ul>

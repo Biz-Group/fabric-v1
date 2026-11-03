@@ -224,7 +224,8 @@ export function AskComposer({
           >
             <AtSign className="size-4" aria-hidden />
           </Button>
-          <PopoverContent anchor={boxRef} side="top" align="start" className="w-80 p-0">
+          {/* Closing returns focus to the textarea, not the @ button, so typing carries on after a pick. */}
+          <PopoverContent anchor={boxRef} side="top" align="start" className="w-80 p-0" finalFocus={inputRef}>
             {pickerOpen && <MentionPicker onPick={pick} />}
           </PopoverContent>
         </Popover>

@@ -67,6 +67,16 @@ describe("citation links (FR-5.2)", () => {
       ["org:org", [3]],
     ]);
   });
+
+  test("labels a group of different results by its first and a count", () => {
+    const groups = groupSources([
+      cite("fabric:flow-node/p1/a", { ordinal: 1, title: "bottleneck: Escalate" }),
+      cite("fabric:flow-node/p1/b", { ordinal: 2, title: "friction: No checklist" }),
+      cite("fabric:flow-node/p1/c", { ordinal: 3, title: "friction: Memory" }),
+      cite("fabric:entity/org", { ordinal: 4, title: "Coverage" }),
+    ]);
+    expect(groups.map((g) => g.label)).toEqual(["bottleneck: Escalate and 2 more", "Coverage"]);
+  });
 });
 
 const reasoning = (text: string, startedAt: number, endedAt?: number): AskMessagePart => ({

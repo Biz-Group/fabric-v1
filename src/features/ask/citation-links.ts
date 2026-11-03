@@ -92,14 +92,22 @@ export function citationTarget(
 
 /**
  * The answer's sources grouped by the entity they come from (FR-5.1), in the
- * order each entity is first cited. Repeated sources already share a number.
+ * order each entity is first cited. Repeated results already share a number.
+ * A group of different results is labelled by its first and a count, so one
+ * finding's title never stands for the others.
  */
-export function groupSources(citations: CitationView[]): Array<{ key: string; citations: CitationView[] }> {
+export function groupSources(
+  citations: CitationView[],
+): Array<{ key: string; label: string; citations: CitationView[] }> {
   const groups = new Map<string, CitationView[]>();
   for (const citation of [...citations].sort((a, b) => a.ordinal - b.ordinal)) {
     const parsed = parseFabricSource(citation.source);
     const key = parsed ? `${parsed.sourceKind}:${parsed.sourceEntityId}` : citation.source;
     groups.set(key, [...(groups.get(key) ?? []), citation]);
   }
-  return [...groups.entries()].map(([key, grouped]) => ({ key, citations: grouped }));
+  return [...groups.entries()].map(([key, grouped]) => {
+    const others = new Set(grouped.map((c) => c.title)).size - 1;
+    const label = others > 0 ? `${grouped[0].title} and ${others} more` : grouped[0].title;
+    return { key, label, citations: grouped };
+  });
 }

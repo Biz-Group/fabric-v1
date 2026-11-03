@@ -853,9 +853,11 @@ function SyncedTranscript({
                 className={cn(
                   "group/msg cursor-pointer rounded-md px-3 py-2 text-sm leading-relaxed transition-all duration-300 pointer-coarse:min-h-10",
                   isCurrent && "bg-org-accent-selected text-foreground ring-1 ring-org-accent-border",
-                  i === linkedIndex && "bg-org-accent-subtle ring-2 ring-org-accent-border",
                   !isCurrent && msg.role === "ai" && "bg-muted/90",
                   !isCurrent && msg.role !== "ai" && "bg-muted/55",
+                  // After the role backgrounds: cn keeps the last bg class, so
+                  // a linked line would otherwise lose its tint (FR-5.4).
+                  i === linkedIndex && "bg-org-accent-subtle ring-2 ring-org-accent-border",
                   isPast && "opacity-40",
                   isFuture && "opacity-50",
                   !isCurrent && "hover:opacity-80 hover:bg-muted/70",
