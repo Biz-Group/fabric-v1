@@ -12,6 +12,7 @@ import {
 import {
   PRICE_VERSION,
   microUsdFromUsd,
+  priceCharacterUsage,
   priceTokenUsage,
   priceVoiceUsage,
   type TokenUsageForPricing,
@@ -323,6 +324,98 @@ export async function recordVoiceUsage(
       seconds: args.seconds,
       status: args.status ?? "ok",
       latencyMs: Date.now() - args.startedAt,
+      errorType: args.errorType,
+    }),
+  );
+}
+
+type SpeechEventInput = {
+  attribution: UsageAttribution;
+  deployment: DeploymentLabel;
+  idempotencyKey: string;
+  createdAt: number;
+  operation: string;
+  provider: string;
+  model: string;
+  /** The provider's billed character count. */
+  characters: number;
+  status: AiUsageEvent["status"];
+  latencyMs?: number;
+  requestId?: string;
+  errorType?: string;
+};
+
+/** Pure: turns one text-to-speech call into a ledger row. */
+export function buildSpeechUsageEvent(input: SpeechEventInput): AiUsageEvent {
+  const { attribution } = input;
+  const priced = priceCharacterUsage(`${input.provider}:${input.model}`, input.characters);
+  return {
+    deployment: input.deployment,
+    idempotencyKey: input.idempotencyKey,
+    createdAt: input.createdAt,
+
+    clerkOrgId: attribution.clerkOrgId,
+    tenantName: attribution.tenantName,
+
+    unit: "characters",
+    operation: input.operation,
+    provider: input.provider,
+    model: input.model,
+    status: input.status,
+
+    characters: input.characters,
+
+    costMicroUsd: priced.costMicroUsd,
+    priceVersion: priced.priceVersion,
+    costSource: "computed",
+
+    entityType: attribution.entityType,
+    entityId: attribution.entityId,
+    entityLabel: attribution.entityLabel,
+    actorUserId: attribution.actorUserId,
+    actorName: attribution.actorName,
+    runId: attribution.runId,
+
+    latencyMs: input.latencyMs,
+    requestId: input.requestId,
+    errorType: input.errorType,
+  };
+}
+
+/**
+ * Records a character-billed call (today: AskFabric read aloud). A failed
+ * request is recorded with zero characters: ElevenLabs bills only audio it
+ * returns.
+ */
+export async function recordSpeechUsage(
+  ctx: ActionCtx,
+  attribution: UsageAttribution,
+  args: {
+    operation: string;
+    provider: string;
+    model: string;
+    characters: number;
+    status: AiUsageEvent["status"];
+    startedAt: number;
+    requestId?: string;
+    errorType?: string;
+  },
+): Promise<void> {
+  const deployment = resolveDeploymentLabel();
+  await recordSafely(
+    ctx,
+    buildSpeechUsageEvent({
+      attribution,
+      deployment,
+      idempotencyKey: `${deployment}:${args.operation}:${attribution.runId ?? attribution.clerkOrgId}:${args.startedAt}`,
+      createdAt: args.startedAt,
+      operation: args.operation,
+      provider: args.provider,
+      model: args.model,
+      characters: args.characters,
+      status: args.status,
+      latencyMs: Date.now() - args.startedAt,
+      requestId: args.requestId,
       errorType: args.errorType,
     }),
   );

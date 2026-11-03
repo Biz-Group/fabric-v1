@@ -23,6 +23,7 @@ export const ASKFABRIC_OPERATIONS = {
   title: "askfabric.title",
   eval: "askfabric.eval",
   judge: "askfabric.judge",
+  speech: "askfabric.speech",
 } as const;
 
 /**

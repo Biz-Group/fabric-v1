@@ -43,7 +43,7 @@ export const aiUsageEventFields = {
   clerkOrgId: v.string(),
   tenantName: v.optional(v.string()),
 
-  unit: v.union(v.literal("tokens"), v.literal("seconds")),
+  unit: v.union(v.literal("tokens"), v.literal("seconds"), v.literal("characters")),
   operation: v.string(),
   provider: v.string(),
   model: v.string(),
@@ -59,6 +59,7 @@ export const aiUsageEventFields = {
   cachedReadTokens: v.optional(v.number()),
   cacheWriteTokens: v.optional(v.number()),
   seconds: v.optional(v.number()),
+  characters: v.optional(v.number()),
   tokenClass: v.optional(
     v.union(v.literal("fabric-synthesis"), v.literal("agent-llm")),
   ),

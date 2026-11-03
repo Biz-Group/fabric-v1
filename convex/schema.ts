@@ -1173,7 +1173,7 @@ export default defineSchema({
     // The *billing basis*, not an exclusive tag. An ElevenLabs agent row is
     // billed per second but also carries the agent LLM's token counts, so both
     // `seconds` and the token fields are populated on it.
-    unit: v.union(v.literal("tokens"), v.literal("seconds")),
+    unit: v.union(v.literal("tokens"), v.literal("seconds"), v.literal("characters")),
     operation: v.string(),
     provider: v.string(),
     model: v.string(),
@@ -1191,6 +1191,8 @@ export default defineSchema({
     cachedReadTokens: v.optional(v.number()),
     cacheWriteTokens: v.optional(v.number()),
     seconds: v.optional(v.number()),
+    // Text-to-speech is billed per character of input text.
+    characters: v.optional(v.number()),
     // Separates our own synthesis tokens from an ElevenLabs agent's LLM tokens.
     // They are different models on different bills; summing them into one
     // "input tokens" figure produces a number that means nothing.
@@ -1417,6 +1419,21 @@ export default defineSchema({
     .index("by_threadId", ["threadId"])
     // Thumbs counts for the admin usage card (FR-8.3).
     .index("by_clerkOrgId", ["clerkOrgId"]),
+
+  // An answer read aloud: the ElevenLabs audio, generated on the first press
+  // and replayed from storage after that. Goes with its thread.
+  askSpeech: defineTable({
+    messageId: v.id("askMessages"),
+    threadId: v.id("askThreads"),
+    clerkOrgId: v.string(),
+    userId: v.id("users"),
+    storageId: v.id("_storage"),
+    voiceId: v.string(),
+    model: v.string(),
+    characters: v.number(),
+  })
+    .index("by_messageId", ["messageId"])
+    .index("by_threadId", ["threadId"]),
 
   // A thumbs-down exchange the user chose to share with the Fabric team (D20).
   // A snapshot: no raw tool results, which never outlive the turn (FR-7.2).

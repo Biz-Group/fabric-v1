@@ -131,6 +131,20 @@ export function errorMessage(reason: string | null): string {
   return (reason && ERROR_MESSAGES[reason]) || ERROR_MESSAGES.modelError;
 }
 
+/**
+ * The answer as copied: markdown with plain [n] markers, then the sources
+ * those markers point to, so the numbers still mean something when pasted.
+ */
+export function copyableAnswer(text: string, citations: { ordinal: number; title: string }[]): string {
+  const body = text.replace(/\[\[cite:(\d+)\]\]/g, "[$1]");
+  const cited = new Set([...body.matchAll(/\[(\d+)\]/g)].map((match) => Number(match[1])));
+  const sources = citations
+    .filter((citation) => cited.has(citation.ordinal))
+    .sort((a, b) => a.ordinal - b.ordinal)
+    .map((citation) => `[${citation.ordinal}] ${citation.title}`);
+  return sources.length ? `${body}\n\nSources\n${sources.join("\n")}` : body;
+}
+
 /** Citation markers in stored answer text, as markdown links the renderer turns into chips. */
 export function markersToLinks(text: string): string {
   return text.replace(/\[\[cite:(\d+)\]\]/g, (_match, n: string) => `[${n}](cite:${n})`);

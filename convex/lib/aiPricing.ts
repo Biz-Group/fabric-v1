@@ -16,7 +16,7 @@
  */
 
 /** Bump on any rate change. Rows record the version they were priced at. */
-export const PRICE_VERSION = "2026-11-02";
+export const PRICE_VERSION = "2026-11-03";
 
 /**
  * Recorded instead of a version when no rate is known for a model. Such rows
@@ -161,6 +161,18 @@ export const VOICE_RATES: Readonly<Record<string, number>> = {
   "elevenlabs:scribe_v2": usdPerHour(0.22),
 };
 
+/**
+ * Micro-USD **per character** of text-to-speech input, at the API list rate:
+ * $0.04 per 1K characters for v4 Turbo, Flash and Turbo; $0.08 for v4 and
+ * Multilingual v2 (elevenlabs.io/pricing/api, 3 Nov 2026).
+ */
+export const CHARACTER_RATES: Readonly<Record<string, number>> = {
+  "elevenlabs:eleven_v4_turbo": 40,
+  "elevenlabs:eleven_flash_v2_5": 40,
+  "elevenlabs:eleven_turbo_v2_5": 40,
+  "elevenlabs:eleven_multilingual_v2": 80,
+};
+
 export type PricedCost = {
   costMicroUsd: number;
   priceVersion: string;
@@ -267,6 +279,19 @@ export function priceVoiceUsage(key: string, seconds: number): PricedCost {
   }
   return {
     costMicroUsd: Math.round(finite(seconds) * rate),
+    priceVersion: PRICE_VERSION,
+  };
+}
+
+/** Prices a character-billed call. `key` is a `CHARACTER_RATES` key. */
+export function priceCharacterUsage(key: string, characters: number): PricedCost {
+  const rate = CHARACTER_RATES[key];
+  if (rate === undefined) {
+    warnUnpriced("characters", key);
+    return UNPRICED;
+  }
+  return {
+    costMicroUsd: Math.round(finite(characters) * rate),
     priceVersion: PRICE_VERSION,
   };
 }

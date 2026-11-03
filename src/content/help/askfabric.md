@@ -13,18 +13,19 @@ verifiedAgainst:
   - src/features/ask/ask-thought-trace.tsx
   - src/features/ask/ask-thread-list.tsx
   - src/features/ask/ask-feedback.tsx
+  - src/features/ask/ask-answer-actions.tsx
   - src/app/[org]/admin/askfabric/page.tsx
   - convex/lib/askLimits.ts
   - convex/askfabric/systemPrompt.ts
 ---
 
-AskFabric answers questions about how your organization works from the contributions, overviews and process flows you can see in Fabric, and links every claim to its evidence. It is in beta, so check the sources.
+AskFabric answers questions about how your organization works from the contributions, overviews and process flows you can see in Fabric, and links every claim to its evidence.
 
 ## Asking a question
 
 Open **AskFabric** in the sidebar and type a question, or pick a suggested one. To point at a process, department or function, type **@** or press the **@** button and pick it.
 
-A status line shows what AskFabric is doing. When the answer arrives, its steps fold into a line such as "Thought for 19s · 2 steps" that you can open. The stop button ends an answer early and keeps what it wrote. If an answer fails, press **Retry**.
+A status line shows what AskFabric is doing. When the answer arrives, its steps fold into a line you can open. The stop button ends an answer early and keeps what it wrote. If an answer fails, press **Retry**.
 
 ## Checking the sources
 
@@ -46,9 +47,9 @@ Each conversation is a thread in the side panel, or under **Threads** on a phone
 
 Each person can ask 10 questions a day, and each workspace 100. Failed answers don't count, and the limits reset at midnight Gulf time. With 5 or fewer left, the line under the question box says how many. You can have one answer in progress at a time.
 
-## Rating answers
+## Under each answer
 
-Use the thumbs under an answer. If you mark it unhelpful, you can tick **Share this exchange with the Fabric team** and add a note. A shared exchange holds your question, the answer and the quoted content. It is kept for 90 days, and you can unshare it at any time.
+The copy button copies the answer with its sources listed. The speaker reads it aloud; press again to pause. Use the thumbs to rate it. If you mark it unhelpful, you can tick **Share this exchange with the Fabric team** and add a note. A shared exchange holds your question, the answer and the quoted content. It is kept for 90 days, and you can unshare it at any time.
 
 ## For admins
 

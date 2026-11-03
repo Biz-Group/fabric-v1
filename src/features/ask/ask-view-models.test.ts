@@ -3,6 +3,7 @@ import type { AskMessagePart } from "../../../convex/lib/askSchema";
 import { citationTarget, groupSources, type CitationView } from "./citation-links";
 import {
   answerText,
+  copyableAnswer,
   errorMessage,
   markersToLinks,
   statusLine,
@@ -149,5 +150,17 @@ describe("thought trace (FR-2.15)", () => {
     expect(markersToLinks("Slow[[cite:1]][[cite:12]].")).toBe("Slow[1](cite:1)[12](cite:12).");
     expect(errorMessage("busy")).toBe("AskFabric is busy. Try again in a minute.");
     expect(errorMessage("nonsense")).toBe("Something went wrong. Try again.");
+  });
+
+  test("a copied answer keeps its numbers and lists the sources they point to", () => {
+    const citations = [
+      { ordinal: 2, title: "Payroll flow" },
+      { ordinal: 1, title: "Finance overview" },
+      { ordinal: 3, title: "Not cited" },
+    ];
+    expect(copyableAnswer("Slow[[cite:1]] and manual.[[cite:2]]", citations)).toBe(
+      "Slow[1] and manual.[2]\n\nSources\n[1] Finance overview\n[2] Payroll flow",
+    );
+    expect(copyableAnswer("No sources.", [])).toBe("No sources.");
   });
 });

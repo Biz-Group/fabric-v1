@@ -33,6 +33,10 @@ const app = defineApp({
     // Unset means 10 and 100; `off` removes the limit. See lib/askLimits.ts.
     ASKFABRIC_DAILY_USER_LIMIT: v.optional(v.string()),
     ASKFABRIC_DAILY_ORG_LIMIT: v.optional(v.string()),
+    // Read aloud: the ElevenLabs voice and model. Unset means the Fabric
+    // interviewer's voice and Flash v2.5. See lib/askSpeech.ts.
+    ASKFABRIC_TTS_VOICE_ID: v.optional(v.string()),
+    ASKFABRIC_TTS_MODEL: v.optional(v.string()),
     // Dev only: comma-separated `deployment=model` pairs the eval harness may
     // run against, so each run is priced at its own model's rate. Production
     // never reads it.

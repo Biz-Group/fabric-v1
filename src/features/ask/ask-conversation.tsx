@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { describeError } from "@/lib/user-error-message";
 import { AskAnswer, AskSources, HelpDialogHost } from "./ask-citations";
 import { AskComposer, type Mention } from "./ask-composer";
+import { CopyAnswerButton, ReadAloudButton } from "./ask-answer-actions";
 import { AskFeedback } from "./ask-feedback";
 import { AskStatusLine, AskThoughtTrace } from "./ask-thought-trace";
 import { answerText, errorMessage, type MessageStatus } from "./trace-view-model";
@@ -65,7 +66,18 @@ function AssistantMessage({
           </div>
         )}
         {text && status !== "streaming" && <AskSources citations={message.citations} onOpenHelp={onOpenHelp} />}
-        {text && status !== "streaming" && <AskFeedback messageId={message._id} feedback={message.feedback} />}
+        {text && status !== "streaming" && (
+          <AskFeedback
+            messageId={message._id}
+            feedback={message.feedback}
+            actions={
+              <>
+                <CopyAnswerButton text={text} citations={message.citations} />
+                <ReadAloudButton messageId={message._id} />
+              </>
+            }
+          />
+        )}
       </MessageContent>
     </Message>
   );

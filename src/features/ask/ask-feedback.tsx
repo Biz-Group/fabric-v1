@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation } from "convex/react";
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { ThumbsDown, ThumbsUp } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
@@ -19,9 +19,12 @@ import { cn } from "@/lib/utils";
 export function AskFeedback({
   messageId,
   feedback,
+  actions,
 }: {
   messageId: Id<"askMessages">;
   feedback: { rating: "up" | "down"; shared: boolean } | null;
+  /** Shown before the thumbs: copy and read aloud. */
+  actions?: ReactNode;
 }) {
   const setFeedback = useMutation(api.askFeedback.setFeedback);
   const shareExchange = useMutation(api.askFeedback.shareExchange);
@@ -58,6 +61,7 @@ export function AskFeedback({
   return (
     <div className="mt-2">
       <div className="flex items-center gap-0.5">
+        {actions}
         <Button
           variant="ghost"
           size="icon-xs"

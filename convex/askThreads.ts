@@ -167,6 +167,19 @@ export const deleteThreadBatch = internalMutation({
     const thread = await ctx.db.get(args.threadId);
     if (!thread || thread.status !== "deleting") return null;
     let removed = 0;
+    const speech = await ctx.db
+      .query("askSpeech")
+      .withIndex("by_threadId", (q) => q.eq("threadId", thread._id))
+      .take(DELETE_BATCH);
+    for (const row of speech) {
+      try {
+        await ctx.storage.delete(row.storageId);
+      } catch {
+        // Already gone — fall through and delete the row.
+      }
+      await ctx.db.delete("askSpeech", row._id);
+    }
+    removed += speech.length;
     const tables = [
       ["askCitations", "by_threadId"],
       ["askFeedback", "by_threadId"],
