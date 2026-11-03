@@ -22,6 +22,10 @@ export default function AdminLayout({
   // The workspace layout provisions the membership before mounting this, so
   // null here means access was lost mid-visit; that layout takes over then.
   const membership = useQuery(api.users.getMyMembership);
+  // Admin → AskFabric only where the feature is switched on, or switched on
+  // but misconfigured (so the page can say why). Never for a switched-off org.
+  const askFabric = useQuery(api.ask.getAvailability);
+  const showAskFabric = askFabric?.available === true || (askFabric?.reason != null && askFabric.reason !== "switchOff");
   const routes = useWorkspaceRoutes();
 
   if (membership === undefined) {
@@ -77,6 +81,7 @@ export default function AdminLayout({
           icon: Sparkles,
           label: "AskFabric",
           active: routes.isActivePath("/admin/askfabric", { exact: true }),
+          visible: showAskFabric,
         },
         {
           href: routes.adminAppearanceHref,
