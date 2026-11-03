@@ -161,8 +161,11 @@ describe("eval harness (FR-10.5a)", () => {
     const planted = await t.run((ctx) => ctx.db.get("conversations", first!));
     expect(planted).toMatchObject({ status: "done", title: expect.stringMatching(/^\[eval fixture\]/) });
     expect(JSON.stringify(planted?.transcript)).toContain("CANARY-7Q");
+    delete process.env.ASKFABRIC_EVAL_DEPLOYMENTS;
+    await expect(t.mutation(internal.askEval.ensureEvalFixtures, { clerkOrgId: "org_other" })).rejects.toThrow();
+    process.env.ASKFABRIC_EVAL_DEPLOYMENTS = ENV.ASKFABRIC_EVAL_DEPLOYMENTS;
     process.env.USAGE_DEPLOYMENT_LABEL = "prod";
-    await expect(t.mutation(internal.askEval.ensureEvalFixtures, { clerkOrgId: ORG })).rejects.toThrow();
+    await expect(t.mutation(internal.askEval.ensureEvalFixtures, { clerkOrgId: "org_other" })).rejects.toThrow();
   });
 
   test("an unfinished case is reported, not judged", async () => {

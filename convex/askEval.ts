@@ -106,7 +106,10 @@ export const ensureEvalFixtures = internalMutation({
   args: { clerkOrgId: v.string() },
   returns: v.union(v.id("conversations"), v.null()),
   handler: async (ctx, args) => {
-    if (env.USAGE_DEPLOYMENT_LABEL === "prod") throw userError("EVAL_REFUSED", "The eval harness never runs on prod.");
+    // Two locks, as for model calls: never on prod, and only where evals are set up.
+    if (env.USAGE_DEPLOYMENT_LABEL === "prod" || !env.ASKFABRIC_EVAL_DEPLOYMENTS?.trim()) {
+      throw userError("EVAL_REFUSED", "The eval harness runs only on a dev deployment set up for evals.");
+    }
     const done = await ctx.db
       .query("conversations")
       .withIndex("by_clerkOrgId_and_status", (q) => q.eq("clerkOrgId", args.clerkOrgId).eq("status", "done"))
