@@ -31,6 +31,8 @@ type Env = {
   readonly CONVEX_CLOUD_URL: string;
   readonly CONVEX_SITE_URL: string;
   readonly ASKFABRIC: string | undefined;
+  readonly ASKFABRIC_DAILY_ORG_LIMIT: string | undefined;
+  readonly ASKFABRIC_DAILY_USER_LIMIT: string | undefined;
   readonly ASKFABRIC_EVAL_DEPLOYMENTS: string | undefined;
   readonly ASKFABRIC_FOUNDRY_DEPLOYMENT: string | undefined;
   readonly ASKFABRIC_MODEL: string | undefined;

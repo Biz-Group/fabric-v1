@@ -29,6 +29,10 @@ const app = defineApp({
     // a missing value makes AskFabric unavailable instead of falling back.
     ASKFABRIC_FOUNDRY_DEPLOYMENT: v.optional(v.string()),
     ASKFABRIC_MODEL: v.optional(v.string()),
+    // Beta limits (D51): questions per member and per org per Gulf-time day.
+    // Unset means 10 and 100; `off` removes the limit. See lib/askLimits.ts.
+    ASKFABRIC_DAILY_USER_LIMIT: v.optional(v.string()),
+    ASKFABRIC_DAILY_ORG_LIMIT: v.optional(v.string()),
     // Dev only: comma-separated `deployment=model` pairs the eval harness may
     // run against, so each run is priced at its own model's rate. Production
     // never reads it.

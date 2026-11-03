@@ -1355,8 +1355,10 @@ export default defineSchema({
     .index("by_threadId", ["threadId"])
     // The watchdog's scan for turns stuck in `streaming` (FR-2.11).
     .index("by_status", ["status"])
-    // The admin usage card: an org's answers over a window (FR-8.3).
-    .index("by_clerkOrgId_and_role", ["clerkOrgId", "role"]),
+    // The admin page and the org's daily limit: an org's answers over a window (FR-8.3, D51).
+    .index("by_clerkOrgId_and_role", ["clerkOrgId", "role"])
+    // A member's daily limit and one-answer-at-a-time check (D51).
+    .index("by_clerkOrgId_and_userId_and_role", ["clerkOrgId", "userId", "role"]),
 
   askCitations: defineTable({
     messageId: v.id("askMessages"),

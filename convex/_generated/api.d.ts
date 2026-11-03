@@ -55,6 +55,7 @@ import type * as lib_aiProvider from "../lib/aiProvider.js";
 import type * as lib_aiUsageMeter from "../lib/aiUsageMeter.js";
 import type * as lib_aiUsageRollup from "../lib/aiUsageRollup.js";
 import type * as lib_askFabricFeature from "../lib/askFabricFeature.js";
+import type * as lib_askLimits from "../lib/askLimits.js";
 import type * as lib_askNormalize from "../lib/askNormalize.js";
 import type * as lib_askSchema from "../lib/askSchema.js";
 import type * as lib_audioPlaybackToken from "../lib/audioPlaybackToken.js";
@@ -166,6 +167,7 @@ declare const fullApi: ApiFromModules<{
   "lib/aiUsageMeter": typeof lib_aiUsageMeter;
   "lib/aiUsageRollup": typeof lib_aiUsageRollup;
   "lib/askFabricFeature": typeof lib_askFabricFeature;
+  "lib/askLimits": typeof lib_askLimits;
   "lib/askNormalize": typeof lib_askNormalize;
   "lib/askSchema": typeof lib_askSchema;
   "lib/audioPlaybackToken": typeof lib_audioPlaybackToken;

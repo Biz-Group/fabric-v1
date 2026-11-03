@@ -1,6 +1,7 @@
 import { paginationOptsValidator } from "convex/server";
 import { query, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { gulfDayStart, readAskDailyLimits } from "./lib/askLimits";
 import { requireOrgAdmin } from "./lib/orgAuth";
 
 /**
@@ -68,6 +69,29 @@ export const getOrgUsage = query({
       .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", org.orgId).gte("_creationTime", since30))
       .take(MAX_MESSAGES);
 
+    // Beta limits (D51): member-days and org-days that reached today's limit,
+    // judged against the current limits, from answers that didn't fail.
+    const limits = readAskDailyLimits();
+    const perUserDay = new Map<string, number>();
+    const perOrgDay = new Map<number, number>();
+    for (const answer of answers) {
+      if (answer.status === "error") continue;
+      const day = gulfDayStart(answer._creationTime);
+      const key = `${answer.userId}:${day}`;
+      perUserDay.set(key, (perUserDay.get(key) ?? 0) + 1);
+      perOrgDay.set(day, (perOrgDay.get(day) ?? 0) + 1);
+    }
+    const userDaysAtLimit = new Map<string, number>();
+    if (limits.user !== null) {
+      for (const [key, count] of perUserDay) {
+        if (count < limits.user) continue;
+        const userId = key.slice(0, key.indexOf(":"));
+        userDaysAtLimit.set(userId, (userDaysAtLimit.get(userId) ?? 0) + 1);
+      }
+    }
+    const orgLimit = limits.org;
+    const orgDaysAtLimit = orgLimit === null ? 0 : [...perOrgDay.values()].filter((count) => count >= orgLimit).length;
+
     const perUser = new Map<Id<"users">, { questions: number; thumbsUp: number; thumbsDown: number }>();
     const entry = (userId: Id<"users">) => {
       const current = perUser.get(userId) ?? { questions: 0, thumbsUp: 0, thumbsDown: 0 };
@@ -81,7 +105,9 @@ export const getOrgUsage = query({
     }
     const nameOf = memberNames(ctx, org.orgId);
     const members = [];
-    for (const [userId, stats] of perUser) members.push({ userId, name: await nameOf(userId), ...stats });
+    for (const [userId, stats] of perUser) {
+      members.push({ userId, name: await nameOf(userId), ...stats, daysAtLimit: userDaysAtLimit.get(userId) ?? 0 });
+    }
     members.sort((a, b) => b.questions - a.questions || a.name.localeCompare(b.name));
 
     return {
@@ -92,6 +118,9 @@ export const getOrgUsage = query({
       errorRate: finished.length ? errors / finished.length : 0,
       stopRate: finished.length ? stopped / finished.length : 0,
       members: members.slice(0, 50),
+      limits,
+      membersAtLimit: userDaysAtLimit.size,
+      orgDaysAtLimit,
       capped: answers.length === MAX_MESSAGES,
     };
   },

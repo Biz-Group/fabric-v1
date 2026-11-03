@@ -104,6 +104,19 @@ export default function AdminAskFabricPage() {
         </p>
       </div>
 
+      {usage && (usage.limits.user !== null || usage.limits.org !== null) && (
+        <p className="text-sm text-muted-foreground">
+          Beta limits:{" "}
+          {[
+            usage.limits.user !== null ? `${usage.limits.user} questions per member per day` : null,
+            usage.limits.org !== null ? `${usage.limits.org} per workspace per day` : null,
+          ]
+            .filter(Boolean)
+            .join(", ")}
+          . Limits reset at midnight Gulf time.
+        </p>
+      )}
+
       {availability && !availability.available && availability.reason && (
         <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
           {UNAVAILABLE_REASON[availability.reason]}
@@ -152,6 +165,7 @@ export default function AdminAskFabricPage() {
                 <TableHead className="text-right">Questions</TableHead>
                 <TableHead className="text-right">Helpful</TableHead>
                 <TableHead className="text-right">Not helpful</TableHead>
+                {usage.limits.user !== null && <TableHead className="text-right">Days at limit</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -161,10 +175,22 @@ export default function AdminAskFabricPage() {
                   <TableCell className="text-right tabular-nums">{member.questions}</TableCell>
                   <TableCell className="text-right tabular-nums">{member.thumbsUp}</TableCell>
                   <TableCell className="text-right tabular-nums">{member.thumbsDown}</TableCell>
+                  {usage.limits.user !== null && (
+                    <TableCell className="text-right tabular-nums">{member.daysAtLimit}</TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+        )}
+        {usage && (usage.membersAtLimit > 0 || usage.orgDaysAtLimit > 0) && (
+          <p className="text-xs text-muted-foreground">
+            {usage.membersAtLimit === 1 ? "1 member" : `${usage.membersAtLimit} members`} reached the daily limit
+            {usage.orgDaysAtLimit > 0
+              ? `, and the workspace reached its limit on ${usage.orgDaysAtLimit === 1 ? "1 day" : `${usage.orgDaysAtLimit} days`}`
+              : ""}
+            . Days are counted against the current limits.
+          </p>
         )}
         {usage?.capped && <p className="text-xs text-muted-foreground">Counts cover the most recent activity only.</p>}
       </section>

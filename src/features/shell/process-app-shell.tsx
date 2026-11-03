@@ -74,6 +74,8 @@ export type WorkspaceNavItem = {
   label: string;
   active?: boolean;
   visible?: boolean;
+  /** A short tag after the label, such as "Beta". Hidden in the collapsed rail. */
+  tag?: string;
 };
 
 export type WorkspaceNavSection = {
@@ -302,6 +304,11 @@ function WorkspaceNav({
               >
                 <Icon className="size-4 shrink-0" />
                 <span className="truncate">{item.label}</span>
+                {item.tag && (
+                  <span className="ml-auto rounded-sm border px-1 text-[10px] leading-4 font-medium text-muted-foreground">
+                    {item.tag}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -511,6 +518,7 @@ export function WorkspaceAppShell({
           label: "AskFabric",
           active: routes.isActivePath("/ask"),
           visible: askFabric?.available === true,
+          tag: "Beta",
         },
         {
           href: routes.releaseNotesHref,

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { RotateCcw } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Conversation, ConversationContent, ConversationScrollButton } from "@/components/ui/conversation";
 import { Message, MessageContent } from "@/components/ui/message";
@@ -86,6 +87,29 @@ function questionText(message: ThreadMessage): string {
   return answerText(message.parts);
 }
 
+/** Questions left at or below this show in the footer (D51). */
+const LOW_ALLOWANCE = 5;
+
+/**
+ * The footer line: the beta's daily limit once it matters (D51), otherwise
+ * the standing reminder to check sources.
+ */
+function allowanceNote(allowance: FunctionReturnType<typeof api.ask.getDailyAllowance> | undefined): string {
+  const reminder = "AskFabric is in beta and can be wrong. Check the sources.";
+  if (!allowance) return reminder;
+  if (allowance.orgLimitReached) {
+    return "Your workspace has used today's AskFabric beta questions. You can ask again after midnight Gulf time.";
+  }
+  if (allowance.remaining === 0) {
+    return `You've used today's ${allowance.limit} beta questions. You can ask again after midnight Gulf time.`;
+  }
+  if (allowance.remaining !== null && allowance.remaining <= LOW_ALLOWANCE) {
+    const left = allowance.remaining === 1 ? "1 question" : `${allowance.remaining} questions`;
+    return `${left} left today (beta limit ${allowance.limit} a day). ${reminder}`;
+  }
+  return reminder;
+}
+
 /**
  * One thread: its questions, answers and the composer (FR-2, FR-4.6). Takes a
  * thread id and callbacks only, so it can later sit in a side panel. With no
@@ -101,6 +125,7 @@ export function AskConversation({
   const thread = useQuery(api.ask.getThread, threadId ? { threadId } : "skip");
   const stored = useQuery(api.askSuggestions.getSuggestions, threadId ? "skip" : {});
   const prompts = stored && stored.length > 0 ? stored.map((s) => s.text) : DEFAULT_PROMPTS;
+  const allowance = useQuery(api.ask.getDailyAllowance);
   const sendMessage = useMutation(api.ask.sendMessage);
   const stopTurn = useMutation(api.ask.stopTurn);
 
@@ -149,7 +174,10 @@ export function AskConversation({
           ) : !threadId ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-6 overflow-y-auto p-4">
               <div className="space-y-1 text-center">
-                <h2 className="text-lg font-semibold text-foreground">Ask about how your organization works</h2>
+                <h2 className="flex items-center justify-center gap-2 text-lg font-semibold text-foreground">
+                  Ask about how your organization works
+                  <Badge variant="outline">Beta</Badge>
+                </h2>
                 <p className="text-sm text-muted-foreground">
                   Answers come from your workspace&apos;s contributions, overviews and flows, with sources.
                 </p>
@@ -195,9 +223,7 @@ export function AskConversation({
           )}
           <div className="mx-auto w-full max-w-3xl px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <AskComposer streaming={streaming !== undefined} onSend={send} onStop={stop} autoFocus={!threadId} />
-            <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
-              AskFabric answers from your workspace&apos;s data and can be wrong. Check the sources.
-            </p>
+            <p className="mt-1.5 text-center text-[11px] text-muted-foreground">{allowanceNote(allowance)}</p>
           </div>
         </div>
       )}

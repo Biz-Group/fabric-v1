@@ -22,7 +22,9 @@ const ENV = {
   FOUNDRY_API_KEY: "test-key",
   FOUNDRY_CLAUDE_DEPLOYMENT: "fabric-claude-haiku-5-5",
 };
-const saved = Object.fromEntries(Object.keys(ENV).map((key) => [key, process.env[key]]));
+const saved = Object.fromEntries(
+  [...Object.keys(ENV), "ASKFABRIC_DAILY_USER_LIMIT", "ASKFABRIC_DAILY_ORG_LIMIT"].map((key) => [key, process.env[key]]),
+);
 
 const ANSWER: ScriptedStep[] = [
   { content: [{ type: "text", text: "Checking coverage." }, { type: "tool_use", id: "toolu_1", name: "getCoverage", input: { kind: "org", id: "" } }] },
@@ -194,6 +196,79 @@ describe("sendMessage (FR-2.1, FR-2.2, FR-4.2)", () => {
     const error = await s.ana.mutation(api.ask.sendMessage, { text: "Hi" }).catch((e) => e);
     expect(userErrorMessageOf(error)).toBe("AskFabric is unavailable.");
     expect(await s.t.run((ctx) => ctx.db.query("askThreads").collect())).toEqual([]);
+  });
+});
+
+describe("beta limits (D51)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
+    vi.setSystemTime(Date.parse("2026-11-03T08:00:00Z"));
+  });
+
+  /** Seeds finished answers for a member, as earlier questions today would leave. */
+  async function answered(s: Setup, userId: Id<"users">, statuses: ("complete" | "stopped" | "error")[]) {
+    await s.t.run(async (ctx) => {
+      const threadId = await ctx.db.insert("askThreads", { clerkOrgId: ORG_A, userId, title: "Earlier", status: "active", lastMessageAt: 0 });
+      for (const status of statuses) {
+        await ctx.db.insert("askMessages", { threadId, clerkOrgId: ORG_A, userId, role: "assistant", parts: [], status });
+      }
+    });
+  }
+
+  test("a member over the daily limit is refused, and failed answers don't count", async () => {
+    process.env.ASKFABRIC_DAILY_USER_LIMIT = "2";
+    const s = await setup();
+    await answered(s, s.ids.a.userId, ["complete", "error", "error"]);
+    expect(await s.ana.query(api.ask.getDailyAllowance, {})).toMatchObject({ limit: 2, remaining: 1, orgLimitReached: false });
+    const { assistantMessageId } = await s.ana.mutation(api.ask.sendMessage, { text: "One more" });
+    await s.t.run((ctx) => ctx.db.patch("askMessages", assistantMessageId, { status: "stopped" }));
+
+    const error = await s.ana.mutation(api.ask.sendMessage, { text: "And another" }).catch((e) => e);
+    expect(userErrorMessageOf(error)).toMatch(/2 questions per person per day/);
+    expect(await s.ana.query(api.ask.getDailyAllowance, {})).toMatchObject({ remaining: 0 });
+  });
+
+  test("the limit resets at midnight Gulf time", async () => {
+    process.env.ASKFABRIC_DAILY_USER_LIMIT = "1";
+    const s = await setup();
+    await answered(s, s.ids.a.userId, ["complete"]);
+    await expect(s.ana.mutation(api.ask.sendMessage, { text: "Today" })).rejects.toThrow();
+    vi.setSystemTime(Date.parse("2026-11-03T20:00:01Z"));
+    await expect(s.ana.mutation(api.ask.sendMessage, { text: "Tomorrow" })).resolves.toBeDefined();
+  });
+
+  test("the org's daily total refuses every member once reached", async () => {
+    process.env.ASKFABRIC_DAILY_ORG_LIMIT = "2";
+    const s = await setup();
+    const olgaId = await s.t.run(async (ctx) => (await ctx.db.query("users").collect()).find((u) => u.name === "olga")!._id);
+    await answered(s, olgaId, ["complete", "stopped"]);
+    const error = await s.ana.mutation(api.ask.sendMessage, { text: "Hi" }).catch((e) => e);
+    expect(userErrorMessageOf(error)).toMatch(/Your workspace has used today's 2/);
+    expect(await s.ana.query(api.ask.getDailyAllowance, {})).toMatchObject({ orgLimitReached: true });
+  });
+
+  test("one answer at a time per member, across threads", async () => {
+    const s = await setup();
+    await s.ana.mutation(api.ask.sendMessage, { text: "First" });
+    const error = await s.ana.mutation(api.ask.sendMessage, { text: "In a new thread" }).catch((e) => e);
+    expect(userErrorMessageOf(error)).toMatch(/Wait for your other answer/);
+  });
+
+  test("off removes a limit", async () => {
+    process.env.ASKFABRIC_DAILY_USER_LIMIT = "off";
+    const s = await setup();
+    await answered(s, s.ids.a.userId, Array(12).fill("complete"));
+    await expect(s.ana.mutation(api.ask.sendMessage, { text: "Still here" })).resolves.toBeDefined();
+    expect(await s.ana.query(api.ask.getDailyAllowance, {})).toMatchObject({ limit: null, remaining: null });
+  });
+
+  test("the admin page counts members who reached the limit", async () => {
+    process.env.ASKFABRIC_DAILY_USER_LIMIT = "2";
+    const s = await setup();
+    await answered(s, s.ids.a.userId, ["complete", "stopped"]);
+    const usage = await s.olga.query(api.askUsage.getOrgUsage, {});
+    expect(usage).toMatchObject({ limits: { user: 2, org: 100 }, membersAtLimit: 1, orgDaysAtLimit: 0 });
+    expect(usage.members.find((m) => m.userId === s.ids.a.userId)).toMatchObject({ daysAtLimit: 1 });
   });
 });
 

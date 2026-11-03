@@ -26,6 +26,13 @@ import {
   type AskMessagePart,
 } from "./lib/askSchema";
 import { authErrorCode } from "./lib/authErrors";
+import {
+  gulfDayStart,
+  hasStreamingAnswer,
+  orgQuestionsToday,
+  readAskDailyLimits,
+  userQuestionsToday,
+} from "./lib/askLimits";
 import { meteredStream, type UsageAttribution } from "./lib/aiUsageMeter";
 import { orgViewerValidator, requireOrgMember, requireOrgViewer } from "./lib/orgAuth";
 import { readableSummaryV2 } from "./lib/summaryV2Feature";
@@ -123,7 +130,68 @@ async function latestMessage(ctx: QueryCtx | MutationCtx, threadId: Id<"askThrea
     .first();
 }
 
+const DAY_MS = 24 * 60 * 60 * 1_000;
+
+/**
+ * Refuses a question over the beta limits (D51). Checked after the thread
+ * checks, so a missing thread or a busy one reads as that, not as a limit.
+ */
+async function enforceBetaLimits(ctx: MutationCtx, orgId: string, userId: Id<"users">, now: number) {
+  if (await hasStreamingAnswer(ctx, orgId, userId)) {
+    throw userError("ANSWER_IN_PROGRESS", "Wait for your other answer to finish, or stop it.");
+  }
+  const limits = readAskDailyLimits();
+  if (limits.user !== null && (await userQuestionsToday(ctx, orgId, userId, now, limits.user)) >= limits.user) {
+    throw userError(
+      "DAILY_LIMIT_REACHED",
+      `AskFabric is in beta, with ${limits.user} questions per person per day. You can ask again after midnight Gulf time.`,
+    );
+  }
+  if (limits.org !== null && (await orgQuestionsToday(ctx, orgId, now, limits.org)) >= limits.org) {
+    throw userError(
+      "ORG_DAILY_LIMIT_REACHED",
+      `Your workspace has used today's ${limits.org} AskFabric beta questions. You can ask again after midnight Gulf time.`,
+    );
+  }
+}
+
 // ---- Public API -----------------------------------------------------------------
+
+/**
+ * The member's beta allowance for today (D51), for the composer. Null where
+ * AskFabric is unavailable. `remaining` is null with no per-member limit.
+ */
+export const getDailyAllowance = query({
+  args: {},
+  returns: v.union(
+    v.null(),
+    v.object({
+      limit: v.union(v.number(), v.null()),
+      remaining: v.union(v.number(), v.null()),
+      orgLimitReached: v.boolean(),
+      resetsAt: v.number(),
+    }),
+  ),
+  handler: async (ctx) => {
+    let org;
+    try {
+      org = await requireOrgMember(ctx);
+    } catch {
+      return null;
+    }
+    if (!askFabricAvailability(org.orgId).available) return null;
+    const now = Date.now();
+    const limits = readAskDailyLimits();
+    const used = limits.user === null ? 0 : await userQuestionsToday(ctx, org.orgId, org.userId, now, limits.user);
+    const orgUsed = limits.org === null ? 0 : await orgQuestionsToday(ctx, org.orgId, now, limits.org);
+    return {
+      limit: limits.user,
+      remaining: limits.user === null ? null : Math.max(0, limits.user - used),
+      orgLimitReached: limits.org !== null && orgUsed >= limits.org,
+      resetsAt: gulfDayStart(now) + DAY_MS,
+    };
+  },
+});
 
 /**
  * Asks a question (FR-2.1). One transaction resolves the viewer, checks the
@@ -167,9 +235,11 @@ export const sendMessage = mutation({
       if ((await latestMessage(ctx, thread._id))?.status === "streaming") {
         throw userError("TURN_IN_PROGRESS", "Wait for the current answer to finish, or stop it.");
       }
+      await enforceBetaLimits(ctx, org.orgId, org.userId, now);
       threadId = thread._id;
       await ctx.db.patch("askThreads", threadId, { lastMessageAt: now, status: "active" });
     } else {
+      await enforceBetaLimits(ctx, org.orgId, org.userId, now);
       threadId = await ctx.db.insert("askThreads", {
         clerkOrgId: org.orgId,
         userId: org.userId,

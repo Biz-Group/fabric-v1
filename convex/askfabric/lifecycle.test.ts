@@ -281,7 +281,7 @@ describe("feedback and sharing (FR-7)", () => {
     const usage = await asAdmin.query(api.askUsage.getOrgUsage, {});
     expect(usage).toMatchObject({ last30Days: { questions: 1, threads: 1, activeUsers: 1 }, thumbsUp: 1, thumbsDown: 0, errorRate: 0 });
     expect(JSON.stringify(usage)).not.toMatch(/dispatch|Re-keying|"t"|cost|token/i);
-    expect(usage.members).toEqual([{ userId: ids.ana.userId, name: "user_ana", questions: 1, thumbsUp: 1, thumbsDown: 0 }]);
+    expect(usage.members).toEqual([{ userId: ids.ana.userId, name: "user_ana", questions: 1, thumbsUp: 1, thumbsDown: 0, daysAtLimit: 0 }]);
     const feedback = await asAdmin.query(api.askUsage.listFeedback, { paginationOpts: { numItems: 25, cursor: null } });
     expect(feedback.page.map(({ member, rating, shared }) => ({ member, rating, shared }))).toEqual([
       { member: "user_ana", rating: "up", shared: false },
