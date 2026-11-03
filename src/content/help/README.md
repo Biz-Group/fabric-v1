@@ -18,3 +18,4 @@ Each article is a Markdown file named `<id>.md` with YAML frontmatter. Cite an a
 | insights-and-recommendations | Using Insights and Recommendations | viewer, contributor, admin | Find where a process needs attention, and decide what to change — technical or not — with a plan or brief to copy. |
 | pdf-report | Download a process report as a PDF | viewer, contributor, admin | Download a PDF with overview, flow steps and insights, or export a single contribution. |
 | admin-members-and-workspace | Admin: members, contributions and branding | admin | Invite members, manage roles, review and retry contributions, export CSV, and set the workspace accent color. |
+| askfabric | Ask questions with AskFabric | viewer, contributor, admin | Ask about how your organization works and get sourced answers; private threads, daily beta limits, rating and sharing, and the admin view. |

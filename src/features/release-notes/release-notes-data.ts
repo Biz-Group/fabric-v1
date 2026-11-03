@@ -17,6 +17,45 @@ export type MonthlyReleaseNote = {
 
 export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
   {
+    id: "november-2026",
+    month: "November",
+    shortMonth: "Nov",
+    monthNumber: "11",
+    year: "2026",
+    headline: "Ask Fabric about how you work",
+    summary:
+      "AskFabric, in beta, answers questions about your organization from your workspace's contributions, overviews and process flows, with every claim linked to its source.",
+    newFeatures: [
+      {
+        title: "AskFabric (beta)",
+        description:
+          "Ask about how your organization works in plain words, from the AskFabric page in the sidebar. Answers say how much of the organization they cover.",
+      },
+      {
+        title: "Sources you can check",
+        description:
+          "Hover over or tap a numbered source to read the quoted evidence, or follow it to the finding, flow step or transcript line it came from.",
+      },
+      {
+        title: "AskFabric for admins",
+        description:
+          "Admin, then AskFabric, shows questions, active users and answer ratings for the workspace, never the questions or answers themselves.",
+      },
+    ],
+    enhancements: [
+      {
+        title: "Private threads",
+        description:
+          "Your AskFabric threads are visible only to you. Rename, pin, archive or delete them from the thread list.",
+      },
+      {
+        title: "Daily limits during the beta",
+        description:
+          "Each person can ask 10 questions a day and each workspace 100, resetting at midnight Gulf time.",
+      },
+    ],
+  },
+  {
     id: "october-2026",
     month: "October",
     shortMonth: "Oct",

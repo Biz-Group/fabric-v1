@@ -53,6 +53,30 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
     "body": "Once you finish a contribution, Fabric does the rest on its own. You do not need to press a separate \"generate\" button.\n\n## The stages\n\n1. **Processing**: Fabric is transcribing and analyzing. Long recordings can take a few minutes. You can close the dialog and carry on, and the contribution appears on the process's Contributions tab when it is ready.\n2. **Needs labels** (voice notes and uploads only): Fabric is waiting for someone to name the speakers before it analyzes anything. See \"Label speakers before analysis\".\n3. **Completed**: processing finished and the contribution is part of the evidence. This does not mean it covers the whole process.\n4. **Failed**: something stopped processing.\n\nYou will see these as badges on each contribution, and the most urgent one also shows beside the process title. A process with nothing pending shows no badge.\n\n## What updates next\n\nWhen a contribution completes, Fabric starts refreshing the process Overview and the Process Flow, independently of each other. While that happens, the Overview shows Refreshing and the Process Flow tab shows its progress. Department and function overviews can show New evidence until they are refreshed to include the change. See \"Reading the Overview\" and \"Reading the Process Flow\".\n\n## When something fails\n\nA failed contribution explains why, in plain words:\n\n- The audio could not be read, was no longer available, was longer than four hours, or contained no speech. Retrying will not help. Capture it again.\n- Transcription or analysis did not finish, or Fabric could not fetch the interview. These are usually temporary, and a retry can fix them.\n- The voice service reported that an interview did not complete. Capture it again.\n\n## Retrying\n\nOnly admins can retry. On a failed contribution, the button reads **Retry fetch** for an AI interview, **Retry transcription** if there is no transcript yet, or **Retry summary generation** if the transcript was saved. Fabric reruns only the stage that failed. Admins can also retry from Admin, then Contributions.\n\nIf you are not an admin, the contribution says \"Ask an admin to retry it.\" If you were still in the dialog, you can also choose **Discard recording** to delete it.\n\n## Closing early\n\nIf you close a voice note before submitting it, Fabric asks you to confirm and deletes it. Once it is submitted, it is kept even if you close the window."
   },
   {
+    "id": "askfabric",
+    "title": "Ask questions with AskFabric",
+    "summary": "Ask about how your organization works in plain words and get answers built from your workspace's evidence, with every claim linked to its source.",
+    "audience": [
+      "viewer",
+      "contributor",
+      "admin"
+    ],
+    "tags": [
+      "askfabric",
+      "questions",
+      "sources",
+      "threads",
+      "beta"
+    ],
+    "related": [
+      "reading-the-overview",
+      "reading-the-process-flow",
+      "insights-and-recommendations",
+      "roles-and-permissions"
+    ],
+    "body": "AskFabric answers questions about how your organization works from the contributions, overviews and process flows you can see in Fabric, and links every claim to its evidence. It is in beta, so check the sources.\n\n## Asking a question\n\nOpen **AskFabric** in the sidebar and type a question, or pick a suggested one. To point at a process, department or function, type **@** or press the **@** button and pick it.\n\nA status line shows what AskFabric is doing. When the answer arrives, its steps fold into a line such as \"Thought for 19s · 2 steps\" that you can open. The stop button ends an answer early and keeps what it wrote. If an answer fails, press **Retry**.\n\n## Checking the sources\n\nEach claim carries a numbered source. Hover over it, or tap it on a phone, to read the quoted evidence. Follow it to the finding, flow step, contribution or transcript line it came from. The **Sources** list under each answer groups them. A source reads \"Source no longer available\" if what it quoted was deleted.\n\n## What it will and won't do\n\n- It answers only from your workspace's evidence and Fabric's help, never from general knowledge.\n- It says how much of the organization its answer covers.\n- Fabric holds no financial data, so \"impact\" is judged from the evidence: how many processes and people a problem affects.\n- It doesn't profile, rank or judge individual people, or recommend products or vendors.\n- It sees only what you can see.\n\n## Your threads\n\nEach conversation is a thread in the side panel, or under **Threads** on a phone. Threads are private to you; admins can't read them. From a thread's menu you can rename, pin (up to 10), archive or delete it. If you leave a workspace, your threads there are deleted.\n\n## Daily limits during the beta\n\nEach person can ask 10 questions a day, and each workspace 100. Failed answers don't count, and the limits reset at midnight Gulf time. With 5 or fewer left, the line under the question box says how many. You can have one answer in progress at a time.\n\n## Rating answers\n\nUse the thumbs under an answer. If you mark it unhelpful, you can tick **Share this exchange with the Fabric team** and add a note. A shared exchange holds your question, the answer and the quoted content. It is kept for 90 days, and you can unshare it at any time.\n\n## For admins\n\n**Admin**, then **AskFabric**, shows questions, active users, ratings and error rates over 30 days, with counts per member and a list of ratings. It never shows anyone's questions or answers."
+  },
+  {
     "id": "contribute-ai-interview",
     "title": "Share what you know in an AI interview",
     "summary": "Start a spoken interview with Fabric's AI interviewer about a process, then end it and let Fabric process it.",

@@ -37,4 +37,3 @@ Saish approved all 14 articles as written on 2026-10-23. Items that were left ou
 ## Features expected but not found
 
 - A way for viewers to request a role change from within the app. None found.
-- Natural-language question answering (AskFabric) has no help article yet. Add one when AskFabric launches.
