@@ -34,7 +34,7 @@ const app = defineApp({
     ASKFABRIC_DAILY_USER_LIMIT: v.optional(v.string()),
     ASKFABRIC_DAILY_ORG_LIMIT: v.optional(v.string()),
     // Read aloud: the ElevenLabs voice and model. Unset means the Fabric
-    // interviewer's voice and Flash v2.5. See lib/askSpeech.ts.
+    // interviewer's voice and v4 Turbo. See lib/askSpeech.ts.
     ASKFABRIC_TTS_VOICE_ID: v.optional(v.string()),
     ASKFABRIC_TTS_MODEL: v.optional(v.string()),
     // Dev only: comma-separated `deployment=model` pairs the eval harness may

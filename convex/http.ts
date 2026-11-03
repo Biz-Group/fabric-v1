@@ -7,6 +7,7 @@ import {
   isElevenLabsConversationId,
 } from "./lib/elevenLabsConversation";
 import { verifyAudioPlaybackToken } from "./lib/audioPlaybackToken";
+import { SPEECH_STREAM_PATH, streamAskSpeech } from "./askSpeech";
 import { parseByteRange, sliceByteStream } from "./lib/audioRange";
 
 function base64ToBytes(value: string): ArrayBuffer | null {
@@ -469,6 +470,16 @@ http.route({
       return new Response("Invalid batch", { status: 400 });
     }
   }),
+});
+
+// AskFabric read aloud: streams an answer's audio as ElevenLabs generates it.
+// Authorized by a signed link from `askSpeech.readAloud`.
+http.route({
+  path: SPEECH_STREAM_PATH,
+  method: "GET",
+  handler: httpAction(async (ctx, req) =>
+    streamAskSpeech(ctx, req, (headers) => withCors(req, headers)),
+  ),
 });
 
 // CORS preflight for the audio endpoint

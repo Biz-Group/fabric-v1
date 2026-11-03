@@ -61,12 +61,61 @@ export async function verifyAudioPlaybackToken(
   claims: AudioPlaybackTokenClaims,
   providedSignature: string,
 ): Promise<boolean> {
+  return await verifySerialized(secret, serializeClaims(claims), providedSignature);
+}
+
+async function verifySerialized(
+  secret: string,
+  serialized: string,
+  providedSignature: string,
+): Promise<boolean> {
   const signature = signatureBytes(providedSignature);
   if (!signature) return false;
   return await crypto.subtle.verify(
     "HMAC",
     await importSigningKey(secret),
     signature,
-    new TextEncoder().encode(serializeClaims(claims)),
+    new TextEncoder().encode(serialized),
   );
+}
+
+/**
+ * The same membership-bound signature for an AskFabric answer read aloud.
+ * Its own prefix keeps a conversation token from ever passing as one.
+ */
+export type AskSpeechTokenClaims = {
+  clerkOrgId: string;
+  messageId: string;
+  membershipId: string;
+  expiresAt: number;
+};
+
+function serializeSpeechClaims(claims: AskSpeechTokenClaims): string {
+  return JSON.stringify([
+    "askspeech-v1",
+    claims.clerkOrgId,
+    claims.messageId,
+    claims.membershipId,
+    claims.expiresAt,
+  ]);
+}
+
+export async function signAskSpeechToken(
+  secret: string,
+  claims: AskSpeechTokenClaims,
+): Promise<string> {
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    await importSigningKey(secret),
+    new TextEncoder().encode(serializeSpeechClaims(claims)),
+  );
+  return bytesToHex(new Uint8Array(signature));
+}
+
+export async function verifyAskSpeechToken(
+  secret: string,
+  claims: AskSpeechTokenClaims,
+  providedSignature: string,
+): Promise<boolean> {
+  return await verifySerialized(secret, serializeSpeechClaims(claims), providedSignature);
 }

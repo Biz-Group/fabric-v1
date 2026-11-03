@@ -52,20 +52,76 @@ type Playback = "idle" | "loading" | "playing" | "paused";
 /** Only one answer speaks at a time: starting one pauses the other. */
 let speaking: HTMLAudioElement | null = null;
 
+type MediaSourceType = typeof MediaSource;
+
+/** MSE that takes MP3, or null. Safari on iPhone offers `ManagedMediaSource`. */
+function streamingSource(): MediaSourceType | null {
+  const scope = window as unknown as { MediaSource?: MediaSourceType; ManagedMediaSource?: MediaSourceType };
+  const Source = scope.MediaSource ?? scope.ManagedMediaSource;
+  return Source && Source.isTypeSupported("audio/mpeg") ? Source : null;
+}
+
+function append(buffer: SourceBuffer, chunk: Uint8Array): Promise<void> {
+  return new Promise((resolve, reject) => {
+    buffer.addEventListener("updateend", () => resolve(), { once: true });
+    buffer.addEventListener("error", () => reject(new Error("Couldn't buffer the audio.")), { once: true });
+    buffer.appendBuffer(chunk as BufferSource);
+  });
+}
+
 /**
- * Read aloud: the first press fetches the answer's audio (generated once, then
- * stored), the button spins until it arrives, then toggles pause and play.
- * When the audio ends, the button goes back to the speaker.
+ * Feeds the stream into the audio element as it arrives and calls `onReady`
+ * at the first chunk. Without MP3 streaming support, waits for the whole file.
+ * Returns the object URL to revoke later.
+ */
+async function streamInto(audio: HTMLAudioElement, url: string, onReady: () => void): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok || !response.body) throw new Error("Couldn't read this answer aloud.");
+  const Source = streamingSource();
+  if (!Source) {
+    const objectUrl = URL.createObjectURL(await response.blob());
+    audio.src = objectUrl;
+    onReady();
+    return objectUrl;
+  }
+  const source = new Source();
+  audio.disableRemotePlayback = true;
+  const objectUrl = URL.createObjectURL(source);
+  audio.src = objectUrl;
+  await new Promise((resolve) => source.addEventListener("sourceopen", resolve, { once: true }));
+  const buffer = source.addSourceBuffer("audio/mpeg");
+  const reader = response.body.getReader();
+  let ready = false;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    await append(buffer, value);
+    if (!ready) {
+      ready = true;
+      onReady();
+    }
+  }
+  if (source.readyState === "open") source.endOfStream();
+  return objectUrl;
+}
+
+/**
+ * Read aloud: the button spins until the first audio arrives, then toggles
+ * pause and play. The first press streams the audio as ElevenLabs generates
+ * it; later presses replay the stored file. When it ends, the button goes
+ * back to the speaker.
  */
 export function ReadAloudButton({ messageId }: { messageId: Id<"askMessages"> }) {
   const readAloud = useAction(api.askSpeech.readAloud);
   const [playback, setPlayback] = useState<Playback>("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
 
   useEffect(
     () => () => {
       audioRef.current?.pause();
       if (speaking === audioRef.current) speaking = null;
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     },
     [],
   );
@@ -82,8 +138,8 @@ export function ReadAloudButton({ messageId }: { messageId: Id<"askMessages"> })
     }
   };
 
-  const audioFor = (url: string) => {
-    const audio = new Audio(url);
+  const newAudio = () => {
+    const audio = new Audio();
     audio.addEventListener("play", () => setPlayback("playing"));
     audio.addEventListener("pause", () => setPlayback(audio.ended ? "idle" : "paused"));
     audio.addEventListener("ended", () => {
@@ -109,12 +165,19 @@ export function ReadAloudButton({ messageId }: { messageId: Id<"askMessages"> })
       return;
     }
     setPlayback("loading");
+    const next = newAudio();
     try {
-      const { url } = await readAloud({ messageId });
-      const next = audioFor(url);
+      const source = await readAloud({ messageId });
       audioRef.current = next;
-      await play(next);
+      if (source.kind === "stored") {
+        next.src = source.url;
+        await play(next);
+      } else {
+        objectUrlRef.current = await streamInto(next, source.url, () => void play(next));
+      }
     } catch (error) {
+      next.pause();
+      audioRef.current = null;
       setPlayback("idle");
       toast.error(describeError(error, "Couldn't read this answer aloud."));
     }

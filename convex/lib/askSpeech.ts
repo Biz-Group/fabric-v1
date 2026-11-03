@@ -8,11 +8,11 @@ import { env } from "../_generated/server";
 /** The Fabric interviewer's voice, so AskFabric sounds like the rest of Fabric. */
 export const DEFAULT_TTS_VOICE_ID = "l4Coq6695JDX9xtLqXDE";
 /**
- * The lowest text-to-speech rate, shared with v4 Turbo, and much faster
- * without streaming: on 3 Nov, 2,451 characters took 3 s on Flash and 1,083
- * took 20 s on v4 Turbo.
+ * The interviewer's model, at the lowest text-to-speech rate. Slower to
+ * generate than Flash v2.5 at the same price: on 3 Nov, 1,083 characters took
+ * 20 s on v4 Turbo and 2,451 took 3 s on Flash.
  */
-export const DEFAULT_TTS_MODEL = "eleven_flash_v2_5";
+export const DEFAULT_TTS_MODEL = "eleven_v4_turbo";
 export const TTS_PROVIDER = "elevenlabs";
 /** Speech-quality MP3, about half the size of the 128 kbps default. */
 export const TTS_OUTPUT_FORMAT = "mp3_44100_64";
