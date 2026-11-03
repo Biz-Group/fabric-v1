@@ -7,6 +7,8 @@ import schema from "./schema";
 import { authErrorCode } from "./lib/authErrors";
 import { SUMMARY_V2_PROMPT_VERSIONS } from "./summaryV2";
 
+// AskFabric's isolation and privacy suites live in askfabric/isolation.test.ts
+// (FR-9.1, FR-9.2), and its tools' in askTools/tools.test.ts.
 const modules = import.meta.glob("./**/*.ts");
 
 const ORG_A = "org_A_testorg";
