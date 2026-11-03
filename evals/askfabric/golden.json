@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "notes": "AskFabric golden set (FR-10.1). G1-G5 are Saish's seed questions (22 Oct 2026). The expansion to 30-50 questions, with red-team cases, is 1G.3 and needs review before use. `sets` picks which runs include a case; the other fields match goldenCaseValidator in convex/askfabric/evalChecks.ts.",
+  "cases": [
+    {
+      "id": "G1",
+      "sets": ["smoke", "full"],
+      "type": "orgWide",
+      "role": "viewer",
+      "turns": ["What would be the three most impactful moves I could make that would have the biggest impact on my business?"],
+      "keyPoints": [
+        "Gives three moves, each tied to cited bottlenecks, gaps or automation opportunities",
+        "Ranks the moves by strength of evidence and says why",
+        "Says that impact is judged from the evidence, not from financials",
+        "States how much of the organization the evidence covers"
+      ],
+      "expectedSources": ["finding", "entity"],
+      "mustMatch": [],
+      "mustNotMatch": []
+    },
+    {
+      "id": "G2",
+      "sets": ["smoke", "full"],
+      "type": "orgWide",
+      "role": "viewer",
+      "turns": ["What are the things that are consistently slowing us down or creating friction in the business?"],
+      "keyPoints": [
+        "Names friction that recurs across processes or contributors, not one-off complaints",
+        "Ranks it and cites each item",
+        "Covers handoffs and bottlenecks as well as friction",
+        "States how much of the organization the evidence covers"
+      ],
+      "expectedSources": ["finding", "entity"],
+      "mustMatch": [],
+      "mustNotMatch": []
+    },
+    {
+      "id": "G3",
+      "sets": ["smoke", "full"],
+      "type": "orgWide",
+      "role": "viewer",
+      "turns": [
+        "Based on how the business operates, what are the biggest gaps between where we want to be, aligned to strategy, and where we are today?",
+        "Our priorities for the next year are faster customer onboarding, fewer manual handoffs between sales and operations, and better use of data in decisions. Map the gaps against these."
+      ],
+      "keyPoints": [
+        "First answer: cited current-state gaps, and says Fabric holds no strategy, asking for the user's priorities",
+        "Second answer: maps the cited gaps against the three priorities the user gave",
+        "Attributes the priorities to the user's message, not to Fabric data",
+        "Says where a priority has no evidence either way"
+      ],
+      "expectedSources": ["finding", "entity"],
+      "mustMatch": [],
+      "mustNotMatch": []
+    },
+    {
+      "id": "G4",
+      "sets": ["smoke", "full"],
+      "type": "orgWide",
+      "role": "viewer",
+      "turns": ["Based on everything you know about my organization and the systems we use, how future-ready are we? Which systems do we need to think about replacing?"],
+      "keyPoints": [
+        "Gives a readiness view drawn from the evidence",
+        "Ranks the organization's own systems by evidenced friction and re-keying, each cited",
+        "Says what a replacement would need to fix",
+        "Recommends no replacement product or vendor"
+      ],
+      "expectedSources": ["finding", "entity"],
+      "mustMatch": [],
+      "mustNotMatch": ["\\b(?:we|I) (?:recommend|suggest) (?:switching|moving|migrating) to\\b"]
+    },
+    {
+      "id": "G5",
+      "sets": ["smoke", "full"],
+      "type": "orgWide",
+      "role": "viewer",
+      "turns": ["How much duplication is there currently in my business that may be inadvertently causing friction or bottlenecks?"],
+      "keyPoints": [
+        "Lists duplication candidates, each cited",
+        "Frames them as candidates to confirm, not findings",
+        "Is honest about what the data can and can't detect",
+        "States how much of the organization the evidence covers"
+      ],
+      "expectedSources": ["finding", "entity"],
+      "mustMatch": [],
+      "mustNotMatch": []
+    }
+  ]
+}

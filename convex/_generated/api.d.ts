@@ -10,6 +10,7 @@
 
 import type * as aiUsage from "../aiUsage.js";
 import type * as ask from "../ask.js";
+import type * as askEval from "../askEval.js";
 import type * as askFeedback from "../askFeedback.js";
 import type * as askLifecycle from "../askLifecycle.js";
 import type * as askShared from "../askShared.js";
@@ -34,6 +35,7 @@ import type * as askTools_systems from "../askTools/systems.js";
 import type * as askUsage from "../askUsage.js";
 import type * as askfabric_citationAccess from "../askfabric/citationAccess.js";
 import type * as askfabric_context from "../askfabric/context.js";
+import type * as askfabric_evalChecks from "../askfabric/evalChecks.js";
 import type * as askfabric_loop from "../askfabric/loop.js";
 import type * as askfabric_modelClient from "../askfabric/modelClient.js";
 import type * as askfabric_parts from "../askfabric/parts.js";
@@ -122,6 +124,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   aiUsage: typeof aiUsage;
   ask: typeof ask;
+  askEval: typeof askEval;
   askFeedback: typeof askFeedback;
   askLifecycle: typeof askLifecycle;
   askShared: typeof askShared;
@@ -146,6 +149,7 @@ declare const fullApi: ApiFromModules<{
   askUsage: typeof askUsage;
   "askfabric/citationAccess": typeof askfabric_citationAccess;
   "askfabric/context": typeof askfabric_context;
+  "askfabric/evalChecks": typeof askfabric_evalChecks;
   "askfabric/loop": typeof askfabric_loop;
   "askfabric/modelClient": typeof askfabric_modelClient;
   "askfabric/parts": typeof askfabric_parts;

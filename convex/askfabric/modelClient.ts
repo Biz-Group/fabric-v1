@@ -88,8 +88,11 @@ export interface AskModelClient {
     request: AskModelRequest,
     options: { signal: AbortSignal; onEvent: (event: AskStreamEvent) => void },
   ): Promise<AskFinalMessage>;
-  /** A short, non-streamed call without thinking (the thread title, FR-2.10). */
-  complete(request: { system: string; user: string; maxTokens: number }): Promise<AskFinalMessage>;
+  /**
+   * A non-streamed call: without thinking for the thread title (FR-2.10), or
+   * with it for the eval judge (FR-10.3).
+   */
+  complete(request: { system: string; user: string; maxTokens: number; reasoning?: boolean }): Promise<AskFinalMessage>;
 }
 
 type RawUsage = {
@@ -153,7 +156,7 @@ export function createFoundryAskClient(config: AskFabricConfig): AskModelClient 
           display: "summarized",
           block_binding: { prefix_mismatch_behavior: "drop_block" },
         },
-        output_config: { effort: "medium" },
+        output_config: { effort: config.effort ?? "medium" },
         messages: request.messages,
       };
       const stream = client.messages.stream(body as never, {
@@ -186,15 +189,15 @@ export function createFoundryAskClient(config: AskFabricConfig): AskModelClient 
       }
     },
 
-    async complete({ system, user, maxTokens }) {
+    async complete({ system, user, maxTokens, reasoning = false }) {
       try {
         const message = await client.messages.create({
           model: config.deployment,
           max_tokens: maxTokens,
           system,
           // Sonnet 5.5 rejects `disabled`; `between_tools` is its off switch.
-          thinking: { type: "between_tools" },
-          output_config: { effort: "low" },
+          thinking: reasoning ? { type: "adaptive" } : { type: "between_tools" },
+          output_config: { effort: reasoning ? (config.effort ?? "medium") : "low" },
           messages: [{ role: "user", content: user }],
         } as never);
         const final = message as unknown as {

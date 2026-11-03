@@ -12,7 +12,8 @@
     "flow-layout:spike": "node scripts/run-flow-layout-spike.mjs",
     "foundry:smoke": "node scripts/foundry-smoke.mjs",
     "foundry:throughput": "node scripts/foundry-throughput.mjs",
-    "elevenlabs:charging": "node scripts/elevenlabs-charging-probe.mjs"
+    "elevenlabs:charging": "node scripts/elevenlabs-charging-probe.mjs",
+    "eval:askfabric": "node scripts/eval-askfabric.mjs"
   },
   "dependencies": {
     "@anthropic-ai/foundry-sdk": "^0.4.0",

@@ -5,6 +5,7 @@ import {
   internalQuery,
   mutation,
   query,
+  type ActionCtx,
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
@@ -15,6 +16,7 @@ import {
   ASKFABRIC_PROVIDER,
   askFabricAvailability,
   readAskFabricConfig,
+  type AskFabricConfig,
 } from "./lib/askFabricFeature";
 import {
   askEntityRefValidator,
@@ -602,9 +604,149 @@ export function cleanTitle(raw: string): string | null {
   return words.slice(0, 6).join(" ").slice(0, 60);
 }
 
+type TurnArgs = {
+  threadId: Id<"askThreads">;
+  assistantMessageId: Id<"askMessages">;
+  viewer: Infer<typeof orgViewerValidator>;
+};
+
+export type TurnOptions = {
+  config: AskFabricConfig;
+  /** The ledger operation for the turn's model calls (FR-8.1). */
+  operation: string;
+  /** Title the thread after its first complete answer (FR-2.10). */
+  title: boolean;
+};
+
 /**
- * Runs one turn (FR-2.1–2.5). Scheduled, so it has no auth identity: it acts
- * as the viewer `sendMessage` resolved, and every tool re-resolves them.
+ * One turn's work (FR-2.1–2.5), shared by `runTurn` and the eval harness
+ * (FR-10.5a), so an eval measures exactly what users get. It acts as
+ * `args.viewer`, and every tool re-resolves them.
+ */
+export async function executeTurn(ctx: ActionCtx, args: TurnArgs, options: TurnOptions): Promise<null> {
+  const { config } = options;
+  const empty = {
+    parts: [] as AskMessagePart[],
+    usage: { inputTokens: 0, outputTokens: 0, cachedReadTokens: 0, cacheWriteTokens: 0 },
+    toolTelemetry: [],
+    citations: [],
+    quality: { modelCalls: 0, toolCalls: 0, citations: 0, zeroCitations: true, durationMs: 0, stopReason: "error" as const },
+  };
+  const fail = async (errorReason: "modelError" | "accessLost") => {
+    await ctx.runMutation(internal.ask.finishTurn, {
+      assistantMessageId: args.assistantMessageId,
+      status: "error",
+      errorReason,
+      ...empty,
+    });
+    return null;
+  };
+
+  let context;
+  try {
+    context = await ctx.runQuery(internal.ask.loadTurnContext, args);
+  } catch (error) {
+    const code = authErrorCode(error);
+    if (!code) {
+      console.error("AskFabric turn context failed", {
+        errorType: error instanceof Error ? error.name : "UnknownError",
+        message: error instanceof Error ? error.message : undefined,
+      });
+    }
+    return await fail(code ? "accessLost" : "modelError");
+  }
+  if (!context) return null;
+
+  const model = askModelClientFor(config);
+  const attribution: UsageAttribution = {
+    clerkOrgId: args.viewer.orgId,
+    entityType: "askThread",
+    entityId: args.threadId,
+    actorUserId: context.userId,
+    runId: args.assistantMessageId,
+  };
+  const meta = (operation: string, stepIndex: number) => ({
+    operation,
+    provider: ASKFABRIC_PROVIDER,
+    model: config.meteredModel,
+    providerDeployment: config.deployment,
+    stepIndex,
+    partialUsage: (error: unknown) => (error instanceof AskModelError ? error.partialUsage : undefined),
+  });
+
+  const outcome = await runTurnLoop(
+    {
+      model,
+      tools: ASK_TOOLS,
+      runTool: (tool, input) => ctx.runQuery(tool.executorRef, { viewer: args.viewer, ...input }),
+      meter: (stepIndex, run) => meteredStream(ctx, attribution, meta(options.operation, stepIndex), run),
+      write: (parts) => ctx.runMutation(internal.ask.writeProgress, { assistantMessageId: args.assistantMessageId, parts }),
+      isCancelled: () => ctx.runQuery(internal.ask.isCancelled, { assistantMessageId: args.assistantMessageId }),
+      now: () => Date.now(),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    },
+    {
+      system: [
+        { type: "text", text: ASK_SYSTEM_PROMPT },
+        // The breakpoint caches tools, system prompt and table of contents.
+        { type: "text", text: context.toc, cache_control: { type: "ephemeral" } },
+      ],
+      messages: [
+        ...buildHistoryMessages(context.history),
+        userTurnMessage(context.turnContext, context.question),
+      ],
+    },
+  );
+  if (outcome.status === "deleted") return null;
+  if (outcome.diagnostic) {
+    console.error("AskFabric turn failed", { errorReason: outcome.errorReason, ...outcome.diagnostic });
+  }
+
+  await ctx.runMutation(internal.ask.finishTurn, {
+    assistantMessageId: args.assistantMessageId,
+    status: outcome.status,
+    ...(outcome.errorReason ? { errorReason: outcome.errorReason } : {}),
+    parts: outcome.parts,
+    usage: outcome.usage,
+    toolTelemetry: outcome.telemetry,
+    quality: outcome.quality,
+    citations: outcome.citations.map((c) => ({
+      ordinal: c.ordinal,
+      source: c.source,
+      sourceKind: c.parsed.sourceKind,
+      sourceEntityId: c.parsed.sourceEntityId,
+      title: c.title,
+      citedText: c.citedText,
+    })),
+  });
+
+  // FR-2.10: a short title after the first complete answer. The fallback
+  // title (the question's start) stays if this fails.
+  if (options.title && outcome.status === "complete" && context.isFirstTurn) {
+    try {
+      const final = await meteredStream(ctx, attribution, meta(ASKFABRIC_OPERATIONS.title, 0), async () => {
+        const result = await model.complete({
+          system: "You write titles for chat threads. Reply with a title of six words or fewer, nothing else.",
+          user: `Question: ${context.question.slice(0, 1_000)}`,
+          maxTokens: 30,
+        });
+        return { ...result, finishReason: result.stopReason };
+      });
+      const raw = final.content.find((b) => b.type === "text") as { text?: string } | undefined;
+      const title = cleanTitle(raw?.text ?? "");
+      if (title) await ctx.runMutation(internal.ask.setThreadTitle, { threadId: args.threadId, title });
+    } catch (error) {
+      console.warn("AskFabric title call failed", {
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
+  }
+  return null;
+}
+
+/**
+ * Runs one turn. Scheduled, so it has no auth identity: it acts as the viewer
+ * `sendMessage` resolved.
  */
 export const runTurn = internalAction({
   args: {
@@ -613,125 +755,21 @@ export const runTurn = internalAction({
     viewer: orgViewerValidator,
   },
   handler: async (ctx, args) => {
-    const empty = {
-      parts: [] as AskMessagePart[],
-      usage: { inputTokens: 0, outputTokens: 0, cachedReadTokens: 0, cacheWriteTokens: 0 },
-      toolTelemetry: [],
-      citations: [],
-      quality: { modelCalls: 0, toolCalls: 0, citations: 0, zeroCitations: true, durationMs: 0, stopReason: "error" as const },
-    };
-    const fail = async (errorReason: "modelError" | "accessLost") => {
+    // Fail closed: configuration can change between sendMessage and here.
+    const config = readAskFabricConfig();
+    if (!config.ok) {
       await ctx.runMutation(internal.ask.finishTurn, {
         assistantMessageId: args.assistantMessageId,
         status: "error",
-        errorReason,
-        ...empty,
+        errorReason: "modelError",
+        parts: [],
+        usage: { inputTokens: 0, outputTokens: 0, cachedReadTokens: 0, cacheWriteTokens: 0 },
+        toolTelemetry: [],
+        citations: [],
+        quality: { modelCalls: 0, toolCalls: 0, citations: 0, zeroCitations: true, durationMs: 0, stopReason: "error" },
       });
-    };
-
-    // Fail closed: configuration can change between sendMessage and here.
-    const config = readAskFabricConfig();
-    if (!config.ok) return await fail("modelError");
-
-    let context;
-    try {
-      context = await ctx.runQuery(internal.ask.loadTurnContext, args);
-    } catch (error) {
-      const code = authErrorCode(error);
-      if (!code) {
-        console.error("AskFabric turn context failed", {
-          errorType: error instanceof Error ? error.name : "UnknownError",
-          message: error instanceof Error ? error.message : undefined,
-        });
-      }
-      return await fail(code ? "accessLost" : "modelError");
+      return null;
     }
-    if (!context) return null;
-
-    const model = askModelClientFor(config.config);
-    const attribution: UsageAttribution = {
-      clerkOrgId: args.viewer.orgId,
-      entityType: "askThread",
-      entityId: args.threadId,
-      actorUserId: context.userId,
-      runId: args.assistantMessageId,
-    };
-    const meta = (operation: string, stepIndex: number) => ({
-      operation,
-      provider: ASKFABRIC_PROVIDER,
-      model: config.config.meteredModel,
-      providerDeployment: config.config.deployment,
-      stepIndex,
-      partialUsage: (error: unknown) => (error instanceof AskModelError ? error.partialUsage : undefined),
-    });
-
-    const outcome = await runTurnLoop(
-      {
-        model,
-        tools: ASK_TOOLS,
-        runTool: (tool, input) => ctx.runQuery(tool.executorRef, { viewer: args.viewer, ...input }),
-        meter: (stepIndex, run) => meteredStream(ctx, attribution, meta(ASKFABRIC_OPERATIONS.turn, stepIndex), run),
-        write: (parts) => ctx.runMutation(internal.ask.writeProgress, { assistantMessageId: args.assistantMessageId, parts }),
-        isCancelled: () => ctx.runQuery(internal.ask.isCancelled, { assistantMessageId: args.assistantMessageId }),
-        now: () => Date.now(),
-        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-      },
-      {
-        system: [
-          { type: "text", text: ASK_SYSTEM_PROMPT },
-          // The breakpoint caches tools, system prompt and table of contents.
-          { type: "text", text: context.toc, cache_control: { type: "ephemeral" } },
-        ],
-        messages: [
-          ...buildHistoryMessages(context.history),
-          userTurnMessage(context.turnContext, context.question),
-        ],
-      },
-    );
-    if (outcome.status === "deleted") return null;
-    if (outcome.diagnostic) {
-      console.error("AskFabric turn failed", { errorReason: outcome.errorReason, ...outcome.diagnostic });
-    }
-
-    await ctx.runMutation(internal.ask.finishTurn, {
-      assistantMessageId: args.assistantMessageId,
-      status: outcome.status,
-      ...(outcome.errorReason ? { errorReason: outcome.errorReason } : {}),
-      parts: outcome.parts,
-      usage: outcome.usage,
-      toolTelemetry: outcome.telemetry,
-      quality: outcome.quality,
-      citations: outcome.citations.map((c) => ({
-        ordinal: c.ordinal,
-        source: c.source,
-        sourceKind: c.parsed.sourceKind,
-        sourceEntityId: c.parsed.sourceEntityId,
-        title: c.title,
-        citedText: c.citedText,
-      })),
-    });
-
-    // FR-2.10: a short title after the first complete answer. The fallback
-    // title (the question's start) stays if this fails.
-    if (outcome.status === "complete" && context.isFirstTurn) {
-      try {
-        const final = await meteredStream(ctx, attribution, meta(ASKFABRIC_OPERATIONS.title, 0), async () => {
-          const result = await model.complete({
-            system: "You write titles for chat threads. Reply with a title of six words or fewer, nothing else.",
-            user: `Question: ${context.question.slice(0, 1_000)}`,
-            maxTokens: 30,
-          });
-          return { ...result, finishReason: result.stopReason };
-        });
-        const raw = final.content.find((b) => b.type === "text") as { text?: string } | undefined;
-        const title = cleanTitle(raw?.text ?? "");
-        if (title) await ctx.runMutation(internal.ask.setThreadTitle, { threadId: args.threadId, title });
-      } catch (error) {
-        console.warn("AskFabric title call failed", {
-          errorType: error instanceof Error ? error.name : "UnknownError",
-        });
-      }
-    }
-    return null;
+    return await executeTurn(ctx, args, { config: config.config, operation: ASKFABRIC_OPERATIONS.turn, title: true });
   },
 });

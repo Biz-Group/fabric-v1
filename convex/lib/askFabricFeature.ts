@@ -44,7 +44,11 @@ export type AskFabricConfig = {
   model: string;
   /** The `model` recorded on usage rows, matching the `TOKEN_RATES` key. */
   meteredModel: string;
+  /** Answer effort. Unset is `medium`; the eval's effort sweep varies it (FR-10.5). */
+  effort?: AskEffort;
 };
+
+export type AskEffort = "low" | "medium" | "high";
 
 export type AskFabricConfigResult =
   | { ok: true; config: AskFabricConfig }
@@ -107,6 +111,46 @@ export function readAskFabricConfig(): AskFabricConfigResult {
     model: env.ASKFABRIC_MODEL,
     pipelineDeployment: env.FOUNDRY_CLAUDE_DEPLOYMENT,
   });
+}
+
+// ---- Eval deployments (FR-10.5a) -------------------------------------------------
+
+/**
+ * `ASKFABRIC_EVAL_DEPLOYMENTS`: comma-separated `deployment=model` pairs the
+ * eval harness may call, each priced at its own model's rate. Malformed or
+ * unpriced pairs are dropped, so a typo can't run unmetered.
+ */
+export function parseEvalDeployments(raw: string | undefined): Map<string, string> {
+  const pairs = new Map<string, string>();
+  for (const entry of (raw ?? "").split(",")) {
+    const [deployment, model] = entry.split("=").map((part) => part?.trim());
+    if (!deployment || !model || !deployment.includes(model)) continue;
+    if (!TOKEN_RATES[`${ASKFABRIC_PROVIDER}:${meteredAskFabricModel(model)}`]) continue;
+    pairs.set(deployment, model);
+  }
+  return pairs;
+}
+
+export type AskFabricEvalConfigResult =
+  | { ok: true; config: AskFabricConfig }
+  | { ok: false; reason: string };
+
+/**
+ * The config for an eval or judge call on `deployment`. Dev only: refused on a
+ * deployment labelled prod, and for any deployment not listed in
+ * `ASKFABRIC_EVAL_DEPLOYMENTS`, which production never sets.
+ */
+export function readAskFabricEvalConfig(deployment: string, effort?: AskEffort): AskFabricEvalConfigResult {
+  if (env.USAGE_DEPLOYMENT_LABEL === "prod") return { ok: false, reason: "The eval harness never runs on prod." };
+  const model = parseEvalDeployments(env.ASKFABRIC_EVAL_DEPLOYMENTS).get(deployment);
+  if (!model) return { ok: false, reason: `${deployment} isn't listed in ASKFABRIC_EVAL_DEPLOYMENTS.` };
+  const endpoint = env.FOUNDRY_ENDPOINT?.trim().replace(/\/+$/, "").replace(/\/anthropic$/i, "");
+  const apiKey = env.FOUNDRY_API_KEY?.trim();
+  if (!endpoint?.startsWith("https://") || !apiKey) return { ok: false, reason: "Foundry isn't configured." };
+  return {
+    ok: true,
+    config: { endpoint, apiKey, deployment, model, meteredModel: meteredAskFabricModel(model), ...(effort ? { effort } : {}) },
+  };
 }
 
 export function askFabricRollout(): OrgRollout {
