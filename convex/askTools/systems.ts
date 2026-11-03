@@ -3,8 +3,8 @@ import { deriveHandoffs, type FlowNode } from "../lib/insightsDerivations";
 import { isManualRework, normalizeKey, termOverlap } from "../lib/askNormalize";
 import { askToolQuery } from "./executor";
 import { loadScopeEvidence, type ScopeEvidence } from "./evidence";
-import { loadHierarchy } from "./scope";
-import { scopeInput, scopedProcesses, MAX_ITEM_SOURCES } from "./signals";
+import { loadHierarchy, scopeInput, scopeOf } from "./scope";
+import { scopedProcesses, MAX_ITEM_SOURCES } from "./signals";
 import {
   MAX_BUDGET_TOKENS,
   MAX_LIST_ITEMS,
@@ -141,7 +141,8 @@ export const listSystems = askToolQuery({
   input: scopeInput,
   handler: async (ctx, viewer, input) => {
     const hierarchy = await loadHierarchy(ctx, viewer.orgId);
-    const scope = await scopedProcesses(ctx, viewer.orgId, hierarchy, input.kind, input.id);
+    const { kind, id } = scopeOf(input);
+    const scope = await scopedProcesses(ctx, viewer.orgId, hierarchy, kind, id);
     if (!scope) return NOT_FOUND;
     const evidence = await loadScopeEvidence(ctx, viewer.orgId, scope.processes);
     const systems = summarizeSystems(evidence);
@@ -329,7 +330,8 @@ export const findSimilarWork = askToolQuery({
   input: scopeInput,
   handler: async (ctx, viewer, input) => {
     const hierarchy = await loadHierarchy(ctx, viewer.orgId);
-    const scope = await scopedProcesses(ctx, viewer.orgId, hierarchy, input.kind, input.id);
+    const { kind, id } = scopeOf(input);
+    const scope = await scopedProcesses(ctx, viewer.orgId, hierarchy, kind, id);
     if (!scope) return NOT_FOUND;
     const evidence = await loadScopeEvidence(ctx, viewer.orgId, scope.processes);
     const candidates = findDuplicationCandidates(evidence);

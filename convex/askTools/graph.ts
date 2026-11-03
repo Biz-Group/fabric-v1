@@ -151,8 +151,8 @@ export function matchUsage(evidence: ScopeEvidence, tool: string | null, actor: 
 }
 
 export const findProcessesUsingInput = {
-  tool: v.union(v.string(), v.null()),
-  actor: v.union(v.string(), v.null()),
+  tool: v.string(),
+  actor: v.string(),
 };
 
 export const findProcessesUsing = askToolQuery({

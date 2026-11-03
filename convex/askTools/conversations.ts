@@ -68,11 +68,12 @@ async function processName(
 // ---- T5 listConversations ----------------------------------------------------
 
 export const listConversationsInput = {
-  processId: v.union(v.string(), v.null()),
-  departmentId: v.union(v.string(), v.null()),
-  functionId: v.union(v.string(), v.null()),
-  since: v.union(v.string(), v.null()),
-  cursor: v.union(v.string(), v.null()),
+  // "" means unset: see `scopeInput` in scope.ts on why these aren't nullable.
+  processId: v.string(),
+  departmentId: v.string(),
+  functionId: v.string(),
+  since: v.string(),
+  cursor: v.string(),
 };
 
 /**
@@ -205,9 +206,10 @@ export const getConversationEvidence = askToolQuery({
 
 export const getTranscriptInput = {
   conversationId: v.string(),
-  atSeconds: v.union(v.number(), v.null()),
-  query: v.union(v.string(), v.null()),
-  full: v.union(v.boolean(), v.null()),
+  /** -1 means unset. */
+  atSeconds: v.number(),
+  query: v.string(),
+  full: v.boolean(),
 };
 
 export type TranscriptLine = {
@@ -289,7 +291,7 @@ export const getTranscript = askToolQuery({
     const full = input.full === true;
     const selected = full
       ? lines
-      : transcriptWindow(lines, windowCentre(lines, input.atSeconds, input.query));
+      : transcriptWindow(lines, windowCentre(lines, input.atSeconds >= 0 ? input.atSeconds : null, input.query.trim() || null));
 
     const builder = new ResultBuilder(full ? FULL_TRANSCRIPT_BUDGET_TOKENS : DEFAULT_BUDGET_TOKENS);
     for (const line of selected) {
@@ -319,9 +321,9 @@ const MAX_SEARCH_HITS = 50;
 
 export const searchConversationsInput = {
   query: v.string(),
-  processId: v.union(v.string(), v.null()),
-  since: v.union(v.string(), v.null()),
-  cursor: v.union(v.string(), v.null()),
+  processId: v.string(),
+  since: v.string(),
+  cursor: v.string(),
 };
 
 /**

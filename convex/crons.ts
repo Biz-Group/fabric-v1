@@ -40,6 +40,16 @@ crons.interval(
   {},
 );
 
+// AskFabric answers still streaming after 5 minutes are marked unfinished, so
+// their thread unlocks (FR-2.11). The turn deadline is 4 minutes, so only a
+// killed action is ever caught here.
+crons.interval(
+  "mark unfinished AskFabric answers",
+  { minutes: 5 },
+  internal.ask.markStaleTurns,
+  {},
+);
+
 // Ships dev-deployment AI usage rows to the prod sink so the platform console
 // can show one merged view. A no-op on the sink itself (USAGE_SINK_URL unset).
 // Deliberately not inline with the AI call: a cross-deployment request on the

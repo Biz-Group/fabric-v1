@@ -9,11 +9,14 @@ import { transcriptWindow, windowCentre, type TranscriptLine } from "./conversat
 import {
   defineTool,
   FORBIDDEN_INPUT_FIELDS,
+  MAX_UNION_PARAMETERS,
   toApiTools,
+  unionParameterCount,
   toStrictJsonSchema,
   ToolRegistrationError,
 } from "./registry";
 import {
+  RESULT_DETAILS_SOURCE,
   ResultBuilder,
   clipText,
   parseFabricSource,
@@ -159,27 +162,34 @@ describe("the catalog", () => {
     }
   });
 
+  test("stays within strict tool use's 16 union-typed parameters", () => {
+    expect(ASK_TOOLS.reduce((sum, tool) => sum + unionParameterCount(tool.inputSchema), 0)).toBeLessThanOrEqual(
+      MAX_UNION_PARAMETERS,
+    );
+    expect(unionParameterCount(toStrictJsonSchema(v.union(v.string(), v.null())))).toBe(1);
+  });
+
   test("no label is a generic placeholder (FR-2.15)", () => {
     const sample = {
       query: "approval delays",
-      kinds: null,
-      cursor: null,
-      kind: null,
-      id: null,
+      kinds: [],
+      cursor: "",
+      kind: "org",
+      id: "",
       ids: ["a", "b"],
-      sections: null,
+      sections: [],
       processId: "p",
-      departmentId: null,
-      functionId: null,
+      departmentId: "",
+      functionId: "",
       since: "2026-10-01",
       conversationId: "c",
-      atSeconds: null,
-      full: null,
+      atSeconds: -1,
+      full: false,
       party: "Finance",
       tool: "Excel",
-      actor: null,
+      actor: "",
       signals: ["friction", "bottleneck"],
-      limit: null,
+      limit: 0,
     };
     for (const tool of ASK_TOOLS) {
       const label = tool.label(sample as never);
@@ -250,9 +260,13 @@ describe("result envelope (FR-1.9, FR-1.10)", () => {
     expect(added).toBeLessThan(50);
     expect(result.truncated).toBe(true);
     expect(result.resultCount).toBe(added);
-    expect(result.content[0]).toMatchObject({ type: "text" });
-    expect((result.content[0] as { text: string }).text.startsWith(UNTRUSTED_NOTICE)).toBe(true);
-    expect((result.content[0] as { text: string }).text).toContain('"truncated":true');
+    // Every block is a search result: the API rejects a tool result that mixes them with text.
+    expect(result.content.every((block) => block.type === "search_result")).toBe(true);
+    const header = result.content[0] as { source: string; content: Array<{ text: string }> };
+    expect(header.source).toBe(RESULT_DETAILS_SOURCE);
+    expect(parseFabricSource(header.source)).toBeNull();
+    expect(header.content[0].text.startsWith(UNTRUSTED_NOTICE)).toBe(true);
+    expect(header.content[0].text).toContain('"truncated":true');
   });
 
   test("clipText marks the cut", () => {

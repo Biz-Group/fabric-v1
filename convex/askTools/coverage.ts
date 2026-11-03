@@ -11,6 +11,8 @@ import {
   overviewListState,
   pendingWorkIn,
   processesInScope,
+  scopeInput,
+  scopeOf,
   type OrgHierarchy,
 } from "./scope";
 import {
@@ -32,10 +34,6 @@ const MAX_DONE_SCAN = 5000;
 /** Names listed per gap category before summarising the rest as a count. */
 const MAX_NAMES = 10;
 
-const scopeInput = {
-  kind: v.union(v.literal("function"), v.literal("department"), v.literal("process"), v.null()),
-  id: v.union(v.string(), v.null()),
-};
 
 type Scope = {
   kind: HierarchyKind | "org";
@@ -120,7 +118,8 @@ export const getCoverage = askToolQuery({
   input: getCoverageInput,
   handler: async (ctx, viewer, input) => {
     const hierarchy = await loadHierarchy(ctx, viewer.orgId);
-    const scope = await resolveScope(ctx, viewer.orgId, hierarchy, input.kind, input.id);
+    const { kind, id } = scopeOf(input);
+    const scope = await resolveScope(ctx, viewer.orgId, hierarchy, kind, id);
     if (!scope) return NOT_FOUND;
 
     const processIds = new Set(scope.processes.map((p) => p._id));
@@ -199,7 +198,7 @@ export const getCoverage = askToolQuery({
 export const whatsNewInput = {
   since: v.string(),
   ...scopeInput,
-  cursor: v.union(v.string(), v.null()),
+  cursor: v.string(),
 };
 
 type NewItem = { at: number; key: string; block: ReturnType<typeof searchResult> };
@@ -218,7 +217,8 @@ export const whatsNew = askToolQuery({
       return builder.finish({ error: "since must be a date such as 2026-10-01" });
     }
     const hierarchy = await loadHierarchy(ctx, viewer.orgId);
-    const scope = await resolveScope(ctx, viewer.orgId, hierarchy, input.kind, input.id);
+    const { kind, id } = scopeOf(input);
+    const scope = await resolveScope(ctx, viewer.orgId, hierarchy, kind, id);
     if (!scope) return NOT_FOUND;
     const processIds = new Set(scope.processes.map((p) => p._id));
     const processName = new Map(scope.processes.map((p) => [p._id, p.name]));

@@ -446,7 +446,7 @@ export type StreamedCallMeta = {
    * Usage seen before a failure or abort, e.g. the input tokens reported at
    * `message_start`. Recorded on the failed row; omitted, the row reads zero.
    */
-  partialUsage?: () => TokenUsageForPricing | undefined;
+  partialUsage?: (error: unknown) => TokenUsageForPricing | undefined;
 };
 
 type StreamedEventInput = {
@@ -466,7 +466,7 @@ export function buildStreamedUsageEvent(
 ): AiUsageEvent {
   const { attribution, meta, result, error } = input;
   const usage =
-    error === undefined ? result?.usage : meta.partialUsage?.() ?? undefined;
+    error === undefined ? result?.usage : meta.partialUsage?.(error) ?? undefined;
   const status: AiUsageEvent["status"] =
     error !== undefined
       ? "failed"

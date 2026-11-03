@@ -115,8 +115,8 @@ async function countsForPage(ctx: QueryCtx, orgId: string, rows: Row[]) {
 
 export const searchHierarchyInput = {
   query: v.string(),
-  kinds: v.union(v.array(kindValidator), v.null()),
-  cursor: v.union(v.string(), v.null()),
+  kinds: v.array(kindValidator),
+  cursor: v.string(),
 };
 
 function normalize(text: string): string {
@@ -181,9 +181,9 @@ export const searchHierarchy = askToolQuery({
 // ---- T2 browseHierarchy ------------------------------------------------------
 
 export const browseHierarchyInput = {
-  kind: v.union(v.literal("function"), v.literal("department"), v.null()),
-  id: v.union(v.string(), v.null()),
-  cursor: v.union(v.string(), v.null()),
+  kind: v.union(v.literal("root"), v.literal("function"), v.literal("department")),
+  id: v.string(),
+  cursor: v.string(),
 };
 
 /**
@@ -199,7 +199,7 @@ export const browseHierarchy = askToolQuery({
     let children: Row[];
     let parentSource: string;
     let scopeProcesses: Doc<"processes">[];
-    if (input.kind === null) {
+    if (input.kind === "root") {
       children = hierarchy.functions.map((doc) => ({ kind: "function", doc }));
       parentSource = sources.org();
       scopeProcesses = hierarchy.processes;

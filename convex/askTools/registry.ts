@@ -286,3 +286,37 @@ export function toApiTools(tools: readonly RegisteredAskTool[]) {
     strict: true as const,
   }));
 }
+
+/**
+ * Strict tool use compiles every schema into a grammar, and Claude rejects a
+ * request whose tools hold more than 16 union-typed parameters in total
+ * (`anyOf` or a type array), counted across all tools. Found on dev
+ * 2026-11-03, when the full catalog had 31: optional inputs now use sentinel
+ * values ("", [], -1, "org") instead of null.
+ */
+export const MAX_UNION_PARAMETERS = 16;
+
+export function unionParameterCount(schema: JsonSchema): number {
+  let count = 0;
+  const visit = (node: unknown) => {
+    if (!node || typeof node !== "object") return;
+    const record = node as JsonSchema;
+    if (Array.isArray(record.anyOf) || Array.isArray(record.type)) count += 1;
+    for (const value of Object.values(record)) {
+      if (Array.isArray(value)) value.forEach(visit);
+      else visit(value);
+    }
+  };
+  visit(schema);
+  return count;
+}
+
+export function assertWithinStrictLimits(tools: readonly RegisteredAskTool[]): void {
+  const total = tools.reduce((sum, tool) => sum + unionParameterCount(tool.inputSchema), 0);
+  if (total > MAX_UNION_PARAMETERS) {
+    throw new ToolRegistrationError(
+      "(catalog)",
+      `${total} union-typed parameters across all tools; strict tool use allows ${MAX_UNION_PARAMETERS}`,
+    );
+  }
+}

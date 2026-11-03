@@ -12,7 +12,7 @@ import {
 } from "../lib/insightsDerivations";
 import { SUMMARY_V2_PROMPT_VERSIONS, type ProcessOverviewArtifactV2 } from "../summaryV2";
 import { ASK_TOOLS, getAskTool } from "./catalog";
-import { parseFabricSource, type AskToolResult } from "./results";
+import { parseFabricSource, RESULT_DETAILS_SOURCE, type AskToolResult } from "./results";
 
 // Root-anchored: a relative glob keys this folder's own files as "./x.ts",
 // which convex-test cannot map to "askTools/x".
@@ -202,38 +202,38 @@ type Seeded = Awaited<ReturnType<typeof setup>>;
 /** One valid call per tool, against org A's entities. */
 function calls(s: Seeded): Record<string, Record<string, unknown>> {
   return {
-    searchHierarchy: { query: "dispatch", kinds: null, cursor: null },
-    browseHierarchy: { kind: "department", id: s.a.departmentId, cursor: null },
-    getOverview: { kind: "process", ids: [s.a.processId], sections: null },
+    searchHierarchy: { query: "dispatch", kinds: [], cursor: "" },
+    browseHierarchy: { kind: "department", id: s.a.departmentId, cursor: "" },
+    getOverview: { kind: "process", ids: [s.a.processId], sections: [] },
     getProcessFlow: { processId: s.a.processId },
-    listConversations: { processId: null, departmentId: null, functionId: null, since: null, cursor: null },
+    listConversations: { processId: "", departmentId: "", functionId: "", since: "", cursor: "" },
     getConversationEvidence: { conversationId: s.a.conversationId },
-    getTranscript: { conversationId: s.a.conversationId, atSeconds: null, query: null, full: null },
-    getCoverage: { kind: null, id: null },
-    whatsNew: { since: "2026-10-01", kind: null, id: null, cursor: null },
+    getTranscript: { conversationId: s.a.conversationId, atSeconds: -1, query: "", full: false },
+    getCoverage: { kind: "org", id: "" },
+    whatsNew: { since: "2026-10-01", kind: "org", id: "", cursor: "" },
     findHandoffs: { party: "Clerk" },
-    findProcessesUsing: { tool: "Excel", actor: null },
-    searchConversations: { query: "walkthrough", processId: null, since: null, cursor: null },
+    findProcessesUsing: { tool: "Excel", actor: "" },
+    searchConversations: { query: "walkthrough", processId: "", since: "", cursor: "" },
     searchFabricHelp: { query: "process flow" },
-    rankSignals: { signals: ["friction", "bottleneck", "gap", "handoff", "manualRework"], kind: null, id: null, limit: null },
-    listSystems: { kind: null, id: null },
-    findSimilarWork: { kind: null, id: null },
+    rankSignals: { signals: ["friction", "bottleneck", "gap", "handoff", "manualRework"], kind: "org", id: "", limit: 0 },
+    listSystems: { kind: "org", id: "" },
+    findSimilarWork: { kind: "org", id: "" },
   };
 }
 
 /** The same calls pointed at org B's entities (tools that take an id). */
 function crossOrgCalls(s: Seeded): Record<string, Record<string, unknown>> {
   return {
-    browseHierarchy: { kind: "department", id: s.b.departmentId, cursor: null },
-    getOverview: { kind: "process", ids: [s.b.processId], sections: null },
+    browseHierarchy: { kind: "department", id: s.b.departmentId, cursor: "" },
+    getOverview: { kind: "process", ids: [s.b.processId], sections: [] },
     getProcessFlow: { processId: s.b.processId },
-    listConversations: { processId: s.b.processId, departmentId: null, functionId: null, since: null, cursor: null },
+    listConversations: { processId: s.b.processId, departmentId: "", functionId: "", since: "", cursor: "" },
     getConversationEvidence: { conversationId: s.b.conversationId },
-    getTranscript: { conversationId: s.b.conversationId, atSeconds: null, query: null, full: null },
+    getTranscript: { conversationId: s.b.conversationId, atSeconds: -1, query: "", full: false },
     getCoverage: { kind: "process", id: s.b.processId },
-    whatsNew: { since: "2026-10-01", kind: "process", id: s.b.processId, cursor: null },
-    searchConversations: { query: "walkthrough", processId: s.b.processId, since: null, cursor: null },
-    rankSignals: { signals: ["friction"], kind: "process", id: s.b.processId, limit: null },
+    whatsNew: { since: "2026-10-01", kind: "process", id: s.b.processId, cursor: "" },
+    searchConversations: { query: "walkthrough", processId: s.b.processId, since: "", cursor: "" },
+    rankSignals: { signals: ["friction"], kind: "process", id: s.b.processId, limit: 0 },
     listSystems: { kind: "department", id: s.b.departmentId },
     findSimilarWork: { kind: "function", id: s.b.functionId },
   };
@@ -250,7 +250,9 @@ function found(result: AskToolResult) {
 }
 
 function sourcesOf(result: AskToolResult): string[] {
-  return found(result).content.flatMap((block) => (block.type === "search_result" ? [block.source] : []));
+  return found(result).content.flatMap((block) =>
+    block.type === "search_result" && block.source !== RESULT_DETAILS_SOURCE ? [block.source] : [],
+  );
 }
 
 function textOf(result: AskToolResult): string {
@@ -275,6 +277,8 @@ describe("AskFabric core tools (T1–T9)", () => {
       const tool = getAskTool(name)!;
       const result = found(await run(s, name, input));
       expect(result.resultCount, name).toBeGreaterThan(0);
+      // The API rejects a tool result that mixes search results with text.
+      expect(result.content.every((block) => block.type === "search_result"), name).toBe(true);
       expect(result.resultTokens, name).toBeLessThanOrEqual(tool.budgetTokens);
       for (const source of sourcesOf(result)) {
         const parsed = parseFabricSource(source);
@@ -390,7 +394,7 @@ describe("AskFabric core tools (T1–T9)", () => {
       }),
     );
     const result = found(
-      await run(s, "getTranscript", { conversationId: longId, atSeconds: null, query: null, full: true }),
+      await run(s, "getTranscript", { conversationId: longId, atSeconds: -1, query: "", full: true }),
     );
     expect(result.truncated).toBe(true);
     expect(result.resultTokens).toBeLessThanOrEqual(40_000);

@@ -51,7 +51,7 @@ type Finding = SummaryArtifactV2["gaps"][number];
 export const getOverviewInput = {
   kind: v.union(v.literal("function"), v.literal("department"), v.literal("process")),
   ids: v.array(v.string()),
-  sections: v.union(v.array(v.string()), v.null()),
+  sections: v.array(v.string()),
 };
 
 function entityRef(kind: HierarchyKind, id: string): SummaryEntityRef {

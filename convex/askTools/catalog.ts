@@ -1,4 +1,4 @@
-import { defineTool, type RegisteredAskTool } from "./registry";
+import { assertWithinStrictLimits, defineTool, type RegisteredAskTool } from "./registry";
 import {
   browseHierarchy,
   browseHierarchyInput,
@@ -19,7 +19,8 @@ import {
 } from "./conversations";
 import { findHandoffs, findHandoffsInput, findProcessesUsing, findProcessesUsingInput } from "./graph";
 import { searchFabricHelp, searchFabricHelpInput } from "./help";
-import { rankSignals, rankSignalsInput, scopeInput, SIGNALS } from "./signals";
+import { rankSignals, rankSignalsInput, SIGNALS } from "./signals";
+import { scopeInput } from "./scope";
 import { findSimilarWork, listSystems } from "./systems";
 import { getCoverage, getCoverageInput, whatsNew, whatsNewInput } from "./coverage";
 import { DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS } from "./results";
@@ -30,7 +31,7 @@ import { DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS } from "./results";
  */
 
 const cursorDescription =
-  "null for the first page; otherwise the cursor from the previous result.";
+  "\"\" for the first page; otherwise the cursor from the previous result.";
 
 export const ASK_TOOLS: readonly RegisteredAskTool[] = [
   defineTool({
@@ -40,7 +41,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     input: searchHierarchyInput,
     inputDescriptions: {
       query: "Words from the entity's name, e.g. \"accounts payable\".",
-      kinds: "Limit to these kinds, or null for all.",
+      kinds: "Limit to these kinds, or [] for all.",
       cursor: cursorDescription,
     },
     access: "member",
@@ -55,11 +56,11 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
   defineTool({
     name: "browseHierarchy",
     description:
-      "List the children of a node in the org structure: all functions (kind null), a function's departments, or a department's processes with contribution counts, pending work, overview state and whether a process flow exists.",
+      "List the children of a node in the org structure: all functions (kind 'root'), a function's departments, or a department's processes with contribution counts, pending work, overview state and whether a process flow exists.",
     input: browseHierarchyInput,
     inputDescriptions: {
-      kind: "\"function\" or \"department\" to open that node, or null for the list of functions.",
-      id: "The id of the function or department to open; null with kind null.",
+      kind: "\"function\" or \"department\" to open that node, or \"root\" for the list of functions.",
+      id: "The id of the function or department to open; \"\" with kind \"root\".",
       cursor: cursorDescription,
     },
     access: "member",
@@ -70,7 +71,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     budgetTokens: DEFAULT_BUDGET_TOKENS,
     telemetryName: "browseHierarchy",
     label: (input) =>
-      input.kind === null
+      input.kind === "root"
         ? "Listing the organization's functions"
         : input.kind === "function"
           ? "Listing the departments in a function"
@@ -84,7 +85,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
       kind: "The kind of every id.",
       ids: `1 to ${MAX_OVERVIEW_IDS} entity ids of that kind.`,
       sections:
-        "Finding sections to include, or null for all. Process: scope, consensus, variations, gaps, notable. Department: crossProcessDependencies, sharedPatterns, variationsAndTensions, gaps, notable. Function: crossDepartmentDependencies, strategicPatterns, variationsAndTensions, gaps, notable.",
+        "Finding sections to include, or [] for all. Process: scope, consensus, variations, gaps, notable. Department: crossProcessDependencies, sharedPatterns, variationsAndTensions, gaps, notable. Function: crossDepartmentDependencies, strategicPatterns, variationsAndTensions, gaps, notable.",
     },
     access: "member",
     executor: getOverview,
@@ -119,10 +120,10 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
       "List completed contributions (interviews, voice notes and uploaded files), newest first, in the whole organization or under one process, department or function. Shows title, contributor, type, recorded date and duration.",
     input: listConversationsInput,
     inputDescriptions: {
-      processId: "Limit to this process, or null.",
-      departmentId: "Limit to this department, or null.",
-      functionId: "Limit to this function, or null.",
-      since: "Only contributions recorded on or after this date (YYYY-MM-DD), or null.",
+      processId: "Limit to this process, or \"\".",
+      departmentId: "Limit to this department, or \"\".",
+      functionId: "Limit to this function, or \"\".",
+      since: "Only contributions recorded on or after this date (YYYY-MM-DD), or \"\".",
       cursor: cursorDescription,
     },
     access: "member",
@@ -157,9 +158,9 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     input: getTranscriptInput,
     inputDescriptions: {
       conversationId: "The contribution id.",
-      atSeconds: "Centre the window on this time in the recording, or null.",
-      query: "Centre the window on the first line containing these words, or null.",
-      full: "true to read the whole transcript (only when the user asks about the entire contribution); otherwise null.",
+      atSeconds: "Centre the window on this time in the recording, in seconds, or -1.",
+      query: "Centre the window on the first line containing these words, or \"\".",
+      full: "true to read the whole transcript (only when the user asks about the entire contribution); otherwise false.",
     },
     access: "member",
     executor: getTranscript,
@@ -178,11 +179,11 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
   defineTool({
     name: "getCoverage",
     description:
-      "How much of the organization (kind null) or of one entity has been interviewed: processes with and without completed contributions, unique contributors, pending contributions, and stale or missing overviews. Use it to state coverage on every organization-wide answer.",
+      "How much of the organization (kind 'org') or of one entity has been interviewed: processes with and without completed contributions, unique contributors, pending contributions, and stale or missing overviews. Use it to state coverage on every organization-wide answer.",
     input: getCoverageInput,
     inputDescriptions: {
-      kind: "The entity kind, or null for the whole organization.",
-      id: "The entity id, or null for the whole organization.",
+      kind: "The entity kind, or \"org\" for the whole organization.",
+      id: "The entity id, or \"\" for the whole organization.",
     },
     access: "member",
     executor: getCoverage,
@@ -192,17 +193,17 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     budgetTokens: DEFAULT_BUDGET_TOKENS,
     telemetryName: "getCoverage",
     label: (input) =>
-      input.kind === null ? "Checking coverage across the organization" : `Checking coverage of a ${input.kind}`,
+      input.kind === "org" ? "Checking coverage across the organization" : `Checking coverage of a ${input.kind}`,
   }),
   defineTool({
     name: "whatsNew",
     description:
-      "What changed since a date: contributions recorded since then, and overviews and process flows regenerated since then, newest first. For the whole organization (kind null) or one entity.",
+      "What changed since a date: contributions recorded since then, and overviews and process flows regenerated since then, newest first. For the whole organization (kind 'org') or one entity.",
     input: whatsNewInput,
     inputDescriptions: {
       since: "The date to look from, YYYY-MM-DD.",
-      kind: "The entity kind, or null for the whole organization.",
-      id: "The entity id, or null for the whole organization.",
+      kind: "The entity kind, or \"org\" for the whole organization.",
+      id: "The entity id, or \"\" for the whole organization.",
       cursor: cursorDescription,
     },
     access: "member",
@@ -235,8 +236,8 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
       "Find processes and steps that use a tool or system, involve an actor or role, or both, across every process. For a ranked view of systems and their friction, use listSystems instead.",
     input: findProcessesUsingInput,
     inputDescriptions: {
-      tool: "The tool or system name, or null.",
-      actor: "The actor or role, or null. At least one of tool and actor is required.",
+      tool: "The tool or system name, or \"\".",
+      actor: "The actor or role, or \"\". At least one of tool and actor is required.",
     },
     access: "member",
     executor: findProcessesUsing,
@@ -255,8 +256,8 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     input: searchConversationsInput,
     inputDescriptions: {
       query: "Words to find in titles, contributor names or summaries.",
-      processId: "Limit to this process, or null.",
-      since: "Only contributions recorded on or after this date (YYYY-MM-DD), or null.",
+      processId: "Limit to this process, or \"\".",
+      since: "Only contributions recorded on or after this date (YYYY-MM-DD), or \"\".",
       cursor: cursorDescription,
     },
     access: "member",
@@ -289,9 +290,9 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     input: rankSignalsInput,
     inputDescriptions: {
       signals: "1 to 7 signals to rank.",
-      kind: "Limit to this entity kind, or null for the whole organization.",
-      id: "The entity id, or null for the whole organization.",
-      limit: "Items per signal (default 8, at most 25), or null.",
+      kind: "Limit to this entity kind, or \"org\" for the whole organization.",
+      id: "The entity id, or \"\" for the whole organization.",
+      limit: "Items per signal, at most 25; 0 for the default of 8.",
     },
     access: "member",
     executor: rankSignals,
@@ -301,7 +302,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     budgetTokens: MAX_BUDGET_TOKENS,
     telemetryName: "rankSignals",
     label: (input) =>
-      `Ranking ${input.signals.join(", ")} across ${input.kind === null ? "the organization" : `a ${input.kind}`}`,
+      `Ranking ${input.signals.join(", ")} across ${input.kind === "org" ? "the organization" : `a ${input.kind}`}`,
   }),
   defineTool({
     name: "listSystems",
@@ -309,8 +310,8 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
       "List the systems and tools mentioned across the organization or one entity, ranked by evidenced friction: the processes and steps using each, mentions, pain points, manual re-keying and automation potential. Report evidence only; never recommend vendors or products.",
     input: scopeInput,
     inputDescriptions: {
-      kind: "Limit to this entity kind, or null for the whole organization.",
-      id: "The entity id, or null for the whole organization.",
+      kind: "Limit to this entity kind, or \"org\" for the whole organization.",
+      id: "The entity id, or \"\" for the whole organization.",
     },
     access: "member",
     executor: listSystems,
@@ -320,7 +321,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     budgetTokens: MAX_BUDGET_TOKENS,
     telemetryName: "listSystems",
     label: (input) =>
-      `Listing the systems used across ${input.kind === null ? "the organization" : `a ${input.kind}`}`,
+      `Listing the systems used across ${input.kind === "org" ? "the organization" : `a ${input.kind}`}`,
   }),
   defineTool({
     name: "findSimilarWork",
@@ -328,8 +329,8 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
       "Find possible duplication across processes: the same system on a similar step, the same handoff, or the same friction reported in several processes. Results are candidates to confirm, not conclusions; work described in different words is not detected.",
     input: scopeInput,
     inputDescriptions: {
-      kind: "Limit to this entity kind, or null for the whole organization.",
-      id: "The entity id, or null for the whole organization.",
+      kind: "Limit to this entity kind, or \"org\" for the whole organization.",
+      id: "The entity id, or \"\" for the whole organization.",
     },
     access: "member",
     executor: findSimilarWork,
@@ -339,9 +340,12 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     budgetTokens: MAX_BUDGET_TOKENS,
     telemetryName: "findSimilarWork",
     label: (input) =>
-      `Looking for duplicated work across ${input.kind === null ? "the organization" : `a ${input.kind}`}`,
+      `Looking for duplicated work across ${input.kind === "org" ? "the organization" : `a ${input.kind}`}`,
   }),
 ];
+
+// Fails at load, before any request, if the catalog outgrows strict tool use.
+assertWithinStrictLimits(ASK_TOOLS);
 
 export function getAskTool(name: string): RegisteredAskTool | undefined {
   return ASK_TOOLS.find((tool) => tool.name === name);

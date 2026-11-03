@@ -1,3 +1,4 @@
+import { v } from "convex/values";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
@@ -8,6 +9,23 @@ import {
 import { toLightweightSummaryListRow } from "../summaryV2";
 import { withSummaryV2ReadGate } from "../lib/summaryV2Feature";
 import type { HierarchyKind } from "./results";
+
+/**
+ * Optional scope for the aggregate tools. Strict tool schemas allow at most 16
+ * union-typed parameters across all tools, so optional inputs use sentinels
+ * rather than null: kind "org" (with id "") means the whole organization.
+ */
+export const scopeInput = {
+  kind: v.union(v.literal("org"), v.literal("function"), v.literal("department"), v.literal("process")),
+  id: v.string(),
+};
+
+export function scopeOf(input: { kind: HierarchyKind | "org"; id: string }): {
+  kind: HierarchyKind | null;
+  id: string | null;
+} {
+  return input.kind === "org" ? { kind: null, id: null } : { kind: input.kind, id: input.id.trim() || null };
+}
 
 /**
  * Shared reads for the AskFabric tools. Every read is bounded and indexed by

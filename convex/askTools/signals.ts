@@ -11,7 +11,7 @@ import {
   nodeContributors,
   type ScopeEvidence,
 } from "./evidence";
-import { getOrgEntity, loadHierarchy, processesInScope, type OrgHierarchy } from "./scope";
+import { getOrgEntity, loadHierarchy, processesInScope, scopeInput, scopeOf, type OrgHierarchy } from "./scope";
 import {
   MAX_BUDGET_TOKENS,
   MAX_LIST_ITEMS,
@@ -342,11 +342,6 @@ export function gapSourcesFor(
   ];
 }
 
-export const scopeInput = {
-  kind: v.union(v.literal("function"), v.literal("department"), v.literal("process"), v.null()),
-  id: v.union(v.string(), v.null()),
-};
-
 /** Resolves an optional scope to its processes; null when the entity isn't the viewer's. */
 export async function scopedProcesses(
   ctx: Parameters<typeof getOrgEntity>[0],
@@ -371,12 +366,16 @@ export async function scopedProcesses(
   return { processes, source: sources.entity(kind, doc._id), kind, id: doc._id };
 }
 
-/** One full block for the item, then a short block per further source. */
+/**
+ * One full block for the item, then a short block per further source. The
+ * evidence leads and the ranking follows in brackets, so the span Claude quotes
+ * in a citation (and readers see in its hover card) is the finding itself.
+ */
 export function itemBlocks(item: SignalItem, rank: number): SearchResultBlock[] {
-  const header = `#${rank} ${item.signal}${item.heuristic ? " (heuristic keyword match)" : ""}: ${item.text}. Score ${scoreOf(item)} = 3 × ${item.processes.size} processes + 2 × ${item.contributors.size} contributors + evidence weight ${item.evidenceWeight}. Seen in: ${[...new Set(item.refs.map((r) => r.processName))].slice(0, 5).join(", ")}.`;
+  const ranking = `(${item.signal} #${rank}${item.heuristic ? ", heuristic keyword match" : ""}; score ${scoreOf(item)} = 3 × ${item.processes.size} processes + 2 × ${item.contributors.size} contributors + evidence weight ${item.evidenceWeight}; seen in ${[...new Set(item.refs.map((r) => r.processName))].slice(0, 5).join(", ")})`;
   const [first, ...rest] = item.refs.slice(0, MAX_ITEM_SOURCES);
   return [
-    searchResult(first.source, `${item.signal}: ${clipText(item.text, 25)}`, `${header}\n${clipText(first.text, 80)}`),
+    searchResult(first.source, `${item.signal}: ${clipText(item.text, 25)}`, `${clipText(first.text, 80)}\n${ranking}`),
     ...rest.map((ref) =>
       searchResult(ref.source, `${item.signal}: ${ref.processName}`, `Also (${clipText(item.text, 15)}): ${clipText(ref.text, 50)} (${ref.processName})`),
     ),
@@ -386,7 +385,7 @@ export function itemBlocks(item: SignalItem, rank: number): SearchResultBlock[] 
 export const rankSignalsInput = {
   signals: v.array(v.union(...SIGNALS.map((s) => v.literal(s)))),
   ...scopeInput,
-  limit: v.union(v.number(), v.null()),
+  limit: v.number(),
 };
 
 /**
@@ -398,7 +397,8 @@ export const rankSignals = askToolQuery({
   handler: async (ctx, viewer, input) => {
     const wanted = new Set(input.signals.length ? input.signals : SIGNALS);
     const hierarchy = await loadHierarchy(ctx, viewer.orgId);
-    const scope = await scopedProcesses(ctx, viewer.orgId, hierarchy, input.kind, input.id);
+    const { kind, id } = scopeOf(input);
+    const scope = await scopedProcesses(ctx, viewer.orgId, hierarchy, kind, id);
     if (!scope) return NOT_FOUND;
     const evidence = await loadScopeEvidence(ctx, viewer.orgId, scope.processes);
     const ranked = collectSignals(
@@ -406,7 +406,7 @@ export const rankSignals = askToolQuery({
       evidence,
       wanted.has("gap") ? gapSourcesFor(hierarchy, scope.processes, scope.kind) : [],
     );
-    const limit = Math.min(Math.max(Math.floor(input.limit ?? DEFAULT_ITEMS_PER_SIGNAL), 1), MAX_LIST_ITEMS);
+    const limit = Math.min(Math.max(Math.floor(input.limit > 0 ? input.limit : DEFAULT_ITEMS_PER_SIGNAL), 1), MAX_LIST_ITEMS);
 
     const builder = new ResultBuilder(MAX_BUDGET_TOKENS, 300);
     const order = SIGNALS.filter((signal) => wanted.has(signal));
