@@ -133,6 +133,7 @@ import {
 } from "@/components/ui/sheet";
 import { GitBranch } from "lucide-react";
 import type { RevealPath } from "./reveal-path";
+import { captureDeepLinkTargets } from "@/features/workbench/deep-link-targets";
 
 // --- Types ---
 
@@ -167,7 +168,12 @@ export function ProcessWorkbench() {
   const isMobile = useIsMobile();
   // Seed once from the URL (the initializer runs on first render only); later
   // external URL changes (Back/Forward) are reconciled by the read effect below.
-  const [initialSelection] = useState(() => readSelectionParams(searchParams));
+  const [initialSelection] = useState(() => {
+    // One-shot targets for the views that open (a finding, a transcript line),
+    // captured before the first URL write drops them.
+    captureDeepLinkTargets(searchParams);
+    return readSelectionParams(searchParams);
+  });
   // Where the URL sits among the history entries this visit created, so moving
   // up can return to an earlier entry (see history-move.ts).
   const [initialTrail] = useState(() => startTrail(searchParams.toString()));

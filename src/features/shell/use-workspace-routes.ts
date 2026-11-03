@@ -90,6 +90,7 @@ export function useWorkspaceRoutes() {
     () => ({
       appHref: withWorkspacePath("/"),
       releaseNotesHref: withWorkspacePath("/release-notes"),
+      askHref: withWorkspacePath("/ask"),
       adminHref: withWorkspacePath("/admin"),
       adminUsersHref: withWorkspacePath("/admin/users"),
       adminConversationsHref: withWorkspacePath("/admin/conversations"),

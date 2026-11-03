@@ -262,6 +262,19 @@ export class ResultBuilder {
   }
 }
 
+/**
+ * A search result title, cut at a word with an ellipsis. Titles show in
+ * citation hover cards and the Sources list, so they get no model-facing
+ * "[truncated]" marker.
+ */
+export function shortTitle(text: string, maxChars = 80): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length <= maxChars) return flat;
+  const cut = flat.slice(0, maxChars);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > maxChars / 2 ? cut.slice(0, space) : cut).replace(/[\s,.;:]+$/, "")}…`;
+}
+
 /** Cuts text to roughly `maxTokens`, marking the cut. */
 export function clipText(text: string, maxTokens: number): string {
   const maxChars = Math.floor(maxTokens * 3.5);

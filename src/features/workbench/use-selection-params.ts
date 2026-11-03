@@ -18,6 +18,10 @@ const PARAM = {
 // outlives the visit it was for.
 const CONVERSATION_PARAM = "conv";
 
+// One-shot targets inside the opened view (FR-5.3, FR-5.4): a finding to
+// scroll to, and a transcript time and line. Dropped by the next URL write.
+const ONE_SHOT_PARAMS = ["finding", "t", "line"] as const;
+
 export type SelectionParams = {
   fn: Id<"functions"> | null;
   dept: Id<"departments"> | null;
@@ -133,6 +137,8 @@ export function buildSelectionQuery(
     sel.fn && sel.dept && sel.proc && sel.tab === 2 ? sel.node : null,
   );
   params.delete(CONVERSATION_PARAM);
+  // One-shot targets from an AskFabric citation, consumed like `conv`.
+  for (const key of ONE_SHOT_PARAMS) params.delete(key);
 
   return params.toString();
 }

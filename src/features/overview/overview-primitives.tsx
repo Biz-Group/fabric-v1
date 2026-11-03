@@ -535,7 +535,10 @@ export function FindingRows({
         <article
           key={finding.id}
           id={anchorId?.(finding)}
-          className="focus-ring scroll-mt-4 rounded-sm py-5 first:pt-0 last:pb-0"
+          // Every finding is addressable by `finding=` (FR-5.3); the
+          // highlight follows a citation jump (use-finding-deep-link.ts).
+          data-finding-id={finding.id}
+          className="focus-ring scroll-mt-4 rounded-sm py-5 transition-colors duration-700 first:pt-0 last:pb-0 data-[highlighted=true]:bg-org-accent-subtle motion-reduce:transition-none"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <h3 className="min-w-0 text-base font-semibold leading-6">

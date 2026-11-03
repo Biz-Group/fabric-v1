@@ -41,6 +41,7 @@ import {
   type TocFunction,
   type TurnContext,
 } from "./askfabric/context";
+import { citationChecker, citationPathResolver } from "./askfabric/citationAccess";
 import { runTurnLoop } from "./askfabric/loop";
 import { AskModelError, askModelClientFor } from "./askfabric/modelClient";
 import { ASK_SYSTEM_PROMPT, ASK_SYSTEM_PROMPT_VERSION } from "./askfabric/systemPrompt";
@@ -72,7 +73,14 @@ export const getAvailability = query({
     reason: v.union(unavailableReasonValidator, v.null()),
   }),
   handler: async (ctx) => {
-    const org = await requireOrgMember(ctx);
+    // The shell asks on every page; losing access mid-visit must hide the
+    // item, not throw into the layout (the workspace layout handles access).
+    let org;
+    try {
+      org = await requireOrgMember(ctx);
+    } catch {
+      return { available: false, reason: null };
+    }
     const availability = askFabricAvailability(org.orgId);
     if (availability.available) return { available: true, reason: null };
     return {
@@ -232,6 +240,9 @@ export const getThread = query({
       .query("askMessages")
       .withIndex("by_threadId", (q) => q.eq("threadId", thread._id))
       .take(MAX_THREAD_MESSAGES);
+    // Re-authorized on every read (FR-5.5): access may have changed since.
+    const availability = citationChecker(ctx, org.orgId, org.role);
+    const pathOf = citationPathResolver(ctx, org.orgId);
     const withCitations = [];
     for (const message of messages) {
       const citations =
@@ -249,9 +260,23 @@ export const getThread = query({
         status: message.status ?? null,
         errorReason: message.errorReason ?? null,
         completedAt: message.completedAt ?? null,
-        citations: citations
-          .sort((a, b) => a.ordinal - b.ordinal)
-          .map((c) => ({ ordinal: c.ordinal, source: c.source, title: c.title, citedText: c.citedText ?? null })),
+        citations: await Promise.all(
+          citations
+            .sort((a, b) => a.ordinal - b.ordinal)
+            .map(async (c) => {
+              const state = await availability(c.source);
+              return {
+                ordinal: c.ordinal,
+                source: c.source,
+                sourceKind: c.sourceKind,
+                availability: state,
+                path: state === "unavailable" ? { fn: null, dept: null, proc: null } : await pathOf(c.source),
+                // Withheld when the viewer can no longer open the source.
+                title: state === "unavailable" ? "Source no longer available" : c.title,
+                citedText: state === "unavailable" ? null : (c.citedText ?? null),
+              };
+            }),
+        ),
       });
     }
     return {

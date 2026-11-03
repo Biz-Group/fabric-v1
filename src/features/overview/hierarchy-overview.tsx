@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { ArrowUpRight, Building2, FileText, GitBranch } from "lucide-react";
@@ -25,6 +25,7 @@ import {
   type OverviewState,
 } from "@/features/overview/overview-view-model";
 import { MarkdownSummary } from "@/features/workbench/markdown-summary";
+import { useFindingDeepLink } from "./use-finding-deep-link";
 import {
   type HierarchySummaryEntity,
   useSummaryOverview,
@@ -332,11 +333,13 @@ export function HierarchyOverviewContent({
   onRefresh: () => void;
 }) {
   const [copyState, setCopyState] = useState<OverviewCopyState>("idle");
+  const articleRef = useRef<HTMLElement>(null);
   const hasContent = overview.content.format !== "none";
   const artifact =
     overview.content.format === "v2"
       ? hierarchyArtifactFor(entity.kind, overview.content.artifact)
       : null;
+  useFindingDeepLink(articleRef, artifact !== null);
   const entityLabel = entity.kind === "department" ? "department" : "function";
   const childLabel = entity.kind === "department" ? "processes" : "departments";
 
@@ -356,6 +359,7 @@ export function HierarchyOverviewContent({
 
   return (
     <article
+      ref={articleRef}
       className="mx-auto w-full max-w-5xl px-4 pb-6 pt-5 sm:px-6 sm:pt-6 lg:px-8"
       aria-label={`${entityLabel} overview`}
     >

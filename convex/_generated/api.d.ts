@@ -10,6 +10,7 @@
 
 import type * as aiUsage from "../aiUsage.js";
 import type * as ask from "../ask.js";
+import type * as askThreads from "../askThreads.js";
 import type * as askTools_catalog from "../askTools/catalog.js";
 import type * as askTools_conversations from "../askTools/conversations.js";
 import type * as askTools_coverage from "../askTools/coverage.js";
@@ -26,6 +27,7 @@ import type * as askTools_results from "../askTools/results.js";
 import type * as askTools_scope from "../askTools/scope.js";
 import type * as askTools_signals from "../askTools/signals.js";
 import type * as askTools_systems from "../askTools/systems.js";
+import type * as askfabric_citationAccess from "../askfabric/citationAccess.js";
 import type * as askfabric_context from "../askfabric/context.js";
 import type * as askfabric_loop from "../askfabric/loop.js";
 import type * as askfabric_modelClient from "../askfabric/modelClient.js";
@@ -113,6 +115,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   aiUsage: typeof aiUsage;
   ask: typeof ask;
+  askThreads: typeof askThreads;
   "askTools/catalog": typeof askTools_catalog;
   "askTools/conversations": typeof askTools_conversations;
   "askTools/coverage": typeof askTools_coverage;
@@ -129,6 +132,7 @@ declare const fullApi: ApiFromModules<{
   "askTools/scope": typeof askTools_scope;
   "askTools/signals": typeof askTools_signals;
   "askTools/systems": typeof askTools_systems;
+  "askfabric/citationAccess": typeof askfabric_citationAccess;
   "askfabric/context": typeof askfabric_context;
   "askfabric/loop": typeof askfabric_loop;
   "askfabric/modelClient": typeof askfabric_modelClient;

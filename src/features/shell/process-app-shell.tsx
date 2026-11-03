@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   Search,
   Settings,
+  Sparkles,
 } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -481,6 +482,8 @@ export function WorkspaceAppShell({
 }: WorkspaceAppShellProps) {
   const { organization } = useOrganization();
   const membership = useQuery(api.users.getMyMembership);
+  // The AskFabric item shows only where the switch is on (FR-4.1, FR-9.6).
+  const askFabric = useQuery(api.ask.getAvailability);
   const routes = useWorkspaceRoutes();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const sidebarCollapsed = useSyncExternalStore(
@@ -501,6 +504,13 @@ export function WorkspaceAppShell({
           icon: House,
           label: "Home",
           active: routes.isActivePath("/", { exact: true }),
+        },
+        {
+          href: routes.askHref,
+          icon: Sparkles,
+          label: "AskFabric",
+          active: routes.isActivePath("/ask"),
+          visible: askFabric?.available === true,
         },
         {
           href: routes.releaseNotesHref,

@@ -46,6 +46,7 @@ import {
 import { useSummaryOverview } from "@/features/workbench/use-summary-overview";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import { cn } from "@/lib/utils";
+import { useFindingDeepLink } from "./use-finding-deep-link";
 
 type OverviewResponse = FunctionReturnType<typeof api.summaries.getOverview>;
 type StructuredArtifact = Extract<
@@ -359,6 +360,7 @@ export function ProcessOverviewContent({
   const brief = structuredArtifact?.executiveBrief ?? null;
   const headline = structuredArtifact?.headline.trim() || null;
   const keyFacts = structuredArtifact ? processKeyFacts(structuredArtifact) : [];
+  useFindingDeepLink(articleRef, structuredArtifact !== null);
   const jumpTo = (targetId: string) => {
     // The workbench can mount this overview in its desktop and phone layouts
     // at once, so look inside this copy, not the document, whose first match

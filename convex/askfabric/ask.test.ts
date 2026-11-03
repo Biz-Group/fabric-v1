@@ -217,7 +217,15 @@ describe("runTurn", () => {
     const thread = await s.ana.query(api.ask.getThread, { threadId: ids.threadId });
     expect(thread?.title).toBe("Scripted thread title");
     expect(thread?.messages[1].citations).toEqual([
-      { ordinal: 1, source: "fabric:entity/org", title: "Coverage — the organization", citedText: "1 of 2 processes" },
+      {
+        ordinal: 1,
+        source: "fabric:entity/org",
+        sourceKind: "org",
+        availability: "available",
+        path: { fn: null, dept: null, proc: null },
+        title: "Coverage — the organization",
+        citedText: "1 of 2 processes",
+      },
     ]);
     const stored = await s.t.run((ctx) => ctx.db.query("askCitations").collect());
     expect(stored[0]).toMatchObject({ sourceKind: "org", sourceEntityId: "org", threadId: ids.threadId, userId: s.ids.a.userId });

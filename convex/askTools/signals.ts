@@ -20,6 +20,7 @@ import {
   blockTokens,
   clipText,
   searchResult,
+  shortTitle,
   sources,
   type HierarchyKind,
   type SearchResultBlock,
@@ -375,9 +376,9 @@ export function itemBlocks(item: SignalItem, rank: number): SearchResultBlock[] 
   const ranking = `(${item.signal} #${rank}${item.heuristic ? ", heuristic keyword match" : ""}; score ${scoreOf(item)} = 3 × ${item.processes.size} processes + 2 × ${item.contributors.size} contributors + evidence weight ${item.evidenceWeight}; seen in ${[...new Set(item.refs.map((r) => r.processName))].slice(0, 5).join(", ")})`;
   const [first, ...rest] = item.refs.slice(0, MAX_ITEM_SOURCES);
   return [
-    searchResult(first.source, `${item.signal}: ${clipText(item.text, 25)}`, `${clipText(first.text, 80)}\n${ranking}`),
+    searchResult(first.source, shortTitle(`${item.signal}: ${item.text}`), `${clipText(first.text, 80)}\n${ranking}`),
     ...rest.map((ref) =>
-      searchResult(ref.source, `${item.signal}: ${ref.processName}`, `Also (${clipText(item.text, 15)}): ${clipText(ref.text, 50)} (${ref.processName})`),
+      searchResult(ref.source, shortTitle(`${item.signal}: ${ref.processName}`), `Also (${clipText(item.text, 15)}): ${clipText(ref.text, 50)} (${ref.processName})`),
     ),
   ];
 }

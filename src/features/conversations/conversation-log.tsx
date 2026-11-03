@@ -49,6 +49,7 @@ import {
   transcriptTabStop,
 } from "@/features/conversations/transcript-navigation";
 import { registerBottomDock } from "@/lib/bottom-dock";
+import { linkedTranscriptIndex, takeTranscriptTarget } from "@/features/workbench/deep-link-targets";
 
 // --- Helpers ---
 
@@ -685,10 +686,35 @@ function SyncedTranscript({
   const player = useAudioPlayer();
   const time = useAudioPlayerTime();
   const isActive = player.isItemActive(conversationId);
+  // A citation link's `line=` (or `t=` when lines have shifted) opens the
+  // transcript on that line and highlights it once (FR-5.4). The workbench
+  // captured the target on mount (deep-link-targets.ts).
+  const [linkedIndex, setLinkedIndex] = useState<number | null>(() =>
+    linkedTranscriptIndex(transcript, takeTranscriptTarget()),
+  );
   const [userToggled, setUserToggled] = useState(false);
-  const [open, setOpen] = useState(expanded);
+  const [open, setOpen] = useState(expanded || linkedIndex !== null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  useEffect(() => {
+    if (linkedIndex === null) return;
+    const frame = requestAnimationFrame(() => {
+      const container = scrollRef.current;
+      const lineEl = lineRefs.current.get(linkedIndex);
+      if (container && lineEl) {
+        container.scrollTop = lineEl.offsetTop - container.clientHeight / 2 + lineEl.clientHeight / 2;
+        lineEl.scrollIntoView({ block: "nearest" });
+      }
+    });
+    const timer = window.setTimeout(() => setLinkedIndex(null), 3_000);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+    // Once, for the line the link named.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const prevIndexRef = useRef(-1);
   const autoOpen = !expanded && isActive && player.isPlaying && !userToggled;
   const collapsibleOpen = open || autoOpen;
@@ -827,6 +853,7 @@ function SyncedTranscript({
                 className={cn(
                   "group/msg cursor-pointer rounded-md px-3 py-2 text-sm leading-relaxed transition-all duration-300 pointer-coarse:min-h-10",
                   isCurrent && "bg-org-accent-selected text-foreground ring-1 ring-org-accent-border",
+                  i === linkedIndex && "bg-org-accent-subtle ring-2 ring-org-accent-border",
                   !isCurrent && msg.role === "ai" && "bg-muted/90",
                   !isCurrent && msg.role !== "ai" && "bg-muted/55",
                   isPast && "opacity-40",
