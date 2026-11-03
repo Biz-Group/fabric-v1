@@ -236,6 +236,11 @@ export class ResultBuilder {
   finish(
     meta: Record<string, unknown> = {},
     cursor: string | null = null,
+    /**
+     * For a scan that found nothing: a citable result saying so, sourced to
+     * the scope searched, so "no candidates found" can carry a citation.
+     */
+    whenEmpty?: { source: string; title: string; text: string },
   ): AskToolResult {
     // A tool result holding search results may hold nothing else (the API
     // rejects a mix), so the header is a search result too. Its source is not a
@@ -250,7 +255,8 @@ export class ResultBuilder {
         ...(cursor ? { cursor } : {}),
       })}`,
     );
-    const content: ToolContentBlock[] = [header, ...this.blocks];
+    const empty = this.items === 0 && whenEmpty ? [searchResult(whenEmpty.source, whenEmpty.title, whenEmpty.text)] : [];
+    const content: ToolContentBlock[] = [header, ...this.blocks, ...empty];
     return {
       found: true,
       content,

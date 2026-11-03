@@ -225,7 +225,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     executor: findHandoffs,
     executorPath: "askTools/graph:findHandoffs",
     output: "Processes with matching handoffs, each citing the steps or contributions.",
-    citationSources: ["flowNode", "conversation"],
+    citationSources: ["flowNode", "conversation", "org"],
     budgetTokens: MAX_BUDGET_TOKENS,
     telemetryName: "findHandoffs",
     label: (input) => `Finding handoffs involving ${input.party}`,
@@ -243,7 +243,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     executor: findProcessesUsing,
     executorPath: "askTools/graph:findProcessesUsing",
     output: "Processes with matching steps or contributions.",
-    citationSources: ["flowNode", "conversation"],
+    citationSources: ["flowNode", "conversation", "org"],
     budgetTokens: MAX_BUDGET_TOKENS,
     telemetryName: "findProcessesUsing",
     label: (input) =>
@@ -298,7 +298,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     executor: rankSignals,
     executorPath: "askTools/signals:rankSignals",
     output: "Ranked items per signal, each with its score inputs and up to 5 sources.",
-    citationSources: ["flowNode", "conversation", "finding", "entity"],
+    citationSources: ["flowNode", "conversation", "finding", "entity", "org"],
     budgetTokens: MAX_BUDGET_TOKENS,
     telemetryName: "rankSignals",
     label: (input) =>
@@ -336,7 +336,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     executor: findSimilarWork,
     executorPath: "askTools/systems:findSimilarWork",
     output: "Up to 25 duplication candidates, each citing where it occurs.",
-    citationSources: ["flowNode", "conversation"],
+    citationSources: ["flowNode", "conversation", "entity", "org"],
     budgetTokens: MAX_BUDGET_TOKENS,
     telemetryName: "findSimilarWork",
     label: (input) =>

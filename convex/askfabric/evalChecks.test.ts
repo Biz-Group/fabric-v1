@@ -113,7 +113,9 @@ describe("golden set (FR-10.1)", () => {
     const ids = new Set<string>();
     for (const { sets, ...spec } of golden.cases) {
       expect(Object.keys(spec).sort(), String(spec.id)).toEqual(fields);
-      expect(sets, String(spec.id)).toEqual(expect.arrayContaining(["full"]));
+      // Drafts await review (1G.3); a reviewed case is in `full`, and maybe `smoke`.
+      const allowed = (sets as string[]).includes("draft") ? [["draft"]] : [["full"], ["smoke", "full"]];
+      expect(allowed, String(spec.id)).toContainEqual(sets);
       expect((spec.turns as string[]).length).toBeGreaterThan(0);
       for (const pattern of [...(spec.mustMatch as string[]), ...(spec.mustNotMatch as string[])]) expect(() => new RegExp(pattern, "i")).not.toThrow();
       expect(ids.has(String(spec.id)), `duplicate ${spec.id}`).toBe(false);

@@ -105,12 +105,20 @@ export const findHandoffs = askToolQuery({
     for (const entry of processes.slice(0, MAX_LIST_ITEMS)) {
       if (!processBlocks(entry, `Handoffs involving ${input.party}`).every((b) => builder.add(b))) break;
     }
-    return builder.finish({
-      party: input.party,
-      processesMatched: processes.length,
-      ...(evidence.capped ? { readCapped: true } : {}),
-      matching: "Whole-word name match on step actors, handoff steps and contribution evidence.",
-    });
+    return builder.finish(
+      {
+        party: input.party,
+        processesMatched: processes.length,
+        ...(evidence.capped ? { readCapped: true } : {}),
+        matching: "Whole-word name match on step actors, handoff steps and contribution evidence.",
+      },
+      null,
+      {
+        source: sources.org(),
+        title: `Handoff search: no matches for ${input.party}`,
+        text: `No handoffs involving "${input.party}" found in the flow steps or contribution evidence of ${evidence.flows.length} processes with flows.`,
+      },
+    );
   },
 });
 
@@ -169,11 +177,19 @@ export const findProcessesUsing = askToolQuery({
     for (const entry of processes.slice(0, MAX_LIST_ITEMS)) {
       if (!processBlocks(entry, `Using ${heading}`).every((b) => builder.add(b))) break;
     }
-    return builder.finish({
-      tool: input.tool,
-      actor: input.actor,
-      processesMatched: processes.length,
-      ...(evidence.capped ? { readCapped: true } : {}),
-    });
+    return builder.finish(
+      {
+        tool: input.tool,
+        actor: input.actor,
+        processesMatched: processes.length,
+        ...(evidence.capped ? { readCapped: true } : {}),
+      },
+      null,
+      {
+        source: sources.org(),
+        title: `Usage search: no matches for ${heading}`,
+        text: `No process found using ${heading}, across the flow steps and contribution evidence of ${evidence.flows.length} processes with flows.`,
+      },
+    );
   },
 });

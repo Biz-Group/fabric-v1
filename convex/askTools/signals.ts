@@ -429,14 +429,22 @@ export const rankSignals = askToolQuery({
         for (const block of blocks) builder.add(block);
       }
     }
-    return builder.finish({
-      scope: scope.source,
-      itemsPerSignal: counts,
-      processesInScope: scope.processes.length,
-      flowsRead: evidence.flows.length,
-      contributionsRead: evidence.contributions.length,
-      ...(evidence.capped ? { readCapped: true } : {}),
-      ranking: "score = 3 × processes affected + 2 × distinct contributors + evidence weight (corroborated 3, single source 2, inferred 1)",
-    });
+    return builder.finish(
+      {
+        scope: scope.source,
+        itemsPerSignal: counts,
+        processesInScope: scope.processes.length,
+        flowsRead: evidence.flows.length,
+        contributionsRead: evidence.contributions.length,
+        ...(evidence.capped ? { readCapped: true } : {}),
+        ranking: "score = 3 × processes affected + 2 × distinct contributors + evidence weight (corroborated 3, single source 2, inferred 1)",
+      },
+      null,
+      {
+        source: scope.source,
+        title: "Signal scan: nothing found",
+        text: `No ${order.join(", ")} signals found across ${scope.processes.length} processes in scope (${evidence.flows.length} flows and ${evidence.contributions.length} contributions read).`,
+      },
+    );
   },
 });

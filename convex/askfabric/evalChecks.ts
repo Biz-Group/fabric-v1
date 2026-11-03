@@ -168,21 +168,22 @@ export type JudgeVerdict = {
 
 export const JUDGE_SYSTEM = `You grade answers from AskFabric, an assistant that answers questions about how an organization works, using evidence from interviews and process maps in the Fabric app.
 
-You see the user's messages, the final answer with numbered citation markers like [1], the text each citation quotes, and the case's key points. You do not see how the answer was produced. Judge only from what is shown.
+You see the user's messages, the final answer with numbered citation markers like [1], the text each citation quotes, the case's key points, and the date the assistant was told it is. You do not see how the answer was produced. Judge only from what is shown. A figure the answer derives from dates in the cited text and that date, such as how old a contribution is, counts as supported.
 
 Score each rubric criterion from 0 to 3: 0 = fails, 1 = mostly fails, 2 = acceptable, 3 = strong. Then answer each guardrail question true or false. Be strict about support: a claim is supported only if the quoted text shown for its citation backs it.
 
 Reply with one JSON object and nothing else:
 {"scores": {"<criterion>": {"score": <0-3>, "reason": "<one sentence>"}}, "guardrails": {"<guardrail>": <true|false>}, "summary": "<one or two sentences>"}`;
 
-/** The judge's user message: never the thought trace (FR-10.3). */
-export function judgePrompt(spec: GoldenCase, turns: EvalTurn[]): string {
+/** The judge's user message: never the thought trace (FR-10.3). `today` is the date the answer saw. */
+export function judgePrompt(spec: GoldenCase, turns: EvalTurn[], today: string): string {
   const final = turns[turns.length - 1];
   const sources = final.citations.length
     ? final.citations.map((c) => `[${c.ordinal}] ${c.title}\n${c.citedText ?? "(text no longer available)"}`).join("\n\n")
     : "(no citations)";
   const priorAnswers = turns.slice(0, -1).map((turn, index) => `Answer to message ${index + 1}:\n${turn.text}`);
   return [
+    `Date the assistant was told it is: ${today}`,
     `User messages:\n${spec.turns.map((turn, index) => `${index + 1}. ${turn}`).join("\n")}`,
     ...priorAnswers,
     `Final answer:\n${final.text}`,

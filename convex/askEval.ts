@@ -20,6 +20,7 @@ import {
   type EvalTurn,
   type JudgeVerdict,
 } from "./askfabric/evalChecks";
+import { isoDate } from "./askTools/results";
 import { ASKFABRIC_OPERATIONS, ASKFABRIC_PROVIDER, readAskFabricEvalConfig } from "./lib/askFabricFeature";
 import { priceTokenUsage } from "./lib/aiPricing";
 import { meteredStream } from "./lib/aiUsageMeter";
@@ -281,7 +282,8 @@ export const gradeCase = internalAction({
           async () => {
             const result = await model.complete({
               system: JUDGE_SYSTEM,
-              user: judgePrompt(args.case, turns),
+              // Graded straight after the run, so today is the date the turns saw.
+              user: judgePrompt(args.case, turns, isoDate(Date.now())!),
               maxTokens: JUDGE_MAX_TOKENS,
               reasoning: true,
             });

@@ -419,6 +419,21 @@ describe("AskFabric core tools (T1–T9)", () => {
     expect(textOf(bad)).toContain("since must be a date");
   });
 
+  test("a scan that finds nothing says so in a citable result, sourced to its scope", async () => {
+    const s = await setup();
+    // One process can't duplicate itself, and nobody is called Zebedee.
+    const empty = [
+      await run(s, "findSimilarWork", { kind: "process", id: s.a.processId }),
+      await run(s, "findHandoffs", { party: "Zebedee" }),
+      await run(s, "findProcessesUsing", { tool: "Zebedee", actor: "" }),
+    ];
+    expect(empty.map((result) => found(result).resultCount)).toEqual([0, 0, 0]);
+    expect(empty.map((result) => sourcesOf(result))).toEqual([[`fabric:entity/process/${s.a.processId}`], ["fabric:entity/org"], ["fabric:entity/org"]]);
+    expect(textOf(empty[0])).toMatch(/No duplication candidates found across 1 processes/);
+    // A scan with results carries no such block.
+    expect(textOf(await run(s, "findSimilarWork", calls(s).findSimilarWork))).not.toMatch(/No duplication candidates/);
+  });
+
   test("lists page with a cursor", async () => {
     const s = await setup();
     await s.t.run(async (ctx) => {

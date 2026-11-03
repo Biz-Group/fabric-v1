@@ -345,12 +345,20 @@ export const findSimilarWork = askToolQuery({
       );
       if (!blocks.every((block) => builder.add(block))) break;
     }
-    return builder.finish({
-      scope: scope.source,
-      candidates: candidates.length,
-      processesInScope: scope.processes.length,
-      ...(evidence.capped ? { readCapped: true } : {}),
-      note: "Deterministic first pass: exact or near-exact wording only. Work described in different words is not detected. Present these as candidates to confirm.",
-    });
+    return builder.finish(
+      {
+        scope: scope.source,
+        candidates: candidates.length,
+        processesInScope: scope.processes.length,
+        ...(evidence.capped ? { readCapped: true } : {}),
+        note: "Deterministic first pass: exact or near-exact wording only. Work described in different words is not detected. Present these as candidates to confirm.",
+      },
+      null,
+      {
+        source: scope.source,
+        title: "Duplication scan: no candidates",
+        text: `No duplication candidates found across ${scope.processes.length} processes in scope (${evidence.flows.length} flows and ${evidence.contributions.length} contributions read). This first pass detects only exact or near-exact wording: the same system on a similar step, the same handoff, or the same friction text. Work described in different words is not detected.`,
+      },
+    );
   },
 });

@@ -112,15 +112,17 @@ export type AnswerCitation = {
 
 /**
  * The answer text with a marker after each cited span, and one citation per
- * distinct source: repeated sources reuse their number (FR-5.1). A citation
- * whose source isn't a Fabric source is dropped rather than shown unresolvable.
+ * distinct search result: citing the same result again reuses its number
+ * (FR-5.1). Results are told apart by source and title, because one source
+ * can carry several (two systems on the same flow step). A citation whose
+ * source isn't a Fabric source is dropped rather than shown unresolvable.
  */
 export function answerFromBlocks(content: AskContentBlock[]): {
   text: string;
   citations: AnswerCitation[];
 } {
   const citations: AnswerCitation[] = [];
-  const ordinalBySource = new Map<string, number>();
+  const ordinalByResult = new Map<string, number>();
   let text = "";
   for (const block of content) {
     if (block.type !== "text") continue;
@@ -131,10 +133,11 @@ export function answerFromBlocks(content: AskContentBlock[]): {
       if (!citation.source) continue;
       const parsed = parseFabricSource(citation.source);
       if (!parsed) continue;
-      let ordinal = ordinalBySource.get(citation.source);
+      const key = `${citation.source}\n${citation.title ?? ""}`;
+      let ordinal = ordinalByResult.get(key);
       if (ordinal === undefined) {
         ordinal = citations.length + 1;
-        ordinalBySource.set(citation.source, ordinal);
+        ordinalByResult.set(key, ordinal);
         citations.push({
           ordinal,
           source: citation.source,
