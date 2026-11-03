@@ -419,6 +419,16 @@ describe("AskFabric core tools (T1–T9)", () => {
     expect(textOf(bad)).toContain("since must be a date");
   });
 
+  test("flow facts and the ranking's scope are citable, not only metadata (D52)", async () => {
+    const s = await setup();
+    const flow = found(await run(s, "getProcessFlow", calls(s).getProcessFlow));
+    const summary = flow.content.find((block) => block.type === "search_result" && block.title.endsWith("process flow summary"));
+    expect(summary).toMatchObject({ source: `fabric:entity/process/${s.a.processId}` });
+    expect(textOf(flow)).toMatch(/Process flow for .+: \d+ steps and \d+ handoffs, built from \d+ contributions?, generated \d{4}-\d{2}-\d{2}/);
+    expect(textOf(flow)).toMatch(/how the steps connect\nStep connections: .+ → /);
+    expect(textOf(await run(s, "rankSignals", calls(s).rankSignals))).toMatch(/Ranked across \d+ processes in scope, reading \d+ process flows and \d+ contributions/);
+  });
+
   test("a scan that finds nothing says so in a citable result, sourced to its scope", async () => {
     const s = await setup();
     // One process can't duplicate itself, and nobody is called Zebedee.

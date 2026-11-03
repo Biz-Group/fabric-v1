@@ -6,6 +6,7 @@ import {
   expectedSourceCoverage,
   parseJudgeReply,
   goldenCaseValidator,
+  judgePrompt,
   sourceType,
   type EvalTurn,
   type GoldenCase,
@@ -97,6 +98,14 @@ describe("judge reply (FR-10.3)", () => {
     expect(casePasses([], { ...verdict, guardrails: { ...verdict.guardrails, recommendsProducts: true } })).toBe(false);
     expect(casePasses([{ name: "cited", pass: false, detail: "" }], verdict)).toBe(false);
     expect(casePasses([], null)).toBe(false);
+  });
+
+  test("the judge sees the date, role and structure the answer saw, and never the trace", () => {
+    const prompt = judgePrompt(CASE, [turn()], "2026-11-03", "- Ops\n  - Dispatch: Scheduling");
+    expect(prompt).toContain("Date the assistant was told it is: 2026-11-03");
+    expect(prompt).toContain("The user's role: viewer");
+    expect(prompt).toContain("- Ops\n  - Dispatch: Scheduling");
+    expect(prompt).toContain("[1] Handoff\nWaits on approval");
   });
 
   test("rejects a reply outside the contract", () => {

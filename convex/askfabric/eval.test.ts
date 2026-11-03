@@ -140,7 +140,10 @@ describe("eval harness (FR-10.5a)", () => {
     expect(rows.usage).not.toContain("askfabric.title");
 
     await t.mutation(internal.askEval.cleanupCase, { threadId: first.threadId });
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    // Run the delete batches directly: a scheduled batch racing the test's own
+    // transactions is a convex-test hazard. Timers stay faked, so the
+    // reschedules never fire.
+    for (let pass = 0; pass < 3; pass++) await t.mutation(internal.askThreads.deleteThreadBatch, { threadId: first.threadId });
     const left = await t.run(async (ctx) => ({
       threads: await ctx.db.query("askThreads").collect(),
       messages: await ctx.db.query("askMessages").collect(),

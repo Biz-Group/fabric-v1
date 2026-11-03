@@ -114,9 +114,11 @@ export const findHandoffs = askToolQuery({
       },
       null,
       {
-        source: sources.org(),
-        title: `Handoff search: no matches for ${input.party}`,
-        text: `No handoffs involving "${input.party}" found in the flow steps or contribution evidence of ${evidence.flows.length} processes with flows.`,
+        whenEmpty: {
+          source: sources.org(),
+          title: `Handoff search: no matches for ${input.party}`,
+          text: `No handoffs involving "${input.party}" found in the flow steps or contribution evidence of ${evidence.flows.length} processes with flows.`,
+        },
       },
     );
   },
@@ -186,9 +188,11 @@ export const findProcessesUsing = askToolQuery({
       },
       null,
       {
-        source: sources.org(),
-        title: `Usage search: no matches for ${heading}`,
-        text: `No process found using ${heading}, across the flow steps and contribution evidence of ${evidence.flows.length} processes with flows.`,
+        whenEmpty: {
+          source: sources.org(),
+          title: `Usage search: no matches for ${heading}`,
+          text: `No process found using ${heading}, across the flow steps and contribution evidence of ${evidence.flows.length} processes with flows.`,
+        },
       },
     );
   },

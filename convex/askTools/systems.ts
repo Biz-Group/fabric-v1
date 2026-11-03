@@ -355,9 +355,11 @@ export const findSimilarWork = askToolQuery({
       },
       null,
       {
-        source: scope.source,
-        title: "Duplication scan: no candidates",
-        text: `No duplication candidates found across ${scope.processes.length} processes in scope (${evidence.flows.length} flows and ${evidence.contributions.length} contributions read). This first pass detects only exact or near-exact wording: the same system on a similar step, the same handoff, or the same friction text. Work described in different words is not detected.`,
+        whenEmpty: {
+          source: scope.source,
+          title: "Duplication scan: no candidates",
+          text: `No duplication candidates found across ${scope.processes.length} processes in scope (${evidence.flows.length} flows and ${evidence.contributions.length} contributions read). This first pass detects only exact or near-exact wording: the same system on a similar step, the same handoff, or the same friction text. Work described in different words is not detected.`,
+        },
       },
     );
   },

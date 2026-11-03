@@ -79,6 +79,28 @@ export const getProcessFlow = askToolQuery({
       flow.stale || (flow.status === "ready" && done.length > flow.conversationCount);
     const labelById = new Map(flow.nodes.map((node) => [node.id, node.label]));
 
+    // The flow's own facts, citable: answers quote its size, sources and age.
+    const tools = [...new Set(flow.nodes.flatMap((node) => node.tools ?? []))];
+    builder.add(
+      searchResult(
+        sources.entity("process", pid),
+        `${process.name} — process flow summary`,
+        [
+          `Process flow for ${process.name}: ${flow.nodes.length} steps and ${flow.insights.handoffCount} handoffs, built from ${flow.conversationCount} contribution${flow.conversationCount === 1 ? "" : "s"}, generated ${isoDate(flow.generatedAt)}.`,
+          stale ? "It is stale: newer contributions aren't reflected yet." : "It is up to date with the process's contributions.",
+          tools.length ? `Systems named on steps: ${tools.join(", ")}.` : "No systems are named on its steps.",
+        ].join(" "),
+      ),
+    );
+
+    // How steps connect, citable too: answers describe the branching (D52).
+    const edges = flow.edges
+      .map((edge) => `${labelById.get(edge.source) ?? edge.source} → ${labelById.get(edge.target) ?? edge.target}${edge.label ? ` (${edge.label})` : ""}`)
+      .join("; ");
+    if (edges) {
+      builder.add(searchResult(sources.entity("process", pid), `${process.name} — how the steps connect`, clipText(`Step connections: ${edges}.`, 900)));
+    }
+
     // Key findings lead: they are what the Insights tab leads with.
     const keyFindings = deriveKeyFindings(flow, deriveHandoffs(flow.nodes, flow.edges));
     if (keyFindings.state === "findings") {
@@ -117,9 +139,6 @@ export const getProcessFlow = askToolQuery({
       }
     }
 
-    const edges = flow.edges
-      .map((edge) => `${labelById.get(edge.source) ?? edge.source} → ${labelById.get(edge.target) ?? edge.target}${edge.label ? ` (${edge.label})` : ""}`)
-      .join("; ");
     return builder.finish({
       process: process.name,
       status: flow.status,
@@ -132,7 +151,6 @@ export const getProcessFlow = askToolQuery({
       topBottlenecks: flow.insights.topBottlenecks,
       handoffCount: flow.insights.handoffCount,
       keyFindings: keyFindings.state,
-      edges: clipText(edges, 400),
     });
   },
 });

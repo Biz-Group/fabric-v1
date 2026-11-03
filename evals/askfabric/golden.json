@@ -708,7 +708,7 @@
       ],
       "expectedSources": [],
       "mustMatch": [
-        "\\b\\d+\\s+(?:of|out of)\\s+(?:the\\s+)?\\d+\\b|coverage|not (?:yet )?(?:been )?(?:interviewed|covered)"
+        "\\b\\d+\\s+(?:of|out of)\\s+(?:the\\s+)?\\d+\\b|coverage|not (?:yet )?(?:been )?(?:interviewed|covered)|\\b(?:a )?single contributor\\b|\\bonly \\d+ (?:process|contributor)"
       ],
       "mustNotMatch": []
     },
@@ -790,7 +790,7 @@
       ],
       "expectedSources": [],
       "mustMatch": [
-        "\\b\\d+\\s+(?:of|out of)\\s+(?:the\\s+)?\\d+\\b|coverage|not (?:yet )?(?:been )?(?:interviewed|covered)"
+        "\\b\\d+\\s+(?:of|out of)\\s+(?:the\\s+)?\\d+\\b|coverage|not (?:yet )?(?:been )?(?:interviewed|covered)|\\b(?:a )?single contributor\\b|\\bonly \\d+ (?:process|contributor)"
       ],
       "mustNotMatch": []
     },
@@ -811,7 +811,7 @@
       ],
       "expectedSources": [],
       "mustMatch": [
-        "\\b\\d+\\s+(?:of|out of)\\s+(?:the\\s+)?\\d+\\b|coverage|not (?:yet )?(?:been )?(?:interviewed|covered)"
+        "\\b\\d+\\s+(?:of|out of)\\s+(?:the\\s+)?\\d+\\b|coverage|not (?:yet )?(?:been )?(?:interviewed|covered)|\\b(?:a )?single contributor\\b|\\bonly \\d+ (?:process|contributor)"
       ],
       "mustNotMatch": []
     },

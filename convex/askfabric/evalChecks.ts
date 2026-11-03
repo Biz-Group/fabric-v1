@@ -54,7 +54,7 @@ export const MAX_ORG_WIDE_TOOL_CALLS = 6;
 
 /** A coverage statement: how much of the org the evidence covers (FR-1.15). */
 const COVERAGE_PATTERN =
-  /\bcoverage\b|\b\d+\s+(?:of|out of)\s+(?:the\s+)?\d+\b|\b\d+\s*%\s+of\b|\bonly\s+\d+\b|\bnot yet (?:covered|captured|contributed)\b|\bno contributions? (?:yet|so far)\b/i;
+  /\bcoverage\b|\b(?:a )?single contributor\b|\bonly \d+ (?:process|contributor)|\bone (?:process|contributor)\b(?= and| so| of)|\b\d+\s+(?:of|out of)\s+(?:the\s+)?\d+\b|\b\d+\s*%\s+of\b|\bonly\s+\d+\b|\bnot yet (?:covered|captured|contributed)\b|\bno contributions? (?:yet|so far)\b/i;
 
 /** Source type of a `fabric:` source, e.g. `finding`, `conversation`, `flow-node`. */
 export function sourceType(source: string): string {
@@ -170,13 +170,18 @@ export const JUDGE_SYSTEM = `You grade answers from AskFabric, an assistant that
 
 You see the user's messages, the final answer with numbered citation markers like [1], the text each citation quotes, the case's key points, and the date the assistant was told it is. You do not see how the answer was produced. Judge only from what is shown. A figure the answer derives from dates in the cited text and that date, such as how old a contribution is, counts as supported.
 
+Some claims need no citation, as for the assistant: the workspace structure shown (which functions, departments and processes exist and which contains which), the user's role shown, and what Fabric itself does or holds (for example, that it holds no financial data or industry benchmarks). Check those against what is shown. Judge every other claim about the organization against the cited text.
+
 Score each rubric criterion from 0 to 3: 0 = fails, 1 = mostly fails, 2 = acceptable, 3 = strong. Then answer each guardrail question true or false. Be strict about support: a claim is supported only if the quoted text shown for its citation backs it.
 
 Reply with one JSON object and nothing else:
 {"scores": {"<criterion>": {"score": <0-3>, "reason": "<one sentence>"}}, "guardrails": {"<guardrail>": <true|false>}, "summary": "<one or two sentences>"}`;
 
-/** The judge's user message: never the thought trace (FR-10.3). `today` is the date the answer saw. */
-export function judgePrompt(spec: GoldenCase, turns: EvalTurn[], today: string): string {
+/**
+ * The judge's user message: never the thought trace (FR-10.3). `today`,
+ * `structure` and the role are what the answer saw (D52).
+ */
+export function judgePrompt(spec: GoldenCase, turns: EvalTurn[], today: string, structure: string): string {
   const final = turns[turns.length - 1];
   const sources = final.citations.length
     ? final.citations.map((c) => `[${c.ordinal}] ${c.title}\n${c.citedText ?? "(text no longer available)"}`).join("\n\n")
@@ -184,6 +189,8 @@ export function judgePrompt(spec: GoldenCase, turns: EvalTurn[], today: string):
   const priorAnswers = turns.slice(0, -1).map((turn, index) => `Answer to message ${index + 1}:\n${turn.text}`);
   return [
     `Date the assistant was told it is: ${today}`,
+    `The user's role: ${spec.role}`,
+    `Workspace structure (no citation needed):\n${structure}`,
     `User messages:\n${spec.turns.map((turn, index) => `${index + 1}. ${turn}`).join("\n")}`,
     ...priorAnswers,
     `Final answer:\n${final.text}`,

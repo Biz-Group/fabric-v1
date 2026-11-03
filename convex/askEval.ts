@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { executeTurn } from "./ask";
 import { ASK_TOOLS } from "./askTools/catalog";
+import { loadHierarchy } from "./askTools/scope";
 import { citationChecker } from "./askfabric/citationAccess";
 import { askModelClientFor } from "./askfabric/modelClient";
 import { ASK_SYSTEM_PROMPT_VERSION } from "./askfabric/systemPrompt";
@@ -306,6 +307,7 @@ export const gradeCase = internalAction({
       clerkOrgId ||= orgOf ?? "";
     }
     const budgets = new Map(ASK_TOOLS.map((tool) => [tool.telemetryName, tool.budgetTokens]));
+    const structure: string = clerkOrgId ? await ctx.runQuery(internal.askEval.workspaceStructure, { clerkOrgId }) : "";
     const checks = deterministicChecks(args.case, turns, budgets);
 
     let verdict: JudgeVerdict | null = null;
@@ -328,7 +330,7 @@ export const gradeCase = internalAction({
             const result = await model.complete({
               system: JUDGE_SYSTEM,
               // Graded straight after the run, so today is the date the turns saw.
-              user: judgePrompt(args.case, turns, isoDate(Date.now())!),
+              user: judgePrompt(args.case, turns, isoDate(Date.now())!, structure),
               maxTokens: JUDGE_MAX_TOKENS,
               reasoning: true,
             });
@@ -353,6 +355,24 @@ export const gradeCase = internalAction({
       judgeCostMicroUsd,
       pass: casePasses(checks, verdict),
     };
+  },
+});
+
+/** The org's structure as the turn's table of contents lists it, for the judge (D52). */
+export const workspaceStructure = internalQuery({
+  args: { clerkOrgId: v.string() },
+  handler: async (ctx, args): Promise<string> => {
+    const hierarchy = await loadHierarchy(ctx, args.clerkOrgId);
+    return hierarchy.functions
+      .map((fn) => {
+        const departments = hierarchy.departments.filter((dept) => dept.functionId === fn._id);
+        const lines = departments.map((dept) => {
+          const processes = hierarchy.processes.filter((p) => p.departmentId === dept._id).map((p) => p.name);
+          return `  - ${dept.name}: ${processes.length ? processes.join(", ") : "no processes"}`;
+        });
+        return [`- ${fn.name}`, ...lines].join("\n");
+      })
+      .join("\n");
   },
 });
 

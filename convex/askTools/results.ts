@@ -187,6 +187,8 @@ export function blockTokens(block: ToolContentBlock): number {
  * is dropped and the result is marked truncated, so the model is told rather
  * than silently given less (FR-1.9).
  */
+type CitableNote = { source: string; title: string; text: string };
+
 export class ResultBuilder {
   private readonly blocks: SearchResultBlock[] = [];
   private tokens: number;
@@ -236,11 +238,15 @@ export class ResultBuilder {
   finish(
     meta: Record<string, unknown> = {},
     cursor: string | null = null,
-    /**
-     * For a scan that found nothing: a citable result saying so, sourced to
-     * the scope searched, so "no candidates found" can carry a citation.
-     */
-    whenEmpty?: { source: string; title: string; text: string },
+    options: {
+      /** A citable line about what the tool read, for figures answers quote (scope, counts, method). */
+      summary?: CitableNote;
+      /**
+       * For a scan that found nothing: a citable result saying so, sourced to
+       * the scope searched, so "no candidates found" can carry a citation.
+       */
+      whenEmpty?: CitableNote;
+    } = {},
   ): AskToolResult {
     // A tool result holding search results may hold nothing else (the API
     // rejects a mix), so the header is a search result too. Its source is not a
@@ -255,8 +261,10 @@ export class ResultBuilder {
         ...(cursor ? { cursor } : {}),
       })}`,
     );
-    const empty = this.items === 0 && whenEmpty ? [searchResult(whenEmpty.source, whenEmpty.title, whenEmpty.text)] : [];
-    const content: ToolContentBlock[] = [header, ...this.blocks, ...empty];
+    const note = (n: CitableNote) => searchResult(n.source, n.title, n.text);
+    const summary = options.summary ? [note(options.summary)] : [];
+    const empty = this.items === 0 && options.whenEmpty ? [note(options.whenEmpty)] : [];
+    const content: ToolContentBlock[] = [header, ...summary, ...this.blocks, ...empty];
     return {
       found: true,
       content,

@@ -441,9 +441,16 @@ export const rankSignals = askToolQuery({
       },
       null,
       {
-        source: scope.source,
-        title: "Signal scan: nothing found",
-        text: `No ${order.join(", ")} signals found across ${scope.processes.length} processes in scope (${evidence.flows.length} flows and ${evidence.contributions.length} contributions read).`,
+        summary: {
+          source: scope.source,
+          title: "Signal ranking: scope and method",
+          text: `Ranked across ${scope.processes.length} processes in scope, reading ${evidence.flows.length} process flows and ${evidence.contributions.length} contributions with extracted evidence. Score = 3 × processes affected + 2 × distinct contributors + evidence weight (corroborated 3, single source 2, inferred 1).`,
+        },
+        whenEmpty: {
+          source: scope.source,
+          title: "Signal scan: nothing found",
+          text: `No ${order.join(", ")} signals found across ${scope.processes.length} processes in scope.`,
+        },
       },
     );
   },
