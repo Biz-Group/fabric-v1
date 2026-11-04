@@ -466,6 +466,8 @@ describe("AskFabric core tools (T1–T9)", () => {
     const count = listed.content.find((block) => block.type === "search_result" && block.title === "Contributions in the organization");
     expect(count).toMatchObject({ source: "fabric:entity/org" });
     expect(textOf(listed)).toMatch(/\d+ completed contributions? in scope, newest first\./);
+    expect(textOf(await run(s, "findProcessesUsing", calls(s).findProcessesUsing))).toMatch(/\d+ process(?:es)? found using Excel, searching/);
+    expect(textOf(await run(s, "findHandoffs", calls(s).findHandoffs))).toMatch(/Handoffs involving "Clerk" found in \d+ process(?:es)?, searching/);
   });
 
   test("a scan that finds nothing says so in a citable result, sourced to its scope", async () => {

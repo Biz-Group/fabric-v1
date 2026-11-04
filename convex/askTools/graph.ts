@@ -114,6 +114,16 @@ export const findHandoffs = askToolQuery({
       },
       null,
       {
+        // The match count is citable, not only metadata (D52).
+        ...(processes.length
+          ? {
+              summary: {
+                source: sources.org(),
+                title: `Handoff search: ${input.party}`,
+                text: `Handoffs involving "${input.party}" found in ${processes.length} process${processes.length === 1 ? "" : "es"}, searching the flow steps and contribution evidence of ${evidence.flows.length} processes with flows.${processes.length > MAX_LIST_ITEMS ? ` The first ${MAX_LIST_ITEMS} are listed.` : ""}`,
+              },
+            }
+          : {}),
         whenEmpty: {
           source: sources.org(),
           title: `Handoff search: no matches for ${input.party}`,
@@ -188,6 +198,16 @@ export const findProcessesUsing = askToolQuery({
       },
       null,
       {
+        // The match count is citable, not only metadata (D52).
+        ...(processes.length
+          ? {
+              summary: {
+                source: sources.org(),
+                title: `Usage search: ${heading}`,
+                text: `${processes.length} process${processes.length === 1 ? "" : "es"} found using ${heading}, searching the flow steps and contribution evidence of ${evidence.flows.length} processes with flows.${processes.length > MAX_LIST_ITEMS ? ` The first ${MAX_LIST_ITEMS} are listed.` : ""}`,
+              },
+            }
+          : {}),
         whenEmpty: {
           source: sources.org(),
           title: `Usage search: no matches for ${heading}`,
