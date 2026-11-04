@@ -12,7 +12,9 @@ export type ConversationProps = ComponentProps<typeof StickToBottom>
 
 export const Conversation = ({ className, ...props }: ConversationProps) => (
   <StickToBottom
-    className={cn("relative flex-1 overflow-y-auto", className)}
+    // Content scrolls itself; the frame only positions the scroll button, so
+    // it must never scroll too (that showed a second scrollbar).
+    className={cn("relative flex-1 overflow-y-hidden", className)}
     initial="smooth"
     resize="smooth"
     role="log"
@@ -26,9 +28,14 @@ export type ConversationContentProps = ComponentProps<
 
 export const ConversationContent = ({
   className,
+  scrollClassName,
   ...props
 }: ConversationContentProps) => (
-  <StickToBottom.Content className={cn("p-4", className)} {...props} />
+  <StickToBottom.Content
+    className={cn("p-4", className)}
+    scrollClassName={cn("scrollbar-thin", scrollClassName)}
+    {...props}
+  />
 )
 
 export type ConversationEmptyStateProps = Omit<

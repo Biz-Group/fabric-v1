@@ -332,6 +332,17 @@
       display: none;
     }
   }
+
+  /* A quiet scrollbar: thin, no track or arrow buttons, a faint thumb that
+     firms up while the pointer is over the area. Standard properties, so
+     Chromium and Firefox draw it the same way. */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--muted-foreground) 30%, transparent) transparent;
+    &:hover {
+      scrollbar-color: color-mix(in oklch, var(--muted-foreground) 55%, transparent) transparent;
+    }
+  }
 }
 
 /* React Flow theme overrides — map to Shadcn/Tailwind CSS variables */
