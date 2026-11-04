@@ -6,7 +6,8 @@ import {
   searchHierarchyInput,
 } from "./hierarchy";
 import { getOverview, getOverviewInput, MAX_OVERVIEW_IDS } from "./overview";
-import { getProcessFlow, getProcessFlowInput } from "./flow";
+import { getFlowNode, getFlowNodeInput, getProcessFlow, getProcessFlowInput } from "./flow";
+import { getParticipation, getParticipationInput } from "./participation";
 import {
   getConversationEvidence,
   getConversationEvidenceInput,
@@ -341,6 +342,43 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     telemetryName: "findSimilarWork",
     label: (input) =>
       `Looking for duplicated work across ${input.kind === "org" ? "the organization" : `a ${input.kind}`}`,
+  }),
+  defineTool({
+    name: "getFlowNode",
+    description:
+      "Read one step of a process flow in full: its description, actors, tools, estimated duration, pain points, risks, flags, the contributions it came from, and the steps before and after it. Take the step id from getProcessFlow.",
+    input: getFlowNodeInput,
+    inputDescriptions: {
+      processId: "The process id.",
+      nodeId: "The step id, as getProcessFlow lists it.",
+    },
+    access: "member",
+    executor: getFlowNode,
+    executorPath: "askTools/flow:getFlowNode",
+    output: "The step in full, then its neighbouring steps.",
+    citationSources: ["flowNode"],
+    budgetTokens: DEFAULT_BUDGET_TOKENS,
+    telemetryName: "getFlowNode",
+    label: () => "Reading a step of the process flow",
+  }),
+  defineTool({
+    name: "getParticipation",
+    description:
+      "Admins only: who has contributed in a scope (names with contribution counts per process) and which members haven't, for planning interviews. Other roles get not found; use getCoverage for counts instead. A factual list, never a judgement of anyone.",
+    input: getParticipationInput,
+    inputDescriptions: {
+      kind: "Limit to this entity kind, or \"org\" for the whole organization.",
+      id: "The entity id, or \"\" for the whole organization.",
+    },
+    access: "admin",
+    executor: getParticipation,
+    executorPath: "askTools/participation:getParticipation",
+    output: "Contributors per process, processes with none, and members with no completed contribution.",
+    citationSources: ["entity", "org"],
+    budgetTokens: DEFAULT_BUDGET_TOKENS,
+    telemetryName: "getParticipation",
+    label: (input) =>
+      `Checking who has contributed across ${input.kind === "org" ? "the organization" : `a ${input.kind}`}`,
   }),
 ];
 

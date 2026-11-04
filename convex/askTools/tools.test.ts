@@ -218,6 +218,8 @@ function calls(s: Seeded): Record<string, Record<string, unknown>> {
     rankSignals: { signals: ["friction", "bottleneck", "gap", "handoff", "manualRework"], kind: "org", id: "", limit: 0 },
     listSystems: { kind: "org", id: "" },
     findSimilarWork: { kind: "org", id: "" },
+    getFlowNode: { processId: s.a.processId, nodeId: "rekey" },
+    getParticipation: { kind: "org", id: "" },
   };
 }
 
@@ -236,11 +238,14 @@ function crossOrgCalls(s: Seeded): Record<string, Record<string, unknown>> {
     rankSignals: { signals: ["friction"], kind: "process", id: s.b.processId, limit: 0 },
     listSystems: { kind: "department", id: s.b.departmentId },
     findSimilarWork: { kind: "function", id: s.b.functionId },
+    getFlowNode: { processId: s.b.processId, nodeId: "rekey" },
   };
 }
 
-async function run(s: Seeded, name: string, input: Record<string, unknown>, viewer = s.viewer.viewer) {
+async function run(s: Seeded, name: string, input: Record<string, unknown>, viewer?: Seeded["viewer"]["viewer"]) {
   const tool = getAskTool(name)!;
+  // Admin-only tools (T13) run as the admin unless a test says otherwise.
+  viewer ??= tool.access === "admin" ? s.admin.viewer : s.viewer.viewer;
   return (await s.t.query(tool.executorRef, { viewer, ...input })) as AskToolResult;
 }
 
@@ -304,10 +309,39 @@ describe("AskFabric core tools (T1–T9)", () => {
   test("viewers, contributors and admins get the same answers (member access)", async () => {
     const s = await setup();
     for (const [name, input] of Object.entries(calls(s))) {
+      if (getAskTool(name)!.access !== "member") continue;
       const asViewer = await run(s, name, input, s.viewer.viewer);
       expect(await run(s, name, input, s.contributor.viewer), name).toEqual(asViewer);
       expect(await run(s, name, input, s.admin.viewer), name).toEqual(asViewer);
     }
+  });
+
+  test("T10 reads one step in full, with the steps either side (FR-1.20)", async () => {
+    const s = await setup();
+    const result = found(await run(s, "getFlowNode", calls(s).getFlowNode));
+    expect(sourcesOf(result).every((source) => source === `fabric:flow-node/${s.a.processId}/rekey`)).toBe(true);
+    expect(textOf(result)).toMatch(/Step \(action\): Re-key into ERP\./);
+    expect(textOf(result)).toMatch(/Actors: Clerk\./);
+    expect(textOf(result)).toMatch(/Flags: [^.]*tribal knowledge/);
+    expect(textOf(result)).toMatch(/Comes after: Build schedule\. Leads to: Dispatch/);
+    expect(await run(s, "getFlowNode", { processId: s.a.processId, nodeId: "no-such-step" })).toEqual({ found: false });
+  });
+
+  test("T13 is admin only, and lists who has and hasn't contributed (FR-1.21, FR-9.3, D27)", async () => {
+    const s = await setup();
+    const input = calls(s).getParticipation;
+    expect(await run(s, "getParticipation", input, s.viewer.viewer)).toEqual({ found: false });
+    expect(await run(s, "getParticipation", input, s.contributor.viewer)).toEqual({ found: false });
+    const asAdmin = found(await run(s, "getParticipation", input, s.admin.viewer));
+    const text = textOf(asAdmin);
+    expect(text).toMatch(/Completed contributions to Dispatch scheduling A by contributor: Ana A \(1\)\./);
+    expect(text).toMatch(/Processes with no completed contributions/);
+    // Seeded members have no contributions of their own; org B's never appear.
+    expect(text).toMatch(/have no completed contribution in scope: ada \(admin\), cole \(contributor\), vera \(viewer\)\./);
+    expect(text).toMatch(/1 completed contributions in scope from 1 contributor/);
+    expect(text).not.toMatch(/B|Ana B/);
+    // Org B scopes are not found, even for an admin.
+    expect(await run(s, "getParticipation", { kind: "process", id: s.b.processId }, s.admin.viewer)).toEqual({ found: false });
   });
 
   test("a member removed between two tool calls gets the access error on the second", async () => {

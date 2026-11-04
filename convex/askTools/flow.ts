@@ -10,6 +10,7 @@ import {
 import { askToolQuery } from "./executor";
 import { getOrgEntity } from "./scope";
 import {
+  DEFAULT_BUDGET_TOKENS,
   MAX_BUDGET_TOKENS,
   NOT_FOUND,
   ResultBuilder,
@@ -141,6 +142,8 @@ export const getProcessFlow = askToolQuery({
 
     return builder.finish({
       process: process.name,
+      // T4 lists steps compactly; T10 reads one in full.
+      stepDetail: "getFlowNode",
       status: flow.status,
       detailsStatus: flow.detailsStatus,
       stale,
@@ -152,5 +155,73 @@ export const getProcessFlow = askToolQuery({
       handoffCount: flow.insights.handoffCount,
       keyFindings: keyFindings.state,
     });
+  },
+});
+
+export const getFlowNodeInput = { processId: v.string(), nodeId: v.string() };
+
+/**
+ * T10. One step of a process flow in full, as the workbench's step panel shows
+ * it: description, actors, tools, duration, pain points, risks, flags, the
+ * contributions it came from and the steps either side (FR-1.20).
+ */
+export const getFlowNode = askToolQuery({
+  input: getFlowNodeInput,
+  handler: async (ctx, viewer, input) => {
+    const process = await getOrgEntity(ctx, viewer.orgId, "process", input.processId);
+    if (!process) return NOT_FOUND;
+    const flow = await readProcessFlow(ctx, viewer.orgId, process._id as Id<"processes">);
+    const node = flow?.nodes.find((candidate) => candidate.id === input.nodeId.trim()) as FlowNode | undefined;
+    if (!flow || !node) return NOT_FOUND;
+    const labelById = new Map(flow.nodes.map((candidate) => [candidate.id, candidate.label]));
+    const before = flow.edges.filter((edge) => edge.target === node.id).map((edge) => labelById.get(edge.source) ?? edge.source);
+    const after = flow.edges
+      .filter((edge) => edge.source === node.id)
+      .map((edge) => `${labelById.get(edge.target) ?? edge.target}${edge.label ? ` (${edge.label})` : ""}`);
+    const builder = new ResultBuilder(DEFAULT_BUDGET_TOKENS, 300);
+    const source = sources.flowNode(process._id, node.id);
+    const title = `${process.name}: ${node.label}`;
+
+    if (!isNodeDescribed(node)) {
+      builder.add(
+        searchResult(source, title, `Step (${node.category}): ${node.label}. Its details haven't been generated yet (${node.detailStatus}).`),
+      );
+    } else {
+      const flags = [
+        node.isBottleneck ? "bottleneck" : null,
+        node.isTribalKnowledge ? "tribal knowledge" : null,
+        node.automationPotential !== "none" ? `automation potential ${node.automationPotential}` : null,
+      ].filter(Boolean);
+      builder.add(
+        searchResult(
+          source,
+          title,
+          clipText(
+            [
+              `Step (${node.category}): ${node.label}. ${node.description}`,
+              node.actors.length ? `Actors: ${node.actors.join(", ")}.` : "",
+              node.tools.length ? `Tools: ${node.tools.join(", ")}.` : "",
+              node.estimatedDuration ? `Estimated duration: ${node.estimatedDuration}.` : "",
+              node.painPoints.length ? `Pain points: ${node.painPoints.join("; ")}.` : "",
+              node.riskIndicators.length ? `Risks: ${node.riskIndicators.join("; ")}.` : "",
+              flags.length ? `Flags: ${flags.join(", ")}.` : "",
+              `Confidence: ${node.confidence}.`,
+              node.sources.length ? `From: ${node.sources.join("; ")}.` : "",
+            ]
+              .filter(Boolean)
+              .join(" "),
+            1500,
+          ),
+        ),
+      );
+    }
+    builder.add(
+      searchResult(
+        source,
+        `${title} — neighbouring steps`,
+        `Comes after: ${before.length ? before.join(", ") : "nothing (a starting step)"}. Leads to: ${after.length ? after.join(", ") : "nothing (an ending step)"}.`,
+      ),
+    );
+    return builder.finish({ process: process.name, step: node.label, detailStatus: node.detailStatus });
   },
 });

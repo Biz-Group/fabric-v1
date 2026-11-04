@@ -147,6 +147,8 @@ describe("the catalog", () => {
       rankSignals: internal.askTools.signals.rankSignals,
       listSystems: internal.askTools.systems.listSystems,
       findSimilarWork: internal.askTools.systems.findSimilarWork,
+      getFlowNode: internal.askTools.flow.getFlowNode,
+      getParticipation: internal.askTools.participation.getParticipation,
     };
     for (const tool of ASK_TOOLS) {
       expect(getFunctionName(refs[tool.name] as never)).toBe(tool.executorPath);

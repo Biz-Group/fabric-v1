@@ -20,15 +20,16 @@ export const ASK_TOOL_NAMES = [
   "getTranscript",
   "getCoverage",
   "whatsNew",
-  "getFlowNode",
   "findHandoffs",
   "findProcessesUsing",
   "searchConversations",
-  "getParticipation",
   "searchFabricHelp",
   "rankSignals",
   "listSystems",
   "findSimilarWork",
+  // T10 and T13 came after launch; appended so the cached tool prefix only grows.
+  "getFlowNode",
+  "getParticipation",
 ] as const;
 
 export type AskToolName = (typeof ASK_TOOL_NAMES)[number];

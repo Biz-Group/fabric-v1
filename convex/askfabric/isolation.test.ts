@@ -491,10 +491,10 @@ describe("coverage", () => {
     expect(publicFunctions.filter((name) => !covered.has(name))).toEqual([]);
   });
 
-  test("every tool is member-level, so tools.test.ts's same-for-every-role check covers FR-9.3", () => {
-    // An admin-only tool (T13, deferred) needs its own role test: non-admins
-    // get { found: false }. Add it with the tool, then widen this list.
-    expect(ASK_TOOLS.filter((tool) => tool.access !== "member").map((tool) => tool.name)).toEqual([]);
+  test("only T13 is admin-only; every other tool is covered by tools.test.ts's same-for-every-role check (FR-9.3)", () => {
+    // getParticipation has its own role test in tools.test.ts: non-admins get
+    // { found: false }. A new admin-only tool needs one too, then joins this list.
+    expect(ASK_TOOLS.filter((tool) => tool.access !== "member").map((tool) => tool.name)).toEqual(["getParticipation"]);
   });
 
   test("markVisited only touches the caller's own row in their own org", async () => {
