@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import {
   descriptionSafetyRiskValidator,
   descriptionSafetyStatusValidator,
-} from "./descriptionSafety";
+} from "./lib/descriptionSafetyValidators";
 import {
   departmentOverviewArtifactV2Validator,
   flowSummarySourceSnapshotValidator,

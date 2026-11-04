@@ -472,8 +472,7 @@ async function callFoundryClaude(
     timeout: request.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   });
 
-  // SDK 0.72 predates the `strict` tool field; the API accepts it.
-  const tools: Array<Anthropic.Tool & { strict?: boolean }> | undefined =
+  const tools: Anthropic.Tool[] | undefined =
     request.tool
       ? [
           {
@@ -485,10 +484,7 @@ async function callFoundryClaude(
         ]
       : undefined;
 
-  // SDK 0.72 predates `output_config.effort`; the API accepts it on Haiku 5.5.
-  const params: Anthropic.MessageCreateParamsNonStreaming & {
-    output_config?: { effort: "low" | "medium" | "high" };
-  } = {
+  const params: Anthropic.MessageCreateParamsNonStreaming = {
     model: backend.deployment,
     system: request.system,
     messages: [{ role: "user", content: request.user }],
@@ -499,7 +495,7 @@ async function callFoundryClaude(
     // forced tool call skips thinking regardless. No `temperature`: Haiku 5.5
     // rejects any non-default sampling parameter with a 400.
     // With `reasoning`, `thinking` stays unset: Haiku 5.5 runs adaptive
-    // thinking by default, and SDK 0.72 predates the `adaptive` type.
+    // thinking by default.
     output_config: { effort: request.reasoning ?? "low" },
     ...(tools
       ? {

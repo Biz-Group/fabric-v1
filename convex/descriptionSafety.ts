@@ -5,27 +5,19 @@ import {
   meteredCompletion,
   type UsageAttribution,
 } from "./lib/aiUsageMeter";
+import {
+  descriptionSafetyRiskValidator,
+  descriptionSafetyStatusValidator,
+} from "./lib/descriptionSafetyValidators";
+
+// The schema imports these from their own module; callers keep this path.
+export { descriptionSafetyRiskValidator, descriptionSafetyStatusValidator };
 
 export const DESCRIPTION_MAX_LENGTH = 2000;
 const DESCRIPTION_SAFETY_MAX_TOKENS = 1000;
 const DESCRIPTION_SAFETY_TIMEOUT_MS = 20000;
 export const DESCRIPTION_SAFETY_MODEL = FOUNDRY_SAFETY_MODEL;
 export const DESCRIPTION_SAFETY_PROMPT_VERSION = "description-safety-v1";
-
-export const descriptionSafetyStatusValidator = v.union(
-  v.literal("safe"),
-  v.literal("blocked"),
-);
-
-export const descriptionSafetyRiskValidator = v.union(
-  v.literal("none"),
-  v.literal("prompt_injection"),
-  v.literal("agent_instruction"),
-  v.literal("policy_override"),
-  v.literal("sensitive_data_request"),
-  v.literal("malicious_or_abusive"),
-  v.literal("irrelevant"),
-);
 
 export type DescriptionSafetyRisk =
   | "none"

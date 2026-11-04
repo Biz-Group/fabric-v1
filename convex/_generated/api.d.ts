@@ -75,6 +75,7 @@ import type * as lib_conversationEvidenceV2 from "../lib/conversationEvidenceV2.
 import type * as lib_conversationFailure from "../lib/conversationFailure.js";
 import type * as lib_conversationPipelines from "../lib/conversationPipelines.js";
 import type * as lib_conversationTitle from "../lib/conversationTitle.js";
+import type * as lib_descriptionSafetyValidators from "../lib/descriptionSafetyValidators.js";
 import type * as lib_elevenLabsCharging from "../lib/elevenLabsCharging.js";
 import type * as lib_elevenLabsConversation from "../lib/elevenLabsConversation.js";
 import type * as lib_flowQuality from "../lib/flowQuality.js";
@@ -193,6 +194,7 @@ declare const fullApi: ApiFromModules<{
   "lib/conversationFailure": typeof lib_conversationFailure;
   "lib/conversationPipelines": typeof lib_conversationPipelines;
   "lib/conversationTitle": typeof lib_conversationTitle;
+  "lib/descriptionSafetyValidators": typeof lib_descriptionSafetyValidators;
   "lib/elevenLabsCharging": typeof lib_elevenLabsCharging;
   "lib/elevenLabsConversation": typeof lib_elevenLabsConversation;
   "lib/flowQuality": typeof lib_flowQuality;
