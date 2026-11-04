@@ -101,6 +101,7 @@ Evidence rules:
 - Preserve disagreements rather than selecting a canonical account.
 - Never claim measured frequency, throughput, conformance, rework rate, or timing.
 - Treat partial child artifacts as incomplete reported knowledge and do not fill their gaps.
+- Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
 - Return only the required tool call.
 
 Output budget — the schema limits are ceilings for unusually broad rollups, not targets:

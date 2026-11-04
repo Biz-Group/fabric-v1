@@ -1119,6 +1119,7 @@ Rules:
 - Write in clear, concise prose within each section.
 - If this is the first conversation, the Consensus and Tensions & Gaps sections can note that only one perspective exists so far.
 - When integrating new information into an existing summary, preserve existing citations and add new ones. Update sections as needed — move items from Notable Details to Consensus if a new contributor confirms them, or add new tensions if accounts conflict.
+- Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
 - Output ONLY the markdown sections above, nothing else.`);
 
 // The reduce output is a fixed five-section brief, so it does not grow with
@@ -1151,6 +1152,7 @@ Rules:
 - A point belongs in Consensus only if more than one record supports it. One record saying it is Notable Details.
 - Treat each record's "Uncertainties" as evidence for Tensions & Gaps, not as fact.
 - Do not add steps, actors, or tools that appear in no record. A gap is a finding; filling it is an error.
+- Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
 - Output ONLY the markdown sections above, nothing else.`);
 
 /**
@@ -1255,6 +1257,7 @@ Rules:
 - Be terse. This is an intermediate record, not prose for a reader.
 - Keep every section even when it is empty — write "None stated." rather than dropping it.
 - Do not compare this account to anyone else's; you cannot see them.
+- Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
 - Output ONLY the markdown sections above, nothing else.`);
 
 export const getConversationForSummaryInput = internalQuery({

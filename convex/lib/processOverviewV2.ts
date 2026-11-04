@@ -112,6 +112,7 @@ Evidence rules:
 - Preserve contradictions and variations instead of choosing a canonical account.
 - Never claim measured frequency, throughput, conformance, rework rate, or timing. This is reported interview knowledge, not event-log analysis.
 - Do not invent actors, tools, steps, dependencies, or certainty.
+- Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
 - Return only the required tool call.`;
 
 export type ProcessSourceInput = {

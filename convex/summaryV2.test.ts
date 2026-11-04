@@ -110,13 +110,15 @@ describe("Summary V2 contracts and normalizers", () => {
       conversationEvidence: "summary-v2-conversation-evidence-v3",
       // v2: the ordered stage timeline became non-sequential scope findings.
       // v3: the brief emphasizes its load-bearing facts with `**bold**`.
-      processOverview: "summary-v2-process-overview-v3",
+      // v4: no inferred gender; name, role or "they".
+      processOverview: "summary-v2-process-overview-v4",
       // v2: the rollups moved off the process caps and onto their own, and the
       // output budget is stated in the prompt. Bumped because every department
       // with more than one child process truncated under v1.
       // v3: same brief emphasis instruction as the process overview.
-      departmentOverview: "summary-v2-department-overview-v3",
-      functionOverview: "summary-v2-function-overview-v3",
+      // v4: same pronoun rule as the process overview.
+      departmentOverview: "summary-v2-department-overview-v4",
+      functionOverview: "summary-v2-function-overview-v4",
       legacyMarkdown: "summary-v2-legacy-markdown-v2",
     });
     expect(SUMMARY_V2_CAPS).toMatchObject({

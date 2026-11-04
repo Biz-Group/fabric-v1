@@ -266,6 +266,7 @@ Rules:
 - Ground every field in the evidence. If contributors did not cover something, leave the array empty rather than inventing it.
 - Where contributors disagreed about this step, record the disagreement in painPoints.
 - Return one entry per requested node ID, and no entries for any other node.
+- Never infer anyone's gender. In descriptions and risks, refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
 
 Use the provided tool to return the details.`;
 

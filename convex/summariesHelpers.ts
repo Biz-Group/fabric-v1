@@ -194,6 +194,7 @@ Rules:
 - Always cite processes using [Process name] format.
 - Write in clear, concise prose within each section.
 - If there is only one process, note that a fuller picture will emerge as more processes are documented.
+- Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
 - Output ONLY the markdown sections above, nothing else.`;
 
 export const generateDepartmentSummaryInternal = internalAction({

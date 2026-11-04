@@ -25,16 +25,19 @@ export const SUMMARY_V2_PROMPT_VERSIONS = {
   // v3 asks the brief to emphasize its load-bearing facts with `**bold**` so a
   // reader can scan it. Stored v2 artifacts stay valid and simply render
   // unemphasized until they are next rebuilt.
-  processOverview: "summary-v2-process-overview-v3",
+  // v4 forbids inferring a contributor's gender: name, role or "they"
+  // (1H.18). Like v3, nothing is rebuilt for it; stored text keeps its
+  // pronouns until the next rebuild.
+  processOverview: "summary-v2-process-overview-v4",
   // v2 restated the rollup output budget in the prompt and moved both rollup
   // schemas onto their own tighter caps. v1 reused the process caps — five
   // sections of eight 1,200-character findings, ~17.9k tokens of contract — on
   // a 3,072-token budget, so any department with more than one child process
   // truncated and stored nothing.
   // v3 adds the same executive-brief emphasis instruction as the process
-  // overview.
-  departmentOverview: "summary-v2-department-overview-v3",
-  functionOverview: "summary-v2-function-overview-v3",
+  // overview. v4 adds the same pronoun rule.
+  departmentOverview: "summary-v2-department-overview-v4",
+  functionOverview: "summary-v2-function-overview-v4",
   legacyMarkdown: "summary-v2-legacy-markdown-v2",
 } as const;
 
