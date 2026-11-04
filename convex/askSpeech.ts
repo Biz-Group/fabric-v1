@@ -213,7 +213,7 @@ export async function streamAskSpeech(
     runId: messageId,
   };
   const startedAt = Date.now();
-  const meter = (status: "ok" | "failed", characters: number, extra: { requestId?: string; errorType?: string }) =>
+  const meter = (status: "ok" | "failed", characters: number, extra: { requestId?: string; errorType?: string; httpStatus?: number }) =>
     recordSpeechUsage(ctx, attribution, {
       operation: ASKFABRIC_OPERATIONS.speech,
       provider: TTS_PROVIDER,
@@ -244,7 +244,7 @@ export async function streamAskSpeech(
   if (!upstream.ok || !upstream.body) {
     const detail = (await upstream.text().catch(() => "")).slice(0, 300);
     console.error("AskFabric read aloud rejected", { status: upstream.status, requestId, detail });
-    await meter("failed", 0, { requestId, errorType: `http_${upstream.status}` });
+    await meter("failed", 0, { requestId, errorType: `http_${upstream.status}`, httpStatus: upstream.status });
     return reject(502, "Couldn't read this answer aloud.");
   }
 

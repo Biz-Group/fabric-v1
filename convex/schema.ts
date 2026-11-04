@@ -1234,6 +1234,9 @@ export default defineSchema({
     finishReason: v.optional(v.string()),
     requestId: v.optional(v.string()),
     errorType: v.optional(v.string()),
+    // The provider's HTTP status on a failed call (429 throttling, 5xx), so a
+    // failure can be read here instead of only in Azure Monitor (1H.8).
+    httpStatus: v.optional(v.number()),
 
     // Set at insert on the sink deployment; unset on dev until forwarded.
     forwardedAt: v.optional(v.number()),

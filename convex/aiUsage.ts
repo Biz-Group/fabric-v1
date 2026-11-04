@@ -83,6 +83,7 @@ export const aiUsageEventFields = {
   finishReason: v.optional(v.string()),
   requestId: v.optional(v.string()),
   errorType: v.optional(v.string()),
+  httpStatus: v.optional(v.number()),
 } as const;
 
 export const aiUsageEventValidator = v.object(aiUsageEventFields);

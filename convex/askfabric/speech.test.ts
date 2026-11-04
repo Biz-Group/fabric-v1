@@ -233,7 +233,7 @@ describe("read aloud", () => {
       usage: await ctx.db.query("aiUsageEvents").collect(),
     }));
     expect(rows.speech).toHaveLength(0);
-    expect(rows.usage[0]).toMatchObject({ status: "failed", characters: 0, errorType: "http_429" });
+    expect(rows.usage[0]).toMatchObject({ status: "failed", characters: 0, errorType: "http_429", httpStatus: 429 });
   });
 
   test("the audio goes with its thread", async () => {

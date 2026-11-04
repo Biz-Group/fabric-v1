@@ -87,6 +87,7 @@ describe("buildCompletionUsageEvent", () => {
     expect(event.latencyMs).toBe(350);
     expect(event.requestId).toBe("req_1");
     expect(event.errorType).toBeUndefined();
+    expect(event.httpStatus).toBeUndefined();
   });
 
   test("timestamps the row at the call's start, not its end", () => {
@@ -118,6 +119,8 @@ describe("buildCompletionUsageEvent", () => {
     expect(event.status).toBe("failed");
     expect(event.errorType).toBe("AIRequestError");
     expect(event.requestId).toBe("req_failed");
+    // 1H.8: the provider's status, so throttling reads from the ledger.
+    expect(event.httpStatus).toBe(500);
     expect(event.costMicroUsd).toBe(0);
     expect(event.inputTokens).toBeUndefined();
     expect(event.outputTokens).toBeUndefined();
@@ -487,5 +490,18 @@ describe("meteredStream", () => {
       cachedReadTokens: 4_000,
       costMicroUsd: Math.round(500 * 2 + 4_000 * 0.2),
     });
+  });
+
+  test("records the provider's HTTP status on a throttled call (1H.8)", async () => {
+    const { ctx, written } = captureCtx();
+    const throttled = new AIRequestError("rate limited", { provider: "foundry-claude", status: 429, requestId: "req_429" });
+
+    await expect(
+      meteredStream(ctx, TURN_ATTRIBUTION, meta(3), async () => {
+        throw throttled;
+      }),
+    ).rejects.toBe(throttled);
+
+    expect(written[0]).toMatchObject({ status: "failed", errorType: "AIRequestError", httpStatus: 429, requestId: "req_429" });
   });
 });

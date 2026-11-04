@@ -39,6 +39,7 @@ const CSV_COLUMNS = [
   "run_id",
   "request_id",
   "error_type",
+  "http_status",
 ] as const;
 
 function escape(value: unknown): string {
@@ -80,6 +81,7 @@ function rowToCsv(r: LogRow): string {
     escape(r.runId ?? ""),
     escape(r.requestId ?? ""),
     escape(r.errorType ?? ""),
+    escape(r.httpStatus ?? ""),
   ].join(",");
 }
 

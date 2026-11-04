@@ -131,11 +131,13 @@ function costFor(completion: AICompletion | undefined): {
 function errorDetails(error: unknown): {
   errorType: string;
   requestId?: string;
+  httpStatus?: number;
 } {
   if (error instanceof AIRequestError) {
     return {
       errorType: error.name,
       requestId: error.requestId ?? undefined,
+      httpStatus: error.status,
     };
   }
   return {
@@ -197,6 +199,7 @@ export function buildCompletionUsageEvent(
     finishReason: completion?.finishReason ?? undefined,
     requestId: completion?.requestId ?? failure?.requestId,
     errorType: failure?.errorType,
+    httpStatus: failure?.httpStatus,
   };
 }
 
@@ -343,6 +346,7 @@ type SpeechEventInput = {
   latencyMs?: number;
   requestId?: string;
   errorType?: string;
+  httpStatus?: number;
 };
 
 /** Pure: turns one text-to-speech call into a ledger row. */
@@ -379,6 +383,7 @@ export function buildSpeechUsageEvent(input: SpeechEventInput): AiUsageEvent {
     latencyMs: input.latencyMs,
     requestId: input.requestId,
     errorType: input.errorType,
+    httpStatus: input.httpStatus,
   };
 }
 
@@ -399,6 +404,7 @@ export async function recordSpeechUsage(
     startedAt: number;
     requestId?: string;
     errorType?: string;
+    httpStatus?: number;
   },
 ): Promise<void> {
   const deployment = resolveDeploymentLabel();
@@ -417,6 +423,7 @@ export async function recordSpeechUsage(
       latencyMs: Date.now() - args.startedAt,
       requestId: args.requestId,
       errorType: args.errorType,
+      httpStatus: args.httpStatus,
     }),
   );
 }
@@ -606,6 +613,7 @@ export function buildStreamedUsageEvent(
     finishReason: result?.finishReason ?? undefined,
     requestId: result?.requestId ?? failure?.requestId,
     errorType: failure?.errorType,
+    httpStatus: failure?.httpStatus,
   };
 }
 
