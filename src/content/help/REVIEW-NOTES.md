@@ -4,14 +4,6 @@ Open items per article. Under FR-1.18 of the AskFabric functional requirements, 
 
 Add a `## <id>` section when an article needs re-checking, for example after a feature it describes changes.
 
-## insights-and-recommendations
-
-Rewritten on 2026-10-26 when the Automations tab became Recommendations (technical and non-technical changes). Cut to about 460 words on 2026-11-04 (AskFabric 1H.14). **Awaiting Saish's approval: delete this section to approve**, and AskFabric's `searchFabricHelp` starts using it after the corpus rebuild.
-
-- Checked 2026-11-04: the ranking reads **Value** and **Effort** with their level (an unknown Value shows "Unknown"), and **Evidence** reads "Based on N interviews", as the article says.
-- The Insights metric tile and detail section are still labeled **Automations** and **Automation Opportunities**; the article quotes them as they are.
-- Renamed from `insights-and-automations`. Every article that relates to it now uses the new id.
-
 ## General
 
 - Spelling: UI copy is predominantly US English ("organization", "analyze"). A few strings use British forms ("analysed" in the consent checkbox and the Insights/Automations notices). Articles use US spelling, except where quoting a UI label verbatim ("Automations were not analysed for this run").
@@ -30,7 +22,7 @@ Saish approved all 14 articles as written on 2026-10-23. Items that were left ou
 - **after-you-contribute:** no processing times or stuck-run recovery window stated; cautious wording on department and function refresh stands.
 - **reading-the-overview:** the "Process Coverage" heading is not named; "key facts" is used descriptively.
 - **reading-the-process-flow:** connection styles and spotlight bar position are not described.
-- **insights-and-automations** (now `insights-and-recommendations`, re-opened above): Copilot Studio wording kept from the UI copy.
+- **insights-and-automations** (now `insights-and-recommendations`): Copilot Studio wording kept from the UI copy. Rewritten for Recommendations and cut to 462 words; approved by Saish 2026-11-04.
 - **pdf-report:** the article follows the code (no transcript section). The June 2026 release note wording is a separate product fix, not a help-corpus item.
 - **admin-members-and-workspace:** invitation expiry length and member limit are not documented.
 

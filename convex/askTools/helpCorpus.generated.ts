@@ -3,7 +3,7 @@
 import type { HelpArticle } from "./helpCorpusBuild";
 
 /** Left out while REVIEW-NOTES.md has open items for them. */
-export const EXCLUDED_HELP_ARTICLES: readonly string[] = ["insights-and-recommendations"];
+export const EXCLUDED_HELP_ARTICLES: readonly string[] = [];
 
 export const HELP_ARTICLES: readonly HelpArticle[] = [
   {
@@ -160,6 +160,28 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
       "contribute-on-behalf"
     ],
     "body": "If you already have a recording, such as an interview, a meeting or a voice memo, you can upload it instead of recording again. Fabric handles it the same way as a live voice note. You need contributor or admin access.\n\n## Upload a file\n\n1. Open the process.\n2. In the process header, select **Upload files**. On a phone, tap the **+** button (Add a contribution) and choose it there.\n3. Check your name and read the recording notice, which says the uploaded audio will be transcribed and stored to help document your organization's processes.\n4. Select **Choose audio file** and pick your file.\n5. When it shows \"Audio file ready\", select **Upload and process**.\n\nKeep the tab open until the upload finishes. If it is interrupted, select **Retry upload**.\n\n## What Fabric accepts\n\n- Formats: MP3, M4A, MP4, WAV, WebM, OGG, FLAC, AAC, AIFF or AMR.\n- Size: up to 100 MB per file.\n- Length: up to four hours of audio.\n- Meeting videos saved as MP4 or WebM are accepted. For a very long meeting video, export just the audio as M4A or MP3 and upload that.\n\nFabric also checks that the file really is audio, and rejects files that are not.\n\n## What happens next\n\nFabric transcribes the file and identifies the speakers. You then name each speaker before analysis starts. See \"Label speakers before analysis\". When processing finishes, the upload appears on the Contributions tab as an uploaded recording.\n\n## When an upload fails\n\nA contribution can show as Failed for reasons Fabric states, such as:\n\n- The file could not be read, or no speech was found. Retrying will not help, so capture it again with a corrected file.\n- The recording is longer than four hours. Upload a shorter one.\n- Transcription or analysis did not finish. These are usually temporary, and an admin can retry them.\n\nSee \"What happens after you contribute\" for the full list of states."
+  },
+  {
+    "id": "insights-and-recommendations",
+    "title": "Using Insights and Recommendations",
+    "summary": "Find where a process needs attention on the Insights tab, and decide what to change from the Recommendations tab — technical or not.",
+    "audience": [
+      "viewer",
+      "contributor",
+      "admin"
+    ],
+    "tags": [
+      "insights",
+      "recommendations",
+      "change plan",
+      "brief"
+    ],
+    "related": [
+      "reading-the-process-flow",
+      "reading-the-overview",
+      "pdf-report"
+    ],
+    "body": "Insights shows where a process needs attention. Recommendations says what to change, and why. Both are built from the Process Flow and update with it.\n\n## Insights tab\n\nIt appears once the flow's steps are described. Without a flow, contributors and admins can generate one.\n\n- **Key findings** come first: the places to look at first, each with a button such as **Show in flow** or **Open Recommendations**.\n- **Metric tiles** count Evidence (contributions used), Mapped Steps, Handoffs, Tools, Decisions, Bottlenecks, Automations and Low Confidence.\n- **Detail sections** go deeper, from Handoffs and Automation Opportunities to Tribal Knowledge Risk and Evidence Coverage.\n\nAn empty Key findings reflects what contributors described, not proof of no issues. Watch for these notices:\n\n- **Some steps could not be described**: the counts are a minimum. Use **Regenerate**.\n- **Insights may be based on stale flow data**: use **Refresh**.\n\n## Recommendations tab\n\nA process gets up to five once its flow is ready. Zero is a real answer: nothing described needs changing.\n\nEach is one kind of change:\n\n- **Non-technical**: Remove a step, Simplify, Standardise, Role or policy, Training.\n- **Technical**: Workflow, Integration, AI assist, Agent.\n\nFabric prefers the lighter change when two would work equally well. The list is ranked by **Value**, then **Effort**, both worked out from the flow:\n\n- **Value** weighs how often the work happens, the problems and bottlenecks reported on those steps, and the roles involved. It shows **Unknown** when neither frequency nor problems were described.\n- **Effort** weighs the kind of change and, for technical changes, the systems involved and the steps that need human judgment.\n- **Evidence** shows how many interviews it rests on. One interview is one person's account; confirm it.\n\nOpen one to see the problem and its steps, its cause, what to change, a small pilot and its measure, the people affected, and what isn't known.\n\n## Change plans and build briefs\n\nA non-technical recommendation has a **change plan**: who is affected, the pilot, the measure, a review date four weeks out, and how to undo it. Select **Copy change plan**. A technical one has a **build brief**: select **Copy for Copilot Studio** and paste it into Copilot Studio's agent builder.\n\n## Deciding\n\nContributors and admins can **Shortlist**, **Start**, **Mark done** or **Dismiss** a recommendation. Dismissing asks for a reason. Decisions are kept in its history and survive a regenerated flow. A recommendation that a new analysis drops moves to **No longer recommended**. Anyone can answer **Was this useful?**\n\n## When the tab is empty or out of date\n\n- **No recommendations yet** or **Recommendations didn't finish**: select **Generate recommendations** or **Retry**.\n- **New interviews since these recommendations**: regenerate the Process Flow, and recommendations follow."
   },
   {
     "id": "label-speakers",

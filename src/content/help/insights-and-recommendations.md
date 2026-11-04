@@ -17,7 +17,7 @@ verifiedAgainst:
   - docs/process-improvement-recommendations-plan.md
 ---
 
-Insights shows where a process needs attention. Recommendations says what to change and what evidence supports it. Both are built from the process's Process Flow, so they update when it does.
+Insights shows where a process needs attention. Recommendations says what to change, and why. Both are built from the Process Flow and update with it.
 
 ## Insights tab
 
@@ -43,11 +43,11 @@ Each is one kind of change:
 
 Fabric prefers the lighter change when two would work equally well. The list is ranked by **Value**, then **Effort**, both worked out from the flow:
 
-- **Value** weighs how often the work happens, the problems and bottlenecks reported on those steps, and the roles involved. It shows **Unknown** when contributors described neither frequency nor problems.
+- **Value** weighs how often the work happens, the problems and bottlenecks reported on those steps, and the roles involved. It shows **Unknown** when neither frequency nor problems were described.
 - **Effort** weighs the kind of change and, for technical changes, the systems involved and the steps that need human judgment.
-- **Evidence** shows how many interviews it rests on. With one, it is one person's account and worth confirming.
+- **Evidence** shows how many interviews it rests on. One interview is one person's account; confirm it.
 
-Open one to see the problem and its steps, why it happens, what to change, a small pilot and its measure, the people affected, and what isn't known yet.
+Open one to see the problem and its steps, its cause, what to change, a small pilot and its measure, the people affected, and what isn't known.
 
 ## Change plans and build briefs
 
@@ -55,7 +55,7 @@ A non-technical recommendation has a **change plan**: who is affected, the pilot
 
 ## Deciding
 
-Contributors and admins can **Shortlist**, **Start**, **Mark done** or **Dismiss** a recommendation. Dismissing asks for a reason. Every decision is kept in the recommendation's history and survives a regenerated flow. A recommendation that a new analysis drops moves to **No longer recommended**. Anyone can answer **Was this useful?**
+Contributors and admins can **Shortlist**, **Start**, **Mark done** or **Dismiss** a recommendation. Dismissing asks for a reason. Decisions are kept in its history and survive a regenerated flow. A recommendation that a new analysis drops moves to **No longer recommended**. Anyone can answer **Was this useful?**
 
 ## When the tab is empty or out of date
 

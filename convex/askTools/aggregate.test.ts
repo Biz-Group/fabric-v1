@@ -276,7 +276,8 @@ describe("help corpus (FR-1.18)", () => {
     expect(forViewer.some((hit) => hit.article.id === "label-speakers")).toBe(false);
     expect(forContributor[0].article.id).toBe("label-speakers");
     expect(rankHelpArticles(HELP_ARTICLES, "on behalf", "contributor").some((h) => h.article.id === "contribute-on-behalf")).toBe(false);
-    expect(HELP_ARTICLES.some((a) => a.id === "insights-and-recommendations")).toBe(false);
+    // Approved 2026-11-04 (1H.14), so it is searchable by every role.
+    expect(rankHelpArticles(HELP_ARTICLES, "change plan recommendations", "viewer").some((h) => h.article.id === "insights-and-recommendations")).toBe(true);
   });
 });
 
