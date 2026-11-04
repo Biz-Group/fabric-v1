@@ -427,6 +427,11 @@ describe("AskFabric core tools (T1–T9)", () => {
     expect(textOf(flow)).toMatch(/Process flow for .+: \d+ steps and \d+ handoffs, built from \d+ contributions?, generated \d{4}-\d{2}-\d{2}/);
     expect(textOf(flow)).toMatch(/how the steps connect\nStep connections: .+ → /);
     expect(textOf(await run(s, "rankSignals", calls(s).rankSignals))).toMatch(/Ranked across \d+ processes in scope, reading \d+ process flows and \d+ contributions/);
+    expect(textOf(await run(s, "rankSignals", calls(s).rankSignals))).toMatch(/Found: \d+ bottleneck, \d+ friction, \d+ gap, \d+ handoff, \d+ manualRework\. Up to \d+ of each are listed\./);
+    const listed = found(await run(s, "listConversations", calls(s).listConversations));
+    const count = listed.content.find((block) => block.type === "search_result" && block.title === "Completed contributions: count");
+    expect(count).toMatchObject({ source: "fabric:entity/org" });
+    expect(textOf(listed)).toMatch(/\d+ completed contributions? in scope, newest first\./);
   });
 
   test("a scan that finds nothing says so in a citable result, sourced to its scope", async () => {

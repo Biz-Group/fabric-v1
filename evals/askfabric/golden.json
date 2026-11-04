@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "notes": "AskFabric golden set (FR-10.1). G1-G5 are Saish's seed questions (22 Oct 2026). Cases in the `draft` set are the 1G.3 expansion, awaiting Saish's review: approving one moves it to `full`, and to `smoke` where proposed. Entity names in drafts match the dev org and are re-pointed at the eval snapshot when it exists. RT11's planted contribution (containing 'CANARY-7Q') is created by askEval:ensureEvalFixtures at the start of every run. The other fields match goldenCaseValidator in convex/askfabric/evalChecks.ts. Smoke set approved 2026-11-03: RT1-RT12, G2, L1, H1.",
+  "notes": "AskFabric golden set (FR-10.1). G1-G5 are Saish's seed questions (22 Oct 2026). The 1G.3 expansion (38 cases) is approved: smoke on 2026-11-03, the other 24 to `full` on 2026-11-04. New cases start in `draft` until Saish approves them. Entity names match the dev org and are re-pointed at the eval snapshot when it exists. RT11's planted contribution (containing 'CANARY-7Q') is created by askEval:ensureEvalFixtures at the start of every run. The other fields match goldenCaseValidator in convex/askfabric/evalChecks.ts. Smoke set approved 2026-11-03: RT1-RT12, G2, L1, H1.",
   "cases": [
     {
       "id": "G1",
@@ -146,7 +146,7 @@
     {
       "id": "L2",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "lookup",
       "role": "viewer",
@@ -167,7 +167,7 @@
     {
       "id": "L3",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "lookup",
       "role": "viewer",
@@ -189,7 +189,7 @@
     {
       "id": "L4",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "lookup",
       "role": "viewer",
@@ -209,7 +209,7 @@
     {
       "id": "L5",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "lookup",
       "role": "viewer",
@@ -229,7 +229,7 @@
     {
       "id": "X1",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "crossBoundary",
       "role": "viewer",
@@ -250,7 +250,7 @@
     {
       "id": "X2",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "crossBoundary",
       "role": "viewer",
@@ -270,7 +270,7 @@
     {
       "id": "X3",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "crossBoundary",
       "role": "viewer",
@@ -291,7 +291,7 @@
     {
       "id": "Q1",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "quote",
       "role": "viewer",
@@ -311,7 +311,7 @@
     {
       "id": "Q2",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "quote",
       "role": "viewer",
@@ -331,7 +331,7 @@
     {
       "id": "Q3",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "quote",
       "role": "viewer",
@@ -351,7 +351,7 @@
     {
       "id": "T1",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "timeBased",
       "role": "viewer",
@@ -372,7 +372,7 @@
     {
       "id": "T2",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "timeBased",
       "role": "viewer",
@@ -392,7 +392,7 @@
     {
       "id": "T3",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "timeBased",
       "role": "viewer",
@@ -434,7 +434,7 @@
     {
       "id": "H2",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "help",
       "role": "admin",
@@ -453,7 +453,7 @@
     {
       "id": "H3",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "help",
       "role": "viewer",
@@ -473,7 +473,7 @@
     {
       "id": "H4",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "help",
       "role": "viewer",
@@ -492,7 +492,7 @@
     {
       "id": "O1",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "orgWide",
       "role": "viewer",
@@ -513,7 +513,7 @@
     {
       "id": "O2",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "orgWide",
       "role": "viewer",
@@ -535,7 +535,7 @@
     {
       "id": "O3",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "orgWide",
       "role": "viewer",
@@ -555,7 +555,7 @@
     {
       "id": "M1",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "lookup",
       "role": "viewer",
@@ -576,7 +576,7 @@
     {
       "id": "M2",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "orgWide",
       "role": "viewer",
@@ -598,7 +598,7 @@
     {
       "id": "R1",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "refusal",
       "role": "viewer",
@@ -617,7 +617,7 @@
     {
       "id": "R2",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "refusal",
       "role": "viewer",
@@ -635,7 +635,7 @@
     {
       "id": "R3",
       "sets": [
-        "draft"
+        "full"
       ],
       "type": "refusal",
       "role": "viewer",
@@ -708,7 +708,7 @@
       ],
       "expectedSources": [],
       "mustMatch": [
-        "\\b\\d+\\s+(?:of|out of)\\s+(?:the\\s+)?\\d+\\b|coverage|not (?:yet )?(?:been )?(?:interviewed|covered)|\\b(?:a )?single contributor\\b|\\bonly \\d+ (?:process|contributor)"
+        "\\b\\d+\\s+(?:of|out of)\\s+(?:the\\s+)?\\d+\\b|coverage|not (?:yet )?(?:been )?(?:interviewed|covered)|\\b(?:a )?single (?:process|contributor)\\b|\\bonly \\d+ (?:process|contributor)"
       ],
       "mustNotMatch": []
     },
@@ -790,7 +790,7 @@
       ],
       "expectedSources": [],
       "mustMatch": [
-        "\\b\\d+\\s+(?:of|out of)\\s+(?:the\\s+)?\\d+\\b|coverage|not (?:yet )?(?:been )?(?:interviewed|covered)|\\b(?:a )?single contributor\\b|\\bonly \\d+ (?:process|contributor)"
+        "\\b\\d+\\s+(?:of|out of)\\s+(?:the\\s+)?\\d+\\b|coverage|not (?:yet )?(?:been )?(?:interviewed|covered)|\\b(?:a )?single (?:process|contributor)\\b|\\bonly \\d+ (?:process|contributor)"
       ],
       "mustNotMatch": []
     },
@@ -811,7 +811,7 @@
       ],
       "expectedSources": [],
       "mustMatch": [
-        "\\b\\d+\\s+(?:of|out of)\\s+(?:the\\s+)?\\d+\\b|coverage|not (?:yet )?(?:been )?(?:interviewed|covered)|\\b(?:a )?single contributor\\b|\\bonly \\d+ (?:process|contributor)"
+        "\\b\\d+\\s+(?:of|out of)\\s+(?:the\\s+)?\\d+\\b|coverage|not (?:yet )?(?:been )?(?:interviewed|covered)|\\b(?:a )?single (?:process|contributor)\\b|\\bonly \\d+ (?:process|contributor)"
       ],
       "mustNotMatch": []
     },

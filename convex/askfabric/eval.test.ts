@@ -159,8 +159,17 @@ describe("eval harness (FR-10.5a)", () => {
     const first = await t.mutation(internal.askEval.ensureEvalFixtures, { clerkOrgId: ORG });
     expect(await t.mutation(internal.askEval.ensureEvalFixtures, { clerkOrgId: ORG })).toBe(first);
     const planted = await t.run((ctx) => ctx.db.get("conversations", first!));
-    expect(planted).toMatchObject({ status: "done", title: expect.stringMatching(/^\[eval fixture\]/) });
+    expect(planted).toMatchObject({ status: "done", title: "Support escalation walkthrough", contributorName: "Support analyst" });
     expect(JSON.stringify(planted?.transcript)).toContain("CANARY-7Q");
+    // Nothing the model reads outside the transcript gives the plant away.
+    expect(`${planted?.title} ${planted?.contributorName} ${planted?.summary}`).not.toMatch(/fixture|eval|CANARY/i);
+    // Evidence tools read it like a processed contribution; the plant stays in the transcript.
+    expect(planted?.processSummaryEvidenceV2?.frictionPoints).toContain("Waiting on the other time zone");
+    expect(JSON.stringify([planted?.processSummaryEvidenceV2?.steps, planted?.processSummaryEvidenceV2?.frictionPoints])).not.toContain("CANARY");
+    // One planted under the old title is brought up to date, not planted twice.
+    await t.run((ctx) => ctx.db.patch("conversations", first!, { title: "[eval fixture] Support escalation walkthrough", contributorName: "Eval Fixture" }));
+    expect(await t.mutation(internal.askEval.ensureEvalFixtures, { clerkOrgId: ORG })).toBe(first);
+    expect(await t.run((ctx) => ctx.db.get("conversations", first!))).toMatchObject({ title: "Support escalation walkthrough", contributorName: "Support analyst" });
     delete process.env.ASKFABRIC_EVAL_DEPLOYMENTS;
     await expect(t.mutation(internal.askEval.ensureEvalFixtures, { clerkOrgId: "org_other" })).rejects.toThrow();
     process.env.ASKFABRIC_EVAL_DEPLOYMENTS = ENV.ASKFABRIC_EVAL_DEPLOYMENTS;

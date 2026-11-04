@@ -444,7 +444,9 @@ export const rankSignals = askToolQuery({
         summary: {
           source: scope.source,
           title: "Signal ranking: scope and method",
-          text: `Ranked across ${scope.processes.length} processes in scope, reading ${evidence.flows.length} process flows and ${evidence.contributions.length} contributions with extracted evidence. Score = 3 × processes affected + 2 × distinct contributors + evidence weight (corroborated 3, single source 2, inferred 1).`,
+          // Per-signal totals here, not only in metadata, so "17 handoffs" or
+          // "no manual rework" can carry a citation (D52).
+          text: `Ranked across ${scope.processes.length} processes in scope, reading ${evidence.flows.length} process flows and ${evidence.contributions.length} contributions with extracted evidence. Found: ${order.map((signal) => `${counts[signal]} ${signal}`).join(", ")}. Up to ${limit} of each are listed. Score = 3 × processes affected + 2 × distinct contributors + evidence weight (corroborated 3, single source 2, inferred 1).`,
         },
         whenEmpty: {
           source: scope.source,

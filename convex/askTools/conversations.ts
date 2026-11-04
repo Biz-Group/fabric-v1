@@ -138,6 +138,14 @@ export const listConversations = askToolQuery({
         ...(scanned.length === MAX_CONVERSATION_SCAN ? { oldestOmitted: true } : {}),
       },
       next < rows.length ? cursorForOffset(next) : null,
+      {
+        // The count is citable, not only metadata (D52).
+        summary: {
+          source: scopeSource,
+          title: "Completed contributions: count",
+          text: `${rows.length}${scanned.length === MAX_CONVERSATION_SCAN ? " or more" : ""} completed contribution${rows.length === 1 ? "" : "s"} in scope${since !== null ? `, recorded since ${isoDate(since)}` : ""}, newest first.`,
+        },
+      },
     );
   },
 });

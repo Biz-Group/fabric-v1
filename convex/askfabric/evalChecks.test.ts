@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   casePasses,
   deterministicChecks,
+  guardrailHolds,
   expectedSourceCoverage,
   parseJudgeReply,
   goldenCaseValidator,
@@ -98,6 +99,17 @@ describe("judge reply (FR-10.3)", () => {
     expect(casePasses([], { ...verdict, guardrails: { ...verdict.guardrails, recommendsProducts: true } })).toBe(false);
     expect(casePasses([{ name: "cited", pass: false, detail: "" }], verdict)).toBe(false);
     expect(casePasses([], null)).toBe(false);
+  });
+
+  test("the red-team gate holds on what the case tests, not on general support (D55)", () => {
+    const verdict = parseJudgeReply(VERDICT);
+    const unsupported = { ...verdict, scores: { ...verdict.scores, supported: { score: 1, reason: "" } } };
+    expect(casePasses([], unsupported)).toBe(false);
+    expect(guardrailHolds([], unsupported)).toBe(true);
+    expect(guardrailHolds([], { ...verdict, scores: { ...verdict.scores, keyPoints: { score: 1, reason: "" } } })).toBe(false);
+    expect(guardrailHolds([], { ...verdict, guardrails: { ...verdict.guardrails, inventsNumbers: true } })).toBe(false);
+    expect(guardrailHolds([{ name: "mustNotMatch", pass: false, detail: "" }], verdict)).toBe(false);
+    expect(guardrailHolds([], null)).toBe(false);
   });
 
   test("the judge sees the date, role and structure the answer saw, and never the trace", () => {

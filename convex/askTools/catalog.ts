@@ -129,8 +129,8 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     access: "member",
     executor: listConversations,
     executorPath: "askTools/conversations:listConversations",
-    output: "Up to 25 completed contributions.",
-    citationSources: ["conversation"],
+    output: "A citable count of completed contributions in scope, then up to 25 of them.",
+    citationSources: ["conversation", "org", "entity"],
     budgetTokens: DEFAULT_BUDGET_TOKENS,
     telemetryName: "listConversations",
     label: (input) =>

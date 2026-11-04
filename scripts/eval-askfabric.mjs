@@ -148,6 +148,7 @@ async function main() {
       type: spec.type,
       role: spec.role,
       pass: grade?.pass ?? false,
+      guardrailHolds: grade?.guardrailHolds ?? false,
       error,
       checks: grade?.checks ?? [],
       expectedSources: grade?.expectedSources ?? [],
@@ -191,7 +192,9 @@ function buildReport(args, startedAt, results) {
   const totalCost = results.reduce((sum, r) => sum + (r.costUsd.answer ?? 0) + (r.costUsd.judge ?? 0), 0);
   const passRate = results.filter((r) => r.pass).length / results.length;
   const citationsResolved = citations.length ? citations.filter((c) => c.availability === "available").length / citations.length : 1;
-  const redTeamPassRate = redTeam.length ? redTeam.filter((r) => r.pass).length / redTeam.length : null;
+  // D55: the red-team gate is the guardrail holding; the full rubric is reported beside it.
+  const redTeamPassRate = redTeam.length ? redTeam.filter((r) => r.guardrailHolds).length / redTeam.length : null;
+  const redTeamFullRubricRate = redTeam.length ? redTeam.filter((r) => r.pass).length / redTeam.length : null;
   // FR-10.3: Saish spot-checks 10% of judged answers per run.
   const judged = results.filter((r) => r.verdict);
   const spotCheck = [...judged]
@@ -214,6 +217,7 @@ function buildReport(args, startedAt, results) {
       passed: results.filter((r) => r.pass).length,
       passRate,
       redTeamPassRate,
+      redTeamFullRubricRate,
       citations: citations.length,
       citationsResolved,
       costUsd: totalCost,
@@ -228,7 +232,7 @@ function buildReport(args, startedAt, results) {
 }
 
 function summaryLine(s) {
-  return `${s.passed}/${s.cases} passed (${Math.round(s.passRate * 100)}%), citations resolved ${Math.round(s.citationsResolved * 100)}%, ${fmtUsd(s.costUsd)} total, ${fmtUsd(s.costPerQuestionUsd)} a question. ${s.meetsThresholds ? "Meets" : "Below"} the FR-10.6 thresholds.`;
+  return `${s.passed}/${s.cases} passed (${Math.round(s.passRate * 100)}%), red-team guardrails held ${s.redTeamPassRate === null ? "n/a" : `${Math.round(s.redTeamPassRate * 100)}%`} (full rubric ${s.redTeamFullRubricRate === null ? "n/a" : `${Math.round(s.redTeamFullRubricRate * 100)}%`}), citations resolved ${Math.round(s.citationsResolved * 100)}%, ${fmtUsd(s.costUsd)} total, ${fmtUsd(s.costPerQuestionUsd)} a question. ${s.meetsThresholds ? "Meets" : "Below"} the FR-10.6 thresholds.`;
 }
 
 function markdown(report) {
@@ -252,7 +256,8 @@ function markdown(report) {
       const breached = r.verdict ? Object.entries(r.verdict.guardrails).filter(([, v]) => v).map(([k]) => `guardrail:${k}`) : [];
       const problems = [...failed, ...breached, ...(r.error ? ["error"] : []), ...(r.judgeError ? ["not judged"] : [])];
       const cost = (r.costUsd.answer ?? 0) + (r.costUsd.judge ?? 0);
-      return `| ${r.id} | ${r.pass ? "Pass" : "Fail"} | ${scoreCell(r, "keyPoints")} | ${scoreCell(r, "supported")} | ${scoreCell(r, "rankingJustified")} | ${scoreCell(r, "honestAboutGaps")} | ${problems.join(", ") || "–"} | ${r.turns.map((t) => t.toolCalls ?? "?").join(" + ")} | ${fmtUsd(cost)} |`;
+      const result = r.pass ? "Pass" : r.type === "redTeam" && r.guardrailHolds ? "Fail (guardrail held)" : "Fail";
+      return `| ${r.id} | ${result} | ${scoreCell(r, "keyPoints")} | ${scoreCell(r, "supported")} | ${scoreCell(r, "rankingJustified")} | ${scoreCell(r, "honestAboutGaps")} | ${problems.join(", ") || "–"} | ${r.turns.map((t) => t.toolCalls ?? "?").join(" + ")} | ${fmtUsd(cost)} |`;
     }),
     "",
   ];
