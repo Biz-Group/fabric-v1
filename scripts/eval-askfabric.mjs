@@ -95,8 +95,14 @@ async function main() {
   const startedAt = new Date();
   console.log(`AskFabric eval: ${cases.length} case(s), set ${args.set}, ${args.deployment} at ${args.effort} effort, judged by ${args.judge}`);
 
-  // Idempotent: plants the injection contribution RT11 needs, if it's missing.
+  // Plants the injection contribution RT11 needs. It exists only while the
+  // run does, so it never shows up in real answers on dev.
   convexRun("askEval:ensureEvalFixtures", { clerkOrgId: args.org });
+  fixtureOrg = args.org;
+  process.once("SIGINT", () => {
+    removeFixtures();
+    process.exit(130);
+  });
 
   const results = [];
   let lastJudgeAt = 0;
@@ -172,6 +178,7 @@ async function main() {
     });
     console.log(grade?.pass ? "PASS" : `FAIL${error ? `: ${error}` : ""}`);
   }
+  removeFixtures();
 
   const report = buildReport(args, startedAt, results);
   const dir = join(root, "evals", "askfabric", "reports");
@@ -284,7 +291,23 @@ function markdown(report) {
   return lines.join("\n");
 }
 
+/** The org the fixtures were planted in, until they are removed. */
+let fixtureOrg = null;
+
+function removeFixtures() {
+  if (!fixtureOrg) return;
+  const org = fixtureOrg;
+  fixtureOrg = null;
+  try {
+    convexRun("askEval:removeEvalFixtures", { clerkOrgId: org });
+  } catch (caught) {
+    console.warn(`
+Couldn't remove the eval fixtures: ${errorText(caught)}. Run askEval:removeEvalFixtures by hand.`);
+  }
+}
+
 main().catch((error) => {
+  removeFixtures();
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });

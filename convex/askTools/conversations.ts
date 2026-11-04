@@ -16,6 +16,7 @@ import {
   offsetFromCursor,
   parseSince,
   searchResult,
+  shortTitle,
   sources,
 } from "./results";
 
@@ -87,6 +88,8 @@ export const listConversations = askToolQuery({
   handler: async (ctx, viewer, input) => {
     let scope: ReadonlySet<Id<"processes">> | null = null;
     let scopeSource = sources.org();
+    // Shown as the count's title in the Sources list, so it reads as plain words.
+    let scopeName = "the organization";
     if (input.processId || input.departmentId || input.functionId) {
       const hierarchy = await loadHierarchy(ctx, viewer.orgId);
       if (input.processId) {
@@ -94,16 +97,19 @@ export const listConversations = askToolQuery({
         if (!process) return NOT_FOUND;
         scope = new Set([process._id]);
         scopeSource = sources.entity("process", process._id);
+        scopeName = process.name;
       } else if (input.departmentId) {
         const department = await getOrgEntity(ctx, viewer.orgId, "department", input.departmentId);
         if (!department) return NOT_FOUND;
         scope = new Set(processesInScope(hierarchy, { kind: "department", id: department._id }).map((p) => p._id));
         scopeSource = sources.entity("department", department._id);
+        scopeName = department.name;
       } else {
         const fn = await getOrgEntity(ctx, viewer.orgId, "function", input.functionId!);
         if (!fn) return NOT_FOUND;
         scope = new Set(processesInScope(hierarchy, { kind: "function", id: fn._id }).map((p) => p._id));
         scopeSource = sources.entity("function", fn._id);
+        scopeName = fn.name;
       }
     }
 
@@ -142,7 +148,7 @@ export const listConversations = askToolQuery({
         // The count is citable, not only metadata (D52).
         summary: {
           source: scopeSource,
-          title: "Completed contributions: count",
+          title: shortTitle(`Contributions in ${scopeName}`),
           text: `${rows.length}${scanned.length === MAX_CONVERSATION_SCAN ? " or more" : ""} completed contribution${rows.length === 1 ? "" : "s"} in scope${since !== null ? `, recorded since ${isoDate(since)}` : ""}, newest first.`,
         },
       },

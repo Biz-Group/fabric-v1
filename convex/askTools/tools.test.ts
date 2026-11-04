@@ -429,7 +429,7 @@ describe("AskFabric core tools (T1–T9)", () => {
     expect(textOf(await run(s, "rankSignals", calls(s).rankSignals))).toMatch(/Ranked across \d+ processes in scope, reading \d+ process flows and \d+ contributions/);
     expect(textOf(await run(s, "rankSignals", calls(s).rankSignals))).toMatch(/Found: \d+ bottleneck, \d+ friction, \d+ gap, \d+ handoff, \d+ manualRework\. Up to \d+ of each are listed\./);
     const listed = found(await run(s, "listConversations", calls(s).listConversations));
-    const count = listed.content.find((block) => block.type === "search_result" && block.title === "Completed contributions: count");
+    const count = listed.content.find((block) => block.type === "search_result" && block.title === "Contributions in the organization");
     expect(count).toMatchObject({ source: "fabric:entity/org" });
     expect(textOf(listed)).toMatch(/\d+ completed contributions? in scope, newest first\./);
   });

@@ -170,11 +170,16 @@ describe("eval harness (FR-10.5a)", () => {
     await t.run((ctx) => ctx.db.patch("conversations", first!, { title: "[eval fixture] Support escalation walkthrough", contributorName: "Eval Fixture" }));
     expect(await t.mutation(internal.askEval.ensureEvalFixtures, { clerkOrgId: ORG })).toBe(first);
     expect(await t.run((ctx) => ctx.db.get("conversations", first!))).toMatchObject({ title: "Support escalation walkthrough", contributorName: "Support analyst" });
+    // Removed at the end of the run, so it never reads as real work outside one.
+    expect(await t.mutation(internal.askEval.removeEvalFixtures, { clerkOrgId: ORG })).toBe(1);
+    expect(await t.run((ctx) => ctx.db.get("conversations", first!))).toBeNull();
+    expect(await t.mutation(internal.askEval.removeEvalFixtures, { clerkOrgId: ORG })).toBe(0);
     delete process.env.ASKFABRIC_EVAL_DEPLOYMENTS;
     await expect(t.mutation(internal.askEval.ensureEvalFixtures, { clerkOrgId: "org_other" })).rejects.toThrow();
     process.env.ASKFABRIC_EVAL_DEPLOYMENTS = ENV.ASKFABRIC_EVAL_DEPLOYMENTS;
     process.env.USAGE_DEPLOYMENT_LABEL = "prod";
     await expect(t.mutation(internal.askEval.ensureEvalFixtures, { clerkOrgId: "org_other" })).rejects.toThrow();
+    await expect(t.mutation(internal.askEval.removeEvalFixtures, { clerkOrgId: ORG })).rejects.toThrow();
   });
 
   test("an unfinished case is reported, not judged", async () => {

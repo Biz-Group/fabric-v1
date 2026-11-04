@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { env, internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { env, internalAction, internalMutation, internalQuery, type QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { executeTurn } from "./ask";
@@ -132,26 +132,38 @@ function injectionFixtureEvidence(now: number): NonNullable<Doc<"conversations">
   };
 }
 
+/** Two locks, as for model calls: never on prod, and only where evals are set up. */
+function assertEvalDeployment() {
+  if (env.USAGE_DEPLOYMENT_LABEL === "prod" || !env.ASKFABRIC_EVAL_DEPLOYMENTS?.trim()) {
+    throw userError("EVAL_REFUSED", "The eval harness runs only on a dev deployment set up for evals.");
+  }
+}
+
+const isInjectionFixture = (conversation: Doc<"conversations">) =>
+  conversation.transcript?.some((line) => line.content.includes(INJECTION_CANARY)) ?? false;
+
+async function completedContributions(ctx: QueryCtx, clerkOrgId: string) {
+  return await ctx.db
+    .query("conversations")
+    .withIndex("by_clerkOrgId_and_status", (q) => q.eq("clerkOrgId", clerkOrgId).eq("status", "done"))
+    .take(500);
+}
+
 /**
- * Plants the eval's fixtures in the org, once: a completed contribution in the
- * best-covered process whose transcript carries an instruction aimed at the
- * model (RT11, FR-9.4). Dev only, like everything here.
+ * Plants the eval's fixtures in the org for one run: a completed contribution
+ * in the best-covered process whose transcript carries an instruction aimed at
+ * the model (RT11, FR-9.4). The harness removes it when the run ends
+ * (`removeEvalFixtures`). Dev only, like everything here.
  */
 export const ensureEvalFixtures = internalMutation({
   args: { clerkOrgId: v.string() },
   returns: v.union(v.id("conversations"), v.null()),
   handler: async (ctx, args) => {
-    // Two locks, as for model calls: never on prod, and only where evals are set up.
-    if (env.USAGE_DEPLOYMENT_LABEL === "prod" || !env.ASKFABRIC_EVAL_DEPLOYMENTS?.trim()) {
-      throw userError("EVAL_REFUSED", "The eval harness runs only on a dev deployment set up for evals.");
-    }
-    const done = await ctx.db
-      .query("conversations")
-      .withIndex("by_clerkOrgId_and_status", (q) => q.eq("clerkOrgId", args.clerkOrgId).eq("status", "done"))
-      .take(500);
-    const existing = done.find((c) => c.transcript?.some((line) => line.content.includes(INJECTION_CANARY)));
+    assertEvalDeployment();
+    const done = await completedContributions(ctx, args.clerkOrgId);
+    const existing = done.find(isInjectionFixture);
     if (existing) {
-      // Brings a fixture planted under the old "[eval fixture]" title up to date.
+      // A copy left by an interrupted run, possibly under the old "[eval fixture]" title.
       if (
         existing.title !== INJECTION_FIXTURE_TITLE ||
         existing.contributorName !== INJECTION_FIXTURE_CONTRIBUTOR ||
@@ -189,6 +201,22 @@ export const ensureEvalFixtures = internalMutation({
       processSummaryEvidenceV2: injectionFixtureEvidence(Date.now()),
       transcript: lines.map(([role, content], index) => ({ role, content, time_in_call_secs: index * 15 })),
     });
+  },
+});
+
+/**
+ * Removes what `ensureEvalFixtures` planted, so the walkthrough never shows up
+ * as a real contribution outside a run. Nothing else refers to it: it never
+ * went through the pipeline.
+ */
+export const removeEvalFixtures = internalMutation({
+  args: { clerkOrgId: v.string() },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    assertEvalDeployment();
+    const planted = (await completedContributions(ctx, args.clerkOrgId)).filter(isInjectionFixture);
+    for (const conversation of planted) await ctx.db.delete("conversations", conversation._id);
+    return planted.length;
   },
 });
 
