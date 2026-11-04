@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, Trash2 } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { formatRelativeTime } from "@/features/home/home-view-model";
 import { describeError } from "@/lib/user-error-message";
 import { cn } from "@/lib/utils";
+import { threadSections, threadTime } from "./thread-groups";
 
 type ThreadRow = {
   _id: Id<"askThreads">;
@@ -54,12 +55,17 @@ function useThreadActions() {
 function ThreadItem({
   thread,
   selected,
+  inSearch,
+  now,
   onSelect,
   onRename,
   onDelete,
 }: {
   thread: ThreadRow;
   selected: boolean;
+  /** Search results aren't sectioned, so the row itself says pinned or archived. */
+  inSearch: boolean;
+  now: number;
   onSelect: () => void;
   onRename: () => void;
   onDelete: () => void;
@@ -73,19 +79,24 @@ function ThreadItem({
         type="button"
         onClick={onSelect}
         aria-current={selected ? "page" : undefined}
+        // Selected like a process in the tree navigator.
         className={cn(
-          "flex w-full flex-col gap-0.5 rounded-md py-2 pr-9 pl-2.5 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring",
-          selected && "bg-muted",
+          "flex w-full items-center gap-1.5 rounded-md border border-transparent py-2 pr-9 pl-2.5 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+          selected
+            ? "border-org-accent-border bg-org-accent-selected font-medium text-org-accent-selected-foreground shadow-xs"
+            : "text-foreground hover:bg-org-accent-subtle",
         )}
       >
-        <span className="flex items-center gap-1.5 truncate text-sm text-foreground">
-          {pinned && <Pin className="size-3 shrink-0 text-muted-foreground" aria-label="Pinned" />}
-          <span className="truncate">{thread.title}</span>
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {formatRelativeTime(thread.lastMessageAt)}
-          {archived ? " · Archived" : ""}
-        </span>
+        {inSearch && pinned && <Pin className="size-3 shrink-0 text-muted-foreground" aria-label="Pinned" />}
+        <span className="min-w-0 flex-1 truncate">{thread.title}</span>
+        {inSearch && archived && <span className="shrink-0 text-xs font-normal text-muted-foreground">Archived</span>}
+        <time
+          dateTime={new Date(thread.lastMessageAt).toISOString()}
+          title={formatRelativeTime(thread.lastMessageAt, now)}
+          className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground"
+        >
+          {threadTime(thread.lastMessageAt, now)}
+        </time>
       </button>
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -94,7 +105,7 @@ function ThreadItem({
               variant="ghost"
               size="icon-xs"
               aria-label={`Actions for ${thread.title}`}
-              className="absolute top-2 right-1.5 opacity-100 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100 sm:data-[popup-open]:opacity-100"
+              className="absolute top-1.5 right-1.5 opacity-100 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100 sm:data-[popup-open]:opacity-100"
             />
           }
         >
@@ -206,11 +217,20 @@ export function AskThreadList({
   const rows: ThreadRow[] = searching ? (hits ?? []) : [...(pinned ?? []), ...results];
   const loading = searching ? hits === undefined : status === "LoadingFirstPage";
 
+  // Ticks each minute so the row times and day sections stay current.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const item = (thread: ThreadRow) => (
     <ThreadItem
       key={thread._id}
       thread={thread}
       selected={thread._id === selectedThreadId}
+      inSearch={searching}
+      now={now}
       onSelect={() => onSelect(thread._id)}
       onRename={() => setRenaming(thread)}
       onDelete={() => setDeleting(thread)}
@@ -242,8 +262,20 @@ export function AskThreadList({
           <p className="px-2 py-4 text-sm text-muted-foreground">
             {searching ? "No threads match." : archived ? "No archived threads." : "No threads yet."}
           </p>
-        ) : (
+        ) : searching ? (
           <ul className="space-y-0.5">{rows.map(item)}</ul>
+        ) : (
+          threadSections(pinned ?? [], results, now).map((section) => (
+            <section key={section.key} aria-labelledby={`ask-threads-${section.key}`}>
+              <h2
+                id={`ask-threads-${section.key}`}
+                className="px-2.5 pt-3 pb-1 text-2xs font-semibold tracking-wide text-muted-foreground uppercase"
+              >
+                {section.label}
+              </h2>
+              <ul className="space-y-0.5">{section.threads.map(item)}</ul>
+            </section>
+          ))
         )}
         {!searching && status === "CanLoadMore" && (
           <Button variant="ghost" size="sm" className="mt-1 w-full" onClick={() => loadMore(25)}>

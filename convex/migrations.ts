@@ -13,6 +13,7 @@ import {
   normalizeEmail,
 } from "./lib/clerkApi";
 import { recommendationMatchKey } from "./lib/recommendationScoring";
+import { topicForStoredPrompt } from "./askfabric/suggestions";
 
 export const migrations = new Migrations<DataModel>(components.migrations);
 
@@ -716,5 +717,47 @@ export const backfillLegacyRecommendations = migrations.define({
         updatedAt: at,
       });
     }
+  },
+});
+
+// --- AskFabric: topics on stored starter prompts ----------------------------
+//
+// Labels each stored starter prompt with its topic (Friction, Systems, …) for
+// the new-thread page, from the template it came from. Deterministic — no
+// model calls — and idempotent: prompts that already have a topic are kept.
+// A prompt no template produces stays unset and shows without a label; the
+// verify query counts them. Afterwards, refresh org stats with:
+//
+//   npx convex run migrations:run '{"fn":"migrations:backfillAskSuggestionTopics"}'
+//   npx convex run migrations:verifyAskSuggestionTopics
+//   npx convex run askSuggestions:recomputeActiveOrgs
+
+export const backfillAskSuggestionTopics = migrations.define({
+  table: "askSuggestions",
+  migrateOne: async (ctx, row) => {
+    if (row.prompts.every((prompt) => prompt.topic !== undefined)) return;
+    const prompts = row.prompts.map((prompt) => {
+      if (prompt.topic !== undefined) return prompt;
+      const topic = topicForStoredPrompt(prompt);
+      return topic ? { ...prompt, topic } : prompt;
+    });
+    await ctx.db.patch(row._id, { prompts });
+  },
+});
+
+export const verifyAskSuggestionTopics = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    let rows = 0;
+    let prompts = 0;
+    let missing = 0;
+    for await (const row of ctx.db.query("askSuggestions")) {
+      rows++;
+      for (const prompt of row.prompts) {
+        prompts++;
+        if (prompt.topic === undefined) missing++;
+      }
+    }
+    return { rows, prompts, missing };
   },
 });

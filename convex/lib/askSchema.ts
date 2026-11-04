@@ -155,6 +155,21 @@ export const askSuggestionCategoryValidator = v.union(
   v.literal("help"),
 );
 
+/** What a starter prompt is about, for its card's label. */
+export const askSuggestionTopicValidator = v.union(
+  v.literal("friction"),
+  v.literal("biggestMoves"),
+  v.literal("systems"),
+  v.literal("duplication"),
+  v.literal("bottlenecks"),
+  v.literal("handoffs"),
+  v.literal("keyPersonRisk"),
+  v.literal("gaps"),
+  v.literal("whatsNew"),
+  v.literal("coverage"),
+  v.literal("usingFabric"),
+);
+
 /** Tool-call metadata in a shared exchange: no raw results (FR-7.2). */
 export const askSharedToolCallValidator = v.object({
   name: askToolNameValidator,

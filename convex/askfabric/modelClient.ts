@@ -2,6 +2,7 @@ import AnthropicFoundry from "@anthropic-ai/foundry-sdk";
 import { AIRequestError } from "../lib/aiProvider";
 import type { TokenUsageForPricing } from "../lib/aiPricing";
 import type { AskFabricConfig } from "../lib/askFabricFeature";
+import { FOLLOW_UP_SYSTEM_PROMPT } from "./followUps";
 
 /**
  * AskFabric's model client (FR-2.5, FR-2.8): a thin interface over the native
@@ -246,8 +247,12 @@ export type ScriptedStep =
     }
   | { error: { status?: number; message?: string; retryAfterMs?: number } };
 
-/** A fake model that plays back scripted steps and records every request. */
-export function createScriptedAskClient(steps: ScriptedStep[], titleText = "Scripted thread title") {
+/**
+ * A fake model that plays back scripted steps and records every request. Its
+ * non-streamed calls answer with `followUpsText` for the follow-up prompt and
+ * `titleText` otherwise.
+ */
+export function createScriptedAskClient(steps: ScriptedStep[], titleText = "Scripted thread title", followUpsText = "") {
   const requests: AskModelRequest[] = [];
   let index = 0;
   const client: AskModelClient = {
@@ -283,9 +288,9 @@ export function createScriptedAskClient(steps: ScriptedStep[], titleText = "Scri
         requestId: `req_${index}`,
       };
     },
-    async complete() {
+    async complete({ system }) {
       return {
-        content: [{ type: "text", text: titleText }],
+        content: [{ type: "text", text: system === FOLLOW_UP_SYSTEM_PROMPT ? followUpsText : titleText }],
         stopReason: "end_turn",
         usage: { inputTokens: 40, outputTokens: 6, cachedReadTokens: 0, cacheWriteTokens: 0 },
         requestId: "req_title",

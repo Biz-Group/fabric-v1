@@ -33,6 +33,7 @@ import {
   askSharedToolCallValidator,
   askSourceKindValidator,
   askSuggestionCategoryValidator,
+  askSuggestionTopicValidator,
   askThreadStatusValidator,
   askToolTelemetryValidator,
   askTurnQualityValidator,
@@ -1353,6 +1354,13 @@ export default defineSchema({
     toolTelemetry: v.optional(v.array(askToolTelemetryValidator)),
     quality: v.optional(askTurnQualityValidator),
     completedAt: v.optional(v.number()),
+    // Suggested next questions for a complete answer, at most three; empty
+    // when the call ran and found none. Unset on answers from before they
+    // existed, which get them when their thread is next opened.
+    followUps: v.optional(v.array(v.string())),
+    // When a missing set was last asked for, so reopening a thread doesn't
+    // queue the same call twice.
+    followUpsRequestedAt: v.optional(v.number()),
   })
     .index("by_threadId", ["threadId"])
     // The watchdog's scan for turns stuck in `streaming` (FR-2.11).
@@ -1392,7 +1400,22 @@ export default defineSchema({
     // Unset for the org-level default set shown on a first visit (FR-6.3).
     userId: v.optional(v.id("users")),
     prompts: v.array(
-      v.object({ text: v.string(), category: askSuggestionCategoryValidator }),
+      v.object({
+        text: v.string(),
+        category: askSuggestionCategoryValidator,
+        // Optional only until migrations:backfillAskSuggestionTopics has run.
+        topic: v.optional(askSuggestionTopicValidator),
+      }),
+    ),
+    // Org default row only: what answers can draw on, for the new-thread page.
+    stats: v.optional(
+      v.object({
+        contributions: v.number(),
+        // True when the count stopped at the scan limit, so it reads "1,000+".
+        contributionsCapped: v.boolean(),
+        processes: v.number(),
+        departments: v.number(),
+      }),
     ),
     // Keys of the signals the prompts were built from, so a recompute can tell
     // whether anything changed.

@@ -306,7 +306,12 @@ describe("runTurn", () => {
     expect(stored[0]).toMatchObject({ sourceKind: "org", sourceEntityId: "org", threadId: ids.threadId, userId: s.ids.a.userId });
 
     const usage = await s.t.run((ctx) => ctx.db.query("aiUsageEvents").collect());
-    expect(usage.map((row) => row.operation).sort()).toEqual(["askfabric.title", "askfabric.turn", "askfabric.turn"]);
+    expect(usage.map((row) => row.operation).sort()).toEqual([
+      "askfabric.followUps",
+      "askfabric.title",
+      "askfabric.turn",
+      "askfabric.turn",
+    ]);
     expect(usage.every((row) => row.runId === ids.assistantMessageId && row.clerkOrgId === ORG_A)).toBe(true);
     expect(usage.every((row) => row.model === "foundry:claude-sonnet-5-5@2" && row.costMicroUsd > 0)).toBe(true);
 
@@ -391,5 +396,81 @@ describe("runTurn", () => {
       status: "error",
       errorReason: "unfinished",
     });
+  });
+});
+
+describe("follow-up suggestions", () => {
+  const SUGGESTED = [
+    "1. What should we fix first?",
+    "- How much have we covered?",
+    '"Who owns the coverage report?"',
+    "Not a question at all",
+    "Which processes still need interviews?",
+    "One question too many?",
+  ].join("\n");
+
+  test("a complete answer gets up to three, without repeating the question", async () => {
+    const scripted = createScriptedAskClient(ANSWER, "Scripted thread title", SUGGESTED);
+    setAskModelClientFactory(() => scripted.client);
+    const s = await setup();
+    const ids = await startTurn(s, "How much have we covered?");
+    expect(await runTurn(s, ids)).toMatchObject({
+      followUps: ["What should we fix first?", "Who owns the coverage report?", "Which processes still need interviews?"],
+    });
+    const thread = await s.ana.query(api.ask.getThread, { threadId: ids.threadId });
+    expect(thread?.messages[1].followUps).toHaveLength(3);
+  });
+
+  test("a failed or stopped answer gets none", async () => {
+    useScript([{ error: { status: 400, message: "bad request" } }]);
+    const s = await setup();
+    const ids = await startTurn(s, "q");
+    const message = await runTurn(s, ids);
+    expect(message?.status).toBe("error");
+    expect(message?.followUps).toBeUndefined();
+  });
+
+  test("an older answer gets them when its thread is opened, once, and only the latest answer", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const s = await setup();
+    const { threadId, older, latest } = await s.t.run(async (ctx) => {
+      const userId = s.ids.a.userId;
+      const threadId = await ctx.db.insert("askThreads", { clerkOrgId: ORG_A, userId, title: "Old", status: "active", lastMessageAt: 1 });
+      const add = (role: "user" | "assistant", text: string) =>
+        ctx.db.insert("askMessages", {
+          threadId,
+          clerkOrgId: ORG_A,
+          userId,
+          role,
+          parts: [{ type: "text", text }],
+          ...(role === "assistant" ? { status: "complete" as const } : {}),
+        });
+      await add("user", "First?");
+      const older = await add("assistant", "First answer.");
+      await add("user", "Second?");
+      const latest = await add("assistant", "Second answer.");
+      return { threadId, older, latest };
+    });
+
+    await s.ana.mutation(api.ask.requestFollowUps, { messageId: older });
+    await s.ana.mutation(api.ask.requestFollowUps, { messageId: latest });
+    // Reopening straight away doesn't queue a second call.
+    await s.ana.mutation(api.ask.requestFollowUps, { messageId: latest });
+    const scheduled = await s.t.run((ctx) => ctx.db.system.query("_scheduled_functions").collect());
+    expect(scheduled.map((f) => [f.name, (f.args[0] as { assistantMessageId: string }).assistantMessageId])).toEqual([
+      ["ask:fillFollowUps", latest],
+    ]);
+    // Another member can't ask for them.
+    await expect(s.olga.mutation(api.ask.requestFollowUps, { messageId: latest })).rejects.toThrow();
+
+    vi.useRealTimers();
+    const scripted = createScriptedAskClient([], "t", "What changed between the two?");
+    setAskModelClientFactory(() => scripted.client);
+    await s.t.action(internal.ask.fillFollowUps, {
+      assistantMessageId: latest,
+      viewer: { tokenIdentifier: s.ids.a.tokenIdentifier, orgId: ORG_A },
+    });
+    const thread = await s.ana.query(api.ask.getThread, { threadId });
+    expect(thread?.messages.map((m) => m.followUps)).toEqual([null, null, null, ["What changed between the two?"]]);
   });
 });

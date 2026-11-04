@@ -7,7 +7,20 @@ import type { Role } from "../lib/orgAuth";
  */
 
 export type SuggestionCategory = "orgWide" | "entitySignal" | "department" | "whatsNew" | "help";
-export type Suggestion = { text: string; category: SuggestionCategory };
+/** What a prompt is about, for its card's label on the new-thread page. */
+export type SuggestionTopic =
+  | "friction"
+  | "biggestMoves"
+  | "systems"
+  | "duplication"
+  | "bottlenecks"
+  | "handoffs"
+  | "keyPersonRisk"
+  | "gaps"
+  | "whatsNew"
+  | "coverage"
+  | "usingFabric";
+export type Suggestion = { text: string; category: SuggestionCategory; topic: SuggestionTopic };
 
 export type SuggestionInputs = {
   /** Completed contributions in the org; zero means help prompts (FR-6.5). */
@@ -30,6 +43,18 @@ const SIGNAL_PHRASE = {
   handoff: "the handoffs",
 } as const;
 
+const SIGNAL_TOPIC = {
+  bottleneck: "bottlenecks",
+  friction: "friction",
+  tribalKnowledge: "keyPersonRisk",
+  handoff: "handoffs",
+} as const satisfies Record<keyof typeof SIGNAL_PHRASE, SuggestionTopic>;
+
+const FRICTION_PROMPT = "What's consistently slowing us down or creating friction across the business?";
+const MOVES_PROMPT = "What would be the three most impactful moves we could make, based on the evidence?";
+const SYSTEMS_PROMPT = "Which systems cause the most friction, and what would a replacement need to fix?";
+const COVERAGE_PROMPT = "How much of the organization has been interviewed so far, and where are the gaps?";
+
 /**
  * Help prompts for an org with no completed contributions yet, written so each
  * maps to a help article the role can read (T14 filters by audience).
@@ -49,7 +74,7 @@ function helpPrompts(role: Role): Suggestion[] {
           "What happens after I contribute?",
           role === "admin" ? "How do I invite members and manage roles?" : "What can each role see and do?",
         ];
-  return prompts.map((text) => ({ text, category: "help" }));
+  return prompts.map((text) => ({ text, category: "help", topic: "usingFabric" }));
 }
 
 /** 4–6 prompts in the FR-6.2 mix, or help prompts for an empty org (FR-6.5). */
@@ -58,26 +83,61 @@ export function buildSuggestions(inputs: SuggestionInputs): Suggestion[] {
 
   const prompts: Suggestion[] = [
     // At least two org-wide executive prompts, in the seed-set style.
-    { text: "What's consistently slowing us down or creating friction across the business?", category: "orgWide" },
-    { text: "What would be the three most impactful moves we could make, based on the evidence?", category: "orgWide" },
+    { text: FRICTION_PROMPT, category: "orgWide", topic: "friction" },
+    { text: MOVES_PROMPT, category: "orgWide", topic: "biggestMoves" },
   ];
   if (inputs.topSignal) {
     prompts.push({
       text: `What's behind ${SIGNAL_PHRASE[inputs.topSignal.signal]} in ${inputs.topSignal.processName}?`,
       category: "entitySignal",
+      topic: SIGNAL_TOPIC[inputs.topSignal.signal],
     });
   }
   if (inputs.department) {
-    prompts.push({ text: `What are the biggest gaps in how ${inputs.department} works today?`, category: "department" });
+    prompts.push({
+      text: `What are the biggest gaps in how ${inputs.department} works today?`,
+      category: "department",
+      topic: "gaps",
+    });
   }
   if (inputs.newSince && inputs.newSince.count > 0) {
-    prompts.push({ text: `What's new since ${inputs.newSince.date}?`, category: "whatsNew" });
+    prompts.push({ text: `What's new since ${inputs.newSince.date}?`, category: "whatsNew", topic: "whatsNew" });
   }
   if (inputs.hasSystems && prompts.length < 6) {
-    prompts.push({ text: "Which systems cause the most friction, and what would a replacement need to fix?", category: "orgWide" });
+    prompts.push({ text: SYSTEMS_PROMPT, category: "orgWide", topic: "systems" });
   }
   if (prompts.length < 4) {
-    prompts.push({ text: "How much of the organization has been interviewed so far, and where are the gaps?", category: "orgWide" });
+    prompts.push({ text: COVERAGE_PROMPT, category: "orgWide", topic: "coverage" });
   }
   return prompts.slice(0, 6);
+}
+
+/**
+ * The topic of a prompt stored before topics existed, from its category and
+ * the template it came from. Null for text no template produces.
+ */
+export function topicForStoredPrompt(prompt: { text: string; category: SuggestionCategory }): SuggestionTopic | null {
+  switch (prompt.category) {
+    case "help":
+      return "usingFabric";
+    case "whatsNew":
+      return "whatsNew";
+    case "department":
+      return "gaps";
+    case "entitySignal": {
+      for (const signal of Object.keys(SIGNAL_PHRASE) as Array<keyof typeof SIGNAL_PHRASE>) {
+        if (prompt.text.startsWith(`What's behind ${SIGNAL_PHRASE[signal]} in `)) return SIGNAL_TOPIC[signal];
+      }
+      return null;
+    }
+    case "orgWide": {
+      const byText: Record<string, SuggestionTopic> = {
+        [FRICTION_PROMPT]: "friction",
+        [MOVES_PROMPT]: "biggestMoves",
+        [SYSTEMS_PROMPT]: "systems",
+        [COVERAGE_PROMPT]: "coverage",
+      };
+      return byText[prompt.text] ?? null;
+    }
+  }
 }

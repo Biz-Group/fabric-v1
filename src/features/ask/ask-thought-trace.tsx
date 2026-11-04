@@ -62,9 +62,10 @@ function Step({ step }: { step: TraceStep }) {
 }
 
 /**
- * The collapsible list of an answer's reasoning and tool steps (FR-2.15).
- * Open while the agent works; folds when the answer begins, unless the user
- * has opened or closed it themselves.
+ * The answer's byline: the Fabric mark in the org accent, rippling while the
+ * answer is worked on, then the collapsible list of its reasoning and tool
+ * steps (FR-2.15). The list is open while the agent works and folds when the
+ * answer begins, unless the user has opened or closed it themselves.
  */
 export function AskThoughtTrace({
   parts,
@@ -77,17 +78,24 @@ export function AskThoughtTrace({
 }) {
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
   const steps = traceSteps(parts, status);
-  if (steps.length === 0) return null;
   const open = userOpen ?? traceDefaultOpen(parts, status);
   return (
     <Collapsible open={open} onOpenChange={(next) => setUserOpen(next)} className="mb-2">
-      <CollapsibleTrigger className="group flex items-center gap-1 rounded-sm text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-        <ChevronRight
-          className="size-3.5 transition-transform group-data-[panel-open]:rotate-90 motion-reduce:transition-none"
-          aria-hidden
-        />
-        {traceHeader(parts, status, completedAt)}
-      </CollapsibleTrigger>
+      <div className="flex min-h-5 flex-wrap items-center gap-x-2 gap-y-0.5">
+        <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <AskThinkingMark still={status !== "streaming"} className="text-org-accent" />
+          AskFabric
+        </span>
+        {steps.length > 0 && (
+          <CollapsibleTrigger className="group flex items-center gap-1 rounded-sm text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+            {traceHeader(parts, status, completedAt)}
+            <ChevronRight
+              className="size-3.5 transition-transform group-data-[panel-open]:rotate-90 motion-reduce:transition-none"
+              aria-hidden
+            />
+          </CollapsibleTrigger>
+        )}
+      </div>
       <CollapsibleContent>
         <ol className="mt-1 ml-1.5 border-l pl-3">
           {steps.map((step) => (
@@ -126,8 +134,8 @@ export function AskStatusLine({
   const elapsedMs = Math.max(0, now - startedAt);
   const line = statusLine(parts, status, elapsedMs);
   return (
+    // The byline above carries the rippling mark.
     <div className="flex min-h-5 items-baseline gap-2 text-sm">
-      {line && <AskThinkingMark className="self-center text-foreground" />}
       {/* Only the words are announced; the ticking seconds would be noise. */}
       <span aria-live="polite">{line && <ShimmeringText text={line} className="text-sm" />}</span>
       {line && elapsedMs >= SHOW_ELAPSED_AFTER_MS && (

@@ -6,7 +6,7 @@ import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import schema from "../schema";
 import { userErrorMessageOf } from "../lib/userError";
-import { buildSuggestions } from "./suggestions";
+import { buildSuggestions, topicForStoredPrompt } from "./suggestions";
 
 const modules = import.meta.glob("/convex/**/*.ts");
 const ORG = "org_ask_lifecycle";
@@ -314,6 +314,29 @@ describe("starter prompts (FR-6)", () => {
     expect(prompts.length).toBeLessThanOrEqual(6);
   });
 
+  test("every prompt has a topic, and a stored prompt without one maps back to the same topic", () => {
+    const inputs = {
+      completedContributions: 12,
+      hasSystems: true,
+      department: "Finance",
+      newSince: { count: 3, date: "2026-10-30" },
+    };
+    const prompts = [
+      ...(["bottleneck", "friction", "tribalKnowledge", "handoff"] as const).flatMap((signal) =>
+        buildSuggestions({ ...inputs, role: "viewer", topSignal: { signal, processName: "Dispatch" } }),
+      ),
+      ...buildSuggestions({ ...inputs, hasSystems: false, department: null, newSince: null, role: "viewer", topSignal: null }),
+      ...buildSuggestions({ ...inputs, completedContributions: 0, role: "admin", topSignal: null }),
+    ];
+    expect(new Set(prompts.map((p) => p.topic))).toEqual(
+      new Set(["friction", "biggestMoves", "bottlenecks", "keyPersonRisk", "handoffs", "gaps", "whatsNew", "systems", "coverage", "usingFabric"]),
+    );
+    for (const prompt of prompts) {
+      expect(topicForStoredPrompt({ text: prompt.text, category: prompt.category }), prompt.text).toBe(prompt.topic);
+    }
+    expect(topicForStoredPrompt({ text: "Something no template writes?", category: "orgWide" })).toBeNull();
+  });
+
   test("an empty org gets help prompts written for the role (FR-6.5)", () => {
     const base = { completedContributions: 0, topSignal: null, hasSystems: false, department: null, newSince: null };
     expect(buildSuggestions({ ...base, role: "viewer" }).every((p) => p.category === "help")).toBe(true);
@@ -339,6 +362,12 @@ describe("starter prompts (FR-6)", () => {
     await drain(t);
     const prompts = await asAna.query(api.askSuggestions.getSuggestions, {});
     expect(prompts.map((p) => p.text)).toContain("What are the biggest gaps in how Finance works today?");
+    // The new-thread page: what answers draw on, and ana's own placement.
+    expect(await asAna.query(api.askSuggestions.getStarterContext, {})).toMatchObject({
+      stats: { contributions: 1, contributionsCapped: false, processes: 1, departments: 1 },
+      department: { name: "Finance" },
+      function: { name: "F" },
+    });
 
     await t.mutation(internal.askSuggestions.recomputeForOrg, { clerkOrgId: ORG });
     const oldRow = await t.run(async (ctx) =>

@@ -53,6 +53,13 @@ import {
 import { citationChecker, citationPathResolver } from "./askfabric/citationAccess";
 import { runTurnLoop } from "./askfabric/loop";
 import { AskModelError, askModelClientFor } from "./askfabric/modelClient";
+import {
+  FOLLOW_UP_COUNT,
+  FOLLOW_UP_MAX_TOKENS,
+  FOLLOW_UP_SYSTEM_PROMPT,
+  followUpPrompt,
+  parseFollowUps,
+} from "./askfabric/followUps";
 import { ASK_SYSTEM_PROMPT, ASK_SYSTEM_PROMPT_VERSION } from "./askfabric/systemPrompt";
 
 const unavailableReasonValidator = v.union(
@@ -347,6 +354,7 @@ export const getThread = query({
         status: message.status ?? null,
         errorReason: message.errorReason ?? null,
         completedAt: message.completedAt ?? null,
+        followUps: message.followUps ?? null,
         citations: await Promise.all(
           citations
             .sort((a, b) => a.ordinal - b.ordinal)
@@ -551,6 +559,8 @@ export const finishTurn = internalMutation({
       quality: args.quality,
       completedAt: now,
       cancelRequested: false,
+      // The turn writes suggestions next; this keeps the page from asking twice.
+      ...(args.status === "complete" ? { followUpsRequestedAt: now } : {}),
     });
     for (const citation of args.citations) {
       await ctx.db.insert("askCitations", {
@@ -572,6 +582,170 @@ export const setThreadTitle = internalMutation({
     const thread = await ctx.db.get(args.threadId);
     if (!thread || thread.status === "deleting") return null;
     await ctx.db.patch("askThreads", thread._id, { title: args.title });
+    return null;
+  },
+});
+
+/** A missing set is asked for again only after this, in case a call failed. */
+const FOLLOW_UP_RETRY_MS = 2 * 60 * 1_000;
+
+/**
+ * What a follow-up call needs, or null when the answer shouldn't get one:
+ * only the owner's latest answer, complete and without a set yet. Source
+ * titles are re-checked, so a source the viewer can no longer open isn't
+ * named in a suggestion.
+ */
+export const loadFollowUpContext = internalQuery({
+  args: { assistantMessageId: v.id("askMessages"), viewer: orgViewerValidator },
+  handler: async (ctx, args) => {
+    const viewer = await requireOrgViewer(ctx, args.viewer);
+    const message = await ctx.db.get(args.assistantMessageId);
+    if (!message || message.role !== "assistant" || message.status !== "complete" || message.followUps !== undefined) {
+      return null;
+    }
+    const thread = await ctx.db.get(message.threadId);
+    if (!thread || thread.clerkOrgId !== viewer.orgId || thread.userId !== viewer.user._id || thread.status === "deleting") {
+      return null;
+    }
+    const messages = await ctx.db
+      .query("askMessages")
+      .withIndex("by_threadId", (q) => q.eq("threadId", thread._id))
+      .take(MAX_THREAD_MESSAGES);
+    const index = messages.findIndex((m) => m._id === message._id);
+    const question = index > 0 ? messages[index - 1] : null;
+    if (index !== messages.length - 1 || !question || question.role !== "user") return null;
+    const answer = messageText(message);
+    if (!answer) return null;
+
+    const availability = citationChecker(ctx, viewer.orgId, viewer.role);
+    const citations = await ctx.db
+      .query("askCitations")
+      .withIndex("by_messageId", (q) => q.eq("messageId", message._id))
+      .take(200);
+    const sources: string[] = [];
+    for (const citation of citations) {
+      if ((await availability(citation.source)) !== "unavailable") sources.push(citation.title);
+    }
+    return {
+      threadId: thread._id,
+      userId: viewer.user._id,
+      question: messageText(question),
+      answer,
+      sources,
+      asked: messages.filter((m) => m.role === "user").map(messageText),
+    };
+  },
+});
+
+export const setFollowUps = internalMutation({
+  args: { assistantMessageId: v.id("askMessages"), followUps: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.assistantMessageId);
+    if (!message || message.status !== "complete" || message.followUps !== undefined) return null;
+    const thread = await ctx.db.get(message.threadId);
+    if (!thread || thread.status === "deleting") return null;
+    await ctx.db.patch("askMessages", message._id, { followUps: args.followUps.slice(0, FOLLOW_UP_COUNT) });
+    return null;
+  },
+});
+
+/**
+ * Writes suggested follow-ups for an answer (one metered call). Never throws:
+ * a failed call leaves the set unset, and reopening the thread asks again.
+ */
+async function generateFollowUps(
+  ctx: ActionCtx,
+  config: AskFabricConfig,
+  assistantMessageId: Id<"askMessages">,
+  viewer: Infer<typeof orgViewerValidator>,
+): Promise<void> {
+  try {
+    const input = await ctx.runQuery(internal.ask.loadFollowUpContext, { assistantMessageId, viewer });
+    if (!input) return;
+    const model = askModelClientFor(config);
+    const attribution: UsageAttribution = {
+      clerkOrgId: viewer.orgId,
+      entityType: "askThread",
+      entityId: input.threadId,
+      actorUserId: input.userId,
+      runId: assistantMessageId,
+    };
+    const final = await meteredStream(
+      ctx,
+      attribution,
+      {
+        operation: ASKFABRIC_OPERATIONS.followUps,
+        provider: ASKFABRIC_PROVIDER,
+        model: config.meteredModel,
+        providerDeployment: config.deployment,
+        stepIndex: 0,
+        partialUsage: (error: unknown) => (error instanceof AskModelError ? error.partialUsage : undefined),
+      },
+      async () => {
+        const result = await model.complete({
+          system: FOLLOW_UP_SYSTEM_PROMPT,
+          user: followUpPrompt(input),
+          maxTokens: FOLLOW_UP_MAX_TOKENS,
+        });
+        return { ...result, finishReason: result.stopReason };
+      },
+    );
+    const raw = final.content
+      .filter((block): block is { type: "text"; text: string } => block.type === "text" && typeof block.text === "string")
+      .map((block) => block.text)
+      .join("\n");
+    await ctx.runMutation(internal.ask.setFollowUps, {
+      assistantMessageId,
+      followUps: parseFollowUps(raw, input.asked),
+    });
+  } catch (error) {
+    console.warn("AskFabric follow-ups call failed", {
+      errorType: error instanceof Error ? error.name : "UnknownError",
+    });
+  }
+}
+
+export const fillFollowUps = internalAction({
+  args: { assistantMessageId: v.id("askMessages"), viewer: orgViewerValidator },
+  handler: async (ctx, args) => {
+    const config = readAskFabricConfig();
+    if (!config.ok) return null;
+    await generateFollowUps(ctx, config.config, args.assistantMessageId, args.viewer);
+    return null;
+  },
+});
+
+/**
+ * Asks for suggestions on a thread's latest answer when it has none: answers
+ * from before suggestions existed get them the first time their thread is
+ * opened. A no-op while a call for it may still be running.
+ */
+export const requestFollowUps = mutation({
+  args: { messageId: v.id("askMessages") },
+  handler: async (ctx, args) => {
+    const org = await requireOrgMember(ctx);
+    const message = await ctx.db.get(args.messageId);
+    // Anyone but the owner gets not-found, as for Stop (FR-3.1).
+    if (!message || message.clerkOrgId !== org.orgId || message.userId !== org.userId) {
+      throw userError("MESSAGE_NOT_FOUND", "This answer no longer exists.");
+    }
+    if (!askFabricAvailability(org.orgId).available) return null;
+    if (message.role !== "assistant" || message.status !== "complete" || message.followUps !== undefined) return null;
+    const now = Date.now();
+    if (message.followUpsRequestedAt !== undefined && now - message.followUpsRequestedAt < FOLLOW_UP_RETRY_MS) return null;
+    const thread = await ctx.db.get(message.threadId);
+    if (!thread || thread.status === "deleting") return null;
+    const latest = await ctx.db
+      .query("askMessages")
+      .withIndex("by_threadId", (q) => q.eq("threadId", thread._id))
+      .order("desc")
+      .first();
+    if (latest?._id !== message._id) return null;
+    await ctx.db.patch("askMessages", message._id, { followUpsRequestedAt: now });
+    await ctx.scheduler.runAfter(0, internal.ask.fillFollowUps, {
+      assistantMessageId: message._id,
+      viewer: { tokenIdentifier: org.tokenIdentifier, orgId: org.orgId },
+    });
     return null;
   },
 });
@@ -616,6 +790,8 @@ export type TurnOptions = {
   operation: string;
   /** Title the thread after its first complete answer (FR-2.10). */
   title: boolean;
+  /** Suggest follow-up questions after a complete answer. */
+  followUps?: boolean;
 };
 
 /**
@@ -720,6 +896,11 @@ export async function executeTurn(ctx: ActionCtx, args: TurnArgs, options: TurnO
     })),
   });
 
+  // Suggestions first: they show under the answer, the title only in the list.
+  if (options.followUps && outcome.status === "complete") {
+    await generateFollowUps(ctx, config, args.assistantMessageId, args.viewer);
+  }
+
   // FR-2.10: a short title after the first complete answer. The fallback
   // title (the question's start) stays if this fails.
   if (options.title && outcome.status === "complete" && context.isFirstTurn) {
@@ -770,6 +951,11 @@ export const runTurn = internalAction({
       });
       return null;
     }
-    return await executeTurn(ctx, args, { config: config.config, operation: ASKFABRIC_OPERATIONS.turn, title: true });
+    return await executeTurn(ctx, args, {
+      config: config.config,
+      operation: ASKFABRIC_OPERATIONS.turn,
+      title: true,
+      followUps: true,
+    });
   },
 });

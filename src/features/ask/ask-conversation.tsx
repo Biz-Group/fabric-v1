@@ -2,18 +2,39 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { FunctionReturnType } from "convex/server";
+import { useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { RotateCcw } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowRightLeft,
+  AtSign,
+  BookOpen,
+  ChartPie,
+  Copy,
+  CornerDownRight,
+  Hourglass,
+  Puzzle,
+  RotateCcw,
+  Server,
+  Sparkles,
+  Target,
+  UserRound,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
+import { useStickToBottomContext } from "use-stick-to-bottom";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import type { SuggestionTopic } from "../../../convex/askfabric/suggestions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Conversation, ConversationContent, ConversationScrollButton } from "@/components/ui/conversation";
+import { Conversation, ConversationContent } from "@/components/ui/conversation";
 import { Message, MessageContent } from "@/components/ui/message";
 import { Skeleton } from "@/components/ui/skeleton";
 import { describeError } from "@/lib/user-error-message";
-import { AskAnswer, AskSources, HelpDialogHost } from "./ask-citations";
-import { AskComposer, type Mention } from "./ask-composer";
+import { AskAnswer, AskEvidence, AskSources, HelpDialogHost } from "./ask-citations";
+import { AskComposer, type AskComposerHandle, type Mention } from "./ask-composer";
+import { AskThinkingMark } from "./ask-thinking-mark";
 import { CopyAnswerButton, ReadAloudButton } from "./ask-answer-actions";
 import { AskFeedback } from "./ask-feedback";
 import { AskStatusLine, AskThoughtTrace } from "./ask-thought-trace";
@@ -22,23 +43,63 @@ import { answerText, errorMessage, type MessageStatus } from "./trace-view-model
 type Thread = NonNullable<FunctionReturnType<typeof api.ask.getThread>>;
 type ThreadMessage = Thread["messages"][number];
 
+type StarterPrompt = { text: string; topic?: SuggestionTopic };
+
 /**
  * Shown only until the first stored set exists (FR-6.3): the org-wide seed
  * questions, so the empty state never waits on a query.
  */
-const DEFAULT_PROMPTS = [
-  "What are the things that are consistently slowing us down or creating friction in the business?",
-  "What would be the three most impactful moves we could make?",
-  "Which systems cause the most friction, and which should we think about replacing?",
-  "How much duplicated work is there across our processes?",
+const DEFAULT_PROMPTS: StarterPrompt[] = [
+  {
+    text: "What are the things that are consistently slowing us down or creating friction in the business?",
+    topic: "friction",
+  },
+  { text: "What would be the three most impactful moves we could make?", topic: "biggestMoves" },
+  { text: "Which systems cause the most friction, and which should we think about replacing?", topic: "systems" },
+  { text: "How much duplicated work is there across our processes?", topic: "duplication" },
 ];
+
+/** Each starter prompt's label on the new-thread page. */
+const TOPIC: Record<SuggestionTopic, { label: string; icon: LucideIcon }> = {
+  friction: { label: "Friction", icon: Zap },
+  biggestMoves: { label: "Biggest moves", icon: Target },
+  systems: { label: "Systems", icon: Server },
+  duplication: { label: "Duplication", icon: Copy },
+  bottlenecks: { label: "Bottlenecks", icon: Hourglass },
+  handoffs: { label: "Handoffs", icon: ArrowRightLeft },
+  keyPersonRisk: { label: "Key-person risk", icon: UserRound },
+  gaps: { label: "Gaps", icon: Puzzle },
+  whatsNew: { label: "What's new", icon: Sparkles },
+  coverage: { label: "Coverage", icon: ChartPie },
+  usingFabric: { label: "Using Fabric", icon: BookOpen },
+};
+
+function plural(count: number, one: string, many: string, capped = false): string {
+  return `${count.toLocaleString()}${capped ? "+" : ""} ${count === 1 && !capped ? one : many}`;
+}
+
+/** What answers can draw on, or null before the workspace has contributions. */
+function trustLine(stats: FunctionReturnType<typeof api.askSuggestions.getStarterContext>["stats"]): string | null {
+  if (!stats || stats.contributions === 0) return null;
+  const parts = [
+    plural(stats.contributions, "contribution", "contributions", stats.contributionsCapped),
+    ...(stats.processes > 0 ? [plural(stats.processes, "process", "processes")] : []),
+    ...(stats.departments > 0 ? [plural(stats.departments, "department", "departments")] : []),
+  ];
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0];
+  return `Answers draw on ${list} in this workspace, with a source for every claim.`;
+}
 
 function AssistantMessage({
   message,
+  isLatest,
+  onAsk,
   onRetry,
   onOpenHelp,
 }: {
   message: ThreadMessage;
+  isLatest: boolean;
+  onAsk: (question: string) => void;
   onRetry: (() => void) | null;
   onOpenHelp: (articleId: string) => void;
 }) {
@@ -49,6 +110,7 @@ function AssistantMessage({
       <MessageContent variant="flat" className="w-full max-w-none gap-0 overflow-visible">
         <AskThoughtTrace parts={message.parts} status={status} completedAt={message.completedAt} />
         {status === "streaming" && <AskStatusLine parts={message.parts} status={status} startedAt={message._creationTime} />}
+        {text && status !== "streaming" && <AskEvidence citations={message.citations} />}
         {text && <AskAnswer text={text} citations={message.citations} onOpenHelp={onOpenHelp} />}
         {status === "stopped" && <p className="mt-2 text-xs text-muted-foreground">Stopped.</p>}
         {status === "error" && (
@@ -78,6 +140,23 @@ function AssistantMessage({
             }
           />
         )}
+        {/* Only under the latest answer; one click asks it. Right-aligned, on
+            the side the member's own questions sit. */}
+        {isLatest && status === "complete" && message.followUps && message.followUps.length > 0 && (
+          <div role="group" aria-label="Suggested follow-up questions" className="mt-3 flex flex-col items-end gap-2">
+            {message.followUps.map((question) => (
+              <button
+                key={question}
+                type="button"
+                className="focus-ring inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-full border border-org-accent-border bg-org-accent-subtle px-3 py-1 text-left text-xs font-medium text-org-accent-selected-foreground transition-colors hover:bg-org-accent-selected"
+                onClick={() => onAsk(question)}
+              >
+                <CornerDownRight className="size-3.5 shrink-0 text-org-accent" aria-hidden />
+                {question}
+              </button>
+            ))}
+          </div>
+        )}
       </MessageContent>
     </Message>
   );
@@ -99,12 +178,10 @@ function questionText(message: ThreadMessage): string {
   return answerText(message.parts);
 }
 
-/** Questions left at or below this show in the footer (D51). */
-const LOW_ALLOWANCE = 5;
-
 /**
- * The footer line: the beta's daily limit once it matters (D51), otherwise
- * the standing reminder to check sources.
+ * The footer line: why asking is blocked once the beta's daily limit is used
+ * (D51), otherwise the standing reminder to check sources. The count of
+ * questions left sits in the page header.
  */
 function allowanceNote(allowance: FunctionReturnType<typeof api.ask.getDailyAllowance> | undefined): string {
   const reminder = "AskFabric is in beta and can be wrong. Check the sources.";
@@ -115,11 +192,31 @@ function allowanceNote(allowance: FunctionReturnType<typeof api.ask.getDailyAllo
   if (allowance.remaining === 0) {
     return `You've used today's ${allowance.limit} beta questions. You can ask again after midnight Gulf time.`;
   }
-  if (allowance.remaining !== null && allowance.remaining <= LOW_ALLOWANCE) {
-    const left = allowance.remaining === 1 ? "1 question" : `${allowance.remaining} questions`;
-    return `${left} left today (beta limit ${allowance.limit} a day). ${reminder}`;
-  }
   return reminder;
+}
+
+/**
+ * Jumps to the latest message. It sits at the pane's right edge over a fade,
+ * clear of the centred answer column, so it never covers the text.
+ */
+function AskScrollButton() {
+  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
+  if (isAtBottom) return null;
+  return (
+    <>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-background" aria-hidden />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="absolute right-4 bottom-3 rounded-full bg-background text-muted-foreground shadow-md dark:bg-background"
+        onClick={() => void scrollToBottom()}
+      >
+        <ArrowDown className="size-3.5" aria-hidden />
+        Latest
+      </Button>
+    </>
+  );
 }
 
 /**
@@ -138,13 +235,31 @@ export function AskConversation({
   const stored = useQuery(api.askSuggestions.getSuggestions, threadId ? "skip" : {});
   // Null while loading, so the defaults never flash before the member's own
   // prompts; the defaults are only for a member with none stored yet.
-  const prompts = stored === undefined ? null : stored.length > 0 ? stored.map((s) => s.text) : DEFAULT_PROMPTS;
+  const prompts: StarterPrompt[] | null = stored === undefined ? null : stored.length > 0 ? stored : DEFAULT_PROMPTS;
+  const starter = useQuery(api.askSuggestions.getStarterContext, threadId ? "skip" : {});
   const allowance = useQuery(api.ask.getDailyAllowance);
   const sendMessage = useMutation(api.ask.sendMessage);
   const stopTurn = useMutation(api.ask.stopTurn);
+  const requestFollowUps = useMutation(api.ask.requestFollowUps);
+  const composerRef = useRef<AskComposerHandle>(null);
 
   const messages = thread?.messages ?? [];
   const streaming = messages.find((m) => m.role === "assistant" && m.status === "streaming");
+
+  // An answer from before follow-ups existed gets them when its thread opens;
+  // the server ignores the request while a fresh answer's call is running.
+  const latest = messages.at(-1);
+  const missingFollowUpsId =
+    latest?.role === "assistant" && latest.status === "complete" && latest.followUps === null ? latest._id : null;
+  useEffect(() => {
+    if (missingFollowUpsId) void requestFollowUps({ messageId: missingFollowUpsId }).catch(() => {});
+  }, [missingFollowUpsId, requestFollowUps]);
+
+  const trust = trustLine(starter?.stats ?? null);
+  const areas: Mention[] = [
+    ...(starter?.department ? [{ kind: "department" as const, ...starter.department }] : []),
+    ...(starter?.function ? [{ kind: "function" as const, ...starter.function }] : []),
+  ];
 
   const send = async (text: string, mentions: Mention[] = []): Promise<boolean> => {
     try {
@@ -187,37 +302,65 @@ export function AskConversation({
             </div>
           ) : !threadId ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-6 overflow-y-auto p-4">
-              <div className="space-y-1 text-center">
-                <h2 className="text-lg font-semibold text-foreground">
+              <div className="flex flex-col items-center gap-2 text-center">
+                <span className="mb-1 flex size-12 items-center justify-center rounded-xl border border-org-accent-border bg-org-accent-subtle">
+                  <AskThinkingMark still className="size-6 text-org-accent" />
+                </span>
+                <h2 className="text-lg font-semibold text-balance text-foreground">
                   Ask about how your organization works
                   {/* Inline, so it wraps with the last word on a narrow screen. */}
                   <Badge variant="outline" className="ml-2 align-middle">
                     Beta
                   </Badge>
                 </h2>
-                <p className="text-sm text-muted-foreground">
-                  Answers come from your workspace&apos;s contributions, overviews and flows, with sources.
+                <p className="max-w-lg text-sm text-muted-foreground">
+                  {trust ?? "Answers come from your workspace's contributions, overviews and flows, with sources."}
                 </p>
               </div>
               <ul className="grid w-full max-w-2xl gap-2 sm:grid-cols-2" aria-busy={prompts === null}>
                 {prompts === null &&
                   Array.from({ length: 4 }, (_, index) => (
                     <li key={index}>
-                      <Skeleton className="h-16 w-full rounded-lg" />
+                      <Skeleton className="h-20 w-full rounded-lg" />
                     </li>
                   ))}
-                {prompts?.map((prompt) => (
-                  <li key={prompt}>
-                    <button
-                      type="button"
-                      className="h-full w-full rounded-lg border bg-background p-3 text-left text-sm text-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
-                      onClick={() => void send(prompt)}
-                    >
-                      {prompt}
-                    </button>
-                  </li>
-                ))}
+                {prompts?.map((prompt) => {
+                  const topic = prompt.topic ? TOPIC[prompt.topic] : null;
+                  return (
+                    <li key={prompt.text}>
+                      <button
+                        type="button"
+                        className="flex h-full w-full flex-col gap-1.5 rounded-lg border bg-background p-3 text-left text-sm text-foreground transition-colors hover:border-org-accent-border hover:bg-org-accent-subtle focus-visible:outline-2 focus-visible:outline-ring"
+                        onClick={() => void send(prompt.text)}
+                      >
+                        {topic && (
+                          <span className="flex items-center gap-1.5 text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
+                            <topic.icon className="size-3.5 text-org-accent" aria-hidden />
+                            {topic.label}
+                          </span>
+                        )}
+                        {prompt.text}
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
+              {areas.length > 0 && (
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <span className="text-xs text-muted-foreground">Or start from an area</span>
+                  {areas.map((area) => (
+                    <button
+                      key={area.id}
+                      type="button"
+                      className="focus-ring inline-flex min-h-8 items-center gap-1.5 rounded-full border border-org-accent-border bg-org-accent-subtle px-3 py-1 text-xs font-medium text-org-accent-selected-foreground transition-colors hover:bg-org-accent-selected"
+                      onClick={() => composerRef.current?.insertMention(area)}
+                    >
+                      <AtSign className="size-3.5 text-org-accent" aria-hidden />
+                      {area.name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <Conversation className="min-h-0">
@@ -231,6 +374,8 @@ export function AskConversation({
                     <AssistantMessage
                       key={message._id}
                       message={message}
+                      isLatest={index === messages.length - 1}
+                      onAsk={(question) => void send(question)}
                       onOpenHelp={openHelp}
                       onRetry={
                         index > 0 && messages[index - 1].role === "user" && index === messages.length - 1
@@ -241,11 +386,17 @@ export function AskConversation({
                   ),
                 )}
               </ConversationContent>
-              <ConversationScrollButton />
+              <AskScrollButton />
             </Conversation>
           )}
           <div className="mx-auto w-full max-w-3xl px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <AskComposer streaming={streaming !== undefined} onSend={send} onStop={stop} autoFocus={!threadId} />
+            <AskComposer
+              ref={composerRef}
+              streaming={streaming !== undefined}
+              onSend={send}
+              onStop={stop}
+              autoFocus={!threadId}
+            />
             <p className="mt-1.5 text-center text-[11px] text-muted-foreground">{allowanceNote(allowance)}</p>
           </div>
         </div>

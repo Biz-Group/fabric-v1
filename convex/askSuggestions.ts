@@ -89,7 +89,18 @@ export const recomputeForOrg = internalMutation({
 
     const orgPrompts = buildSuggestions({ ...base, role: "viewer", department: null, newSince: null });
     const orgRow = await orgDefaultRow(ctx, args.clerkOrgId);
-    const orgFields = { prompts: orgPrompts, signals: signalKeys(orgPrompts), generatedAt: now, refreshScheduledAt: undefined };
+    const orgFields = {
+      prompts: orgPrompts,
+      signals: signalKeys(orgPrompts),
+      generatedAt: now,
+      refreshScheduledAt: undefined,
+      stats: {
+        contributions: done.length,
+        contributionsCapped: done.length >= MAX_DONE_SCAN,
+        processes: hierarchy.processes.length,
+        departments: hierarchy.departments.length,
+      },
+    };
     if (orgRow) await ctx.db.patch("askSuggestions", orgRow._id, orgFields);
     else await ctx.db.insert("askSuggestions", { clerkOrgId: args.clerkOrgId, ...orgFields });
 
@@ -190,6 +201,31 @@ export const markVisited = mutation({
       });
     }
     return null;
+  },
+});
+
+/**
+ * The rest of the new-thread page: what answers can draw on (counted when the
+ * org's prompts are rebuilt) and the caller's own placement, for the "start
+ * from an area" shortcuts. Stats are null until the first rebuild.
+ */
+export const getStarterContext = query({
+  args: {},
+  handler: async (ctx) => {
+    const org = await requireOrgMember(ctx);
+    const orgRow = await ctx.db
+      .query("askSuggestions")
+      .withIndex("by_clerkOrgId_and_userId", (q) => q.eq("clerkOrgId", org.orgId).eq("userId", undefined))
+      .first();
+    const membership = await ctx.db.get(org.membershipId);
+    const department = membership?.departmentId ? await ctx.db.get(membership.departmentId) : null;
+    const fn = department ? await ctx.db.get(department.functionId) : null;
+    const inOrg = (doc: { clerkOrgId?: string } | null) => doc !== null && doc.clerkOrgId === org.orgId;
+    return {
+      stats: orgRow?.stats ?? null,
+      department: department && inOrg(department) ? { id: department._id, name: department.name } : null,
+      function: fn && inOrg(fn) ? { id: fn._id, name: fn.name } : null,
+    };
   },
 });
 

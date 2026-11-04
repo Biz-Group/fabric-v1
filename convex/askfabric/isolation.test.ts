@@ -179,6 +179,7 @@ function targetedWrites(target: { threadId: Id<"askThreads">; messageId: Id<"ask
   return {
     sendMessage: (c: Caller) => c.mutation(api.ask.sendMessage, { threadId: target.threadId, text: "Follow-up" }),
     stopTurn: (c: Caller) => c.mutation(api.ask.stopTurn, { messageId: target.messageId }),
+    requestFollowUps: (c: Caller) => c.mutation(api.ask.requestFollowUps, { messageId: target.messageId }),
     renameThread: (c: Caller) => c.mutation(api.askThreads.renameThread, { threadId: target.threadId, title: "Renamed" }),
     setPinned: (c: Caller) => c.mutation(api.askThreads.setPinned, { threadId: target.threadId, pinned: false }),
     setArchived: (c: Caller) => c.mutation(api.askThreads.setArchived, { threadId: target.threadId, archived: true }),
@@ -201,6 +202,7 @@ async function orgReads(c: Caller, s: Setup, admin: boolean) {
     listPinned: await c.query(api.askThreads.listPinned, {}),
     searchThreads: await c.query(api.askThreads.searchThreads, { query: "thread" }),
     getSuggestions: await c.query(api.askSuggestions.getSuggestions, {}),
+    getStarterContext: await c.query(api.askSuggestions.getStarterContext, {}),
     getAnaThread: await c.query(api.ask.getThread, { threadId: s.ids.anaContent.threadId }),
     getBobThread: await c.query(api.ask.getThread, { threadId: s.ids.bobContent.threadId }),
     ...(admin
@@ -451,6 +453,7 @@ describe("coverage", () => {
       "ask.getDailyAllowance",
       "ask.sendMessage",
       "ask.stopTurn",
+      "ask.requestFollowUps",
       "ask.getThread",
       "askThreads.listThreads",
       "askThreads.listPinned",
@@ -465,6 +468,7 @@ describe("coverage", () => {
       "askShared.listSharedExchanges",
       "askShared.viewSharedExchange",
       "askSuggestions.getSuggestions",
+      "askSuggestions.getStarterContext",
       "askSuggestions.markVisited",
       "askUsage.getOrgUsage",
       "askUsage.listFeedback",

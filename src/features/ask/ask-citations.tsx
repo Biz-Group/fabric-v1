@@ -4,16 +4,50 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+  BookOpen,
+  Building2,
+  Cog,
+  FileText,
+  GitBranch,
+  LayoutGrid,
+  Layers,
+  Mic,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { HELP_ARTICLES } from "../../../convex/askTools/helpCorpus.generated";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 import { cn } from "@/lib/utils";
-import { citationTarget, groupSources, type CitationView } from "./citation-links";
+import {
+  citationTarget,
+  evidenceSummary,
+  groupSources,
+  sourceKind,
+  sourceKindLabel,
+  type CitationView,
+  type SourceKind,
+} from "./citation-links";
 import { markersToLinks } from "./trace-view-model";
 
+// Tinted with the org accent so sources stand out from the text; a
+// monochrome tenant gets a light neutral tint with an outline.
 const CHIP =
-  "mx-0.5 inline-flex h-4 min-w-4 -translate-y-px items-center justify-center rounded-full bg-muted px-1 align-middle text-[10px] font-medium tabular-nums text-muted-foreground no-underline transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring";
+  "mx-0.5 inline-flex h-4 min-w-4 -translate-y-px items-center justify-center rounded-full bg-org-accent-subtle px-1 align-middle text-[10px] font-medium tabular-nums text-foreground no-underline ring-1 ring-org-accent-border ring-inset transition-colors hover:bg-org-accent hover:text-org-accent-foreground hover:ring-org-accent focus-visible:outline-2 focus-visible:outline-ring";
+
+/** The workbench's icons for each kind of source (command palette, process tabs). */
+const SOURCE_ICON: Record<SourceKind, LucideIcon> = {
+  process: Cog,
+  department: Layers,
+  function: Building2,
+  flow: GitBranch,
+  contribution: Mic,
+  help: BookOpen,
+  workspace: LayoutGrid,
+  members: Users,
+};
 
 function CitationCard({ citation }: { citation: CitationView }) {
   if (citation.availability === "unavailable") {
@@ -141,6 +175,81 @@ export function AskAnswer({
   );
 }
 
+/**
+ * What the answer stands on, one line under the byline: distinct
+ * contributions, processes, flows and so on among its citations.
+ */
+export function AskEvidence({ citations }: { citations: CitationView[] }) {
+  const items = evidenceSummary(citations);
+  if (items.length === 0) return null;
+  return (
+    <p className="mb-3 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs text-muted-foreground">
+      <span className="sr-only">Based on</span>
+      {items.map((item) => {
+        const Icon = SOURCE_ICON[item.kind];
+        return (
+          <span key={item.kind} className="inline-flex items-center gap-1.5 tabular-nums">
+            <Icon className="size-3.5" aria-hidden />
+            {item.label}
+          </span>
+        );
+      })}
+    </p>
+  );
+}
+
+/** Chips a source row shows before "+N more": a flow cited node by node can run to dozens. */
+const CHIPS_SHOWN = 4;
+
+function SourceRow({
+  group,
+  onOpenHelp,
+}: {
+  group: ReturnType<typeof groupSources>[number];
+  onOpenHelp: (articleId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const kind = sourceKind(group.citations[0].source);
+  const Icon = kind ? SOURCE_ICON[kind] : FileText;
+  const hidden = group.citations.length - CHIPS_SHOWN;
+  const chips = expanded || hidden <= 0 ? group.citations : group.citations.slice(0, CHIPS_SHOWN);
+  return (
+    <li className="flex min-w-0 items-start gap-2.5 py-1.5">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+        <Icon className="size-3.5" aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span
+          className="block truncate text-xs font-medium text-foreground"
+          title={group.citations.map((c) => `${c.ordinal}. ${c.title}`).join("\n")}
+        >
+          {group.label}
+        </span>
+        {/* Under the title, so many chips wrap instead of covering it. */}
+        <span className="mt-0.5 flex flex-wrap items-center gap-y-1 text-[11px] text-muted-foreground">
+          {kind && <span className="mr-1">{sourceKindLabel(kind)}</span>}
+          {chips.map((citation) => (
+            <CitationChip key={citation.ordinal} citation={citation} onOpenHelp={onOpenHelp} />
+          ))}
+          {hidden > 0 && (
+            <button
+              type="button"
+              className="ml-1 rounded-sm text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+              aria-expanded={expanded}
+              onClick={() => setExpanded((value) => !value)}
+            >
+              {expanded ? "Show fewer" : `+${hidden} more`}
+            </button>
+          )}
+        </span>
+      </span>
+    </li>
+  );
+}
+
+/** Source rows shown before "Show all": three rows of two on wider screens. */
+const SOURCES_SHOWN = 6;
+
 /** The answer's sources, grouped by the entity they come from (FR-5.1). */
 export function AskSources({
   citations,
@@ -152,27 +261,18 @@ export function AskSources({
   const [open, setOpen] = useState(false);
   if (citations.length === 0) return null;
   const groups = groupSources(citations);
-  const shown = open ? groups : groups.slice(0, 3);
+  const shown = open ? groups : groups.slice(0, SOURCES_SHOWN);
   return (
-    <div className="mt-3 border-t pt-2">
-      <p className="mb-1 text-xs font-medium text-muted-foreground">
+    <div className="mt-4 border-t pt-3">
+      <p className="mb-1.5 text-xs font-medium text-muted-foreground">
         Sources · {citations.length}
       </p>
-      <ul className="space-y-1">
+      <ul className="grid gap-x-4 sm:grid-cols-2">
         {shown.map((group) => (
-          <li key={group.key} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-            <span className="flex shrink-0 gap-0.5 pt-px">
-              {group.citations.map((citation) => (
-                <CitationChip key={citation.ordinal} citation={citation} onOpenHelp={onOpenHelp} />
-              ))}
-            </span>
-            <span className="min-w-0 truncate" title={group.citations.map((c) => `${c.ordinal}. ${c.title}`).join("\n")}>
-              {group.label}
-            </span>
-          </li>
+          <SourceRow key={group.key} group={group} onOpenHelp={onOpenHelp} />
         ))}
       </ul>
-      {groups.length > 3 && (
+      {groups.length > SOURCES_SHOWN && (
         <button
           type="button"
           className="mt-1 text-xs text-muted-foreground underline-offset-2 hover:underline"

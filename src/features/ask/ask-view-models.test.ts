@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { AskMessagePart } from "../../../convex/lib/askSchema";
-import { citationTarget, groupSources, type CitationView } from "./citation-links";
+import { citationTarget, evidenceSummary, groupSources, sourceKind, type CitationView } from "./citation-links";
+import { threadSections, threadTime } from "./thread-groups";
 import {
   answerText,
   copyableAnswer,
@@ -162,5 +163,63 @@ describe("thought trace (FR-2.15)", () => {
       "Slow[1] and manual.[2]\n\nSources\n[1] Finance overview\n[2] Payroll flow",
     );
     expect(copyableAnswer("No sources.", [])).toBe("No sources.");
+  });
+});
+
+describe("evidence line", () => {
+  test("names the kind of thing each source is", () => {
+    expect(sourceKind("fabric:finding/process/p1/gap-1")).toBe("process");
+    expect(sourceKind("fabric:overview/department/d1")).toBe("department");
+    expect(sourceKind("fabric:entity/function/f1")).toBe("function");
+    expect(sourceKind("fabric:flow-node/p1/n4")).toBe("flow");
+    expect(sourceKind("fabric:conversation/p1/c1?t=12&line=3")).toBe("contribution");
+    expect(sourceKind("fabric:help/asking-questions")).toBe("help");
+    expect(sourceKind("fabric:entity/org")).toBe("workspace");
+    expect(sourceKind("not-a-source")).toBeNull();
+  });
+
+  test("counts distinct sources of each kind, in a fixed order", () => {
+    const summary = evidenceSummary([
+      cite("fabric:finding/process/p1/gap-1"),
+      cite("fabric:overview/process/p1"),
+      cite("fabric:entity/process/p2"),
+      cite("fabric:conversation/p1/c1?t=12&line=3"),
+      cite("fabric:conversation/p1/c1?t=40&line=9"),
+      cite("fabric:conversation/p2/c2"),
+      cite("fabric:flow-node/p1/n1"),
+      cite("fabric:flow-node/p1/n2"),
+      cite("fabric:entity/org"),
+    ]);
+    expect(summary.map((item) => item.label)).toEqual(["2 contributions", "2 processes", "1 process flow"]);
+  });
+
+  test("skips sources that are no longer available", () => {
+    expect(evidenceSummary([cite("fabric:overview/process/p1", { availability: "unavailable" })])).toEqual([]);
+  });
+});
+
+describe("thread sections", () => {
+  const now = new Date(2026, 10, 4, 15, 0).getTime();
+  const at = (day: number, hour = 9) => ({ lastMessageAt: new Date(2026, 10, day, hour).getTime() });
+
+  test("puts pinned first, then threads by the day of their latest activity", () => {
+    const pinned = [at(1)];
+    const sections = threadSections(pinned, [at(4, 14), at(3, 23), at(1, 12), at(1, 0), at(2)], now);
+    expect(sections.map((s) => [s.label, s.threads.length])).toEqual([
+      ["Pinned", 1],
+      ["Today", 1],
+      ["Yesterday", 1],
+      ["Previous 7 days", 3],
+    ]);
+    expect(threadSections([], [{ lastMessageAt: new Date(2026, 9, 28).getTime() }], now)[0].label).toBe("Older");
+  });
+
+  test("shortens the time to fit the row", () => {
+    expect(threadTime(now - 20_000, now)).toBe("now");
+    expect(threadTime(now - 17 * 60_000, now)).toBe("17m");
+    expect(threadTime(now - 18 * 3_600_000, now)).toBe("18h");
+    expect(threadTime(now - 3 * 86_400_000, now)).toBe("3d");
+    expect(threadTime(new Date(2026, 9, 12).getTime(), now)).toBe("Oct 12");
+    expect(threadTime(new Date(2025, 9, 12).getTime(), now)).toBe("Oct 12, 2025");
   });
 });

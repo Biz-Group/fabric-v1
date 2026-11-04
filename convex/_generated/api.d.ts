@@ -37,6 +37,7 @@ import type * as askUsage from "../askUsage.js";
 import type * as askfabric_citationAccess from "../askfabric/citationAccess.js";
 import type * as askfabric_context from "../askfabric/context.js";
 import type * as askfabric_evalChecks from "../askfabric/evalChecks.js";
+import type * as askfabric_followUps from "../askfabric/followUps.js";
 import type * as askfabric_loop from "../askfabric/loop.js";
 import type * as askfabric_modelClient from "../askfabric/modelClient.js";
 import type * as askfabric_parts from "../askfabric/parts.js";
@@ -153,6 +154,7 @@ declare const fullApi: ApiFromModules<{
   "askfabric/citationAccess": typeof askfabric_citationAccess;
   "askfabric/context": typeof askfabric_context;
   "askfabric/evalChecks": typeof askfabric_evalChecks;
+  "askfabric/followUps": typeof askfabric_followUps;
   "askfabric/loop": typeof askfabric_loop;
   "askfabric/modelClient": typeof askfabric_modelClient;
   "askfabric/parts": typeof askfabric_parts;

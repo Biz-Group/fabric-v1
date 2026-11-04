@@ -16,6 +16,42 @@ import { AskThreadList } from "./ask-thread-list";
 
 const THREAD_PARAM = "thread";
 
+/**
+ * The beta's daily allowance (D51) beside the page title, all day rather than
+ * only once it runs low. Hidden where members have no per-day limit.
+ */
+function AllowanceMeter() {
+  const allowance = useQuery(api.ask.getDailyAllowance);
+  if (!allowance || allowance.limit === null || allowance.limit <= 0 || allowance.remaining === null) return null;
+  const { limit } = allowance;
+  // Once the workspace's limit is used, nobody has questions left today.
+  const remaining = allowance.orgLimitReached ? 0 : allowance.remaining;
+  return (
+    <div className="flex shrink-0 items-center gap-2 text-xs tabular-nums text-muted-foreground">
+      <div
+        role="meter"
+        aria-label="AskFabric questions left today"
+        aria-valuemin={0}
+        aria-valuemax={limit}
+        aria-valuenow={remaining}
+        aria-valuetext={`${remaining} of ${limit}`}
+        className="h-1 w-10 overflow-hidden rounded-full bg-muted sm:w-16"
+      >
+        <div
+          className="h-full rounded-full bg-org-accent transition-[width] motion-reduce:transition-none"
+          style={{ width: `${(remaining / limit) * 100}%` }}
+        />
+      </div>
+      <span className="sm:hidden" aria-hidden>
+        {remaining} left
+      </span>
+      <span className="max-sm:hidden" aria-hidden>
+        {remaining} of {limit} questions left today
+      </span>
+    </div>
+  );
+}
+
 function AskWorkspace() {
   const router = useRouter();
   const pathname = usePathname();
@@ -50,11 +86,14 @@ function AskWorkspace() {
     <WorkspaceAppShell
       title="AskFabric"
       headerActions={
-        <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setThreadsOpen(true)}>
-          <MessagesSquare className="size-4" aria-hidden />
-          {/* Icon only on phones, so the page title keeps its room. */}
-          <span className="max-sm:sr-only">Threads</span>
-        </Button>
+        <>
+          <AllowanceMeter />
+          <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setThreadsOpen(true)}>
+            <MessagesSquare className="size-4" aria-hidden />
+            {/* Icon only on phones, so the page title keeps its room. */}
+            <span className="max-sm:sr-only">Threads</span>
+          </Button>
+        </>
       }
     >
       <aside className="hidden w-72 shrink-0 flex-col border-r lg:flex" aria-label="AskFabric threads">

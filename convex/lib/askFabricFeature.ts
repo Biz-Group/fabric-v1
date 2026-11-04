@@ -21,6 +21,7 @@ export const ASKFABRIC_PROVIDER = "foundry-claude";
 export const ASKFABRIC_OPERATIONS = {
   turn: "askfabric.turn",
   title: "askfabric.title",
+  followUps: "askfabric.followUps",
   eval: "askfabric.eval",
   judge: "askfabric.judge",
   speech: "askfabric.speech",

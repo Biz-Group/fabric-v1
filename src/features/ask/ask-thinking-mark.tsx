@@ -48,11 +48,12 @@ const PARTS: { waveAt: number; shape: ReactNode }[] = [
 ];
 
 /**
- * The Fabric mark with a brightness ripple running through it, shown in front
- * of the status line while an answer is worked on (1H.17). Decorative: the
- * words beside it carry the status. Under reduced motion it stands still.
+ * The Fabric mark in an answer's byline. While the answer is worked on a
+ * brightness ripple runs through it (1H.17); `still` settles it once the
+ * answer is done. Decorative: the words beside it carry the status. Under
+ * reduced motion it stands still.
  */
-export function AskThinkingMark({ className }: { className?: string }) {
+export function AskThinkingMark({ className, still = false }: { className?: string; still?: boolean }) {
   return (
     <svg
       viewBox="0 0 1024 1024"
@@ -61,10 +62,10 @@ export function AskThinkingMark({ className }: { className?: string }) {
       fill="currentColor"
       aria-hidden="true"
       focusable="false"
-      className={cn("shrink-0", styles.mark, className)}
+      className={cn("shrink-0", !still && styles.mark, className)}
     >
       {PARTS.map(({ waveAt, shape }, index) => (
-        <g key={index} className={styles.part} style={{ "--wave-at": waveAt } as CSSProperties}>
+        <g key={index} className={still ? undefined : styles.part} style={{ "--wave-at": waveAt } as CSSProperties}>
           {shape}
         </g>
       ))}

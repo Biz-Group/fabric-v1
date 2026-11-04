@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useImperativeHandle, useRef, useState, type KeyboardEvent, type Ref } from "react";
 import { ArrowUp, AtSign, Square } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -79,18 +79,23 @@ function MentionPicker({ onPick }: { onPick: (mention: Mention) => void }) {
   );
 }
 
+/** Lets the page put a mention in the draft, e.g. from an area shortcut. */
+export type AskComposerHandle = { insertMention: (mention: Mention) => void };
+
 /**
  * The question box (FR-4.3): Enter sends, Shift+Enter breaks the line, `@`
  * opens the mention picker, and while an answer streams the send button
  * becomes Stop (FR-2.2, FR-2.4).
  */
 export function AskComposer({
+  ref,
   streaming,
   disabled,
   onSend,
   onStop,
   autoFocus,
 }: {
+  ref?: Ref<AskComposerHandle>;
   streaming: boolean;
   disabled?: boolean;
   onSend: (text: string, mentions: Mention[]) => Promise<boolean>;
@@ -140,6 +145,8 @@ export function AskComposer({
     setPicked((current) => (current.some((m) => m.id === mention.id) ? current : [...current, mention]));
     placeCaret(next.caret);
   };
+
+  useImperativeHandle(ref, () => ({ insertMention: pick }));
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -198,7 +205,7 @@ export function AskComposer({
           aria-label="Ask AskFabric"
           className={cn(
             FIELD,
-            "relative block field-sizing-content max-h-48 min-h-12 w-full resize-none overflow-y-auto bg-transparent text-transparent caret-foreground outline-none placeholder:text-muted-foreground selection:bg-primary/25",
+            "relative block field-sizing-content max-h-48 min-h-10 w-full resize-none overflow-y-auto bg-transparent text-transparent caret-foreground outline-none placeholder:text-muted-foreground selection:bg-primary/25",
           )}
           onScroll={(event) => {
             if (backdropRef.current) backdropRef.current.scrollTop = event.currentTarget.scrollTop;
@@ -213,16 +220,17 @@ export function AskComposer({
           onKeyDown={onKeyDown}
         />
       </div>
-      <div className="flex items-center justify-between gap-2 px-2 pb-2">
+      <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5">
         <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
           <Button
             type="button"
             variant="ghost"
-            size="icon-sm"
-            aria-label="Mention a process, department or function"
+            size="sm"
+            className="text-muted-foreground"
             onClick={() => setPickerOpen(true)}
           >
             <AtSign className="size-4" aria-hidden />
+            Mention an area
           </Button>
           {/* Closing returns focus to the textarea, not the @ button, so typing carries on after a pick. */}
           <PopoverContent anchor={boxRef} side="top" align="start" className="w-80 p-0" finalFocus={inputRef}>
@@ -245,7 +253,12 @@ export function AskComposer({
               size="icon-sm"
               aria-label="Send"
               disabled={!canSend}
-              className={cn(!canSend && "opacity-50")}
+              // Muted until there's a question, then the org accent.
+              className={cn(
+                canSend
+                  ? "bg-org-accent text-org-accent-foreground hover:bg-org-accent/90"
+                  : "bg-muted text-muted-foreground disabled:opacity-100",
+              )}
               onClick={() => void send()}
             >
               <ArrowUp className="size-4" aria-hidden />
