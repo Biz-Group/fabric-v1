@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type MouseEvent, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -49,7 +49,7 @@ const SOURCE_ICON: Record<SourceKind, LucideIcon> = {
   members: Users,
 };
 
-function CitationCard({ citation }: { citation: CitationView }) {
+function CitationCard({ citation, action }: { citation: CitationView; action?: ReactNode }) {
   if (citation.availability === "unavailable") {
     return <p className="text-sm text-muted-foreground">Source no longer available.</p>;
   }
@@ -64,11 +64,18 @@ function CitationCard({ citation }: { citation: CitationView }) {
       {citation.availability === "updated" && (
         <p className="text-xs text-muted-foreground">This finding has since been updated.</p>
       )}
+      {action}
     </div>
   );
 }
 
-/** A numbered chip after cited text, with a hover card (FR-5.1). */
+const CARD_ACTION = "inline-flex text-xs font-medium text-foreground underline underline-offset-2 hover:text-org-accent";
+
+/**
+ * A numbered chip after cited text, with a hover card (FR-5.1). Touch has no
+ * hover, so there a first tap opens the card and its link opens the source;
+ * mouse and keyboard go straight to the source (FR-5.6).
+ */
 export function CitationChip({
   citation,
   onOpenHelp,
@@ -79,23 +86,62 @@ export function CitationChip({
   const routes = useWorkspaceRoutes();
   const target = citationTarget(citation, routes);
   const label = `Source ${citation.ordinal}: ${citation.availability === "unavailable" ? "no longer available" : citation.title}`;
+  const [open, setOpen] = useState(false);
+  const pointerType = useRef<string | null>(null);
+  const notePointer = (event: { pointerType: string }) => {
+    pointerType.current = event.pointerType;
+  };
+  /** True when this tap only opens the card. */
+  const previewFirst = (event: MouseEvent) => {
+    const touch = pointerType.current === "touch" || pointerType.current === "pen";
+    pointerType.current = null;
+    if (!touch || open) return false;
+    event.preventDefault();
+    setOpen(true);
+    return true;
+  };
   const trigger =
     target.kind === "link" ? (
       // Same tab, so Back returns to the thread; modifier-click opens a new one (FR-5.6).
-      <Link href={target.href} className={CHIP} aria-label={label} />
+      <Link href={target.href} className={CHIP} aria-label={label} onPointerDown={notePointer} onClick={previewFirst} />
     ) : target.kind === "help" ? (
-      <button type="button" className={CHIP} aria-label={label} onClick={() => onOpenHelp(target.articleId)} />
+      <button
+        type="button"
+        className={CHIP}
+        aria-label={label}
+        onPointerDown={notePointer}
+        onClick={(event) => {
+          if (!previewFirst(event)) onOpenHelp(target.articleId);
+        }}
+      />
     ) : (
-      <span className={cn(CHIP, "cursor-default opacity-60")} aria-label={label} />
+      <span className={cn(CHIP, "cursor-default opacity-60")} aria-label={label} onPointerDown={notePointer} onClick={previewFirst} />
     );
+  const action =
+    target.kind === "link" ? (
+      <Link href={target.href} className={CARD_ACTION} onClick={() => setOpen(false)}>
+        Open source
+      </Link>
+    ) : target.kind === "help" ? (
+      <button
+        type="button"
+        className={CARD_ACTION}
+        onClick={() => {
+          setOpen(false);
+          onOpenHelp(target.articleId);
+        }}
+      >
+        Open article
+      </button>
+    ) : null;
 
   return (
-    <HoverCard>
+    <HoverCard open={open} onOpenChange={setOpen}>
       <HoverCardTrigger delay={150} render={trigger}>
         {citation.ordinal}
       </HoverCardTrigger>
       <HoverCardContent side="top" className="w-72">
-        <CitationCard citation={citation} />
+        <CitationCard citation={citation} action={action} />
       </HoverCardContent>
     </HoverCard>
   );
