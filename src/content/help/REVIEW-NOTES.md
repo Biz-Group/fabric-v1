@@ -6,11 +6,11 @@ Add a `## <id>` section when an article needs re-checking, for example after a f
 
 ## insights-and-recommendations
 
-Rewritten on 2026-10-26 when the Automations tab became Recommendations (technical and non-technical changes). Not yet approved; excluded from AskFabric until it is.
+Rewritten on 2026-10-26 when the Automations tab became Recommendations (technical and non-technical changes). Cut to about 460 words on 2026-11-04 (AskFabric 1H.14). **Awaiting Saish's approval: delete this section to approve**, and AskFabric's `searchFabricHelp` starts using it after the corpus rebuild.
 
-- Check the wording of the ranking explanation (Value, Effort, Evidence) against the UI once it is live on dev.
+- Checked 2026-11-04: the ranking reads **Value** and **Effort** with their level (an unknown Value shows "Unknown"), and **Evidence** reads "Based on N interviews", as the article says.
 - The Insights metric tile and detail section are still labeled **Automations** and **Automation Opportunities**; the article quotes them as they are.
-- Renamed from `insights-and-automations`; links in `pdf-report`, `reading-the-overview` and `reading-the-process-flow` were updated.
+- Renamed from `insights-and-automations`. Every article that relates to it now uses the new id.
 
 ## General
 
