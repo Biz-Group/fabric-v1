@@ -12,6 +12,7 @@ import * as askSharedModule from "../askShared";
 import * as askSuggestionsModule from "../askSuggestions";
 import * as askThreadsModule from "../askThreads";
 import * as askUsageModule from "../askUsage";
+import * as askSpeechModule from "../askSpeech";
 import { ASK_TOOLS } from "../askTools/catalog";
 
 /**
@@ -166,6 +167,7 @@ async function snapshot(s: Setup) {
     feedback: await ctx.db.query("askFeedback").collect(),
     shared: await ctx.db.query("askSharedExchanges").collect(),
     suggestions: await ctx.db.query("askSuggestions").collect(),
+    speech: await ctx.db.query("askSpeech").collect(),
   }));
 }
 
@@ -184,6 +186,7 @@ function targetedWrites(target: { threadId: Id<"askThreads">; messageId: Id<"ask
     setFeedback: (c: Caller) => c.mutation(api.askFeedback.setFeedback, { messageId: target.messageId, rating: "up" }),
     shareExchange: (c: Caller) => c.mutation(api.askFeedback.shareExchange, { messageId: target.messageId, note: "n" }),
     unshareExchange: (c: Caller) => c.mutation(api.askFeedback.unshareExchange, { messageId: target.messageId }),
+    readAloud: (c: Caller) => c.action(api.askSpeech.readAloud, { messageId: target.messageId }),
   };
 }
 
@@ -465,6 +468,7 @@ describe("coverage", () => {
       "askSuggestions.markVisited",
       "askUsage.getOrgUsage",
       "askUsage.listFeedback",
+      "askSpeech.readAloud",
     ]);
     const modulesByName = {
       ask: askModule,
@@ -473,6 +477,7 @@ describe("coverage", () => {
       askShared: askSharedModule,
       askSuggestions: askSuggestionsModule,
       askUsage: askUsageModule,
+      askSpeech: askSpeechModule,
     };
     const publicFunctions = Object.entries(modulesByName).flatMap(([moduleName, exports]) =>
       Object.entries(exports)
