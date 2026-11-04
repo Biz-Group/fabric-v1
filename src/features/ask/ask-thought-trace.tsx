@@ -7,6 +7,7 @@ import type { AskMessagePart } from "../../../convex/lib/askSchema";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
 import { cn } from "@/lib/utils";
+import { AskThinkingMark } from "./ask-thinking-mark";
 import {
   statusLine,
   traceDefaultOpen,
@@ -126,6 +127,7 @@ export function AskStatusLine({
   const line = statusLine(parts, status, elapsedMs);
   return (
     <div className="flex min-h-5 items-baseline gap-2 text-sm">
+      {line && <AskThinkingMark className="self-center text-foreground" />}
       {/* Only the words are announced; the ticking seconds would be noise. */}
       <span aria-live="polite">{line && <ShimmeringText text={line} className="text-sm" />}</span>
       {line && elapsedMs >= SHOW_ELAPSED_AFTER_MS && (

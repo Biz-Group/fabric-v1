@@ -1,0 +1,29 @@
+/* A brightness ripple across the Fabric mark, from the top-left tile to the
+   dot. Each part starts after a share of the loop set by where it sits along
+   that diagonal (`--wave-at`, 0 to 0.5). */
+.mark {
+  --loop: 1.8s;
+}
+
+.part {
+  animation: wave var(--loop) ease-in-out calc(var(--loop) * var(--wave-at)) infinite both;
+}
+
+@keyframes wave {
+  0%,
+  45%,
+  100% {
+    opacity: 0.28;
+  }
+  18% {
+    opacity: 1;
+  }
+}
+
+/* Still and whole. The global reduced-motion rule shortens animations but
+   keeps their delays, which would leave every part on its dim first frame. */
+@media (prefers-reduced-motion: reduce) {
+  .part {
+    animation: none;
+  }
+}
