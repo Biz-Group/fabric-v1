@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import type { MutationCtx } from "../_generated/server";
 import schema from "../schema";
 import { SUMMARY_V2_PROMPT_VERSIONS, type ProcessOverviewArtifactV2 } from "../summaryV2";
@@ -105,6 +105,46 @@ describe("entity cards (D56, Phase 2D.1)", () => {
     process.env.SUMMARY_V2 = "off";
     const [card] = await ana.query(api.askDisplay.getEntityCards, { refs: [{ kind: "process", id: ids.own.processId }] });
     expect(card.headline).toBeNull();
+  });
+
+  test("showEntities keeps only grounded, readable entities, as the viewer (FR-9.1)", async () => {
+    const { t, ids } = await setup();
+    const viewer = { tokenIdentifier: ids.tokenIdentifier, orgId: ORG };
+    const { processId, departmentId } = ids.own;
+    const result = await t.query(internal.askTools.display.showEntities, {
+      viewer,
+      allowed: [processId, departmentId, ids.other.processId],
+      refs: [
+        { kind: "process", id: processId },
+        // Grounded, but another org's: still dropped.
+        { kind: "process", id: ids.other.processId },
+        // Readable, but no tool returned it.
+        { kind: "function", id: ids.own.functionId },
+        { kind: "department", id: departmentId },
+        { kind: "process", id: "not-an-id" },
+      ],
+    });
+    expect(result.part).toEqual({
+      type: "display",
+      display: "entities",
+      refs: [
+        { kind: "process", id: processId },
+        { kind: "department", id: departmentId },
+      ],
+    });
+    expect(result.note).toContain("2 cards (Scheduling, Dispatch)");
+    expect(result.note).toContain("3 left out");
+
+    const none = await t.query(internal.askTools.display.showEntities, { viewer, allowed: [], refs: [{ kind: "process", id: processId }] });
+    expect(none.part).toBeNull();
+
+    await expect(
+      t.query(internal.askTools.display.showEntities, {
+        viewer: { tokenIdentifier: `${ISSUER}|x`, orgId: ORG },
+        allowed: [processId],
+        refs: [{ kind: "process", id: processId }],
+      }),
+    ).rejects.toThrow();
   });
 
   test("refuse a caller who isn't a member", async () => {

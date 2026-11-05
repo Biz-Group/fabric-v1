@@ -210,6 +210,7 @@ export const askSuggestionTopicValidator = v.union(
   v.literal("whatsNew"),
   v.literal("coverage"),
   v.literal("usingFabric"),
+  v.literal("howItWorks"),
 );
 
 /** Tool-call metadata in a shared exchange: no raw results (FR-7.2). */

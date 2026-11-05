@@ -2,7 +2,8 @@ import type { AskToolName } from "../lib/askSchema";
 import { authErrorCode } from "../lib/authErrors";
 import { isTokenLimitFinishReason } from "../lib/aiProvider";
 import type { StreamedCallResult } from "../lib/aiUsageMeter";
-import type { AskToolResult } from "../askTools/results";
+import type { AskDisplayResult } from "../askTools/display";
+import { isHierarchyKind, parseFabricSource, type AskToolResult } from "../askTools/results";
 import { toApiTools, type RegisteredAskTool } from "../askTools/registry";
 import {
   AskModelError,
@@ -29,6 +30,11 @@ export const TOOLS_OFF_MARGIN_MS = 30_000;
 export const PATCH_INTERVAL_MS = 250;
 /** How often the stop flag is polled during a stream (FR-2.4). */
 export const CANCEL_POLL_MS = 1_000;
+/** Components per answer (D56), of which at most one picker. */
+export const MAX_DISPLAYS = 3;
+/** Appended to a display's acknowledgement when no answer text exists yet. */
+export const ANSWER_STILL_DUE =
+  "You haven't written your answer yet. Write it now in full, citing every claim as usual: the component sits under your answer and replaces none of it, so don't refer to it.";
 
 export type ErrorReason =
   | "modelError"
@@ -78,6 +84,8 @@ export type TurnDeps = {
   tools: readonly RegisteredAskTool[];
   /** Runs a tool executor as the viewer. Throws the auth error on lost access. */
   runTool: (tool: RegisteredAskTool, input: Record<string, unknown>) => Promise<AskToolResult>;
+  /** Runs a display tool's executor as the viewer, with the turn's grounding set (D56). */
+  runDisplayTool: (tool: RegisteredAskTool, input: Record<string, unknown>, allowed: string[]) => Promise<AskDisplayResult>;
   /** Meters one model call (`meteredStream`). */
   meter: <T extends StreamedCallResult>(stepIndex: number, run: () => Promise<T>) => Promise<T>;
   /** Writes progress; "deleting" means the thread is being deleted: stop at once. */
@@ -92,7 +100,24 @@ export type TurnInput = {
   system: AskModelRequest["system"];
   /** History and the current user turn, as API messages. */
   messages: unknown[];
+  /**
+   * Entity ids a display may show before any tool runs this turn: the
+   * thread's context and mentions, and what the thread cited or showed.
+   */
+  groundedIds?: readonly string[];
 };
+
+/** Function, department and process ids a tool result names in its sources. */
+export function entityIdsIn(result: AskToolResult): string[] {
+  if (!result.found) return [];
+  const ids: string[] = [];
+  for (const block of result.content) {
+    if (block.type !== "search_result") continue;
+    const parsed = parseFabricSource(block.source);
+    if (parsed && isHierarchyKind(parsed.sourceKind)) ids.push(parsed.sourceEntityId);
+  }
+  return ids;
+}
 
 const EMPTY_USAGE = (): TurnUsage => ({ inputTokens: 0, outputTokens: 0, cachedReadTokens: 0, cacheWriteTokens: 0 });
 
@@ -196,6 +221,34 @@ export async function runTurnLoop(deps: TurnDeps, input: TurnInput): Promise<Tur
     };
   };
 
+  const grounded = new Set<string>(input.groundedIds ?? []);
+
+  /**
+   * Places one component (D56) and returns what the model is told. Caps are
+   * checked here; references are checked by the executor, as the viewer.
+   */
+  const runDisplay = async (tool: RegisteredAskTool, toolInput: Record<string, unknown>): Promise<string> => {
+    const startedAt = deps.now();
+    if (parts.displayCount >= MAX_DISPLAYS) return `Nothing shown: at most ${MAX_DISPLAYS} components per answer.`;
+    if (tool.display === "choices" && parts.hasDisplay("choices")) return "Nothing shown: one picker per answer.";
+    let result: AskDisplayResult;
+    try {
+      result = await deps.runDisplayTool(tool, toolInput, [...grounded]);
+    } catch (error) {
+      if (authErrorCode(error)) throw error;
+      result = { part: null, note: "Nothing shown: the component failed. Your answer stands without it." };
+    }
+    if (result.part) parts.addDisplay(result.part);
+    telemetry.push({
+      name: tool.telemetryName,
+      latencyMs: deps.now() - startedAt,
+      found: result.part !== null,
+      resultTokens: 0,
+      truncated: false,
+    });
+    return result.note;
+  };
+
   const addUsage = (final: Pick<AskFinalMessage, "usage">) => {
     usage.inputTokens += final.usage.inputTokens;
     usage.outputTokens += final.usage.outputTokens;
@@ -295,8 +348,16 @@ export async function runTurnLoop(deps: TurnDeps, input: TurnInput): Promise<Tur
         return finish("complete", toolsOff && step === MAX_MODEL_CALLS - 1 ? "stepCap" : "end_turn");
       }
 
-      parts.addProgressNote(stepText(final.content), stepStartedAt, deps.now());
-      const runs = toolUses.map((use) => {
+      const dataUses = toolUses.filter((use) => byName.get(use.name)?.display === undefined);
+      const displayUses = toolUses.filter((use) => byName.get(use.name)?.display !== undefined);
+      // A step that wrote its answer and only placed components ends the turn
+      // (D56): no further model call, and history replays text only, so no
+      // tool call is left unanswered. Without text, the model still has to
+      // write the answer, so the loop goes on.
+      const answersNow = dataUses.length === 0 && stepText(final.content).trim() !== "";
+      if (!answersNow) parts.addProgressNote(stepText(final.content), stepStartedAt, deps.now());
+
+      const runs = dataUses.map((use) => {
         const tool = byName.get(use.name);
         const toolInput = (use.input ?? {}) as Record<string, unknown>;
         let label = `Using ${use.name}`;
@@ -308,7 +369,7 @@ export async function runTurnLoop(deps: TurnDeps, input: TurnInput): Promise<Tur
         const partIndex = tool ? parts.startTool(tool.name, label, deps.now()) : -1;
         return { use, tool, toolInput, partIndex, startedAt: deps.now() };
       });
-      await write(true);
+      if (runs.length > 0) await write(true);
 
       const results = await Promise.all(
         runs.map(async (run) => {
@@ -317,6 +378,7 @@ export async function runTurnLoop(deps: TurnDeps, input: TurnInput): Promise<Tur
           }
           try {
             const result = await deps.runTool(run.tool, run.toolInput);
+            for (const id of entityIdsIn(result)) grounded.add(id);
             parts.endTool(run.partIndex, "done", result.found ? result.resultCount : 0, deps.now());
             telemetry.push({
               name: run.tool.telemetryName,
@@ -334,6 +396,24 @@ export async function runTurnLoop(deps: TurnDeps, input: TurnInput): Promise<Tur
           }
         }),
       );
+
+      // Displays run after the step's data tools, so the model can fetch and
+      // show in one step: their references are checked against what came back.
+      for (const use of displayUses) {
+        const tool = byName.get(use.name)!;
+        const note = await runDisplay(tool, (use.input ?? {}) as Record<string, unknown>);
+        // Shown before any answer was written: the model must not take the
+        // component as the answer (found on dev, 2026-11-05).
+        const text = answersNow ? note : `${note} ${ANSWER_STILL_DUE}`;
+        results.push({ type: "tool_result", tool_use_id: use.id, content: [{ type: "text", text }] });
+      }
+
+      if (answersNow) {
+        const answer = answerFromBlocks(final.content);
+        citations = answer.citations;
+        parts.setAnswer(answer.text, deps.now());
+        return finish("complete", "end_turn");
+      }
       messages.push({ role: "user", content: results });
       await write(true);
     }

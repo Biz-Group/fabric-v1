@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireOrgMember, type OrgContext } from "./lib/orgAuth";
@@ -18,13 +18,20 @@ const MAX_TITLE_CHARS = 120;
 /** Rows deleted per table per batch (FR-3.4). */
 const DELETE_BATCH = 100;
 
-function threadRow(thread: Doc<"askThreads">) {
+/**
+ * A thread as the list shows it, with the page it was started from (2B.3).
+ * The context's name is read as the viewer each time: an entity since deleted
+ * or moved out of the org shows nothing.
+ */
+async function threadRow(ctx: QueryCtx, orgId: string, thread: Doc<"askThreads">) {
+  const context = thread.contextRef ? await ctx.db.get(thread.contextRef.id) : null;
   return {
     _id: thread._id,
     title: thread.title,
     status: thread.status,
     pinnedAt: thread.pinnedAt ?? null,
     lastMessageAt: thread.lastMessageAt,
+    context: context && context.clerkOrgId === orgId ? { kind: thread.contextRef!.kind, name: context.name } : null,
   };
 }
 
@@ -48,7 +55,8 @@ export const listThreads = query({
       )
       .order("desc")
       .paginate({ ...args.paginationOpts, numItems: Math.min(args.paginationOpts.numItems, THREAD_PAGE_SIZE) });
-    return { ...result, page: result.page.filter((t) => args.archived || t.pinnedAt === undefined).map(threadRow) };
+    const page = result.page.filter((t) => args.archived || t.pinnedAt === undefined);
+    return { ...result, page: await Promise.all(page.map((t) => threadRow(ctx, org.orgId, t))) };
   },
 });
 
@@ -63,7 +71,7 @@ export const listPinned = query({
       )
       .order("desc")
       .take(MAX_PINNED);
-    return pinned.filter((t) => t.status === "active").map(threadRow);
+    return await Promise.all(pinned.filter((t) => t.status === "active").map((t) => threadRow(ctx, org.orgId, t)));
   },
 });
 
@@ -80,7 +88,7 @@ export const searchThreads = query({
         q.search("title", text).eq("clerkOrgId", org.orgId).eq("userId", org.userId),
       )
       .take(THREAD_PAGE_SIZE);
-    return hits.filter((t) => t.status !== "deleting").map(threadRow);
+    return await Promise.all(hits.filter((t) => t.status !== "deleting").map((t) => threadRow(ctx, org.orgId, t)));
   },
 });
 

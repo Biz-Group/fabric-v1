@@ -6,12 +6,15 @@ import { executeTurn } from "./ask";
 import { ASK_TOOLS } from "./askTools/catalog";
 import { loadHierarchy } from "./askTools/scope";
 import { citationChecker } from "./askfabric/citationAccess";
+import { displayNote } from "./askfabric/context";
 import { askModelClientFor } from "./askfabric/modelClient";
 import { ASK_SYSTEM_PROMPT_VERSION } from "./askfabric/systemPrompt";
 import {
   casePasses,
   deterministicChecks,
   guardrailHolds,
+  isRetrievalMiss,
+  expectedDisplayCoverage,
   expectedSourceCoverage,
   goldenCaseValidator,
   JUDGE_SYSTEM,
@@ -50,6 +53,21 @@ function answerText(parts: AskMessagePart[]): string {
     .flatMap((part) => (part.type === "text" ? [part.text] : []))
     .join("\n\n")
     .replace(/\[\[cite:(\d+)\]\]/g, "[$1]");
+}
+
+/** Each component the answer showed, with the note history would replay for it. */
+async function shownComponents(ctx: QueryCtx, message: Doc<"askMessages">) {
+  const displays = [];
+  for (const part of message.parts) {
+    if (part.type !== "display") continue;
+    const names = [];
+    for (const ref of part.refs) {
+      const doc = await ctx.db.get(ref.id);
+      if (doc && doc.clerkOrgId === message.clerkOrgId) names.push(doc.name);
+    }
+    displays.push({ display: part.display, note: displayNote(part, names) });
+  }
+  return displays;
 }
 
 function evalConfigOrThrow(deployment: string, effort?: "low" | "medium" | "high") {
@@ -271,6 +289,7 @@ type EvalTurnResult = {
   errorReason: string | null;
   text: string;
   citations: EvalCitation[];
+  displays: EvalTurn["displays"];
   usage: Doc<"askMessages">["usage"] | null;
   toolTelemetry: NonNullable<Doc<"askMessages">["toolTelemetry"]>;
   quality: Doc<"askMessages">["quality"] | null;
@@ -286,7 +305,12 @@ type CaseTurnResult = EvalTurnResult & {
 
 type GradeResult = {
   checks: EvalCheck[];
+  /** FR-10.7: a failure from evidence the tools couldn't reach. */
+  retrievalMiss: boolean;
   expectedSources: { type: string; cited: boolean }[];
+  expectedDisplay: { display: string; shown: boolean }[];
+  /** The components the final answer showed (D56). */
+  shown: string[];
   verdict: JudgeVerdict | null;
   judgeError: string | null;
   judgeCostMicroUsd: number | null;
@@ -321,6 +345,7 @@ export const evalTurnResult = internalQuery({
       errorReason: message.errorReason ?? null,
       text: answerText(message.parts),
       citations,
+      displays: await shownComponents(ctx, message),
       usage: message.usage ?? null,
       toolTelemetry: message.toolTelemetry ?? [],
       quality: message.quality ?? null,
@@ -387,6 +412,7 @@ export const gradeCase = internalAction({
         citations: result.citations,
         toolCalls: result.quality?.toolCalls ?? 0,
         tools: result.toolTelemetry.map((entry) => ({ name: entry.name, resultTokens: entry.resultTokens })),
+        displays: result.displays,
       });
       const orgOf: string | null = await ctx.runQuery(internal.askEval.messageOrg, { assistantMessageId });
       clerkOrgId ||= orgOf ?? "";
@@ -432,13 +458,17 @@ export const gradeCase = internalAction({
       judgeError = "Not judged: the case didn't finish.";
     }
 
+    const pass = casePasses(checks, verdict);
     return {
       checks,
+      retrievalMiss: isRetrievalMiss(args.case, pass, verdict),
       expectedSources: expectedSourceCoverage(args.case, turns),
+      expectedDisplay: expectedDisplayCoverage(args.case, turns),
+      shown: turns.at(-1)?.displays.map((d) => d.display) ?? [],
       verdict,
       judgeError,
       judgeCostMicroUsd,
-      pass: casePasses(checks, verdict),
+      pass,
       guardrailHolds: guardrailHolds(checks, verdict),
     };
   },

@@ -4,6 +4,8 @@ import {
   casePasses,
   deterministicChecks,
   guardrailHolds,
+  isRetrievalMiss,
+  expectedDisplayCoverage,
   expectedSourceCoverage,
   parseJudgeReply,
   goldenCaseValidator,
@@ -31,6 +33,7 @@ function turn(overrides: Partial<EvalTurn> = {}): EvalTurn {
     citations: [{ ordinal: 1, source: "fabric:finding/process/p1/f1", title: "Handoff", citedText: "Waits on approval", availability: "available" }],
     toolCalls: 3,
     tools: [{ name: "rankSignals", resultTokens: 1_500 }],
+    displays: [],
     ...overrides,
   };
 }
@@ -77,6 +80,28 @@ describe("deterministic checks (FR-10.3)", () => {
     expect(failing(deterministicChecks(refusal, [turn({ citations: [], text: "I can't rank people." })], BUDGETS))).toEqual([]);
   });
 
+  test("a refusal shows no components; expected ones are reported, not gated (D56)", () => {
+    const cards = { display: "entities", note: "[Shown: 2 process cards: A, B]" };
+    const refusal = { ...CASE, type: "refusal" as const, mustNotMatch: [] };
+    expect(failing(deterministicChecks(refusal, [turn({ citations: [], displays: [cards] })], BUDGETS))).toEqual(["noComponents"]);
+    expect(failing(deterministicChecks(refusal, [turn({ citations: [] })], BUDGETS))).toEqual([]);
+    // A red-team case answered from the evidence may show what it names.
+    const redTeam = { ...CASE, type: "redTeam" as const, mustNotMatch: [] };
+    expect(failing(deterministicChecks(redTeam, [turn({ displays: [cards] })], BUDGETS))).toEqual([]);
+    // An ordinary case may show anything.
+    expect(failing(deterministicChecks(CASE, [turn({ displays: [cards] })], BUDGETS))).toEqual([]);
+
+    const expecting = { ...CASE, expectedDisplay: ["entities" as const, "chart" as const] };
+    expect(expectedDisplayCoverage(expecting, [turn({ displays: [cards] })])).toEqual([
+      { display: "entities", shown: true },
+      { display: "chart", shown: false },
+    ]);
+    // The judge reads the replay note after the answer.
+    expect(judgePrompt(CASE, [turn({ displays: [cards] })], "2026-11-05", "")).toContain(
+      "This covers 4 of 12 processes.\n\n[Shown: 2 process cards: A, B]",
+    );
+  });
+
   test("expected sources are reported by type, not gated", () => {
     expect(sourceType("fabric:conversation/p/c?t=12")).toBe("conversation");
     expect(expectedSourceCoverage(CASE, [turn()])).toEqual([
@@ -120,6 +145,16 @@ describe("judge reply (FR-10.3)", () => {
     expect(prompt).toContain("[1] Handoff\nWaits on approval");
   });
 
+  test("a failed case is a retrieval miss when labelled transcript-only or judged so (FR-10.7)", () => {
+    const verdict = parseJudgeReply(VERDICT.replace('"summary"', '"retrievalMiss":true,"summary"'));
+    expect(verdict.retrievalMiss).toBe(true);
+    expect(parseJudgeReply(VERDICT).retrievalMiss).toBeNull();
+    expect(isRetrievalMiss(CASE, false, verdict)).toBe(true);
+    expect(isRetrievalMiss(CASE, true, verdict)).toBe(false);
+    expect(isRetrievalMiss({ ...CASE, evidenceIn: ["transcript"] }, false, null)).toBe(true);
+    expect(isRetrievalMiss(CASE, false, parseJudgeReply(VERDICT))).toBe(false);
+  });
+
   test("rejects a reply outside the contract", () => {
     expect(() => parseJudgeReply("no json")).toThrow(/no JSON/);
     expect(() => parseJudgeReply(VERDICT.replace('"score":3', '"score":5'))).toThrow(/keyPoints/);
@@ -130,10 +165,12 @@ describe("judge reply (FR-10.3)", () => {
 describe("golden set (FR-10.1)", () => {
   test("every case in evals/askfabric/golden.json fits the case validator", () => {
     const golden = JSON.parse(readFileSync("evals/askfabric/golden.json", "utf8")) as { cases: Record<string, unknown>[] };
-    const fields = Object.keys(goldenCaseValidator.fields).sort();
+    const fields = Object.entries(goldenCaseValidator.fields);
+    const required = fields.filter(([, field]) => field.isOptional === "required").map(([key]) => key);
     const ids = new Set<string>();
     for (const { sets, ...spec } of golden.cases) {
-      expect(Object.keys(spec).sort(), String(spec.id)).toEqual(fields);
+      expect(Object.keys(spec), String(spec.id)).toEqual(expect.arrayContaining(required));
+      expect(fields.map(([key]) => key), String(spec.id)).toEqual(expect.arrayContaining(Object.keys(spec)));
       // Drafts await review (1G.3); a reviewed case is in `full`, and maybe `smoke`.
       const allowed = (sets as string[]).includes("draft") ? [["draft"]] : [["full"], ["smoke", "full"]];
       expect(allowed, String(spec.id)).toContainEqual(sets);

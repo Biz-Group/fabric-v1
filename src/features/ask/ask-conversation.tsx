@@ -19,6 +19,8 @@ import {
   Sparkles,
   Target,
   UserRound,
+  Workflow,
+  X,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -34,6 +36,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { describeError } from "@/lib/user-error-message";
 import { AskAnswer, AskEvidence, AskSources, HelpDialogHost } from "./ask-citations";
 import { AskComposer, type AskComposerHandle, type Mention } from "./ask-composer";
+import type { AskContextRef } from "./ask-context";
 import { AskThinkingMark } from "./ask-thinking-mark";
 import { CopyAnswerButton, ReadAloudButton } from "./ask-answer-actions";
 import { AskFeedback } from "./ask-feedback";
@@ -73,7 +76,10 @@ const TOPIC: Record<SuggestionTopic, { label: string; icon: LucideIcon }> = {
   whatsNew: { label: "What's new", icon: Sparkles },
   coverage: { label: "Coverage", icon: ChartPie },
   usingFabric: { label: "Using Fabric", icon: BookOpen },
+  howItWorks: { label: "How it works", icon: Workflow },
 };
+
+const KIND_LABEL = { function: "function", department: "department", process: "process" } as const;
 
 function plural(count: number, one: string, many: string, capped = false): string {
   return `${count.toLocaleString()}${capped ? "+" : ""} ${count === 1 && !capped ? one : many}`;
@@ -229,16 +235,33 @@ function AskScrollButton() {
  */
 export function AskConversation({
   threadId,
+  context = null,
+  prefill,
+  onClearContext,
   onThreadCreated,
 }: {
   threadId: Id<"askThreads"> | null;
+  /** The page a new thread starts from ("Ask about this", 2B.1). */
+  context?: AskContextRef | null;
+  /** A question to put in the composer, unsent (Cmd+K, 2B.2). */
+  prefill?: string;
+  onClearContext?: () => void;
   onThreadCreated: (threadId: Id<"askThreads">) => void;
 }) {
   const thread = useQuery(api.ask.getThread, threadId ? { threadId } : "skip");
-  const stored = useQuery(api.askSuggestions.getSuggestions, threadId ? "skip" : {});
+  // Checked as the viewer: an unreadable or crafted context comes back null
+  // and the page acts as if there were none.
+  const about = useQuery(api.askSuggestions.getEntityStarters, !threadId && context ? { ref: context } : "skip");
+  const stored = useQuery(api.askSuggestions.getSuggestions, threadId || about ? "skip" : {});
   // Null while loading, so the defaults never flash before the member's own
   // prompts; the defaults are only for a member with none stored yet.
-  const prompts: StarterPrompt[] | null = stored === undefined ? null : stored.length > 0 ? stored : DEFAULT_PROMPTS;
+  const prompts: StarterPrompt[] | null = about
+    ? about.prompts
+    : (context && about === undefined) || stored === undefined
+      ? null
+      : stored.length > 0
+        ? stored
+        : DEFAULT_PROMPTS;
   const starter = useQuery(api.askSuggestions.getStarterContext, threadId ? "skip" : {});
   const allowance = useQuery(api.ask.getDailyAllowance);
   const sendMessage = useMutation(api.ask.sendMessage);
@@ -264,11 +287,13 @@ export function AskConversation({
     ...(starter?.function ? [{ kind: "function" as const, ...starter.function }] : []),
   ];
 
+  const contextRef = !threadId && about ? toRef({ kind: about.kind, id: about.id, name: about.name } as Mention) : null;
   const send = async (text: string, mentions: Mention[] = []): Promise<boolean> => {
     try {
       const result = await sendMessage({
         ...(threadId ? { threadId } : {}),
         text,
+        ...(contextRef ? { contextRef } : {}),
         ...(mentions.length ? { mentions: mentions.map(toRef) } : {}),
       });
       if (!threadId) onThreadCreated(result.threadId);
@@ -310,7 +335,7 @@ export function AskConversation({
                   <AskThinkingMark still className="size-6 text-org-accent" />
                 </span>
                 <h2 className="text-lg font-semibold text-balance text-foreground">
-                  Ask about how your organization works
+                  {about ? `Ask about ${about.name}` : "Ask about how your organization works"}
                   {/* Inline, so it wraps with the last word on a narrow screen. */}
                   <Badge variant="outline" className="ml-2 align-middle">
                     Beta
@@ -322,7 +347,7 @@ export function AskConversation({
               </div>
               <ul className="grid w-full max-w-2xl gap-2 sm:grid-cols-2" aria-busy={prompts === null}>
                 {prompts === null &&
-                  Array.from({ length: 4 }, (_, index) => (
+                  Array.from({ length: context ? 3 : 4 }, (_, index) => (
                     <li key={index}>
                       <Skeleton className="h-20 w-full rounded-lg" />
                     </li>
@@ -348,7 +373,7 @@ export function AskConversation({
                   );
                 })}
               </ul>
-              {areas.length > 0 && (
+              {areas.length > 0 && !about && (
                 <div className="flex flex-wrap items-center justify-center gap-2">
                   <span className="text-xs text-muted-foreground">Or start from an area</span>
                   {areas.map((area) => (
@@ -393,12 +418,34 @@ export function AskConversation({
             </Conversation>
           )}
           <div className="mx-auto w-full max-w-3xl px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            {about && !threadId && (
+              <div className="mb-2 flex">
+                <span className="inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border border-org-accent-border bg-org-accent-subtle py-0.5 pr-0.5 pl-3 text-xs text-org-accent-selected-foreground">
+                  <span className="truncate">
+                    Asking about the {KIND_LABEL[about.kind]} <span className="font-medium">{about.name}</span>
+                  </span>
+                  {onClearContext && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="rounded-full"
+                      aria-label={`Stop asking about ${about.name}`}
+                      onClick={onClearContext}
+                    >
+                      <X aria-hidden />
+                    </Button>
+                  )}
+                </span>
+              </div>
+            )}
             <AskComposer
               ref={composerRef}
               streaming={streaming !== undefined}
               onSend={send}
               onStop={stop}
               autoFocus={!threadId}
+              initialText={threadId ? undefined : prefill}
             />
             <p className="mt-1.5 text-center text-[11px] text-muted-foreground">{allowanceNote(allowance)}</p>
           </div>

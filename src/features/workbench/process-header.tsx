@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useOrganization } from "@clerk/nextjs";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
@@ -36,6 +37,8 @@ import {
   WorkbenchBreadcrumb,
   type WorkbenchCrumb,
 } from "@/features/workbench/workbench-breadcrumb";
+import { AskAboutButton } from "@/features/ask/ask-about-link";
+import { AskThinkingMark } from "@/features/ask/ask-thinking-mark";
 import { cn } from "@/lib/utils";
 import styles from "./process-header.module.css";
 
@@ -62,6 +65,8 @@ type ProcessHeaderProps = {
   onStartInterview: () => void;
   onRecordVoice: () => void;
   onUploadAudio: () => void;
+  /** "Ask about this" (AskFabric, Phase 2B.1); null where AskFabric is unavailable. */
+  askAboutHref?: string | null;
 };
 
 type CopyState = "idle" | "copying" | "copied" | "failed";
@@ -368,6 +373,7 @@ export function ProcessHeader({
   onStartInterview,
   onRecordVoice,
   onUploadAudio,
+  askAboutHref = null,
 }: ProcessHeaderProps) {
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const latestContributor = workbench?.latestContributor;
@@ -429,6 +435,15 @@ export function ProcessHeader({
         <MoreHorizontal className="size-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent role="menu" align="end" className="w-48">
+        {includeShare && askAboutHref && (
+          <>
+            <DropdownMenuItem render={<Link href={askAboutHref} />}>
+              <AskThinkingMark still className="size-4 text-org-accent" />
+              Ask about this
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         {includeShare && (
           <>
             <DropdownMenuItem
@@ -556,6 +571,7 @@ export function ProcessHeader({
                 canEdit && "@3xl:border-l @3xl:pl-3",
               )}
             >
+              {askAboutHref && <AskAboutButton href={askAboutHref} />}
               <Button
                 type="button"
                 variant="ghost"

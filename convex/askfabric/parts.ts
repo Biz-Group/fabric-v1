@@ -1,4 +1,4 @@
-import type { AskMessagePart, AskToolName } from "../lib/askSchema";
+import type { AskDisplayPart, AskMessagePart, AskToolName } from "../lib/askSchema";
 import { parseFabricSource, type ParsedSource } from "../askTools/results";
 import type { AskContentBlock } from "./modelClient";
 
@@ -14,7 +14,21 @@ import type { AskContentBlock } from "./modelClient";
 export class TurnParts {
   readonly parts: AskMessagePart[] = [];
   private openReasoning: Extract<AskMessagePart, { type: "reasoning" }> | null = null;
+  /** Components placed this turn (D56), shown after the answer once it exists. */
+  private readonly displays: AskDisplayPart[] = [];
   firstVisibleAt: number | null = null;
+
+  addDisplay(part: AskDisplayPart) {
+    this.displays.push(part);
+  }
+
+  get displayCount(): number {
+    return this.displays.length;
+  }
+
+  hasDisplay(kind: AskDisplayPart["display"]): boolean {
+    return this.displays.some((part) => part.display === kind);
+  }
 
   private visible(now: number) {
     if (this.firstVisibleAt === null) this.firstVisibleAt = now;
@@ -63,12 +77,18 @@ export class TurnParts {
     this.parts[index] = { ...part, status, endedAt: now, ...(resultCount !== undefined ? { resultCount } : {}) };
   }
 
+  /**
+   * The answer, followed by the turn's components: they illustrate the text,
+   * so they follow it, and an answer without text shows none.
+   */
   setAnswer(text: string, now: number) {
     this.endReasoning(now);
-    const existing = this.parts.findIndex((part) => part.type === "text");
-    if (existing !== -1) this.parts.splice(existing, 1);
+    for (let i = this.parts.length - 1; i >= 0; i--) {
+      const type = this.parts[i].type;
+      if (type === "text" || type === "display") this.parts.splice(i, 1);
+    }
     if (text) {
-      this.parts.push({ type: "text", text });
+      this.parts.push({ type: "text", text }, ...this.displays);
       this.visible(now);
     }
   }

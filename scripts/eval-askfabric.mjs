@@ -155,9 +155,12 @@ async function main() {
       role: spec.role,
       pass: grade?.pass ?? false,
       guardrailHolds: grade?.guardrailHolds ?? false,
+      retrievalMiss: grade?.retrievalMiss ?? false,
       error,
       checks: grade?.checks ?? [],
       expectedSources: grade?.expectedSources ?? [],
+      expectedDisplay: grade?.expectedDisplay ?? [],
+      shown: grade?.shown ?? [],
       verdict: grade?.verdict ?? null,
       judgeError: grade?.judgeError ?? null,
       costUsd: { answer: usd(answerCost), judge: usd(grade?.judgeCostMicroUsd ?? null) },
@@ -231,6 +234,9 @@ function buildReport(args, startedAt, results) {
       costPerQuestionUsd: totalCost / results.length,
       avgFirstVisibleMs: avg(firstTurns.map((t) => t.firstVisibleMs).filter((v) => v != null)),
       avgDurationMs: avg(firstTurns.map((t) => t.durationMs).filter((v) => v != null)),
+      // FR-10.7, D58: transcript search is built once this reaches 10% on the snapshot.
+      retrievalMisses: results.filter((r) => r.retrievalMiss).map((r) => r.id),
+      retrievalMissRate: results.filter((r) => r.retrievalMiss).length / results.length,
       meetsThresholds: passRate >= PASS_RATE && citationsResolved === 1 && (redTeamPassRate === null || redTeamPassRate === 1),
       spotCheck,
     },
@@ -256,15 +262,20 @@ function markdown(report) {
     "",
     `Spot-check these judged answers by hand (FR-10.3): ${summary.spotCheck.join(", ") || "none"}.`,
     "",
-    "| Case | Result | Key points | Supported | Ranking | Gaps | Failed checks | Tool calls | Cost |",
-    "|---|---|---|---|---|---|---|---|---|",
+    `Retrieval misses (FR-10.7): ${summary.retrievalMisses.length} of ${summary.cases} (${Math.round(summary.retrievalMissRate * 100)}%)${summary.retrievalMisses.length ? `: ${summary.retrievalMisses.join(", ")}` : ""}. Transcript search is built at 10% on the snapshot (D58).`,
+    "",
+    "| Case | Result | Key points | Supported | Ranking | Gaps | Failed checks | Tool calls | Display | Cost |",
+    "|---|---|---|---|---|---|---|---|---|---|",
     ...results.map((r) => {
       const failed = r.checks.filter((c) => !c.pass).map((c) => c.name);
       const breached = r.verdict ? Object.entries(r.verdict.guardrails).filter(([, v]) => v).map(([k]) => `guardrail:${k}`) : [];
       const problems = [...failed, ...breached, ...(r.error ? ["error"] : []), ...(r.judgeError ? ["not judged"] : [])];
       const cost = (r.costUsd.answer ?? 0) + (r.costUsd.judge ?? 0);
       const result = r.pass ? "Pass" : r.type === "redTeam" && r.guardrailHolds ? "Fail (guardrail held)" : "Fail";
-      return `| ${r.id} | ${result} | ${scoreCell(r, "keyPoints")} | ${scoreCell(r, "supported")} | ${scoreCell(r, "rankingJustified")} | ${scoreCell(r, "honestAboutGaps")} | ${problems.join(", ") || "–"} | ${r.turns.map((t) => t.toolCalls ?? "?").join(" + ")} | ${fmtUsd(cost)} |`;
+      // D56: what the final answer showed; an expected component it didn't show is marked missing.
+      const missing = (r.expectedDisplay ?? []).filter((d) => !d.shown).map((d) => `missing ${d.display}`);
+      const display = [...(r.shown ?? []), ...missing].join(", ") || "–";
+      return `| ${r.id} | ${result} | ${scoreCell(r, "keyPoints")} | ${scoreCell(r, "supported")} | ${scoreCell(r, "rankingJustified")} | ${scoreCell(r, "honestAboutGaps")} | ${problems.join(", ") || "–"} | ${r.turns.map((t) => t.toolCalls ?? "?").join(" + ")} | ${display} | ${fmtUsd(cost)} |`;
     }),
     "",
   ];

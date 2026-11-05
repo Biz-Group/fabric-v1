@@ -19,7 +19,8 @@ export type SuggestionTopic =
   | "gaps"
   | "whatsNew"
   | "coverage"
-  | "usingFabric";
+  | "usingFabric"
+  | "howItWorks";
 export type Suggestion = { text: string; category: SuggestionCategory; topic: SuggestionTopic };
 
 export type SuggestionInputs = {
@@ -110,6 +111,61 @@ export function buildSuggestions(inputs: SuggestionInputs): Suggestion[] {
     prompts.push({ text: COVERAGE_PROMPT, category: "orgWide", topic: "coverage" });
   }
   return prompts.slice(0, 6);
+}
+
+export type EntitySuggestionInputs = {
+  kind: "function" | "department" | "process";
+  name: string;
+  /** Whether anything in the entity has been contributed and processed. */
+  hasContributions: boolean;
+  /** The strongest named signal inside the entity. */
+  topSignal: SuggestionInputs["topSignal"];
+  hasSystems: boolean;
+  /** A process with a ready flow, so a walkthrough has steps to cite. */
+  hasFlow: boolean;
+};
+
+/** Starter prompts per entity, never more than this. */
+export const ENTITY_SUGGESTIONS = 3;
+
+/**
+ * Starter prompts for "Ask about this" (Phase 2B.1): the same templates,
+ * scoped to one entity, and only for data the entity has (FR-6.4). An entity
+ * with no contributions gets the coverage question alone.
+ */
+export function buildEntitySuggestions(inputs: EntitySuggestionInputs): Suggestion[] {
+  const { name } = inputs;
+  const coverage: Suggestion = {
+    text: `How much of ${name} has been interviewed, and what's still missing?`,
+    category: "entitySignal",
+    topic: "coverage",
+  };
+  if (!inputs.hasContributions) return [coverage];
+
+  const prompts: Suggestion[] = [];
+  if (inputs.kind === "process" && inputs.hasFlow) {
+    prompts.push({ text: `Walk me through ${name}, step by step.`, category: "entitySignal", topic: "howItWorks" });
+  }
+  if (inputs.topSignal) {
+    prompts.push({
+      text: `What's behind ${SIGNAL_PHRASE[inputs.topSignal.signal]} in ${inputs.topSignal.processName}?`,
+      category: "entitySignal",
+      topic: SIGNAL_TOPIC[inputs.topSignal.signal],
+    });
+  }
+  if (inputs.hasSystems) {
+    prompts.push({
+      text: `Which systems does ${name} rely on, and where do they cause problems?`,
+      category: "entitySignal",
+      topic: "systems",
+    });
+  }
+  if (inputs.kind === "process") {
+    prompts.push({ text: `What are the biggest gaps in how ${name} works today?`, category: "entitySignal", topic: "gaps" });
+  } else {
+    prompts.push(coverage);
+  }
+  return prompts.slice(0, ENTITY_SUGGESTIONS);
 }
 
 /**

@@ -28,6 +28,8 @@ type ThreadRow = {
   status: "active" | "archived" | "deleting";
   pinnedAt: number | null;
   lastMessageAt: number;
+  /** The page the thread was started from (2B.3), if it can still be read. */
+  context: { kind: "function" | "department" | "process"; name: string } | null;
 };
 
 function useThreadActions() {
@@ -88,7 +90,15 @@ function ThreadItem({
         )}
       >
         {inSearch && pinned && <Pin className="size-3 shrink-0 text-muted-foreground" aria-label="Pinned" />}
-        <span className="min-w-0 flex-1 truncate">{thread.title}</span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate">{thread.title}</span>
+          {thread.context && (
+            <span className="truncate text-xs font-normal text-muted-foreground">
+              <span className="sr-only">Asked about the {thread.context.kind} </span>
+              {thread.context.name}
+            </span>
+          )}
+        </span>
         {inSearch && archived && <span className="shrink-0 text-xs font-normal text-muted-foreground">Archived</span>}
         <time
           dateTime={new Date(thread.lastMessageAt).toISOString()}

@@ -341,6 +341,60 @@ describe("runTurn", () => {
     expect(titles).toHaveLength(1);
   });
 
+  test("shows cards after the answer, and a follow-up can show them again from the thread (D56)", async () => {
+    const s = await setup();
+    const show = (id: string) => ({ type: "tool_use", id, name: "showEntities", input: { refs: [{ kind: "process", id: s.ids.a.processId }] } });
+    const scripted = useScript([
+      { content: [{ type: "tool_use", id: "toolu_1", name: "searchHierarchy", input: { query: "scheduling", kinds: [], cursor: "" } }] },
+      { content: [{ type: "text", text: "Scheduling is the one." }, show("toolu_2")] },
+      // The follow-up runs no data tool: the process is grounded by the thread.
+      { content: [{ type: "text", text: "Here it is again." }, show("toolu_3")] },
+    ]);
+    const first = await startTurn(s, "Which process handles scheduling?");
+    const answer = await runTurn(s, first);
+    expect(answer?.status).toBe("complete");
+    expect(answer?.parts.map((p) => p.type)).toEqual(["tool", "text", "display"]);
+    expect(answer?.parts.at(-1)).toEqual({ type: "display", display: "entities", refs: [{ kind: "process", id: s.ids.a.processId }] });
+    expect(answer?.toolTelemetry?.map((t) => t.name)).toEqual(["searchHierarchy", "showEntities"]);
+
+    const second = await startTurn(s, "Show it again", first.threadId);
+    const again = await runTurn(s, second);
+    expect(again?.parts.map((p) => p.type)).toEqual(["text", "display"]);
+    // History told the model what the first answer showed.
+    const history = scripted.requests[2].messages as Array<{ role: string; content: unknown }>;
+    expect(history[1].content).toBe(`Scheduling is the one.\n\n[Shown: 1 process card: Scheduling [${s.ids.a.processId}]]`);
+  });
+
+  test("a thread started from a page keeps it as context on later turns, and the list names it (2B.3)", async () => {
+    const s = await setup();
+    const scripted = useScript([{ content: [{ type: "text", text: "First." }] }, { content: [{ type: "text", text: "Second." }] }]);
+    const first = await startTurn(s, "What happens here?");
+    await s.t.run((ctx) => ctx.db.patch("askThreads", first.threadId, { contextRef: { kind: "process", id: s.ids.a.processId } }));
+    await runTurn(s, first);
+    // A follow-up's own message carries no context; the thread's applies.
+    await runTurn(s, await startTurn(s, "And who does it?", first.threadId));
+    for (const request of scripted.requests) {
+      expect(JSON.stringify(request.messages.at(-1))).toContain('asking from the process \\"Scheduling\\"');
+    }
+    const list = await s.ana.query(api.askThreads.listThreads, { archived: false, paginationOpts: { numItems: 25, cursor: null } });
+    expect(list.page[0].context).toEqual({ kind: "process", name: "Scheduling" });
+  });
+
+  test("never shows another org's entity, even when the model names its id (FR-9.1)", async () => {
+    const s = await setup();
+    useScript([
+      {
+        content: [
+          { type: "text", text: "Here." },
+          { type: "tool_use", id: "toolu_1", name: "showEntities", input: { refs: [{ kind: "process", id: s.ids.b.processId }] } },
+        ],
+      },
+    ]);
+    const message = await runTurn(s, await startTurn(s, "Show org B's process"));
+    expect(message?.status).toBe("complete");
+    expect(message?.parts.map((p) => p.type)).toEqual(["text"]);
+  });
+
   test("Stop ends a streaming answer and keeps its partial work (FR-2.4)", async () => {
     const s = await setup();
     const ids = await startTurn(s, "Long one");

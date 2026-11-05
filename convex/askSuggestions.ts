@@ -4,10 +4,10 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { isoDate } from "./askTools/results";
 import { loadScopeEvidence } from "./askTools/evidence";
-import { loadHierarchy } from "./askTools/scope";
+import { getOrgEntity, loadHierarchy, processesInScope } from "./askTools/scope";
 import { collectSignals } from "./askTools/signals";
 import { summarizeSystems } from "./askTools/systems";
-import { buildSuggestions, type Suggestion } from "./askfabric/suggestions";
+import { buildEntitySuggestions, buildSuggestions, type Suggestion } from "./askfabric/suggestions";
 import { askFabricAvailability } from "./lib/askFabricFeature";
 import { isActiveMembership, requireOrgMember } from "./lib/orgAuth";
 
@@ -225,6 +225,53 @@ export const getStarterContext = query({
       stats: orgRow?.stats ?? null,
       department: department && inOrg(department) ? { id: department._id, name: department.name } : null,
       function: fn && inOrg(fn) ? { id: fn._id, name: fn.name } : null,
+    };
+  },
+});
+
+/**
+ * "Ask about this" (Phase 2B.1): the entity the page was opened from, checked
+ * as the viewer, with three starter prompts built from its own signals. Null
+ * for an entity the viewer can't read, so a crafted link shows nothing.
+ */
+export const getEntityStarters = query({
+  // The id comes from a URL, so it is a string: a malformed one finds nothing
+  // rather than failing validation and breaking the page.
+  args: { ref: v.object({ kind: v.union(v.literal("function"), v.literal("department"), v.literal("process")), id: v.string() }) },
+  handler: async (ctx, args) => {
+    const org = await requireOrgMember(ctx);
+    if (!askFabricAvailability(org.orgId).available) return null;
+    const doc = await getOrgEntity(ctx, org.orgId, args.ref.kind, args.ref.id);
+    if (!doc) return null;
+    const hierarchy = await loadHierarchy(ctx, org.orgId);
+    const processes =
+      args.ref.kind === "process"
+        ? hierarchy.processes.filter((p) => p._id === doc._id)
+        : args.ref.kind === "department"
+          ? processesInScope(hierarchy, { kind: "department", id: doc._id as Id<"departments"> })
+          : processesInScope(hierarchy, { kind: "function", id: doc._id as Id<"functions"> });
+    const evidence = await loadScopeEvidence(ctx, org.orgId, processes);
+    const ranked = collectSignals(new Set(["bottleneck", "friction", "tribalKnowledge"] as const), evidence, []);
+    let topSignal: Inputs["topSignal"] = null;
+    for (const signal of ["bottleneck", "friction", "tribalKnowledge"] as const) {
+      const item = ranked.get(signal)?.[0];
+      if (item) {
+        topSignal = { signal, processName: item.refs[0].processName };
+        break;
+      }
+    }
+    return {
+      kind: args.ref.kind,
+      id: doc._id as string,
+      name: doc.name,
+      prompts: buildEntitySuggestions({
+        kind: args.ref.kind,
+        name: doc.name,
+        hasContributions: evidence.contributions.length > 0 || evidence.flows.length > 0,
+        topSignal,
+        hasSystems: summarizeSystems(evidence).length > 0,
+        hasFlow: evidence.flows.length > 0,
+      }),
     };
   },
 });

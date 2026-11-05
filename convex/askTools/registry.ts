@@ -8,7 +8,8 @@ import type {
   PropertyValidators,
 } from "convex/values";
 import type { OrgViewer } from "../lib/orgAuth";
-import { ASK_TOOL_NAMES, type AskToolName } from "../lib/askSchema";
+import { ASK_TOOL_NAMES, type AskDisplayKind, type AskToolName } from "../lib/askSchema";
+import type { AskDisplayResult } from "./display";
 import {
   MAX_BUDGET_TOKENS,
   type AskToolResult,
@@ -43,6 +44,14 @@ export type AskToolExecutorRef = FunctionReference<
   AskToolResult
 >;
 
+/** A display tool's executor also takes the turn's grounding set (`askDisplayQuery`). */
+export type AskDisplayExecutorRef = FunctionReference<
+  "query",
+  "internal",
+  { viewer: OrgViewer; allowed: string[] } & Record<string, unknown>,
+  AskDisplayResult
+>;
+
 export type AskToolDefinition<Input extends PropertyValidators> = {
   name: AskToolName;
   /** Model-facing: when to use the tool and what it returns. */
@@ -67,6 +76,12 @@ export type AskToolDefinition<Input extends PropertyValidators> = {
   telemetryName: AskToolName;
   /** The status-line and trace label for a call (FR-2.15). Never generic. */
   label: (input: ObjectType<Input>) => string;
+  /**
+   * Set on display tools (D56): the component the tool places. Its executor
+   * is an `askDisplayQuery`, it returns no data and no citations, and the loop
+   * runs it after the step's data tools.
+   */
+  display?: AskDisplayKind;
 };
 
 export type RegisteredAskTool = AskToolDefinition<PropertyValidators> & {
@@ -261,7 +276,10 @@ export function defineTool<Input extends PropertyValidators>(
       `budgetTokens must be between 1 and ${MAX_BUDGET_TOKENS}`,
     );
   }
-  if (definition.citationSources.length === 0) {
+  if (definition.display !== undefined && definition.citationSources.length > 0) {
+    throw new ToolRegistrationError(name, "a display tool returns nothing citable");
+  }
+  if (definition.display === undefined && definition.citationSources.length === 0) {
     throw new ToolRegistrationError(name, "citationSources is empty");
   }
 

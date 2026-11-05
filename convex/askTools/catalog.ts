@@ -25,6 +25,8 @@ import { scopeInput } from "./scope";
 import { findSimilarWork, listSystems } from "./systems";
 import { getCoverage, getCoverageInput, whatsNew, whatsNewInput } from "./coverage";
 import { DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS } from "./results";
+import { showEntities, showEntitiesInput } from "./display";
+import { MAX_DISPLAY_REFS } from "../lib/askSchema";
 
 /**
  * The AskFabric tools, in registry order (FR-1). The order is part of the
@@ -379,6 +381,25 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     telemetryName: "getParticipation",
     label: (input) =>
       `Checking who has contributed across ${input.kind === "org" ? "the organization" : `a ${input.kind}`}`,
+  }),
+  // Display tools (D56): appended, so the cached tool prefix only grows.
+  defineTool({
+    name: "showEntities",
+    description:
+      "Show cards under your answer for the functions, departments or processes it is about. Each card shows the entity's current name, path, overview headline and counts, and opens its page. Use it when the answer names 2 or more entities a tool returned. Write your full, cited answer first, then call this in the same response as its last step: your answer ends where you call it. The cards replace no part of the answer. Returns a short acknowledgement, not data; never cite it.",
+    input: showEntitiesInput,
+    inputDescriptions: {
+      refs: `2 to ${MAX_DISPLAY_REFS} entities, most relevant first: each kind and id exactly as a tool returned them.`,
+    },
+    access: "member",
+    executor: showEntities,
+    executorPath: "askTools/display:showEntities",
+    output: "An acknowledgement of what was shown.",
+    citationSources: [],
+    budgetTokens: 200,
+    telemetryName: "showEntities",
+    label: (input) => `Showing ${input.refs.length} card${input.refs.length === 1 ? "" : "s"}`,
+    display: "entities",
   }),
 ];
 

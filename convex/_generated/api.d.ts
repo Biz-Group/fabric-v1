@@ -21,6 +21,7 @@ import type * as askThreads from "../askThreads.js";
 import type * as askTools_catalog from "../askTools/catalog.js";
 import type * as askTools_conversations from "../askTools/conversations.js";
 import type * as askTools_coverage from "../askTools/coverage.js";
+import type * as askTools_display from "../askTools/display.js";
 import type * as askTools_evidence from "../askTools/evidence.js";
 import type * as askTools_executor from "../askTools/executor.js";
 import type * as askTools_flow from "../askTools/flow.js";
@@ -141,6 +142,7 @@ declare const fullApi: ApiFromModules<{
   "askTools/catalog": typeof askTools_catalog;
   "askTools/conversations": typeof askTools_conversations;
   "askTools/coverage": typeof askTools_coverage;
+  "askTools/display": typeof askTools_display;
   "askTools/evidence": typeof askTools_evidence;
   "askTools/executor": typeof askTools_executor;
   "askTools/flow": typeof askTools_flow;

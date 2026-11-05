@@ -149,6 +149,7 @@ describe("the catalog", () => {
       findSimilarWork: internal.askTools.systems.findSimilarWork,
       getFlowNode: internal.askTools.flow.getFlowNode,
       getParticipation: internal.askTools.participation.getParticipation,
+      showEntities: internal.askTools.display.showEntities,
     };
     for (const tool of ASK_TOOLS) {
       expect(getFunctionName(refs[tool.name] as never)).toBe(tool.executorPath);
@@ -192,6 +193,7 @@ describe("the catalog", () => {
       actor: "",
       signals: ["friction", "bottleneck"],
       limit: 0,
+      refs: [{ kind: "process", id: "p" }, { kind: "process", id: "q" }],
     };
     for (const tool of ASK_TOOLS) {
       const label = tool.label(sample as never);

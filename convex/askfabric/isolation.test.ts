@@ -13,6 +13,7 @@ import * as askSuggestionsModule from "../askSuggestions";
 import * as askThreadsModule from "../askThreads";
 import * as askUsageModule from "../askUsage";
 import * as askSpeechModule from "../askSpeech";
+import * as askDisplayModule from "../askDisplay";
 import { ASK_TOOLS } from "../askTools/catalog";
 
 /**
@@ -446,6 +447,33 @@ describe("citation re-authorization on every read (FR-5.5)", () => {
   });
 });
 
+describe("Phase 2 reads (D56, 2B.1)", () => {
+  test("entity cards and Ask about this see only the caller's org, for every role", async () => {
+    const s = await setup();
+    for (const caller of [s.ids.ana, s.ids.mia, s.ids.olga]) {
+      const as = s.as(caller);
+      const cards = await as.query(api.askDisplay.getEntityCards, {
+        refs: [
+          { kind: "process", id: s.ids.b.processId },
+          { kind: "department", id: s.ids.b.departmentId },
+          { kind: "function", id: s.ids.b.functionId },
+          { kind: "process", id: s.ids.a.processId },
+        ],
+      });
+      expect(cards.map((card) => card.name), caller.tokenIdentifier).toEqual(["Scheduling A"]);
+      expect(await as.query(api.askSuggestions.getEntityStarters, { ref: { kind: "process", id: s.ids.b.processId } })).toBeNull();
+      expect(await as.query(api.askSuggestions.getEntityStarters, { ref: { kind: "process", id: s.ids.a.processId } })).toMatchObject({
+        name: "Scheduling A",
+      });
+    }
+    await s.t.run((ctx) => ctx.db.patch("memberships", s.ids.ana.membershipId, { removedAt: 1 }));
+    await expect(s.as(s.ids.ana).query(api.askDisplay.getEntityCards, { refs: [{ kind: "process", id: s.ids.a.processId }] })).rejects.toThrow();
+    await expect(
+      s.as(s.ids.ana).query(api.askSuggestions.getEntityStarters, { ref: { kind: "process", id: s.ids.a.processId } }),
+    ).rejects.toThrow();
+  });
+});
+
 describe("coverage", () => {
   test("every public AskFabric function is exercised by this suite", () => {
     const covered = new Set([
@@ -470,6 +498,8 @@ describe("coverage", () => {
       "askSuggestions.getSuggestions",
       "askSuggestions.getStarterContext",
       "askSuggestions.markVisited",
+      "askSuggestions.getEntityStarters",
+      "askDisplay.getEntityCards",
       "askUsage.getOrgUsage",
       "askUsage.listFeedback",
       "askSpeech.readAloud",
@@ -482,6 +512,7 @@ describe("coverage", () => {
       askSuggestions: askSuggestionsModule,
       askUsage: askUsageModule,
       askSpeech: askSpeechModule,
+      askDisplay: askDisplayModule,
     };
     const publicFunctions = Object.entries(modulesByName).flatMap(([moduleName, exports]) =>
       Object.entries(exports)

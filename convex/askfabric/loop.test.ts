@@ -4,6 +4,8 @@ import { ASK_TOOLS } from "../askTools/catalog";
 import { RESULT_DETAILS_SOURCE, searchResult, sources, type AskToolResult } from "../askTools/results";
 import type { AskMessagePart } from "../lib/askSchema";
 import {
+  ANSWER_STILL_DUE,
+  MAX_DISPLAYS,
   MAX_MODEL_CALLS,
   TOOLS_OFF_MARGIN_MS,
   TURN_DEADLINE_MS,
@@ -32,10 +34,32 @@ const FOUND: AskToolResult = {
   cursor: null,
 };
 
-function harness(steps: ScriptedStep[], overrides: Partial<TurnDeps> & { cancelAfterChecks?: number } = {}) {
+/** A hierarchy result naming two processes, so they can be shown. */
+const PROCESSES: AskToolResult = {
+  ...FOUND,
+  content: [
+    searchResult(RESULT_DETAILS_SOURCE, "About this result", "notice"),
+    searchResult(sources.entity("process", "p1"), "Payroll (process)", "Process Finance › Payroll. id: p1."),
+    searchResult(sources.flowNode("p2", "n4"), "Approve invoice", "Step of Invoicing."),
+  ],
+  resultCount: 2,
+};
+
+const showCall = (refs: string[], id = "toolu_show") => ({
+  type: "tool_use",
+  id,
+  name: "showEntities",
+  input: { refs: refs.map((ref) => ({ kind: "process", id: ref })) },
+});
+
+function harness(
+  steps: ScriptedStep[],
+  overrides: Partial<TurnDeps> & { cancelAfterChecks?: number; groundedIds?: string[] } = {},
+) {
   const scripted = createScriptedAskClient(steps);
   const writes: AskMessagePart[][] = [];
   const toolCalls: string[] = [];
+  const displayCalls: Array<{ name: string; allowed: string[] }> = [];
   const metered: number[] = [];
   let checks = 0;
   let clock = 1_000;
@@ -45,6 +69,14 @@ function harness(steps: ScriptedStep[], overrides: Partial<TurnDeps> & { cancelA
     runTool: async (tool) => {
       toolCalls.push(tool.name);
       return FOUND;
+    },
+    // Stands in for the executor: keeps only grounded references.
+    runDisplayTool: async (tool, input, allowed) => {
+      displayCalls.push({ name: tool.name, allowed });
+      const refs = ((input.refs ?? []) as Array<{ kind: "process"; id: string }>).filter((ref) => allowed.includes(ref.id));
+      return refs.length
+        ? { part: { type: "display", display: tool.display!, refs: refs as never }, note: `Shown: ${refs.length}` }
+        : { part: null, note: "Nothing shown." };
     },
     meter: async (stepIndex, run) => {
       metered.push(stepIndex);
@@ -63,8 +95,97 @@ function harness(steps: ScriptedStep[], overrides: Partial<TurnDeps> & { cancelA
     pollIntervalMs: 5,
     ...overrides,
   };
-  return { deps, scripted, writes, toolCalls, metered, run: () => runTurnLoop(deps, { system: SYSTEM, messages: QUESTION }) };
+  return {
+    deps,
+    scripted,
+    writes,
+    toolCalls,
+    displayCalls,
+    metered,
+    run: () => runTurnLoop(deps, { system: SYSTEM, messages: QUESTION, groundedIds: overrides.groundedIds }),
+  };
 }
+
+const lookup = (id = "toolu_1") => ({ type: "tool_use", id, name: "searchHierarchy", input: { query: "pay", kinds: [], cursor: "" } });
+
+describe("display tools in the loop (D56)", () => {
+  test("a step that answers and only shows ends the turn, with the component after the text", async () => {
+    const h = harness(
+      [{ content: [lookup()] }, { content: [{ type: "text", text: "Two processes stand out." }, showCall(["p1", "p2"])] }],
+      { runTool: async () => PROCESSES },
+    );
+    const outcome = await h.run();
+    expect(outcome.status).toBe("complete");
+    expect(h.scripted.callCount()).toBe(2);
+    expect(outcome.parts.map((p) => p.type)).toEqual(["tool", "text", "display"]);
+    expect(outcome.parts.at(-1)).toMatchObject({ display: "entities", refs: [{ id: "p1" }, { id: "p2" }] });
+    // A flow-node source grounds its process too.
+    expect(h.displayCalls[0].allowed).toEqual(expect.arrayContaining(["p1", "p2"]));
+    expect(outcome.quality).toMatchObject({ stopReason: "end_turn", toolCalls: 2 });
+    expect(outcome.telemetry.map((t) => [t.name, t.found])).toEqual([
+      ["searchHierarchy", true],
+      ["showEntities", true],
+    ]);
+  });
+
+  test("a show call with no answer text yet lets the model write the answer", async () => {
+    const h = harness(
+      [{ content: [lookup()] }, { content: [showCall(["p1"])] }, { content: [{ type: "text", text: "Payroll is the one." }] }],
+      { runTool: async () => PROCESSES },
+    );
+    const outcome = await h.run();
+    expect(h.scripted.callCount()).toBe(3);
+    expect(outcome.parts.map((p) => p.type)).toEqual(["tool", "text", "display"]);
+    // The model was told what was shown, as a plain-text tool result.
+    // The model was told what was shown, and that the answer is still due.
+    const third = h.scripted.requests[2].messages.at(-1) as { content: Array<{ type: string; content: unknown }> };
+    expect(third.content[0]).toMatchObject({ type: "tool_result", content: [{ type: "text", text: `Shown: 1 ${ANSWER_STILL_DUE}` }] });
+  });
+
+  test("a step that fetches and shows checks the display against what the fetch returned", async () => {
+    const h = harness(
+      [{ content: [lookup(), showCall(["p1"])] }, { content: [{ type: "text", text: "Payroll." }] }],
+      { runTool: async () => PROCESSES },
+    );
+    const outcome = await h.run();
+    expect(h.scripted.callCount()).toBe(2);
+    expect(outcome.parts.map((p) => p.type)).toEqual(["tool", "text", "display"]);
+  });
+
+  test("drops what no tool returned, and shows what the thread already grounded", async () => {
+    const invented = await harness([{ content: [{ type: "text", text: "Here." }, showCall(["p9"])] }]).run();
+    expect(invented.parts.map((p) => p.type)).toEqual(["text"]);
+    expect(invented.telemetry).toEqual([expect.objectContaining({ name: "showEntities", found: false })]);
+
+    const followUp = await harness([{ content: [{ type: "text", text: "Here." }, showCall(["p9"])] }], { groundedIds: ["p9"] }).run();
+    expect(followUp.parts.map((p) => p.type)).toEqual(["text", "display"]);
+  });
+
+  test("caps components per answer, and a failed one leaves the answer standing", async () => {
+    const calls = ["a", "b", "c", "d"].map((id) => showCall(["p1"], `toolu_${id}`));
+    const capped = await harness([{ content: [{ type: "text", text: "Here." }, ...calls] }], { groundedIds: ["p1"] }).run();
+    expect(capped.parts.filter((p) => p.type === "display")).toHaveLength(MAX_DISPLAYS);
+
+    const failing = await harness([{ content: [{ type: "text", text: "Here." }, showCall(["p1"])] }], {
+      groundedIds: ["p1"],
+      runDisplayTool: async () => {
+        throw new Error("read limit");
+      },
+    }).run();
+    expect(failing.status).toBe("complete");
+    expect(failing.parts.map((p) => p.type)).toEqual(["text"]);
+  });
+
+  test("a stopped turn shows no components", async () => {
+    const h = harness([{ content: [lookup(), showCall(["p1"])] }, { content: [{ type: "text", text: "never" }] }], {
+      runTool: async () => PROCESSES,
+      cancelAfterChecks: 1,
+    });
+    const outcome = await h.run();
+    expect(outcome.status).toBe("stopped");
+    expect(outcome.parts.some((p) => p.type === "display")).toBe(false);
+  });
+});
 
 describe("the AskFabric tool loop", () => {
   test("runs a multi-step tool loop into a cited answer, with ordered parts", async () => {

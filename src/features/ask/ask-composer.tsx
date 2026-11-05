@@ -94,6 +94,7 @@ export function AskComposer({
   onSend,
   onStop,
   autoFocus,
+  initialText,
 }: {
   ref?: Ref<AskComposerHandle>;
   streaming: boolean;
@@ -101,8 +102,10 @@ export function AskComposer({
   onSend: (text: string, mentions: Mention[]) => Promise<boolean>;
   onStop: () => void;
   autoFocus?: boolean;
+  /** A draft to start from, e.g. a question typed into Cmd+K. Not sent. */
+  initialText?: string;
 }) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => (initialText ?? "").slice(0, MAX_QUESTION_CHARS));
   // Every entity picked in this draft; only those whose token is still in the
   // text are sent (`activeMentions`).
   const [picked, setPicked] = useState<Mention[]>([]);

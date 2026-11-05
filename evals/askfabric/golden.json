@@ -47,7 +47,10 @@
         "entity"
       ],
       "mustMatch": [],
-      "mustNotMatch": []
+      "mustNotMatch": [],
+      "expectedDisplay": [
+        "entities"
+      ]
     },
     {
       "id": "G3",
@@ -204,7 +207,10 @@
         "entity"
       ],
       "mustMatch": [],
-      "mustNotMatch": []
+      "mustNotMatch": [],
+      "expectedDisplay": [
+        "entities"
+      ]
     },
     {
       "id": "L5",

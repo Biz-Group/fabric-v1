@@ -132,6 +132,11 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { GitBranch } from "lucide-react";
+import {
+  AskAboutButton,
+  useAskAboutHref,
+  useAskPaletteAction,
+} from "@/features/ask/ask-about-link";
 import type { RevealPath } from "./reveal-path";
 import { captureDeepLinkTargets } from "@/features/workbench/deep-link-targets";
 
@@ -186,6 +191,17 @@ export function ProcessWorkbench() {
     useState<Id<"departments"> | null>(initialSelection.dept);
   const [selectedProcessId, setSelectedProcessId] =
     useState<Id<"processes"> | null>(initialSelection.proc);
+  // "Ask about this" (AskFabric, Phase 2B.1): null while AskFabric is off.
+  const askAboutProcessHref = useAskAboutHref(
+    selectedProcessId ? { kind: "process", id: selectedProcessId } : null,
+  );
+  const askAboutOverviewHref = useAskAboutHref(
+    selectedDepartmentId
+      ? { kind: "department", id: selectedDepartmentId }
+      : selectedFunctionId
+        ? { kind: "function", id: selectedFunctionId }
+        : null,
+  );
 
   // Recording modal state
   const [recordingOpen, setRecordingOpen] = useState(false);
@@ -397,9 +413,7 @@ export function ProcessWorkbench() {
       })),
     [processes],
   );
-  const functionOverviewChildren = useMemo<
-    HierarchyChildSummary[] | undefined
-  >(
+  const functionOverviewChildren = useMemo<HierarchyChildSummary[] | undefined>(
     () =>
       departments?.map((department) => ({
         kind: "department" as const,
@@ -436,7 +450,10 @@ export function ProcessWorkbench() {
   // Phone rows read their status from the tree, so they flag exactly what the
   // desktop tree does.
   const treeRowInfo = useMemo(() => {
-    const byId = new Map<string, { status: StatusMeta | null; detail?: string }>();
+    const byId = new Map<
+      string,
+      { status: StatusMeta | null; detail?: string }
+    >();
     for (const fn of hierarchyTree?.functions ?? []) {
       byId.set(fn._id, { status: overviewRowStatus(fn.summaryOverview.state) });
       for (const department of fn.departments) {
@@ -466,6 +483,21 @@ export function ProcessWorkbench() {
     processWorkbench?.department.name ?? departmentDisplayName;
   const workbenchProcessName =
     processWorkbench?.process.name ?? processDisplayName;
+  // Cmd+K's AskFabric row (Phase 2B.2), about the most specific selection.
+  const paletteAsk = useAskPaletteAction(
+    selectedProcessId
+      ? { kind: "process", id: selectedProcessId }
+      : selectedDepartmentId
+        ? { kind: "department", id: selectedDepartmentId }
+        : selectedFunctionId
+          ? { kind: "function", id: selectedFunctionId }
+          : null,
+    (selectedProcessId
+      ? workbenchProcessName
+      : selectedDepartmentId
+        ? departmentDisplayName
+        : functionDisplayName) || null,
+  );
   const functionBreadcrumbQuery = buildSelectionQuery(searchParams, {
     fn: selectedFunctionId,
     dept: null,
@@ -1264,7 +1296,9 @@ export function ProcessWorkbench() {
   const myPlacement = useQuery(api.users.getMyPlacement);
   // Whether the visit began on a link to a function, department or process.
   const [arrivedOnDeepLink] = useState(() =>
-    Boolean(initialSelection.fn || initialSelection.dept || initialSelection.proc),
+    Boolean(
+      initialSelection.fn || initialSelection.dept || initialSelection.proc,
+    ),
   );
   const [tourActive, setTourActive] = useState(false);
   // Each start remounts the walkthrough, so a replay begins at step 1.
@@ -1292,7 +1326,12 @@ export function ProcessWorkbench() {
         welcomed: onboarding.welcomed,
         walkthrough: onboarding.walkthrough,
       };
-      if (shouldAutoStartWalkthrough({ ...pendingExplore, deepLink: arrivedOnDeepLink })) {
+      if (
+        shouldAutoStartWalkthrough({
+          ...pendingExplore,
+          deepLink: arrivedOnDeepLink,
+        })
+      ) {
         startTour();
       } else if (
         arrivedOnDeepLink &&
@@ -1458,7 +1497,12 @@ export function ProcessWorkbench() {
     canEdit
       ? [
           { label: "Edit", icon: Pencil, onSelect: onEdit },
-          { label: "Delete", icon: Trash2, onSelect: onDelete, destructive: true },
+          {
+            label: "Delete",
+            icon: Trash2,
+            onSelect: onDelete,
+            destructive: true,
+          },
         ]
       : [];
 
@@ -1787,53 +1831,61 @@ export function ProcessWorkbench() {
                   : [homeCrumb]
               }
               actions={
-                canEdit && selectedDepartmentId ? (
-                  <OverviewActions
-                    entityLabel={departmentDisplayName}
-                    onEdit={() =>
-                      selectedDepartmentId &&
-                      openCrud(
-                        "edit",
-                        "Department",
-                        departmentDisplayName,
-                        selectedDepartmentId,
-                        selectedDepartment?.functionId,
-                        selectedDepartment?.description,
-                      )
-                    }
-                    onDelete={() =>
-                      selectedDepartmentId &&
-                      openCrud(
-                        "delete",
-                        "Department",
-                        departmentDisplayName,
-                        selectedDepartmentId,
-                      )
-                    }
-                  />
-                ) : canEdit && selectedFunctionId ? (
-                  <OverviewActions
-                    entityLabel={functionDisplayName}
-                    onEdit={() =>
-                      selectedFunctionId &&
-                      openCrud(
-                        "edit",
-                        "Function",
-                        functionDisplayName,
-                        selectedFunctionId,
-                      )
-                    }
-                    onDelete={() =>
-                      selectedFunctionId &&
-                      openCrud(
-                        "delete",
-                        "Function",
-                        functionDisplayName,
-                        selectedFunctionId,
-                      )
-                    }
-                  />
-                ) : undefined
+                <div className="flex shrink-0 items-center gap-1">
+                  {askAboutOverviewHref && (
+                    <AskAboutButton
+                      href={askAboutOverviewHref}
+                      className="-my-1.5"
+                    />
+                  )}
+                  {canEdit && selectedDepartmentId ? (
+                    <OverviewActions
+                      entityLabel={departmentDisplayName}
+                      onEdit={() =>
+                        selectedDepartmentId &&
+                        openCrud(
+                          "edit",
+                          "Department",
+                          departmentDisplayName,
+                          selectedDepartmentId,
+                          selectedDepartment?.functionId,
+                          selectedDepartment?.description,
+                        )
+                      }
+                      onDelete={() =>
+                        selectedDepartmentId &&
+                        openCrud(
+                          "delete",
+                          "Department",
+                          departmentDisplayName,
+                          selectedDepartmentId,
+                        )
+                      }
+                    />
+                  ) : canEdit && selectedFunctionId ? (
+                    <OverviewActions
+                      entityLabel={functionDisplayName}
+                      onEdit={() =>
+                        selectedFunctionId &&
+                        openCrud(
+                          "edit",
+                          "Function",
+                          functionDisplayName,
+                          selectedFunctionId,
+                        )
+                      }
+                      onDelete={() =>
+                        selectedFunctionId &&
+                        openCrud(
+                          "delete",
+                          "Function",
+                          functionDisplayName,
+                          selectedFunctionId,
+                        )
+                      }
+                    />
+                  ) : null}
+                </div>
               }
             />
           )}
@@ -1841,7 +1893,10 @@ export function ProcessWorkbench() {
           {/* Unified Department Overview */}
           {selectedDepartmentId && !selectedProcessId && (
             <HierarchyOverview
-              entity={{ kind: "department", departmentId: selectedDepartmentId }}
+              entity={{
+                kind: "department",
+                departmentId: selectedDepartmentId,
+              }}
               description={selectedDepartment?.description}
               childSummaries={departmentOverviewChildren}
               canRefresh={canEdit}
@@ -1903,6 +1958,7 @@ export function ProcessWorkbench() {
             onDeleteProcess={handleDeleteSelectedProcess}
             onDownloadProcess={handleDownloadProcess}
             isDownloading={isDownloadingPdf}
+            askAboutHref={askAboutProcessHref}
             onStartInterview={() => handleOpenRecordingMode("agent")}
             onRecordVoice={() => handleOpenRecordingMode("voiceRecord")}
             onUploadAudio={() => handleOpenRecordingMode("audioUpload")}
@@ -2199,9 +2255,7 @@ export function ProcessWorkbench() {
               </div>
 
               {mobilePreview?.type === "process" ? (
-                <ProcessOverviewCompactPreview
-                  processId={mobilePreview.id}
-                />
+                <ProcessOverviewCompactPreview processId={mobilePreview.id} />
               ) : mobilePreview?.type === "department" ? (
                 <HierarchyOverviewCompactPreview
                   entity={{
@@ -2327,6 +2381,7 @@ export function ProcessWorkbench() {
           onJumpFunction={handleSelectFunction}
           onJumpDepartment={jumpToDepartment}
           onJumpProcess={jumpToProcess}
+          ask={paletteAsk}
         />
       </div>
     </TooltipProvider>

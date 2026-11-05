@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { AskMessagePart } from "../../../convex/lib/askSchema";
 import { citationTarget, evidenceSummary, groupSources, sourceKind, type CitationView } from "./citation-links";
 import { threadSections, threadTime } from "./thread-groups";
+import { askAboutHref, parseContextParam } from "./ask-context";
 import {
   answerText,
   copyableAnswer,
@@ -95,6 +96,18 @@ const tool = (label: string, status: "running" | "done" | "failed", startedAt: n
   label,
   startedAt,
   ...(endedAt !== undefined ? { endedAt, resultCount: 3 } : {}),
+});
+
+describe("Ask about this links (2B.1)", () => {
+  test("round-trip a context, and ignore anything malformed", () => {
+    const href = askAboutHref("/biz-group/ask", { kind: "process", id: "k57abc" });
+    expect(href).toBe("/biz-group/ask?context=process%3Ak57abc");
+    expect(parseContextParam(new URLSearchParams(href.split("?")[1]).get("context"))).toEqual({ kind: "process", id: "k57abc" });
+    expect(parseContextParam("department:d1")).toEqual({ kind: "department", id: "d1" });
+    for (const bad of [null, "", "process", "org:x", "process:", "process:a/b", `process:${"x".repeat(65)}`]) {
+      expect(parseContextParam(bad), String(bad)).toBeNull();
+    }
+  });
 });
 
 describe("thought trace (FR-2.15)", () => {

@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { SectionLabel } from "@/components/ui/section-label";
 import { cn } from "@/lib/utils";
-import { Building2, Layers, Cog, Search } from "lucide-react";
+import { Building2, Layers, Cog, Search, Sparkles } from "lucide-react";
 import type { Id } from "../../../convex/_generated/dataModel";
 import {
   groupConsecutive,
@@ -58,9 +58,17 @@ type Result =
       label: string;
       context: string;
       select: () => void;
+    }
+  | {
+      kind: "ask";
+      key: string;
+      label: string;
+      context: string | null;
+      select: () => void;
     };
 
 const GROUP_META = {
+  ask: { label: "AskFabric", icon: Sparkles },
   function: { label: "Functions", icon: Building2 },
   department: { label: "Departments", icon: Layers },
   process: { label: "Processes", icon: Cog },
@@ -68,6 +76,9 @@ const GROUP_META = {
 
 // Per-group result cap so the list stays scannable on broad queries.
 const GROUP_LIMIT = 8;
+
+/** The AskFabric row appears once a query is this long (Phase 2B.2). */
+const ASK_MIN_CHARS = 3;
 
 // How long the result count waits for typing to settle before it is announced.
 const COUNT_ANNOUNCE_DELAY_MS = 500;
@@ -81,7 +92,14 @@ export function CommandPalette({
   onJumpFunction,
   onJumpDepartment,
   onJumpProcess,
+  ask,
 }: {
+  /**
+   * AskFabric's row (Phase 2B.2), passed only where AskFabric is available:
+   * it opens AskFabric with the query in the composer, not sent, about
+   * `contextName` when the workbench has one selected.
+   */
+  ask?: { onAsk: (query: string) => void; contextName: string | null };
   open: boolean;
   onOpenChange: (open: boolean) => void;
   functions: FunctionItem[];
@@ -215,11 +233,30 @@ export function CommandPalette({
       },
     }));
 
+    // First, so Enter on a typed question asks it; a question costs one of the
+    // day's beta questions, so the row opens AskFabric without sending.
+    const askResults: Result[] =
+      ask && q.length >= ASK_MIN_CHARS
+        ? [
+            {
+              kind: "ask",
+              key: "ask",
+              label: `Ask Fabric: ${q}`,
+              context: ask.contextName ? `about ${ask.contextName}` : null,
+              select: () => {
+                ask.onAsk(q);
+                close();
+              },
+            },
+          ]
+        : [];
+
     return {
-      results: [...fnResults, ...deptResults, ...procResults],
+      results: [...askResults, ...fnResults, ...deptResults, ...procResults],
       // Functions are uncapped while the query is empty, so only a typed
       // query can truncate them.
       totals: {
+        ask: askResults.length,
         function: fnSearch.total,
         department: deptSearch.total,
         process: procSearch.total,
@@ -233,12 +270,15 @@ export function CommandPalette({
     onJumpFunction,
     onJumpDepartment,
     onJumpProcess,
+    ask,
     handleOpenChange,
   ]);
 
   // Clamp the highlighted row during render (no effect needed): the index is
   // reset to 0 on every keystroke, this just guards reactive list shrinkage.
-  const activeRow = results.length ? Math.min(activeIndex, results.length - 1) : -1;
+  const activeRow = results.length
+    ? Math.min(activeIndex, results.length - 1)
+    : -1;
 
   const activeResult = activeRow >= 0 ? results[activeRow] : undefined;
   const groups = useMemo(() => groupConsecutive(results), [results]);

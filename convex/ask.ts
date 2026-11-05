@@ -40,6 +40,7 @@ import { orgViewerValidator, requireOrgMember, requireOrgViewer } from "./lib/or
 import { readableSummaryV2 } from "./lib/summaryV2Feature";
 import { userError } from "./lib/userError";
 import { ASK_TOOLS } from "./askTools/catalog";
+import type { AskDisplayExecutorRef } from "./askTools/registry";
 import { isoDate } from "./askTools/results";
 import { loadHierarchy } from "./askTools/scope";
 import {
@@ -74,6 +75,8 @@ export const MAX_QUESTION_CHARS = 8_000;
 const MAX_MENTIONS = 10;
 /** Messages read per thread when assembling a turn or showing a thread. */
 const MAX_THREAD_MESSAGES = 400;
+/** Citations read per thread for a turn's grounding set (D56). */
+const MAX_THREAD_CITATIONS = 2_000;
 /** A turn still streaming after this is marked unfinished (FR-2.11). */
 export const WATCHDOG_AFTER_MS = 5 * 60_000;
 
@@ -473,7 +476,9 @@ export const loadTurnContext = internalQuery({
     const placementDept = viewer.membership.departmentId
       ? hierarchy.departmentById.get(viewer.membership.departmentId)
       : undefined;
-    const contextRef = question.contextRef ? (await names([question.contextRef]))[0] ?? null : null;
+    // A thread started from a page keeps that page as context for every turn (2B.3).
+    const pageRef = question.contextRef ?? thread.contextRef;
+    const contextRef = pageRef ? (await names([pageRef]))[0] ?? null : null;
     const turnContext: TurnContext = {
       today: isoDate(Date.now())!,
       role: viewer.role,
@@ -487,6 +492,27 @@ export const loadTurnContext = internalQuery({
       mentions: await names(question.mentions),
     };
 
+    // What a display may show before any tool runs (D56): the context and
+    // mentions, and every entity the thread cited or showed, so a follow-up
+    // like "show those as cards" works.
+    const groundedIds = new Set<string>();
+    for (const message of messages.slice(0, index)) {
+      if (message.contextRef) groundedIds.add(message.contextRef.id);
+      for (const ref of message.mentions ?? []) groundedIds.add(ref.id);
+      for (const part of message.parts) {
+        if (part.type === "display") for (const ref of part.refs) groundedIds.add(ref.id);
+      }
+    }
+    const cited = await ctx.db
+      .query("askCitations")
+      .withIndex("by_threadId", (q) => q.eq("threadId", thread._id))
+      .take(MAX_THREAD_CITATIONS);
+    for (const citation of cited) {
+      if (citation.sourceKind === "function" || citation.sourceKind === "department" || citation.sourceKind === "process") {
+        groundedIds.add(citation.sourceEntityId);
+      }
+    }
+
     return {
       userId: viewer.user._id,
       toc: buildTableOfContents(toc),
@@ -494,6 +520,7 @@ export const loadTurnContext = internalQuery({
       question: messageText(question),
       turnContext,
       isFirstTurn: index === 1,
+      groundedIds: [...groundedIds],
     };
   },
 });
@@ -863,6 +890,8 @@ export async function executeTurn(ctx: ActionCtx, args: TurnArgs, options: TurnO
       model,
       tools: ASK_TOOLS,
       runTool: (tool, input) => ctx.runQuery(tool.executorRef, { viewer: args.viewer, ...input }),
+      runDisplayTool: (tool, input, allowed) =>
+        ctx.runQuery(tool.executorRef as unknown as AskDisplayExecutorRef, { viewer: args.viewer, allowed, ...input }),
       meter: (stepIndex, run) => meteredStream(ctx, attribution, meta(options.operation, stepIndex), run),
       write: (parts) => ctx.runMutation(internal.ask.writeProgress, { assistantMessageId: args.assistantMessageId, parts }),
       isCancelled: () => ctx.runQuery(internal.ask.isCancelled, { assistantMessageId: args.assistantMessageId }),
@@ -879,6 +908,7 @@ export async function executeTurn(ctx: ActionCtx, args: TurnArgs, options: TurnO
         ...buildHistoryMessages(context.history),
         userTurnMessage(context.turnContext, context.question),
       ],
+      groundedIds: context.groundedIds,
     },
   );
   if (outcome.status === "deleted") return null;

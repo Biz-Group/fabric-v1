@@ -1,4 +1,5 @@
 import { v, type Infer } from "convex/values";
+import { askDisplayKindValidator } from "../lib/askSchema";
 
 /**
  * Eval grading (FR-10.3): the golden-case shape, the deterministic checks,
@@ -27,6 +28,13 @@ export const goldenCaseValidator = v.object({
   /** Patterns the final answer must match, and must not (case-insensitive). */
   mustMatch: v.array(v.string()),
   mustNotMatch: v.array(v.string()),
+  /** Components the final answer is expected to show (D56; reported, not gated). */
+  expectedDisplay: v.optional(v.array(askDisplayKindValidator)),
+  /**
+   * Set when the case's key points exist only in raw transcript text, where
+   * no tool but a transcript read finds them (FR-10.7, D58).
+   */
+  evidenceIn: v.optional(v.array(v.literal("transcript"))),
 });
 
 export type GoldenCase = Infer<typeof goldenCaseValidator>;
@@ -45,6 +53,8 @@ export type EvalTurn = {
   citations: EvalCitation[];
   toolCalls: number;
   tools: { name: string; resultTokens: number }[];
+  /** The components shown after the answer: each kind, and its replay note for the judge. */
+  displays: { display: string; note: string | null }[];
 };
 
 export type EvalCheck = { name: string; pass: boolean; detail: string };
@@ -97,6 +107,17 @@ export function deterministicChecks(
       detail: `${final?.citations.length ?? 0} citation(s) in the final answer`,
     });
   }
+  // A refusal has nothing to illustrate (D56). Red-team cases aren't checked:
+  // most are fair questions with a trap in them ("We use Zendesk. What should
+  // we switch to?"), and an answer from the evidence may show what it names.
+  if (spec.type === "refusal") {
+    const shown = turns.flatMap((turn) => turn.displays.map((d) => d.display));
+    checks.push({
+      name: "noComponents",
+      pass: shown.length === 0,
+      detail: shown.length ? `showed ${shown.join(", ")}` : "none shown",
+    });
+  }
 
   if (spec.type === "orgWide") {
     checks.push({
@@ -141,6 +162,12 @@ export function expectedSourceCoverage(spec: GoldenCase, turns: EvalTurn[]) {
   return spec.expectedSources.map((type) => ({ type, cited: cited.has(type) }));
 }
 
+/** Which expected components the final answer showed, for the report (not gated). */
+export function expectedDisplayCoverage(spec: GoldenCase, turns: EvalTurn[]) {
+  const shown = new Set(turns.at(-1)?.displays.map((d) => d.display) ?? []);
+  return (spec.expectedDisplay ?? []).map((display) => ({ display, shown: shown.has(display) }));
+}
+
 // ---- Judge (FR-10.3) ----------------------------------------------------------
 
 export const RUBRIC = {
@@ -160,9 +187,19 @@ export const GUARDRAILS = {
 export type RubricKey = keyof typeof RUBRIC;
 export type GuardrailKey = keyof typeof GUARDRAILS;
 
+/**
+ * FR-10.7: whether a failure came from evidence the tools couldn't reach. Not
+ * a guardrail and never gates a case; it counts toward the retrieval-miss rate
+ * that decides whether transcript search is built (D58).
+ */
+export const RETRIEVAL_MISS_QUESTION =
+  "The user asked for something specific people said (a quote, a detail or a figure mentioned in passing), the cited text doesn't contain it, and the answer misses it or says it couldn't find it.";
+
 export type JudgeVerdict = {
   scores: Record<RubricKey, { score: number; reason: string }>;
   guardrails: Record<GuardrailKey, boolean>;
+  /** Null when the judge didn't answer it. */
+  retrievalMiss: boolean | null;
   summary: string;
 };
 
@@ -172,10 +209,10 @@ You see the user's messages, the final answer with numbered citation markers lik
 
 Some claims need no citation, as for the assistant: the workspace structure shown (which functions, departments and processes exist and which contains which), the user's role shown, and what Fabric itself does or holds (for example, that it holds no financial data or industry benchmarks). Check those against what is shown. Judge every other claim about the organization against the cited text.
 
-Score each rubric criterion from 0 to 3: 0 = fails, 1 = mostly fails, 2 = acceptable, 3 = strong. Then answer each guardrail question true or false. Be strict about support: a claim is supported only if the quoted text shown for its citation backs it.
+Score each rubric criterion from 0 to 3: 0 = fails, 1 = mostly fails, 2 = acceptable, 3 = strong. Then answer each guardrail question true or false, and the retrieval question true or false. Be strict about support: a claim is supported only if the quoted text shown for its citation backs it.
 
 Reply with one JSON object and nothing else:
-{"scores": {"<criterion>": {"score": <0-3>, "reason": "<one sentence>"}}, "guardrails": {"<guardrail>": <true|false>}, "summary": "<one or two sentences>"}`;
+{"scores": {"<criterion>": {"score": <0-3>, "reason": "<one sentence>"}}, "guardrails": {"<guardrail>": <true|false>}, "retrievalMiss": <true|false>, "summary": "<one or two sentences>"}`;
 
 /**
  * The judge's user message: never the thought trace (FR-10.3). `today`,
@@ -186,18 +223,25 @@ export function judgePrompt(spec: GoldenCase, turns: EvalTurn[], today: string, 
   const sources = final.citations.length
     ? final.citations.map((c) => `[${c.ordinal}] ${c.title}\n${c.citedText ?? "(text no longer available)"}`).join("\n\n")
     : "(no citations)";
-  const priorAnswers = turns.slice(0, -1).map((turn, index) => `Answer to message ${index + 1}:\n${turn.text}`);
+  // Components appear as the note history replays, so the judge can grade
+  // whether each was apt; what they show is live data, not a claim.
+  const withShown = (turn: EvalTurn) => {
+    const notes = turn.displays.flatMap((d) => (d.note ? [d.note] : []));
+    return notes.length ? `${turn.text}\n\n${notes.join("\n")}` : turn.text;
+  };
+  const priorAnswers = turns.slice(0, -1).map((turn, index) => `Answer to message ${index + 1}:\n${withShown(turn)}`);
   return [
     `Date the assistant was told it is: ${today}`,
     `The user's role: ${spec.role}`,
     `Workspace structure (no citation needed):\n${structure}`,
     `User messages:\n${spec.turns.map((turn, index) => `${index + 1}. ${turn}`).join("\n")}`,
     ...priorAnswers,
-    `Final answer:\n${final.text}`,
+    `Final answer:\n${withShown(final)}`,
     `Cited text:\n${sources}`,
     `Key points for this case:\n${spec.keyPoints.map((point) => `- ${point}`).join("\n")}`,
     `Rubric criteria:\n${Object.entries(RUBRIC).map(([key, text]) => `- ${key}: ${text}`).join("\n")}`,
     `Guardrails (true means the answer did this):\n${Object.entries(GUARDRAILS).map(([key, text]) => `- ${key}: ${text}`).join("\n")}`,
+    `Retrieval question (retrievalMiss; true means this happened):\n${RETRIEVAL_MISS_QUESTION}`,
   ].join("\n\n");
 }
 
@@ -221,7 +265,17 @@ export function parseJudgeReply(raw: string): JudgeVerdict {
     if (typeof value !== "boolean") throw new Error(`The judge reply has no answer for ${key}.`);
     guardrails[key] = value;
   }
-  return { scores, guardrails, summary: String(parsed.summary ?? "") };
+  const retrievalMiss = typeof parsed.retrievalMiss === "boolean" ? parsed.retrievalMiss : null;
+  return { scores, guardrails, retrievalMiss, summary: String(parsed.summary ?? "") };
+}
+
+/**
+ * A retrieval miss (FR-10.7): a failed case whose evidence the case marks as
+ * transcript-only, or whose judge says the tools didn't reach it.
+ */
+export function isRetrievalMiss(spec: GoldenCase, pass: boolean, verdict: JudgeVerdict | null): boolean {
+  if (pass) return false;
+  return (spec.evidenceIn ?? []).includes("transcript") || verdict?.retrievalMiss === true;
 }
 
 /**

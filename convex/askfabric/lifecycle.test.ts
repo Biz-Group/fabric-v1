@@ -6,7 +6,7 @@ import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import schema from "../schema";
 import { userErrorMessageOf } from "../lib/userError";
-import { buildSuggestions, topicForStoredPrompt } from "./suggestions";
+import { buildEntitySuggestions, buildSuggestions, topicForStoredPrompt } from "./suggestions";
 
 const modules = import.meta.glob("/convex/**/*.ts");
 const ORG = "org_ask_lifecycle";
@@ -342,6 +342,53 @@ describe("starter prompts (FR-6)", () => {
     expect(buildSuggestions({ ...base, role: "viewer" }).every((p) => p.category === "help")).toBe(true);
     expect(buildSuggestions({ ...base, role: "viewer" }).some((p) => /AI interview/.test(p.text))).toBe(false);
     expect(buildSuggestions({ ...base, role: "contributor" }).some((p) => /AI interview/.test(p.text))).toBe(true);
+  });
+
+  test("Ask about this: three prompts from the entity's own data, and the coverage question alone when it has none (2B.1)", () => {
+    const base = { name: "Payroll", hasContributions: true, topSignal: null, hasSystems: false, hasFlow: false };
+    expect(
+      buildEntitySuggestions({
+        ...base,
+        kind: "process",
+        hasFlow: true,
+        hasSystems: true,
+        topSignal: { signal: "bottleneck", processName: "Payroll" },
+      }).map((p) => p.text),
+    ).toEqual([
+      "Walk me through Payroll, step by step.",
+      "What's behind the bottleneck in Payroll?",
+      "Which systems does Payroll rely on, and where do they cause problems?",
+    ]);
+    // No flow, no signal, no systems: nothing is offered that the data can't answer.
+    expect(buildEntitySuggestions({ ...base, kind: "process" }).map((p) => p.topic)).toEqual(["gaps"]);
+    expect(buildEntitySuggestions({ ...base, kind: "department" }).map((p) => p.topic)).toEqual(["coverage"]);
+    expect(buildEntitySuggestions({ ...base, kind: "function", hasFlow: true, hasContributions: false })).toEqual([
+      { text: "How much of Payroll has been interviewed, and what's still missing?", category: "entitySignal", topic: "coverage" },
+    ]);
+  });
+
+  test("Ask about this checks the entity as the viewer: another org's or a malformed id finds nothing", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await t.run(async (ctx) => {
+      const ana = await member(ctx, "user_ana", ORG);
+      const fn = await ctx.db.insert("functions", { name: "F", sortOrder: 0, clerkOrgId: ORG });
+      const dept = await ctx.db.insert("departments", { functionId: fn, name: "Finance", sortOrder: 0, clerkOrgId: ORG });
+      const processId = await ctx.db.insert("processes", { departmentId: dept, name: "Payroll", sortOrder: 0, clerkOrgId: ORG });
+      const otherFn = await ctx.db.insert("functions", { name: "Theirs", sortOrder: 0, clerkOrgId: OTHER_ORG });
+      return { ana, dept, processId, otherFn };
+    });
+    const asAna = t.withIdentity({ tokenIdentifier: ids.ana.tokenIdentifier, subject: "a", issuer: ISSUER, orgId: ORG, orgSlug: ORG });
+    expect(await asAna.query(api.askSuggestions.getEntityStarters, { ref: { kind: "process", id: ids.processId } })).toEqual({
+      kind: "process",
+      id: ids.processId,
+      name: "Payroll",
+      prompts: [{ text: "How much of Payroll has been interviewed, and what's still missing?", category: "entitySignal", topic: "coverage" }],
+    });
+    expect(await asAna.query(api.askSuggestions.getEntityStarters, { ref: { kind: "department", id: ids.dept } })).toMatchObject({ name: "Finance" });
+    expect(await asAna.query(api.askSuggestions.getEntityStarters, { ref: { kind: "function", id: ids.otherFn } })).toBeNull();
+    expect(await asAna.query(api.askSuggestions.getEntityStarters, { ref: { kind: "process", id: "not-an-id" } })).toBeNull();
+    // A department id presented as a process.
+    expect(await asAna.query(api.askSuggestions.getEntityStarters, { ref: { kind: "process", id: ids.dept } })).toBeNull();
   });
 
   test("a visit stores a personal set; rebuilds skip members inactive for 30 days", async () => {

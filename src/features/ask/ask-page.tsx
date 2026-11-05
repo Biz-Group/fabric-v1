@@ -11,6 +11,7 @@ import { LoadingScreen } from "@/components/ui/loading-screen";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WorkspaceAppShell } from "@/features/shell/process-app-shell";
+import { CONTEXT_PARAM, PREFILL_PARAM, parseContextParam } from "./ask-context";
 import { AskConversation } from "./ask-conversation";
 import { AskThreadList } from "./ask-thread-list";
 
@@ -63,14 +64,27 @@ function AskWorkspace() {
     void markVisited({}).catch(() => {});
   }, [markVisited]);
   const threadId = (searchParams.get(THREAD_PARAM) as Id<"askThreads"> | null) ?? null;
+  // "Ask about this" (2B.1): only a new thread starts from a page.
+  const context = threadId ? null : parseContextParam(searchParams.get(CONTEXT_PARAM));
+  // From Cmd+K (2B.2): put in the composer, never sent on its own.
+  const prefill = threadId ? undefined : (searchParams.get(PREFILL_PARAM) ?? undefined);
 
-  // The thread lives in the URL, so Back from a citation returns to it (FR-5.6).
-  const selectThread = (next: Id<"askThreads"> | null) => {
+  const replaceParams = (change: (params: URLSearchParams) => void) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (next) params.set(THREAD_PARAM, next);
-    else params.delete(THREAD_PARAM);
+    change(params);
     const search = params.toString();
     router.replace(search ? `${pathname}?${search}` : pathname, { scroll: false });
+  };
+
+  // The thread lives in the URL, so Back from a citation returns to it (FR-5.6).
+  // Choosing or starting a thread drops the page context: the thread keeps its own.
+  const selectThread = (next: Id<"askThreads"> | null) => {
+    replaceParams((params) => {
+      if (next) params.set(THREAD_PARAM, next);
+      else params.delete(THREAD_PARAM);
+      params.delete(CONTEXT_PARAM);
+      params.delete(PREFILL_PARAM);
+    });
     setThreadsOpen(false);
   };
 
@@ -110,7 +124,14 @@ function AskWorkspace() {
       </Sheet>
       <section className="flex min-w-0 flex-1 flex-col" aria-label="Conversation">
         {/* Keyed so switching threads resets the pane, the trace state and the composer. */}
-        <AskConversation key={threadId ?? "new"} threadId={threadId} onThreadCreated={(id) => selectThread(id)} />
+        <AskConversation
+          key={threadId ?? "new"}
+          threadId={threadId}
+          context={context}
+          prefill={prefill}
+          onClearContext={() => replaceParams((params) => params.delete(CONTEXT_PARAM))}
+          onThreadCreated={(id) => selectThread(id)}
+        />
       </section>
     </WorkspaceAppShell>
   );
