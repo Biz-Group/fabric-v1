@@ -5,6 +5,7 @@ import { threadSections, threadTime } from "./thread-groups";
 import { askAboutHref, parseContextParam } from "./ask-context";
 import {
   answerText,
+  chosenOption,
   copyableAnswer,
   displayParts,
   errorMessage,
@@ -158,6 +159,16 @@ describe("thought trace (FR-2.15)", () => {
     const unknown = { type: "somethingNew" } as unknown as AskMessagePart;
     expect(statusLine([unknown], "streaming")).toBe("Thinking…");
     expect(traceSteps([unknown], "complete")).toEqual([]);
+  });
+
+  test("a picker's choice is the next question's mention of an offered option (FR-11.4)", () => {
+    const picker = { type: "display", display: "choices", refs: [{ kind: "process", id: "p1" }, { kind: "process", id: "p2" }] } as AskMessagePart;
+    const parts = [{ type: "text", text: "Which one?" } as AskMessagePart, picker];
+    expect(chosenOption(parts, [])).toBeNull();
+    expect(chosenOption(parts, [{ id: "d9" }, { id: "p2" }])).toBe("p2");
+    // A mention of something the picker didn't offer isn't a choice.
+    expect(chosenOption(parts, [{ id: "p3" }])).toBeNull();
+    expect(chosenOption([{ type: "text", text: "No picker" }], [{ id: "p1" }])).toBeNull();
   });
 
   test("the header folds to Thought for … or Stopped after …", () => {

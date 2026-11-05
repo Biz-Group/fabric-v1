@@ -509,7 +509,7 @@ describe("AskFabric core tools (T1–T9)", () => {
 
   test("the catalog covers every tool exercised here", () => {
     // Display tools return no data; their tests are in askfabric/display.test.ts.
-    expect(ASK_TOOLS.filter((tool) => tool.display === undefined).map((tool) => tool.name).sort()).toEqual(
+    expect(ASK_TOOLS.filter((tool) => !tool.display).map((tool) => tool.name).sort()).toEqual(
       Object.keys(calls({ a: {}, b: {} } as unknown as Seeded)).sort(),
     );
   });

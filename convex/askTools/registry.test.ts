@@ -7,8 +7,10 @@ import { ASK_TOOL_NAMES } from "../lib/askSchema";
 import { ASK_TOOLS } from "./catalog";
 import { transcriptWindow, windowCentre, type TranscriptLine } from "./conversations";
 import {
+  assertWithinStrictLimits,
   defineTool,
   FORBIDDEN_INPUT_FIELDS,
+  MAX_STRICT_TOOLS,
   MAX_UNION_PARAMETERS,
   toApiTools,
   unionParameterCount,
@@ -149,7 +151,7 @@ describe("the catalog", () => {
       findSimilarWork: internal.askTools.systems.findSimilarWork,
       getFlowNode: internal.askTools.flow.getFlowNode,
       getParticipation: internal.askTools.participation.getParticipation,
-      showEntities: internal.askTools.display.showEntities,
+      show: internal.askTools.display.show,
     };
     for (const tool of ASK_TOOLS) {
       expect(getFunctionName(refs[tool.name] as never)).toBe(tool.executorPath);
@@ -165,11 +167,15 @@ describe("the catalog", () => {
     }
   });
 
-  test("stays within strict tool use's 16 union-typed parameters", () => {
+  test("stays within strict tool use's limits: 20 tools, 16 union-typed parameters", () => {
+    expect(ASK_TOOLS.length).toBeLessThanOrEqual(MAX_STRICT_TOOLS);
     expect(ASK_TOOLS.reduce((sum, tool) => sum + unionParameterCount(tool.inputSchema), 0)).toBeLessThanOrEqual(
       MAX_UNION_PARAMETERS,
     );
     expect(unionParameterCount(toStrictJsonSchema(v.union(v.string(), v.null())))).toBe(1);
+    // The check runs at load, so an over-full catalog fails before any request.
+    const many = Array.from({ length: MAX_STRICT_TOOLS + 1 }, () => ASK_TOOLS[0]);
+    expect(() => assertWithinStrictLimits(many)).toThrow(/21 strict tools/);
   });
 
   test("no label is a generic placeholder (FR-2.15)", () => {

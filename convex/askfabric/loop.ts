@@ -1,4 +1,4 @@
-import type { AskToolName } from "../lib/askSchema";
+import type { AskDisplayKind, AskToolName } from "../lib/askSchema";
 import { authErrorCode } from "../lib/authErrors";
 import { isTokenLimitFinishReason } from "../lib/aiProvider";
 import type { StreamedCallResult } from "../lib/aiUsageMeter";
@@ -35,6 +35,9 @@ export const MAX_DISPLAYS = 3;
 /** Appended to a display's acknowledgement when no answer text exists yet. */
 export const ANSWER_STILL_DUE =
   "You haven't written your answer yet. Write it now in full, citing every claim as usual: the component sits under your answer and replaces none of it, so don't refer to it.";
+/** The same, for a picker: the question is due, not an answer. */
+export const QUESTION_STILL_DUE =
+  "Now write one short sentence asking which one the user means, and nothing else: don't answer until they choose.";
 
 export type ErrorReason =
   | "modelError"
@@ -106,6 +109,14 @@ export type TurnInput = {
    */
   groundedIds?: readonly string[];
 };
+
+const DISPLAY_KINDS = new Set<string>(["entities", "flow", "chart", "choices", "contribute"]);
+
+/** The component a `show` call asks for, or null for anything else. */
+export function displayKindOf(input: unknown): AskDisplayKind | null {
+  const kind = (input as { kind?: unknown } | null)?.kind;
+  return typeof kind === "string" && DISPLAY_KINDS.has(kind) ? (kind as AskDisplayKind) : null;
+}
 
 /** Function, department and process ids a tool result names in its sources. */
 export function entityIdsIn(result: AskToolResult): string[] {
@@ -229,8 +240,9 @@ export async function runTurnLoop(deps: TurnDeps, input: TurnInput): Promise<Tur
    */
   const runDisplay = async (tool: RegisteredAskTool, toolInput: Record<string, unknown>): Promise<string> => {
     const startedAt = deps.now();
+    const kind = displayKindOf(toolInput);
     if (parts.displayCount >= MAX_DISPLAYS) return `Nothing shown: at most ${MAX_DISPLAYS} components per answer.`;
-    if (tool.display === "choices" && parts.hasDisplay("choices")) return "Nothing shown: one picker per answer.";
+    if (kind === "choices" && parts.hasDisplay("choices")) return "Nothing shown: one picker per answer.";
     let result: AskDisplayResult;
     try {
       result = await deps.runDisplayTool(tool, toolInput, [...grounded]);
@@ -240,7 +252,8 @@ export async function runTurnLoop(deps: TurnDeps, input: TurnInput): Promise<Tur
     }
     if (result.part) parts.addDisplay(result.part);
     telemetry.push({
-      name: tool.telemetryName,
+      // Each component under its own name, so telemetry tells them apart.
+      name: (kind && tool.display?.telemetry[kind]) || tool.telemetryName,
       latencyMs: deps.now() - startedAt,
       found: result.part !== null,
       resultTokens: 0,
@@ -404,7 +417,8 @@ export async function runTurnLoop(deps: TurnDeps, input: TurnInput): Promise<Tur
         const note = await runDisplay(tool, (use.input ?? {}) as Record<string, unknown>);
         // Shown before any answer was written: the model must not take the
         // component as the answer (found on dev, 2026-11-05).
-        const text = answersNow ? note : `${note} ${ANSWER_STILL_DUE}`;
+        const due = displayKindOf(use.input) === "choices" ? QUESTION_STILL_DUE : ANSWER_STILL_DUE;
+        const text = answersNow ? note : `${note} ${due}`;
         results.push({ type: "tool_result", tool_use_id: use.id, content: [{ type: "text", text }] });
       }
 

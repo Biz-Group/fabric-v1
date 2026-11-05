@@ -7,6 +7,7 @@ import {
   buildTableOfContents,
   displayNote,
   perTurnContextText,
+  tableOfContentsIds,
   type TocFunction,
 } from "./context";
 
@@ -41,6 +42,17 @@ describe("tenant table of contents (FR-2.6)", () => {
     // The newest process (function 2, department 3) keeps its headline; the oldest loses it.
     expect(toc).toMatch(/Process 2\.3\.39 \[proc2_3_39\] — x/);
     expect(toc).toMatch(/Process 0\.0\.0 \[proc0_0_0\]\n/);
+  });
+
+  test("lists the ids it shows, which ground a display (D56)", () => {
+    const ids = tableOfContentsIds(buildTableOfContents(org(1)));
+    expect(ids).toContain("fn0");
+    expect(ids).toContain("dept2_3");
+    expect(ids).toContain("proc1_2_0");
+    // A department reduced to a count lists no process ids.
+    const counted = tableOfContentsIds(buildTableOfContents(org(700, "")));
+    expect(counted).toContain("dept0_0");
+    expect(counted.some((id) => id.startsWith("proc"))).toBe(false);
   });
 
   test("falls back to process counts when names alone pass the cap", () => {

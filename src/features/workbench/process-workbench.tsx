@@ -137,6 +137,7 @@ import {
   useAskAboutHref,
   useAskPaletteAction,
 } from "@/features/ask/ask-about-link";
+import { canContribute } from "../../../convex/lib/roles";
 import type { RevealPath } from "./reveal-path";
 import { captureDeepLinkTargets } from "@/features/workbench/deep-link-targets";
 
@@ -158,7 +159,7 @@ export function ProcessWorkbench() {
   // Current user role is sourced from their membership in the active org.
   const membership = useQuery(api.users.getMyMembership);
   const userRole = membership?.role ?? "viewer";
-  const canEdit = userRole === "admin" || userRole === "contributor";
+  const canEdit = canContribute(userRole);
   const recentProcessIds = useRecentProcessIds(
     membership?.userId ?? null,
     membership?.orgId ?? null,

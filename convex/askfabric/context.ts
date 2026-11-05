@@ -70,6 +70,11 @@ export function buildTableOfContents(functions: TocFunction[]): string {
   return render(included);
 }
 
+/** The entity ids the table of contents lists, which the model has seen (D56). */
+export function tableOfContentsIds(toc: string): string[] {
+  return [...toc.matchAll(/^\s*(?:Function|Department|Process): .* \[([A-Za-z0-9_-]+)\]/gm)].map((match) => match[1]);
+}
+
 export type HistoryTurn = {
   user: string;
   /** The assistant's answer text, with citation markers; null if it has none. */

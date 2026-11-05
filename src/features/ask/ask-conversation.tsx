@@ -41,8 +41,8 @@ import { AskThinkingMark } from "./ask-thinking-mark";
 import { CopyAnswerButton, ReadAloudButton } from "./ask-answer-actions";
 import { AskFeedback } from "./ask-feedback";
 import { AskStatusLine, AskThoughtTrace } from "./ask-thought-trace";
-import { AskDisplays } from "./display/ask-display";
-import { answerText, displayParts, errorMessage, type MessageStatus } from "./trace-view-model";
+import { AskDisplays, type ChoiceContext } from "./display/ask-display";
+import { answerText, chosenOption, displayParts, errorMessage, type MessageStatus } from "./trace-view-model";
 
 type Thread = NonNullable<FunctionReturnType<typeof api.ask.getThread>>;
 type ThreadMessage = Thread["messages"][number];
@@ -100,12 +100,14 @@ function trustLine(stats: FunctionReturnType<typeof api.askSuggestions.getStarte
 function AssistantMessage({
   message,
   isLatest,
+  choice,
   onAsk,
   onRetry,
   onOpenHelp,
 }: {
   message: ThreadMessage;
   isLatest: boolean;
+  choice: ChoiceContext;
   onAsk: (question: string) => void;
   onRetry: (() => void) | null;
   onOpenHelp: (articleId: string) => void;
@@ -120,7 +122,7 @@ function AssistantMessage({
         {text && status !== "streaming" && <AskEvidence citations={message.citations} />}
         {text && <AskAnswer text={text} citations={message.citations} onOpenHelp={onOpenHelp} />}
         {/* Components follow the text they illustrate (D56); copy and read aloud skip them. */}
-        {text && <AskDisplays parts={displayParts(message.parts)} />}
+        {text && <AskDisplays parts={displayParts(message.parts)} choice={choice} />}
         {status === "stopped" && <p className="mt-2 text-xs text-muted-foreground">Stopped.</p>}
         {status === "error" && (
           <div
@@ -151,7 +153,12 @@ function AssistantMessage({
         )}
         {/* Only under the latest answer; one click asks it. Right-aligned, on
             the side the member's own questions sit. */}
-        {isLatest && status === "complete" && message.followUps && message.followUps.length > 0 && (
+        {/* Not while a picker waits for a choice: the picker is the next step. */}
+        {isLatest &&
+          status === "complete" &&
+          !displayParts(message.parts).some((part) => part.display === "choices") &&
+          message.followUps &&
+          message.followUps.length > 0 && (
           <div role="group" aria-label="Suggested follow-up questions" className="mt-3 flex flex-col items-end gap-2">
             {message.followUps.map((question) => (
               <button
@@ -403,6 +410,18 @@ export function AskConversation({
                       key={message._id}
                       message={message}
                       isLatest={index === messages.length - 1}
+                      choice={{
+                        // A choice is the next question's mention (FR-11.4).
+                        chosenId: chosenOption(message.parts, messages[index + 1]?.mentions ?? []),
+                        active: index === messages.length - 1 && message.status === "complete" && !streaming,
+                        // Asks the question again about the chosen entity: a new
+                        // question, so it counts against the day's limit (D51).
+                        onChoose: (option) =>
+                          send(
+                            `${index > 0 ? questionText(messages[index - 1]) : ""} (${option.name})`.trim(),
+                            [option as Mention],
+                          ),
+                      }}
                       onAsk={(question) => void send(question)}
                       onOpenHelp={openHelp}
                       onRetry={

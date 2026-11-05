@@ -77,11 +77,11 @@ export type AskToolDefinition<Input extends PropertyValidators> = {
   /** The status-line and trace label for a call (FR-2.15). Never generic. */
   label: (input: ObjectType<Input>) => string;
   /**
-   * Set on display tools (D56): the component the tool places. Its executor
-   * is an `askDisplayQuery`, it returns no data and no citations, and the loop
-   * runs it after the step's data tools.
+   * Set on the display tool (D56). Its executor is an `askDisplayQuery`, it
+   * returns no data and no citations, and the loop runs it after the step's
+   * data tools. `telemetry` names each component in tool telemetry.
    */
-  display?: AskDisplayKind;
+  display?: { telemetry: Partial<Record<AskDisplayKind, AskToolName>> };
 };
 
 export type RegisteredAskTool = AskToolDefinition<PropertyValidators> & {
@@ -329,7 +329,20 @@ export function unionParameterCount(schema: JsonSchema): number {
   return count;
 }
 
+/**
+ * Claude rejects a request with more strict tools than this (found on dev
+ * 2026-11-05, at 21). Every tool stays strict: with one non-strict tool in the
+ * mix, the model sometimes wrote tool calls as text until it hit max_tokens.
+ */
+export const MAX_STRICT_TOOLS = 20;
+
 export function assertWithinStrictLimits(tools: readonly RegisteredAskTool[]): void {
+  if (tools.length > MAX_STRICT_TOOLS) {
+    throw new ToolRegistrationError(
+      "(catalog)",
+      `${tools.length} strict tools; strict tool use allows ${MAX_STRICT_TOOLS}`,
+    );
+  }
   const total = tools.reduce((sum, tool) => sum + unionParameterCount(tool.inputSchema), 0);
   if (total > MAX_UNION_PARAMETERS) {
     throw new ToolRegistrationError(

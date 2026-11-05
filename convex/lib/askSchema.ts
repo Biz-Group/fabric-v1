@@ -30,12 +30,14 @@ export const ASK_TOOL_NAMES = [
   // T10 and T13 came after launch; appended so the cached tool prefix only grows.
   "getFlowNode",
   "getParticipation",
-  // Display tools (Phase 2, D56): they place a component, and return no data.
+  // The display tool (Phase 2, D56): it places a component and returns no data.
+  "show",
+  // Not tools: the name each component is recorded under in telemetry.
   "showEntities",
-  "showFlowSnippet",
-  "showChart",
   "askToChoose",
   "offerContribute",
+  "showFlowSnippet",
+  "showChart",
 ] as const;
 
 export type AskToolName = (typeof ASK_TOOL_NAMES)[number];

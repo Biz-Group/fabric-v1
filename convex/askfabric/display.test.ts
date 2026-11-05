@@ -107,11 +107,11 @@ describe("entity cards (D56, Phase 2D.1)", () => {
     expect(card.headline).toBeNull();
   });
 
-  test("showEntities keeps only grounded, readable entities, as the viewer (FR-9.1)", async () => {
+  test("show entities keeps only grounded, readable entities, as the viewer (FR-9.1)", async () => {
     const { t, ids } = await setup();
     const viewer = { tokenIdentifier: ids.tokenIdentifier, orgId: ORG };
     const { processId, departmentId } = ids.own;
-    const result = await t.query(internal.askTools.display.showEntities, {
+    const result = await t.query(internal.askTools.display.show, { kind: "entities",
       viewer,
       allowed: [processId, departmentId, ids.other.processId],
       refs: [
@@ -135,16 +135,72 @@ describe("entity cards (D56, Phase 2D.1)", () => {
     expect(result.note).toContain("2 cards (Scheduling, Dispatch)");
     expect(result.note).toContain("3 left out");
 
-    const none = await t.query(internal.askTools.display.showEntities, { viewer, allowed: [], refs: [{ kind: "process", id: processId }] });
+    const none = await t.query(internal.askTools.display.show, { kind: "entities", viewer, allowed: [], refs: [{ kind: "process", id: processId }] });
     expect(none.part).toBeNull();
 
     await expect(
-      t.query(internal.askTools.display.showEntities, {
+      t.query(internal.askTools.display.show, { kind: "entities",
         viewer: { tokenIdentifier: `${ISSUER}|x`, orgId: ORG },
         allowed: [processId],
         refs: [{ kind: "process", id: processId }],
       }),
     ).rejects.toThrow();
+  });
+
+  test("show choices offers 2 to 5 grounded options, and nothing for fewer (FR-11.4)", async () => {
+    const { t, ids } = await setup();
+    const viewer = { tokenIdentifier: ids.tokenIdentifier, orgId: ORG };
+    const extra = await t.run(async (ctx) =>
+      Promise.all(
+        ["A", "B", "C", "D", "E"].map((name, i) =>
+          ctx.db.insert("processes", { departmentId: ids.own.departmentId, name: `Scheduling ${name}`, sortOrder: 10 + i, clerkOrgId: ORG }),
+        ),
+      ),
+    );
+    const refs = [ids.own.processId, ...extra].map((id) => ({ kind: "process" as const, id }));
+    const many = await t.query(internal.askTools.display.show, { kind: "choices", viewer, allowed: refs.map((r) => r.id), refs });
+    expect(many.part).toMatchObject({ display: "choices" });
+    expect(many.part!.refs).toHaveLength(5);
+    expect(many.note).toContain("don't answer for them");
+
+    const one = await t.query(internal.askTools.display.show, { kind: "choices",
+      viewer,
+      allowed: [ids.own.processId, ids.other.processId],
+      refs: [{ kind: "process", id: ids.own.processId }, { kind: "process", id: ids.other.processId }],
+    });
+    expect(one.part).toBeNull();
+  });
+
+  test("show contribute shows only to contributors and admins, for a grounded process (FR-11.5)", async () => {
+    const { t, ids } = await setup();
+    const args = { allowed: [ids.own.processId], refs: [{ kind: "process" as const, id: ids.own.processId }] };
+    const asViewer = await t.query(internal.askTools.display.show, { kind: "contribute", ...args, viewer: { tokenIdentifier: ids.tokenIdentifier, orgId: ORG } });
+    expect(asViewer.part).toBeNull();
+    expect(asViewer.note).toContain("can't add contributions");
+
+    for (const role of ["contributor", "admin"] as const) {
+      const tokenIdentifier = `${ISSUER}|${role}`;
+      await t.run(async (ctx) => {
+        const userId = await ctx.db.insert("users", { tokenIdentifier, name: role, email: `${role}@example.test`, profileComplete: true });
+        await ctx.db.insert("memberships", { tokenIdentifier, userId, clerkOrgId: ORG, role, createdAt: 0 });
+      });
+      const viewer = { tokenIdentifier, orgId: ORG };
+      const shown = await t.query(internal.askTools.display.show, { kind: "contribute", ...args, viewer });
+      expect(shown.part, role).toEqual({ type: "display", display: "contribute", refs: [{ kind: "process", id: ids.own.processId }] });
+      // Not grounded, or another org's: nothing.
+      const contribute = (allowed: string[], id: string) =>
+        t.query(internal.askTools.display.show, { kind: "contribute", viewer, allowed, refs: [{ kind: "process", id }] });
+      expect((await contribute([], ids.own.processId)).part).toBeNull();
+      expect((await contribute([ids.other.processId], ids.other.processId)).part).toBeNull();
+      // A department isn't something to contribute to.
+      const dept = await t.query(internal.askTools.display.show, {
+        kind: "contribute",
+        viewer,
+        allowed: [ids.own.departmentId],
+        refs: [{ kind: "department", id: ids.own.departmentId }],
+      });
+      expect(dept.part).toBeNull();
+    }
   });
 
   test("refuse a caller who isn't a member", async () => {

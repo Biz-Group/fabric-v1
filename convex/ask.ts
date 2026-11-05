@@ -47,6 +47,7 @@ import {
   buildHistoryMessages,
   buildTableOfContents,
   displayNote,
+  tableOfContentsIds,
   userTurnMessage,
   type HistoryTurn,
   type TocFunction,
@@ -355,6 +356,9 @@ export const getThread = query({
         _creationTime: message._creationTime,
         role: message.role,
         parts: message.parts,
+        // References only: a picker shows which option was chosen from the
+        // question that followed it (FR-11.4).
+        mentions: message.mentions ?? [],
         status: message.status ?? null,
         errorReason: message.errorReason ?? null,
         completedAt: message.completedAt ?? null,
@@ -492,10 +496,12 @@ export const loadTurnContext = internalQuery({
       mentions: await names(question.mentions),
     };
 
-    // What a display may show before any tool runs (D56): the context and
-    // mentions, and every entity the thread cited or showed, so a follow-up
-    // like "show those as cards" works.
-    const groundedIds = new Set<string>();
+    // What a display may show before any tool runs (D56): the entities the
+    // workspace contents list (the model has seen their ids, e.g. to offer a
+    // picker), the context and mentions, and every entity the thread cited or
+    // showed, so a follow-up like "show those as cards" works.
+    const tocText = buildTableOfContents(toc);
+    const groundedIds = new Set<string>(tableOfContentsIds(tocText));
     for (const message of messages.slice(0, index)) {
       if (message.contextRef) groundedIds.add(message.contextRef.id);
       for (const ref of message.mentions ?? []) groundedIds.add(ref.id);
@@ -515,7 +521,7 @@ export const loadTurnContext = internalQuery({
 
     return {
       userId: viewer.user._id,
-      toc: buildTableOfContents(toc),
+      toc: tocText,
       history,
       question: messageText(question),
       turnContext,

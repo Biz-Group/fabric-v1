@@ -7,6 +7,7 @@ import {
   ANSWER_STILL_DUE,
   MAX_DISPLAYS,
   MAX_MODEL_CALLS,
+  QUESTION_STILL_DUE,
   TOOLS_OFF_MARGIN_MS,
   TURN_DEADLINE_MS,
   runTurnLoop,
@@ -48,8 +49,8 @@ const PROCESSES: AskToolResult = {
 const showCall = (refs: string[], id = "toolu_show") => ({
   type: "tool_use",
   id,
-  name: "showEntities",
-  input: { refs: refs.map((ref) => ({ kind: "process", id: ref })) },
+  name: "show",
+  input: { kind: "entities", refs: refs.map((ref) => ({ kind: "process", id: ref })) },
 });
 
 function harness(
@@ -75,7 +76,7 @@ function harness(
       displayCalls.push({ name: tool.name, allowed });
       const refs = ((input.refs ?? []) as Array<{ kind: "process"; id: string }>).filter((ref) => allowed.includes(ref.id));
       return refs.length
-        ? { part: { type: "display", display: tool.display!, refs: refs as never }, note: `Shown: ${refs.length}` }
+        ? { part: { type: "display", display: (input as { kind: "entities" }).kind, refs: refs as never }, note: `Shown: ${refs.length}` }
         : { part: null, note: "Nothing shown." };
     },
     meter: async (stepIndex, run) => {
@@ -159,6 +160,18 @@ describe("display tools in the loop (D56)", () => {
 
     const followUp = await harness([{ content: [{ type: "text", text: "Here." }, showCall(["p9"])] }], { groundedIds: ["p9"] }).run();
     expect(followUp.parts.map((p) => p.type)).toEqual(["text", "display"]);
+  });
+
+  test("a picker placed before any text asks for the question, not an answer", async () => {
+    const choose = { type: "tool_use", id: "toolu_pick", name: "show", input: { kind: "choices", refs: [{ kind: "process", id: "p1" }, { kind: "process", id: "p2" }] } };
+    const h = harness([{ content: [lookup(), choose] }, { content: [{ type: "text", text: "Which Payroll do you mean?" }] }], {
+      runTool: async () => PROCESSES,
+    });
+    const outcome = await h.run();
+    expect(outcome.parts.map((p) => p.type)).toEqual(["tool", "text", "display"]);
+    expect(outcome.parts.at(-1)).toMatchObject({ display: "choices" });
+    const second = h.scripted.requests[1].messages.at(-1) as { content: Array<{ tool_use_id: string; content: Array<{ text: string }> }> };
+    expect(second.content.find((r) => r.tool_use_id === "toolu_pick")!.content[0].text).toContain(QUESTION_STILL_DUE);
   });
 
   test("caps components per answer, and a failed one leaves the answer standing", async () => {

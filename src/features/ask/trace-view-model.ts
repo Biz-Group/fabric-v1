@@ -68,6 +68,19 @@ export function displayParts(parts: AskMessagePart[]): AskDisplayPart[] {
   return parts.filter((part): part is AskDisplayPart => part.type === "display");
 }
 
+/**
+ * The picker option the user chose (FR-11.4): the first of the next
+ * question's mentions that the answer's picker offered. Null before a choice.
+ */
+export function chosenOption(parts: AskMessagePart[], nextMentions: Array<{ id: string }>): string | null {
+  const offered = new Set(
+    displayParts(parts)
+      .filter((part) => part.display === "choices")
+      .flatMap((part) => part.refs.map((ref) => ref.id as string)),
+  );
+  return nextMentions.find((ref) => offered.has(ref.id))?.id ?? null;
+}
+
 /** Seconds spent on the trace's steps: first start to last end. At least 1. */
 function traceSeconds(parts: AskMessagePart[], endFallback: number | null): number {
   const timed = parts.filter(isTracePart);

@@ -92,6 +92,7 @@ import type * as lib_processOverviewV2 from "../lib/processOverviewV2.js";
 import type * as lib_recommendationReconcile from "../lib/recommendationReconcile.js";
 import type * as lib_recommendationScoring from "../lib/recommendationScoring.js";
 import type * as lib_recommendationStage from "../lib/recommendationStage.js";
+import type * as lib_roles from "../lib/roles.js";
 import type * as lib_slugs from "../lib/slugs.js";
 import type * as lib_summaryEvaluation from "../lib/summaryEvaluation.js";
 import type * as lib_summaryV2Feature from "../lib/summaryV2Feature.js";
@@ -213,6 +214,7 @@ declare const fullApi: ApiFromModules<{
   "lib/recommendationReconcile": typeof lib_recommendationReconcile;
   "lib/recommendationScoring": typeof lib_recommendationScoring;
   "lib/recommendationStage": typeof lib_recommendationStage;
+  "lib/roles": typeof lib_roles;
   "lib/slugs": typeof lib_slugs;
   "lib/summaryEvaluation": typeof lib_summaryEvaluation;
   "lib/summaryV2Feature": typeof lib_summaryV2Feature;

@@ -25,7 +25,7 @@ import { scopeInput } from "./scope";
 import { findSimilarWork, listSystems } from "./systems";
 import { getCoverage, getCoverageInput, whatsNew, whatsNewInput } from "./coverage";
 import { DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS } from "./results";
-import { showEntities, showEntitiesInput } from "./display";
+import { MAX_CHOICES, show, showInput } from "./display";
 import { MAX_DISPLAY_REFS } from "../lib/askSchema";
 
 /**
@@ -382,24 +382,31 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     label: (input) =>
       `Checking who has contributed across ${input.kind === "org" ? "the organization" : `a ${input.kind}`}`,
   }),
-  // Display tools (D56): appended, so the cached tool prefix only grows.
+  // The display tool (D56): appended, so the cached tool prefix only grows.
   defineTool({
-    name: "showEntities",
-    description:
-      "Show cards under your answer for the functions, departments or processes it is about. Each card shows the entity's current name, path, overview headline and counts, and opens its page. Use it when the answer names 2 or more entities a tool returned. Write your full, cited answer first, then call this in the same response as its last step: your answer ends where you call it. The cards replace no part of the answer. Returns a short acknowledgement, not data; never cite it.",
-    input: showEntitiesInput,
+    name: "show",
+    description: [
+      "Show a component under your message instead of fetching data. It returns a short acknowledgement, never data; never cite it. Use ids exactly as a tool returned them or the workspace contents list them. Kinds:",
+      `- "entities": cards for 2 to ${MAX_DISPLAY_REFS} functions, departments or processes your answer is about, most relevant first. Each card shows the entity's current name, path, overview headline and counts, and opens its page.`,
+      `- "choices": when the name the user used matches several entities, 2 to ${MAX_CHOICES} of them as buttons, best match first. Write one short sentence asking which they mean, then call this, and don't answer yet: their choice comes back as their next message.`,
+      '- "contribute": a card for adding a contribution to one process (Start AI interview, Record a voice note, Upload files), when your answer is about that process and its evidence is thin. Pass that one process in refs. It shows only to members who can contribute.',
+      'For "entities" and "contribute", write your full, cited answer first, then call this in the same response as its last step: your answer ends where you call it, and the component replaces no part of it.',
+    ].join("\n"),
+    input: showInput,
     inputDescriptions: {
-      refs: `2 to ${MAX_DISPLAY_REFS} entities, most relevant first: each kind and id exactly as a tool returned them.`,
+      kind: "Which component to show.",
+      refs: "The entities, each kind and id.",
     },
     access: "member",
-    executor: showEntities,
-    executorPath: "askTools/display:showEntities",
-    output: "An acknowledgement of what was shown.",
+    executor: show,
+    executorPath: "askTools/display:show",
+    output: "An acknowledgement of what was shown, or why nothing was.",
     citationSources: [],
     budgetTokens: 200,
-    telemetryName: "showEntities",
-    label: (input) => `Showing ${input.refs.length} card${input.refs.length === 1 ? "" : "s"}`,
-    display: "entities",
+    telemetryName: "show",
+    label: (input) =>
+      input.kind === "choices" ? "Offering options" : input.kind === "contribute" ? "Offering a way to contribute" : "Showing cards",
+    display: { telemetry: { entities: "showEntities", choices: "askToChoose", contribute: "offerContribute" } },
   }),
 ];
 
