@@ -134,6 +134,9 @@ export const shareExchange = mutation({
           ...(c.citedText !== undefined ? { citedText: c.citedText } : {}),
         })),
       toolCalls,
+      displays: message.parts.flatMap((part) =>
+        part.type === "display" ? [{ display: part.display, count: part.refs.length }] : [],
+      ),
       ...(note ? { note } : {}),
       sharedAt: now,
       expiresAt: now + SHARE_RETENTION_MS,

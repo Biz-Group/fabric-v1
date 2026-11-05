@@ -38,7 +38,8 @@ import { AskThinkingMark } from "./ask-thinking-mark";
 import { CopyAnswerButton, ReadAloudButton } from "./ask-answer-actions";
 import { AskFeedback } from "./ask-feedback";
 import { AskStatusLine, AskThoughtTrace } from "./ask-thought-trace";
-import { answerText, errorMessage, type MessageStatus } from "./trace-view-model";
+import { AskDisplays } from "./display/ask-display";
+import { answerText, displayParts, errorMessage, type MessageStatus } from "./trace-view-model";
 
 type Thread = NonNullable<FunctionReturnType<typeof api.ask.getThread>>;
 type ThreadMessage = Thread["messages"][number];
@@ -112,6 +113,8 @@ function AssistantMessage({
         {status === "streaming" && <AskStatusLine parts={message.parts} status={status} startedAt={message._creationTime} />}
         {text && status !== "streaming" && <AskEvidence citations={message.citations} />}
         {text && <AskAnswer text={text} citations={message.citations} onOpenHelp={onOpenHelp} />}
+        {/* Components follow the text they illustrate (D56); copy and read aloud skip them. */}
+        {text && <AskDisplays parts={displayParts(message.parts)} />}
         {status === "stopped" && <p className="mt-2 text-xs text-muted-foreground">Stopped.</p>}
         {status === "error" && (
           <div

@@ -45,6 +45,7 @@ import { loadHierarchy } from "./askTools/scope";
 import {
   buildHistoryMessages,
   buildTableOfContents,
+  displayNote,
   userTurnMessage,
   type HistoryTurn,
   type TocFunction,
@@ -433,9 +434,16 @@ export const loadTurnContext = internalQuery({
       if (message.role !== "user") continue;
       const answer = messages[i + 1]?.role === "assistant" ? messages[i + 1] : null;
       const mentioned = await names(message.mentions);
+      const shown: string[] = [];
+      for (const part of answer?.parts ?? []) {
+        if (part.type !== "display") continue;
+        const note = displayNote(part, (await names(part.refs)).map((ref) => `${ref.name} [${ref.id}]`));
+        if (note) shown.push(note);
+      }
       history.push({
         user: `${messageText(message)}${mentioned.length ? `\n(Mentioned: ${mentioned.map((m) => `${m.kind} "${m.name}" [${m.id}]`).join(", ")})` : ""}`,
         assistant: answer ? messageText(answer) || null : null,
+        ...(shown.length ? { shown } : {}),
       });
     }
 

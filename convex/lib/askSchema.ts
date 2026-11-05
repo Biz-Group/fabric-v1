@@ -30,6 +30,12 @@ export const ASK_TOOL_NAMES = [
   // T10 and T13 came after launch; appended so the cached tool prefix only grows.
   "getFlowNode",
   "getParticipation",
+  // Display tools (Phase 2, D56): they place a component, and return no data.
+  "showEntities",
+  "showFlowSnippet",
+  "showChart",
+  "askToChoose",
+  "offerContribute",
 ] as const;
 
 export type AskToolName = (typeof ASK_TOOL_NAMES)[number];
@@ -70,9 +76,31 @@ export const askErrorReasonValidator = v.union(
   v.literal("unfinished"),
 );
 
+/** What a display part shows (D56); each kind has one whitelisted component. */
+export const askDisplayKindValidator = v.union(
+  v.literal("entities"),
+  v.literal("flow"),
+  v.literal("chart"),
+  v.literal("choices"),
+  v.literal("contribute"),
+);
+
+/** The chart catalogue (Phase 2E): each id is a deterministic, access-checked query. */
+export const askChartIdValidator = v.union(
+  v.literal("signalsByProcess"),
+  v.literal("contributionsOverTime"),
+  v.literal("coverageByDepartment"),
+  v.literal("systemFriction"),
+);
+
+/** References per display part: a carousel's worth. */
+export const MAX_DISPLAY_REFS = 12;
+
 /**
  * Ordered message parts (FR-2.3). Reasoning parts hold summarized thinking
  * only; raw thinking blocks and signatures never leave the running action.
+ * Display parts hold references and literals only (D56): the UI fetches what
+ * it shows through access-checked queries, so nothing stale is stored.
  */
 export const askMessagePartValidator = v.union(
   v.object({
@@ -96,9 +124,22 @@ export const askMessagePartValidator = v.union(
     startedAt: v.number(),
     endedAt: v.optional(v.number()),
   }),
+  v.object({
+    type: v.literal("display"),
+    display: askDisplayKindValidator,
+    // At most MAX_DISPLAY_REFS; a chart's scope (none for the whole org), a
+    // flow snippet's or contribute card's process, or the picker's options.
+    refs: v.array(askEntityRefValidator),
+    chartId: v.optional(askChartIdValidator),
+    // A flow step id, from the process's stored flow.
+    nodeId: v.optional(v.string()),
+  }),
 );
 
 export type AskMessagePart = Infer<typeof askMessagePartValidator>;
+export type AskDisplayPart = Extract<AskMessagePart, { type: "display" }>;
+export type AskDisplayKind = AskDisplayPart["display"];
+export type AskChartId = Infer<typeof askChartIdValidator>;
 
 /** Per tool call (FR-8.2). Content-free by construction. */
 export const askToolTelemetryValidator = v.object({

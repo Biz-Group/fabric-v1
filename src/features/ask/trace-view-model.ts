@@ -1,4 +1,4 @@
-import type { AskMessagePart } from "../../../convex/lib/askSchema";
+import type { AskDisplayPart, AskMessagePart } from "../../../convex/lib/askSchema";
 
 /**
  * The visible work of an answer (FR-2.15, D47) as pure data: the steps of the
@@ -53,11 +53,24 @@ export function answerText(parts: AskMessagePart[]): string {
     .join("\n\n");
 }
 
+type TracePart = Extract<AskMessagePart, { type: "reasoning" | "tool" }>;
+
+/**
+ * Only reasoning and tool parts are trace steps. Matched by name, so a part
+ * kind this page doesn't know (a newer backend's) is never read as one.
+ */
+function isTracePart(part: AskMessagePart): part is TracePart {
+  return part.type === "reasoning" || part.type === "tool";
+}
+
+/** The components an answer shows (D56), in order. Kinds this page doesn't know are left out. */
+export function displayParts(parts: AskMessagePart[]): AskDisplayPart[] {
+  return parts.filter((part): part is AskDisplayPart => part.type === "display");
+}
+
 /** Seconds spent on the trace's steps: first start to last end. At least 1. */
 function traceSeconds(parts: AskMessagePart[], endFallback: number | null): number {
-  const timed = parts.filter(
-    (part): part is Extract<AskMessagePart, { type: "reasoning" | "tool" }> => part.type !== "text",
-  );
+  const timed = parts.filter(isTracePart);
   if (timed.length === 0) return 0;
   const start = Math.min(...timed.map((part) => part.startedAt));
   const ends = timed.map((part) => part.endedAt ?? part.startedAt);
@@ -109,11 +122,10 @@ export function waitingLine(elapsedMs: number): string {
  */
 export function statusLine(parts: AskMessagePart[], status: MessageStatus, elapsedMs = 0): string | null {
   if (status !== "streaming" || answerText(parts) !== "") return null;
-  const last = [...parts].reverse().find((part) => part.type !== "text");
+  const last = [...parts].reverse().find(isTracePart);
   if (!last) return waitingLine(elapsedMs);
   if (last.type === "tool") return last.status === "running" ? `${last.label}…` : "Reading what it found…";
-  if (last.type === "reasoning") return firstSentence(last.text) || "Thinking…";
-  return "Thinking…";
+  return firstSentence(last.text) || "Thinking…";
 }
 
 /** FR-2.9 copy, per stored error reason. */

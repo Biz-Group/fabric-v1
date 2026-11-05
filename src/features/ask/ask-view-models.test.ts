@@ -5,6 +5,7 @@ import { threadSections, threadTime } from "./thread-groups";
 import {
   answerText,
   copyableAnswer,
+  displayParts,
   errorMessage,
   markersToLinks,
   statusLine,
@@ -131,6 +132,19 @@ describe("thought trace (FR-2.15)", () => {
       ["tool", "active", null],
     ]);
     expect(traceSteps(parts, "stopped")[2].status).toBe("failed");
+  });
+
+  test("a display part is never read as a trace step (D56)", () => {
+    const display: AskMessagePart = { type: "display", display: "entities", refs: [] };
+    const parts = [tool("Reading overviews", "done", 0, 1_000), display];
+    expect(statusLine(parts, "streaming")).toBe("Reading what it found…");
+    expect(traceSteps(parts, "complete")).toHaveLength(1);
+    expect(traceHeader(parts, "complete", 3_000)).toBe("Thought for 3s · 1 step");
+    expect(displayParts([...parts, { type: "text", text: "A" }])).toEqual([display]);
+    // A part kind this page has never heard of (a newer backend's) is ignored too.
+    const unknown = { type: "somethingNew" } as unknown as AskMessagePart;
+    expect(statusLine([unknown], "streaming")).toBe("Thinking…");
+    expect(traceSteps([unknown], "complete")).toEqual([]);
   });
 
   test("the header folds to Thought for … or Stopped after …", () => {

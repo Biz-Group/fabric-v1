@@ -5,6 +5,7 @@ import {
   TOC_MAX_TOKENS,
   buildHistoryMessages,
   buildTableOfContents,
+  displayNote,
   perTurnContextText,
   type TocFunction,
 } from "./context";
@@ -64,6 +65,31 @@ describe("history and per-turn context (FR-2.7)", () => {
       "Stopped question",
       "(This answer did not finish.)",
     ]);
+  });
+
+  test("notes what an earlier answer showed, after its text (D56)", () => {
+    const messages = buildHistoryMessages([
+      { user: "Which processes?", assistant: "Three stand out.", shown: ["[Shown: 2 process cards: A [p1], B [p2]]"] },
+      { user: "Stopped", assistant: null, shown: ["[Shown: x]"] },
+    ]) as Array<{ role: string; content: string }>;
+    expect(messages[1].content).toBe("Three stand out.\n\n[Shown: 2 process cards: A [p1], B [p2]]");
+    expect(messages[3].content).toBe("(This answer did not finish.)\n\n[Shown: x]");
+  });
+
+  test("describes each component by kind and the names it showed", () => {
+    const refs = (kind: string, n: number) => Array.from({ length: n }, () => ({ kind }));
+    expect(displayNote({ display: "entities", refs: refs("process", 2) }, ["A", "B"])).toBe("[Shown: 2 process cards: A, B]");
+    expect(displayNote({ display: "entities", refs: refs("department", 1) }, ["Payroll"])).toBe("[Shown: 1 department card: Payroll]");
+    expect(displayNote({ display: "entities", refs: [{ kind: "process" }, { kind: "function" }] }, ["A", "F"])).toBe(
+      "[Shown: 2 cards: A, F]",
+    );
+    expect(displayNote({ display: "chart", refs: [], chartId: "signalsByProcess" }, [])).toBe(
+      "[Shown: the signalsByProcess chart for the organization]",
+    );
+    expect(displayNote({ display: "flow", refs: refs("process", 1), nodeId: "n3" }, ["Payroll"])).toContain("step n3");
+    // Nothing readable left: nothing to say.
+    expect(displayNote({ display: "entities", refs: refs("process", 2) }, [])).toBeNull();
+    expect(displayNote({ display: "somethingNew", refs: [] }, [])).toBeNull();
   });
 
   test("states date, role, placement, page and mentions as Fabric's context", () => {

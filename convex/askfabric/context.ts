@@ -74,29 +74,70 @@ export type HistoryTurn = {
   user: string;
   /** The assistant's answer text, with citation markers; null if it has none. */
   assistant: string | null;
+  /** One line per component the answer showed (D56), from `displayNote`. */
+  shown?: string[];
+};
+
+const KIND_NOUN: Record<string, [string, string]> = {
+  function: ["function", "functions"],
+  department: ["department", "departments"],
+  process: ["process", "processes"],
 };
 
 /**
+ * A component as history replay describes it, so a later turn knows what was
+ * already shown: "[Shown: 3 process cards: Accounts Payable, …]". `names` are
+ * the references' names, readable ones only.
+ */
+export function displayNote(
+  part: { display: string; refs: Array<{ kind: string }>; chartId?: string; nodeId?: string },
+  names: string[],
+): string | null {
+  const list = names.join(", ");
+  switch (part.display) {
+    case "entities": {
+      if (names.length === 0) return null;
+      const kinds = new Set(part.refs.map((ref) => ref.kind));
+      const [kind] = kinds;
+      const noun = kinds.size === 1 && KIND_NOUN[kind] ? `${KIND_NOUN[kind][0]} card${names.length === 1 ? "" : "s"}` : `card${names.length === 1 ? "" : "s"}`;
+      return `[Shown: ${names.length} ${noun}: ${list}]`;
+    }
+    case "flow":
+      return names.length ? `[Shown: a slice of the ${list} process flow around step ${part.nodeId ?? "?"}]` : null;
+    case "chart":
+      return `[Shown: the ${part.chartId ?? "?"} chart for ${list || "the organization"}]`;
+    case "choices":
+      return names.length ? `[Shown: a picker asking which one was meant: ${list}]` : null;
+    case "contribute":
+      return names.length ? `[Shown: a card offering to add a contribution to ${list}]` : null;
+    default:
+      return null;
+  }
+}
+
+/**
  * Earlier turns as plain text, oldest first (FR-2.7): the user's words and the
- * assistant's answer with citation markers. No per-turn context, tool results
- * or thinking is replayed, so nothing earlier carries a thinking block. The
- * oldest turns go first once the history passes its cap.
+ * assistant's answer with citation markers, plus a note per component it
+ * showed. No per-turn context, tool calls, tool results or thinking is
+ * replayed, so nothing earlier carries a thinking block or an unanswered tool
+ * call. The oldest turns go first once the history passes its cap.
  */
 export function buildHistoryMessages(turns: HistoryTurn[]): unknown[] {
   const kept: HistoryTurn[] = [];
   let tokens = 0;
+  const answer = (turn: HistoryTurn) => {
+    const text = turn.assistant?.trim() || "(This answer did not finish.)";
+    return turn.shown?.length ? `${text}\n\n${turn.shown.join("\n")}` : text;
+  };
   for (const turn of [...turns].reverse()) {
-    const cost = estimateTokens(turn.user + (turn.assistant ?? ""));
+    const cost = estimateTokens(turn.user + answer(turn));
     if (tokens + cost > HISTORY_MAX_TOKENS) break;
     kept.unshift(turn);
     tokens += cost;
   }
   return kept.flatMap((turn) => [
     { role: "user", content: turn.user },
-    {
-      role: "assistant",
-      content: turn.assistant?.trim() || "(This answer did not finish.)",
-    },
+    { role: "assistant", content: answer(turn) },
   ]);
 }
 

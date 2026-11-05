@@ -44,6 +44,16 @@ function pathQuery(path: CitationPath, depth: "function" | "department" | "proce
   return { fn: path.fn, dept: path.dept, proc: path.proc };
 }
 
+/** An entity card's link: the entity's workbench page, as a citation of it opens (FR-5.2). */
+export function entityHref(
+  path: CitationPath,
+  kind: "function" | "department" | "process",
+  appHref: string,
+): string | null {
+  const query = pathQuery(path, kind);
+  return query ? withQuery(appHref, query) : null;
+}
+
 export function citationTarget(
   citation: Pick<CitationView, "source" | "availability" | "path">,
   routes: { appHref: string; adminUsersHref: string },

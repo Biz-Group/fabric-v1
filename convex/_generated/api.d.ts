@@ -10,6 +10,7 @@
 
 import type * as aiUsage from "../aiUsage.js";
 import type * as ask from "../ask.js";
+import type * as askDisplay from "../askDisplay.js";
 import type * as askEval from "../askEval.js";
 import type * as askFeedback from "../askFeedback.js";
 import type * as askLifecycle from "../askLifecycle.js";
@@ -129,6 +130,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   aiUsage: typeof aiUsage;
   ask: typeof ask;
+  askDisplay: typeof askDisplay;
   askEval: typeof askEval;
   askFeedback: typeof askFeedback;
   askLifecycle: typeof askLifecycle;

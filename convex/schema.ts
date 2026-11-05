@@ -26,6 +26,7 @@ import {
 } from "./summaryV2";
 import { conversationFailureReasonValidator } from "./lib/conversationFailure";
 import {
+  askDisplayKindValidator,
   askEntityRefValidator,
   askErrorReasonValidator,
   askMessagePartValidator,
@@ -1479,6 +1480,9 @@ export default defineSchema({
       }),
     ),
     toolCalls: v.array(askSharedToolCallValidator),
+    // What the answer showed (D56): each component's kind and how many
+    // references it held, never what it showed.
+    displays: v.optional(v.array(v.object({ display: askDisplayKindValidator, count: v.number() }))),
     note: v.optional(v.string()),
     sharedAt: v.number(),
     // 90 days after sharing (D38).
