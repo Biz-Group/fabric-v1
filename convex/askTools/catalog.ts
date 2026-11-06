@@ -390,12 +390,20 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
       `- "entities": cards for 2 to ${MAX_DISPLAY_REFS} functions, departments or processes your answer is about, most relevant first. Each card shows the entity's current name, path, overview headline and counts, and opens its page.`,
       `- "choices": when the name the user used matches several entities, 2 to ${MAX_CHOICES} of them as buttons, best match first. Write one short sentence asking which they mean, then call this, and don't answer yet: their choice comes back as their next message.`,
       '- "contribute": a card for adding a contribution to one process (Start AI interview, Record a voice note, Upload files), when your answer is about that process and its evidence is thin. Pass that one process in refs. It shows only to members who can contribute.',
-      'For "entities" and "contribute", write your full, cited answer first, then call this in the same response as its last step: your answer ends where you call it, and the component replaces no part of it.',
+      `- "flow": one step of a process flow with the steps directly before and after it, when your answer is about a specific step and what happens around it (its handoffs, what feeds it, where it leads). Pass the process in refs and the step's id, as getProcessFlow or getFlowNode gave it, in nodeId.`,
+      '- Charts, each counted live for one scope: pass one function, department or process id in refs, or none for the whole organization. Use one only when your answer compares the counts it shows, and still state and cite the counts in your text:',
+      '  - "signalsByProcess": friction, bottleneck and handoff items per process, as rankSignals counts them, most first.',
+      '  - "contributionsOverTime": completed contributions per week, by recorded date.',
+      '  - "coverageByDepartment": processes with and without contributions, per department.',
+      '  - "systemFriction": systems by the pain points evidenced against them (listSystems), with manual re-keying apart.',
+      'For every kind except "choices", write your full, cited answer first, then call this in the same response as its last step: your answer ends where you call it, and the component replaces no part of it.',
+      'nodeId is "" for every kind except "flow".',
     ].join("\n"),
     input: showInput,
     inputDescriptions: {
       kind: "Which component to show.",
-      refs: "The entities, each kind and id.",
+      refs: "The entities' ids (functions, departments or processes), exactly as given.",
+      nodeId: `For kind "flow", the step's id; otherwise "".`,
     },
     access: "member",
     executor: show,
@@ -405,8 +413,18 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     budgetTokens: 200,
     telemetryName: "show",
     label: (input) =>
-      input.kind === "choices" ? "Offering options" : input.kind === "contribute" ? "Offering a way to contribute" : "Showing cards",
-    display: { telemetry: { entities: "showEntities", choices: "askToChoose", contribute: "offerContribute" } },
+      input.kind === "choices"
+        ? "Offering options"
+        : input.kind === "contribute"
+          ? "Offering a way to contribute"
+          : input.kind === "flow"
+            ? "Showing the step in its flow"
+            : input.kind === "entities"
+              ? "Showing cards"
+              : "Showing a chart",
+    display: {
+      telemetry: { entities: "showEntities", choices: "askToChoose", contribute: "offerContribute", flow: "showFlowSnippet", chart: "showChart" },
+    },
   }),
 ];
 

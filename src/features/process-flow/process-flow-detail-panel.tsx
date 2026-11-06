@@ -28,7 +28,7 @@ import {
   STATUS_TONE_CHIP,
   STATUS_TONE_TEXT,
 } from "@/features/status/status-meta";
-import { CATEGORY_CONFIG } from "./process-flow-nodes";
+import { CATEGORY_CONFIG } from "./flow-category";
 import type { ReadFlowNode } from "./use-process-flow-layout";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
 

@@ -1,7 +1,8 @@
 import { v, type ObjectType, type PropertyValidators } from "convex/values";
 import { internalQuery, type QueryCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
-import { MAX_DISPLAY_REFS, type AskDisplayPart } from "../lib/askSchema";
+import { ASK_CHART_IDS, MAX_DISPLAY_REFS, type AskChartId, type AskDisplayPart } from "../lib/askSchema";
+import { computeChart } from "../askCharts";
 import { canContribute } from "../lib/roles";
 import {
   orgViewerValidator,
@@ -9,6 +10,7 @@ import {
   type OrgViewer,
   type ResolvedViewer,
 } from "../lib/orgAuth";
+import { flowNeighbourhood } from "../lib/flowNeighbourhood";
 import { getOrgEntity } from "./scope";
 import type { HierarchyKind } from "./results";
 
@@ -49,8 +51,6 @@ export function askDisplayQuery<Input extends PropertyValidators>(definition: {
   });
 }
 
-const kindValidator = v.union(v.literal("function"), v.literal("department"), v.literal("process"));
-
 type EntityRef = AskDisplayPart["refs"][number];
 
 function toRef(kind: HierarchyKind, id: string): EntityRef {
@@ -85,15 +85,33 @@ async function groundedRefs(
     kept.push(toRef(ref.kind, doc._id));
     names.push(doc.name);
   }
-  return { refs: kept, names, dropped: refs.length - kept.length };
+  return { refs: kept, names };
 }
 
 const NOT_GROUNDED =
   "Nothing shown. Show only entities a tool returned in this conversation, using the ids it gave.";
 
-const refInput = v.object({ kind: kindValidator, id: v.string() });
+/**
+ * The kind of entity a model-supplied id names, read from the id itself (a
+ * Convex id encodes its table), or null for anything else. `show` takes bare
+ * ids so its schema stays small: the strict-tool grammar is at its limit.
+ */
+function kindOfId(ctx: QueryCtx, id: string): HierarchyKind | null {
+  if (ctx.db.normalizeId("processes", id)) return "process";
+  if (ctx.db.normalizeId("departments", id)) return "department";
+  if (ctx.db.normalizeId("functions", id)) return "function";
+  return null;
+}
 
-type Grounded = { ctx: QueryCtx; viewer: ResolvedViewer; refs: Array<{ kind: HierarchyKind; id: string }>; allowed: ReadonlySet<string> };
+type Grounded = {
+  ctx: QueryCtx;
+  viewer: ResolvedViewer;
+  refs: Array<{ kind: HierarchyKind; id: string }>;
+  /** How many ids the model passed, including any that name no entity. */
+  requested: number;
+  allowed: ReadonlySet<string>;
+  nodeId: string;
+};
 
 /** A picker offers this many options at most (FR-11.4). */
 export const MAX_CHOICES = 5;
@@ -139,8 +157,9 @@ async function contribute({ ctx, viewer, refs: input, allowed }: Grounded): Prom
 }
 
 /** Entity cards (FR-11.1): a carousel from three. */
-async function entities({ ctx, viewer, refs: input, allowed }: Grounded): Promise<AskDisplayResult> {
-  const { refs, names, dropped } = await groundedRefs(ctx, viewer, input, allowed, MAX_DISPLAY_REFS);
+async function entities({ ctx, viewer, refs: input, requested, allowed }: Grounded): Promise<AskDisplayResult> {
+  const { refs, names } = await groundedRefs(ctx, viewer, input, allowed, MAX_DISPLAY_REFS);
+  const dropped = requested - refs.length;
   if (refs.length === 0) return { part: null, note: NOT_GROUNDED };
   return {
     part: { type: "display", display: "entities", refs },
@@ -150,14 +169,68 @@ async function entities({ ctx, viewer, refs: input, allowed }: Grounded): Promis
   };
 }
 
+/**
+ * The flow snippet (FR-11.3): one step of a process flow and the steps either
+ * side of it. The process must be grounded; the step must be in its current
+ * flow, so an id from a flow that has since regenerated shows nothing.
+ */
+async function flow({ ctx, viewer, refs: input, allowed, nodeId }: Grounded): Promise<AskDisplayResult> {
+  const process = input.find((ref) => ref.kind === "process");
+  const { refs, names } = process ? await groundedRefs(ctx, viewer, [process], allowed, 1) : { refs: [], names: [] };
+  if (refs.length === 0) return { part: null, note: NOT_GROUNDED };
+  const stepId = nodeId.trim();
+  if (!stepId) {
+    return { part: null, note: "Nothing shown: pass the step's id, as getProcessFlow or getFlowNode gave it, in nodeId." };
+  }
+  const row = await ctx.db
+    .query("processFlows")
+    .withIndex("by_clerkOrgId_and_processId", (q) =>
+      q.eq("clerkOrgId", viewer.orgId).eq("processId", refs[0].id as Id<"processes">),
+    )
+    .first();
+  const neighbourhood = row ? flowNeighbourhood(row, stepId) : null;
+  if (!neighbourhood) {
+    return { part: null, note: `Nothing shown: ${names[0]}'s current flow has no step with that id.` };
+  }
+  return {
+    part: { type: "display", display: "flow", refs, nodeId: neighbourhood.step.id },
+    note: `Shown under your answer: the step "${neighbourhood.step.label}" in ${names[0]}'s flow, with the steps either side of it.`,
+  };
+}
+
+/**
+ * A chart (FR-11.2): one of the fixed charts over a scope, the first grounded
+ * id or the whole organization when none is given. The note names the chart,
+ * never its numbers: the answer cites its counts from the tools.
+ */
+async function chart({ ctx, viewer, refs: input, requested, allowed }: Grounded, chartId: AskChartId): Promise<AskDisplayResult> {
+  const { refs, names } = await groundedRefs(ctx, viewer, input, allowed, 1);
+  if (requested > 0 && refs.length === 0) return { part: null, note: NOT_GROUNDED };
+  const data = await computeChart(ctx, viewer.orgId, chartId, refs[0] ?? null);
+  if (!data || data.rows.length === 0) {
+    return { part: null, note: "Nothing shown: that chart has no data for this scope. Your answer stands without it." };
+  }
+  return {
+    part: { type: "display", display: "chart", chartId, refs },
+    note: `Shown under your answer: a chart of ${data.title.toLowerCase()} for ${names[0] ?? "the whole organization"}, with a table view.`,
+  };
+}
+
 // ---- show --------------------------------------------------------------------
 
-/** The components `show` can place so far; flow and chart join with 2D.2 and 2E. */
-export const SHOW_KINDS = ["entities", "choices", "contribute"] as const;
+/**
+ * The components `show` places. Each chart is its own kind rather than a
+ * `chartId` input: an enum value costs the strict-tool grammar nothing, and a
+ * field costs a unit it can't spare (MAX_GRAMMAR_UNITS).
+ */
+export const SHOW_KINDS = ["entities", "choices", "contribute", "flow", ...ASK_CHART_IDS] as const;
 
 export const showInput = {
   kind: v.union(...SHOW_KINDS.map((kind) => v.literal(kind))),
-  refs: v.array(refInput),
+  /** Entity ids, as tools gave them; each one's kind comes from the id. */
+  refs: v.array(v.string()),
+  /** A flow step's id for kind "flow"; "" otherwise (a sentinel, not null: strict tools allow few unions). */
+  nodeId: v.string(),
 };
 
 /**
@@ -168,7 +241,12 @@ export const showInput = {
 export const show = askDisplayQuery({
   input: showInput,
   handler: async (ctx, viewer, input, allowed) => {
-    const grounded = { ctx, viewer, refs: input.refs, allowed };
+    const refs = input.refs.flatMap((raw) => {
+      const id = raw.trim();
+      const kind = kindOfId(ctx, id);
+      return kind ? [{ kind, id }] : [];
+    });
+    const grounded = { ctx, viewer, refs, requested: input.refs.length, allowed, nodeId: input.nodeId };
     switch (input.kind) {
       case "entities":
         return await entities(grounded);
@@ -176,6 +254,10 @@ export const show = askDisplayQuery({
         return await choices(grounded);
       case "contribute":
         return await contribute(grounded);
+      case "flow":
+        return await flow(grounded);
+      default:
+        return await chart(grounded, input.kind);
     }
   },
 });

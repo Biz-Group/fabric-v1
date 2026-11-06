@@ -88,6 +88,9 @@ export const askDisplayKindValidator = v.union(
 );
 
 /** The chart catalogue (Phase 2E): each id is a deterministic, access-checked query. */
+/** The charts AskFabric can show (Phase 2E); each is also a `show` kind. */
+export const ASK_CHART_IDS = ["signalsByProcess", "contributionsOverTime", "coverageByDepartment", "systemFriction"] as const;
+
 export const askChartIdValidator = v.union(
   v.literal("signalsByProcess"),
   v.literal("contributionsOverTime"),

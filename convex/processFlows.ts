@@ -46,6 +46,7 @@ import {
   flowNodeDetailFields,
 } from "./schema";
 import { flowSummarySourceSnapshotValidator } from "./summaryV2";
+import { flowNeighbourhood } from "./lib/flowNeighbourhood";
 import { requestSuggestionsRefresh } from "./askSuggestions";
 
 // ---------------------------------------------------------------------------
@@ -1485,6 +1486,59 @@ export const getProcessFlow = query({
     const process = await ctx.db.get(args.processId);
     if (!process || process.clerkOrgId !== caller.orgId) return null;
     return await readProcessFlow(ctx, caller.orgId, args.processId);
+  },
+});
+
+const flowStepValidator = v.object({ id: v.string(), label: v.string(), category: flowNodeCategoryValidator });
+const flowNeighbourValidator = v.object({
+  id: v.string(),
+  label: v.string(),
+  category: flowNodeCategoryValidator,
+  edgeLabel: v.union(v.string(), v.null()),
+});
+
+/**
+ * One step and the steps directly either side of it, for AskFabric's flow
+ * snippet (FR-11.3). Narrow on purpose: it reads the flow row's topology and
+ * no node details. Null when the process or the step isn't there any more,
+ * e.g. after the flow regenerated, so the snippet renders nothing.
+ */
+export const getFlowNeighbourhood = query({
+  args: { processId: v.id("processes"), nodeId: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      processName: v.string(),
+      path: v.object({ fn: v.union(v.string(), v.null()), dept: v.string(), proc: v.string() }),
+      step: flowStepValidator,
+      before: v.array(flowNeighbourValidator),
+      after: v.array(flowNeighbourValidator),
+      moreBefore: v.number(),
+      moreAfter: v.number(),
+      generatedAt: v.number(),
+      stale: v.boolean(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const caller = await requireOrgMember(ctx);
+    const process = await ctx.db.get(args.processId);
+    if (!process || process.clerkOrgId !== caller.orgId) return null;
+    const flow = await ctx.db
+      .query("processFlows")
+      .withIndex("by_clerkOrgId_and_processId", (q) =>
+        q.eq("clerkOrgId", caller.orgId).eq("processId", args.processId),
+      )
+      .first();
+    const neighbourhood = flow ? flowNeighbourhood(flow, args.nodeId) : null;
+    if (!flow || !neighbourhood) return null;
+    const dept = await ctx.db.get(process.departmentId);
+    return {
+      processName: process.name,
+      path: { fn: dept?.functionId ?? null, dept: process.departmentId, proc: process._id },
+      ...neighbourhood,
+      generatedAt: flow.generatedAt,
+      stale: flow.stale,
+    };
   },
 });
 

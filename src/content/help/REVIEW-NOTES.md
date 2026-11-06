@@ -10,6 +10,14 @@ Add a `## <id>` section when an article needs re-checking, for example after a f
 - The PRD calls the second process tab "Conversations". The UI tab is **Contributions** (the admin page is also "Contributions"). Articles follow the UI.
 - The PRD says capture entry points are "AI Interview, Voice Record, Audio Upload". The UI labels are **Start AI interview**, **Record a voice note**, **Upload files**. Articles follow the UI.
 
+## askfabric-extras
+
+New article for AskFabric Phase 2 (2026-11-06), awaiting Saish's review; help search leaves it out until this section is removed.
+
+- Written separately from `askfabric` because that article is at the 450-word limit.
+- "Select a bar to open where it comes from": bars open a process's Insights tab, a department's page, or the step or contribution where a system was seen.
+- Describes all five extras, including the flow snippet and charts, which are new in this deploy.
+
 ## Resolved
 
 Saish approved all 14 articles as written on 2026-10-23. Items that were left out of the articles stay out:

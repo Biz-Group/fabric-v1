@@ -343,7 +343,7 @@ describe("runTurn", () => {
 
   test("shows cards after the answer, and a follow-up can show them again from the thread (D56)", async () => {
     const s = await setup();
-    const show = (id: string) => ({ type: "tool_use", id, name: "show", input: { kind: "entities", refs: [{ kind: "process", id: s.ids.a.processId }] } });
+    const show = (id: string) => ({ type: "tool_use", id, name: "show", input: { kind: "entities", nodeId: "", refs: [s.ids.a.processId] } });
     const scripted = useScript([
       { content: [{ type: "tool_use", id: "toolu_1", name: "searchHierarchy", input: { query: "scheduling", kinds: [], cursor: "" } }] },
       { content: [{ type: "text", text: "Scheduling is the one." }, show("toolu_2")] },
@@ -386,7 +386,7 @@ describe("runTurn", () => {
       {
         content: [
           { type: "text", text: "Here." },
-          { type: "tool_use", id: "toolu_1", name: "show", input: { kind: "entities", refs: [{ kind: "process", id: s.ids.b.processId }] } },
+          { type: "tool_use", id: "toolu_1", name: "show", input: { kind: "entities", nodeId: "", refs: [s.ids.b.processId] } },
         ],
       },
     ]);

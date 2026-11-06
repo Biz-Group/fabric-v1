@@ -330,6 +330,31 @@ export function unionParameterCount(schema: JsonSchema): number {
 }
 
 /**
+ * Claude also caps the size of the grammar the strict schemas compile to, an
+ * internal limit with no published number ("The compiled grammar is too
+ * large"). Measured on Foundry 2026-11-06 by probing variants of this catalog:
+ * the cost tracks the number of fields, at about one unit per leaf (a string,
+ * number, boolean or enum, however many values) plus one per nested object.
+ * Descriptions and the tool count itself cost nothing measurable.
+ * `grammarUnitCount` approximates that, and the cap is the largest catalog
+ * that compiled; one unit more failed. Re-measure before raising it.
+ */
+export const MAX_GRAMMAR_UNITS = 50;
+
+export function grammarUnitCount(schema: JsonSchema): number {
+  const visit = (node: JsonSchema, root: boolean): number => {
+    if (node.type === "object") {
+      const properties = Object.values((node.properties ?? {}) as Record<string, JsonSchema>);
+      return (root ? 0 : 1) + properties.reduce((sum, property) => sum + visit(property, false), 0);
+    }
+    if (node.type === "array") return visit(node.items as JsonSchema, false);
+    if (Array.isArray(node.anyOf)) return (node.anyOf as JsonSchema[]).reduce((sum, member) => sum + visit(member, false), 0);
+    return 1;
+  };
+  return visit(schema, true);
+}
+
+/**
  * Claude rejects a request with more strict tools than this (found on dev
  * 2026-11-05, at 21). Every tool stays strict: with one non-strict tool in the
  * mix, the model sometimes wrote tool calls as text until it hit max_tokens.
@@ -348,6 +373,13 @@ export function assertWithinStrictLimits(tools: readonly RegisteredAskTool[]): v
     throw new ToolRegistrationError(
       "(catalog)",
       `${total} union-typed parameters across all tools; strict tool use allows ${MAX_UNION_PARAMETERS}`,
+    );
+  }
+  const units = tools.reduce((sum, tool) => sum + grammarUnitCount(tool.inputSchema), 0);
+  if (units > MAX_GRAMMAR_UNITS) {
+    throw new ToolRegistrationError(
+      "(catalog)",
+      `${units} grammar units across all tools; the compiled grammar fits ${MAX_GRAMMAR_UNITS} (measured 2026-11-06)`,
     );
   }
 }

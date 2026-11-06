@@ -10,6 +10,7 @@
 
 import type * as aiUsage from "../aiUsage.js";
 import type * as ask from "../ask.js";
+import type * as askCharts from "../askCharts.js";
 import type * as askDisplay from "../askDisplay.js";
 import type * as askEval from "../askEval.js";
 import type * as askFeedback from "../askFeedback.js";
@@ -80,6 +81,7 @@ import type * as lib_conversationTitle from "../lib/conversationTitle.js";
 import type * as lib_descriptionSafetyValidators from "../lib/descriptionSafetyValidators.js";
 import type * as lib_elevenLabsCharging from "../lib/elevenLabsCharging.js";
 import type * as lib_elevenLabsConversation from "../lib/elevenLabsConversation.js";
+import type * as lib_flowNeighbourhood from "../lib/flowNeighbourhood.js";
 import type * as lib_flowQuality from "../lib/flowQuality.js";
 import type * as lib_flowStages from "../lib/flowStages.js";
 import type * as lib_hierarchyOverviewV2 from "../lib/hierarchyOverviewV2.js";
@@ -132,6 +134,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   aiUsage: typeof aiUsage;
   ask: typeof ask;
+  askCharts: typeof askCharts;
   askDisplay: typeof askDisplay;
   askEval: typeof askEval;
   askFeedback: typeof askFeedback;
@@ -202,6 +205,7 @@ declare const fullApi: ApiFromModules<{
   "lib/descriptionSafetyValidators": typeof lib_descriptionSafetyValidators;
   "lib/elevenLabsCharging": typeof lib_elevenLabsCharging;
   "lib/elevenLabsConversation": typeof lib_elevenLabsConversation;
+  "lib/flowNeighbourhood": typeof lib_flowNeighbourhood;
   "lib/flowQuality": typeof lib_flowQuality;
   "lib/flowStages": typeof lib_flowStages;
   "lib/hierarchyOverviewV2": typeof lib_hierarchyOverviewV2;

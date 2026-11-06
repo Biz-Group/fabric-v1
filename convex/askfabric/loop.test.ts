@@ -50,7 +50,7 @@ const showCall = (refs: string[], id = "toolu_show") => ({
   type: "tool_use",
   id,
   name: "show",
-  input: { kind: "entities", refs: refs.map((ref) => ({ kind: "process", id: ref })) },
+  input: { kind: "entities", nodeId: "", refs },
 });
 
 function harness(
@@ -74,7 +74,7 @@ function harness(
     // Stands in for the executor: keeps only grounded references.
     runDisplayTool: async (tool, input, allowed) => {
       displayCalls.push({ name: tool.name, allowed });
-      const refs = ((input.refs ?? []) as Array<{ kind: "process"; id: string }>).filter((ref) => allowed.includes(ref.id));
+      const refs = ((input.refs ?? []) as string[]).filter((id) => allowed.includes(id)).map((id) => ({ kind: "process", id }));
       return refs.length
         ? { part: { type: "display", display: (input as { kind: "entities" }).kind, refs: refs as never }, note: `Shown: ${refs.length}` }
         : { part: null, note: "Nothing shown." };
@@ -163,7 +163,7 @@ describe("display tools in the loop (D56)", () => {
   });
 
   test("a picker placed before any text asks for the question, not an answer", async () => {
-    const choose = { type: "tool_use", id: "toolu_pick", name: "show", input: { kind: "choices", refs: [{ kind: "process", id: "p1" }, { kind: "process", id: "p2" }] } };
+    const choose = { type: "tool_use", id: "toolu_pick", name: "show", input: { kind: "choices", nodeId: "", refs: ["p1", "p2"] } };
     const h = harness([{ content: [lookup(), choose] }, { content: [{ type: "text", text: "Which Payroll do you mean?" }] }], {
       runTool: async () => PROCESSES,
     });

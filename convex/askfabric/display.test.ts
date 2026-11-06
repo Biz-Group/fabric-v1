@@ -5,6 +5,7 @@ import { api, internal } from "../_generated/api";
 import type { MutationCtx } from "../_generated/server";
 import schema from "../schema";
 import { SUMMARY_V2_PROMPT_VERSIONS, type ProcessOverviewArtifactV2 } from "../summaryV2";
+import { flowNeighbourhood, MAX_NEIGHBOURS } from "../lib/flowNeighbourhood";
 
 const modules = import.meta.glob("/convex/**/*.ts");
 const ORG = "org_ask_display";
@@ -26,6 +27,35 @@ const overview: ProcessOverviewArtifactV2 = {
   provenance: { sourceSnapshotHash: "x", generatedAt: 1, promptVersion: SUMMARY_V2_PROMPT_VERSIONS.processOverview, provider: "p", model: "m" },
 };
 
+const NODE = {
+  description: "d",
+  actors: [],
+  tools: [],
+  painPoints: [],
+  automationPotential: "none" as const,
+  confidence: "high" as const,
+  isBottleneck: false,
+  isTribalKnowledge: false,
+  riskIndicators: [],
+  sources: [],
+};
+
+/** start → check (a decision) → approve (Yes, the happy path) or reject (No); lone stands apart. */
+const FLOW = {
+  nodes: [
+    { id: "start", label: "Request arrives", category: "start" as const, ...NODE },
+    { id: "check", label: "Check the slot", category: "decision" as const, ...NODE },
+    { id: "reject", label: "Send it back", category: "end" as const, ...NODE },
+    { id: "approve", label: "Book the slot", category: "end" as const, ...NODE },
+    { id: "lone", label: "Ad hoc call", category: "action" as const, ...NODE },
+  ],
+  edges: [
+    { id: "e1", source: "start", target: "check", type: "sequential" as const, isHappyPath: true },
+    { id: "e2", source: "check", target: "reject", type: "conditional" as const, label: "No", isHappyPath: false },
+    { id: "e3", source: "check", target: "approve", type: "conditional" as const, label: "Yes", isHappyPath: true },
+  ],
+};
+
 async function hierarchy(ctx: MutationCtx, orgId: string) {
   const functionId = await ctx.db.insert("functions", { name: "Ops", sortOrder: 0, clerkOrgId: orgId });
   const departmentId = await ctx.db.insert("departments", { functionId, name: "Dispatch", sortOrder: 0, clerkOrgId: orgId });
@@ -34,6 +64,16 @@ async function hierarchy(ctx: MutationCtx, orgId: string) {
   for (const status of ["done", "done", "processing"] as const) {
     await ctx.db.insert("conversations", { processId, contributorName: "Ana", status, clerkOrgId: orgId, title: "t", summary: "s" });
   }
+  await ctx.db.insert("processFlows", {
+    processId,
+    status: "ready",
+    stale: true,
+    generatedAt: 1_700_000_000_000,
+    conversationCount: 2,
+    ...FLOW,
+    insights: { criticalPath: [], handoffCount: 0, toolCount: 0, automationOpportunities: [], topBottlenecks: [] },
+    clerkOrgId: orgId,
+  });
   return { functionId, departmentId, processId };
 }
 
@@ -111,17 +151,18 @@ describe("entity cards (D56, Phase 2D.1)", () => {
     const { t, ids } = await setup();
     const viewer = { tokenIdentifier: ids.tokenIdentifier, orgId: ORG };
     const { processId, departmentId } = ids.own;
-    const result = await t.query(internal.askTools.display.show, { kind: "entities",
+    const result = await t.query(internal.askTools.display.show, { kind: "entities", nodeId: "",
       viewer,
       allowed: [processId, departmentId, ids.other.processId],
+      // Bare ids: each one's kind comes from its table.
       refs: [
-        { kind: "process", id: processId },
+        processId,
         // Grounded, but another org's: still dropped.
-        { kind: "process", id: ids.other.processId },
+        ids.other.processId,
         // Readable, but no tool returned it.
-        { kind: "function", id: ids.own.functionId },
-        { kind: "department", id: departmentId },
-        { kind: "process", id: "not-an-id" },
+        ids.own.functionId,
+        ` ${departmentId} `,
+        "not-an-id",
       ],
     });
     expect(result.part).toEqual({
@@ -135,14 +176,14 @@ describe("entity cards (D56, Phase 2D.1)", () => {
     expect(result.note).toContain("2 cards (Scheduling, Dispatch)");
     expect(result.note).toContain("3 left out");
 
-    const none = await t.query(internal.askTools.display.show, { kind: "entities", viewer, allowed: [], refs: [{ kind: "process", id: processId }] });
+    const none = await t.query(internal.askTools.display.show, { kind: "entities", nodeId: "", viewer, allowed: [], refs: [processId] });
     expect(none.part).toBeNull();
 
     await expect(
-      t.query(internal.askTools.display.show, { kind: "entities",
+      t.query(internal.askTools.display.show, { kind: "entities", nodeId: "",
         viewer: { tokenIdentifier: `${ISSUER}|x`, orgId: ORG },
         allowed: [processId],
-        refs: [{ kind: "process", id: processId }],
+        refs: [processId],
       }),
     ).rejects.toThrow();
   });
@@ -157,24 +198,24 @@ describe("entity cards (D56, Phase 2D.1)", () => {
         ),
       ),
     );
-    const refs = [ids.own.processId, ...extra].map((id) => ({ kind: "process" as const, id }));
-    const many = await t.query(internal.askTools.display.show, { kind: "choices", viewer, allowed: refs.map((r) => r.id), refs });
+    const refs: string[] = [ids.own.processId, ...extra];
+    const many = await t.query(internal.askTools.display.show, { kind: "choices", nodeId: "", viewer, allowed: refs, refs });
     expect(many.part).toMatchObject({ display: "choices" });
     expect(many.part!.refs).toHaveLength(5);
     expect(many.note).toContain("don't answer for them");
 
-    const one = await t.query(internal.askTools.display.show, { kind: "choices",
+    const one = await t.query(internal.askTools.display.show, { kind: "choices", nodeId: "",
       viewer,
       allowed: [ids.own.processId, ids.other.processId],
-      refs: [{ kind: "process", id: ids.own.processId }, { kind: "process", id: ids.other.processId }],
+      refs: [ids.own.processId, ids.other.processId],
     });
     expect(one.part).toBeNull();
   });
 
   test("show contribute shows only to contributors and admins, for a grounded process (FR-11.5)", async () => {
     const { t, ids } = await setup();
-    const args = { allowed: [ids.own.processId], refs: [{ kind: "process" as const, id: ids.own.processId }] };
-    const asViewer = await t.query(internal.askTools.display.show, { kind: "contribute", ...args, viewer: { tokenIdentifier: ids.tokenIdentifier, orgId: ORG } });
+    const args = { allowed: [ids.own.processId], refs: [ids.own.processId] };
+    const asViewer = await t.query(internal.askTools.display.show, { kind: "contribute", nodeId: "", ...args, viewer: { tokenIdentifier: ids.tokenIdentifier, orgId: ORG } });
     expect(asViewer.part).toBeNull();
     expect(asViewer.note).toContain("can't add contributions");
 
@@ -185,22 +226,93 @@ describe("entity cards (D56, Phase 2D.1)", () => {
         await ctx.db.insert("memberships", { tokenIdentifier, userId, clerkOrgId: ORG, role, createdAt: 0 });
       });
       const viewer = { tokenIdentifier, orgId: ORG };
-      const shown = await t.query(internal.askTools.display.show, { kind: "contribute", ...args, viewer });
+      const shown = await t.query(internal.askTools.display.show, { kind: "contribute", nodeId: "", ...args, viewer });
       expect(shown.part, role).toEqual({ type: "display", display: "contribute", refs: [{ kind: "process", id: ids.own.processId }] });
       // Not grounded, or another org's: nothing.
       const contribute = (allowed: string[], id: string) =>
-        t.query(internal.askTools.display.show, { kind: "contribute", viewer, allowed, refs: [{ kind: "process", id }] });
+        t.query(internal.askTools.display.show, { kind: "contribute", nodeId: "", viewer, allowed, refs: [id] });
       expect((await contribute([], ids.own.processId)).part).toBeNull();
       expect((await contribute([ids.other.processId], ids.other.processId)).part).toBeNull();
       // A department isn't something to contribute to.
       const dept = await t.query(internal.askTools.display.show, {
-        kind: "contribute",
+        kind: "contribute", nodeId: "",
         viewer,
         allowed: [ids.own.departmentId],
-        refs: [{ kind: "department", id: ids.own.departmentId }],
+        refs: [ids.own.departmentId],
       });
       expect(dept.part).toBeNull();
     }
+  });
+
+  test("show flow keeps a grounded process's step that is in its current flow (FR-11.3)", async () => {
+    const { t, ids } = await setup();
+    const viewer = { tokenIdentifier: ids.tokenIdentifier, orgId: ORG };
+    const { processId } = ids.own;
+    const flow = (nodeId: string, allowed: string[] = [processId], id: string = processId) =>
+      t.query(internal.askTools.display.show, { kind: "flow", viewer, allowed, nodeId, refs: [id] });
+
+    const shown = await flow(" check ");
+    expect(shown.part).toEqual({ type: "display", display: "flow", refs: [{ kind: "process", id: processId }], nodeId: "check" });
+    expect(shown.note).toContain('"Check the slot"');
+
+    // No step, a step the flow doesn't have, a process no tool returned, another org's.
+    expect((await flow("")).part).toBeNull();
+    const missing = await flow("gone");
+    expect(missing.part).toBeNull();
+    expect(missing.note).toContain("no step with that id");
+    expect((await flow("check", [])).part).toBeNull();
+    expect((await flow("check", [ids.other.processId], ids.other.processId)).part).toBeNull();
+  });
+
+  test("the flow neighbourhood gives the steps either side, happy path first, as the viewer", async () => {
+    const { t, ids, ana } = await setup();
+    const { functionId, departmentId, processId } = ids.own;
+    const around = await ana.query(api.processFlows.getFlowNeighbourhood, { processId, nodeId: "check" });
+    expect(around).toMatchObject({
+      processName: "Scheduling",
+      path: { fn: functionId, dept: departmentId, proc: processId },
+      step: { id: "check", label: "Check the slot", category: "decision" },
+      before: [{ id: "start", edgeLabel: null }],
+      after: [
+        { id: "approve", edgeLabel: "Yes" },
+        { id: "reject", edgeLabel: "No" },
+      ],
+      moreBefore: 0,
+      moreAfter: 0,
+      stale: true,
+    });
+
+    // A step with no neighbours still shows; one the flow no longer has, or another org's flow, gives nothing.
+    expect(await ana.query(api.processFlows.getFlowNeighbourhood, { processId, nodeId: "lone" })).toMatchObject({ before: [], after: [] });
+    expect(await ana.query(api.processFlows.getFlowNeighbourhood, { processId, nodeId: "gone" })).toBeNull();
+    expect(await ana.query(api.processFlows.getFlowNeighbourhood, { processId: ids.other.processId, nodeId: "check" })).toBeNull();
+    await t.run(async (ctx) => {
+      const row = await ctx.db.query("processFlows").withIndex("by_clerkOrgId_and_processId", (q) => q.eq("clerkOrgId", ORG).eq("processId", processId)).first();
+      await ctx.db.delete(row!._id);
+    });
+    expect(await ana.query(api.processFlows.getFlowNeighbourhood, { processId, nodeId: "check" })).toBeNull();
+  });
+
+  test("the flow neighbourhood caps each side and counts the rest", () => {
+    const fan = Array.from({ length: MAX_NEIGHBOURS + 2 }, (_, i) => `n${i}`);
+    const around = flowNeighbourhood(
+      {
+        nodes: [
+          { id: "hub", label: "Hub", category: "action", ...NODE },
+          ...fan.map((id) => ({ id, label: id, category: "action" as const, ...NODE })),
+        ],
+        edges: [
+          ...fan.map((id) => ({ id: `e-${id}`, source: "hub", target: id, type: "parallel" as const, isHappyPath: false })),
+          // A repeat and a self-loop add nothing.
+          { id: "dup", source: "hub", target: "n0", type: "sequential" as const, isHappyPath: false },
+          { id: "self", source: "hub", target: "hub", type: "sequential" as const, isHappyPath: false },
+        ],
+      },
+      "hub",
+    );
+    expect(around?.after).toHaveLength(MAX_NEIGHBOURS);
+    expect(around?.moreAfter).toBe(2);
+    expect(around?.before).toEqual([]);
   });
 
   test("refuse a caller who isn't a member", async () => {

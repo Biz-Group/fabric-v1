@@ -12,6 +12,8 @@ import {
   FORBIDDEN_INPUT_FIELDS,
   MAX_STRICT_TOOLS,
   MAX_UNION_PARAMETERS,
+  MAX_GRAMMAR_UNITS,
+  grammarUnitCount,
   toApiTools,
   unionParameterCount,
   toStrictJsonSchema,
@@ -165,6 +167,18 @@ describe("the catalog", () => {
       expect(schema.additionalProperties).toBe(false);
       expect(schema.required).toEqual(Object.keys(schema.properties as object));
     }
+  });
+
+  test("fits the compiled-grammar cap measured on Foundry (2026-11-06)", () => {
+    expect(ASK_TOOLS.reduce((sum, tool) => sum + grammarUnitCount(tool.inputSchema), 0)).toBeLessThanOrEqual(MAX_GRAMMAR_UNITS);
+    // One unit per leaf, however many enum values; one per nested object.
+    const schema = toStrictJsonSchema(
+      v.object({ kind: v.union(v.literal("a"), v.literal("b"), v.literal("c")), refs: v.array(v.object({ id: v.string(), n: v.number() })) }),
+    );
+    expect(grammarUnitCount(schema)).toBe(4);
+    // An over-full catalog fails at load, before any request.
+    const heavy = { ...ASK_TOOLS[0], inputSchema: { type: "object", properties: Object.fromEntries(Array.from({ length: MAX_GRAMMAR_UNITS + 1 }, (_, i) => [`f${i}`, { type: "string" }])) } };
+    expect(() => assertWithinStrictLimits([heavy])).toThrow(/grammar units/);
   });
 
   test("stays within strict tool use's limits: 20 tools, 16 union-typed parameters", () => {

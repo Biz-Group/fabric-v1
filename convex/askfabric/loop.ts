@@ -1,4 +1,4 @@
-import type { AskDisplayKind, AskToolName } from "../lib/askSchema";
+import { ASK_CHART_IDS, type AskDisplayKind, type AskToolName } from "../lib/askSchema";
 import { authErrorCode } from "../lib/authErrors";
 import { isTokenLimitFinishReason } from "../lib/aiProvider";
 import type { StreamedCallResult } from "../lib/aiUsageMeter";
@@ -112,10 +112,14 @@ export type TurnInput = {
 
 const DISPLAY_KINDS = new Set<string>(["entities", "flow", "chart", "choices", "contribute"]);
 
-/** The component a `show` call asks for, or null for anything else. */
+const CHART_KINDS = new Set<string>(ASK_CHART_IDS);
+
+/** The component a `show` call asks for, or null for anything else. Each chart is its own kind. */
 export function displayKindOf(input: unknown): AskDisplayKind | null {
   const kind = (input as { kind?: unknown } | null)?.kind;
-  return typeof kind === "string" && DISPLAY_KINDS.has(kind) ? (kind as AskDisplayKind) : null;
+  if (typeof kind !== "string") return null;
+  if (CHART_KINDS.has(kind)) return "chart";
+  return DISPLAY_KINDS.has(kind) ? (kind as AskDisplayKind) : null;
 }
 
 /** Function, department and process ids a tool result names in its sources. */

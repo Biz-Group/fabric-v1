@@ -122,7 +122,7 @@ function AssistantMessage({
         {text && status !== "streaming" && <AskEvidence citations={message.citations} />}
         {text && <AskAnswer text={text} citations={message.citations} onOpenHelp={onOpenHelp} />}
         {/* Components follow the text they illustrate (D56); copy and read aloud skip them. */}
-        {text && <AskDisplays parts={displayParts(message.parts)} choice={choice} />}
+        {text && <AskDisplays parts={displayParts(message.parts)} choice={choice} answeredAt={message.completedAt ?? message._creationTime} />}
         {status === "stopped" && <p className="mt-2 text-xs text-muted-foreground">Stopped.</p>}
         {status === "error" && (
           <div

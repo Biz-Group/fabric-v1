@@ -150,6 +150,11 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* Categorical series for AskFabric charts: validated for colour-vision
+     deficiency against this surface (dataviz reference palette, slots 1-3). */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
   --org-accent: var(--primary);
   --org-accent-foreground: var(--primary-foreground);
   --org-accent-subtle: oklch(0.97 0 0);
@@ -215,6 +220,9 @@
   --chart-3: oklch(0.76 0.11 78);
   --chart-4: oklch(0.7 0.09 320);
   --chart-5: oklch(0.73 0.08 195);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
   --org-accent: var(--primary);
   --org-accent-foreground: var(--primary-foreground);
   --org-accent-subtle: oklch(0.265 0.007 255);

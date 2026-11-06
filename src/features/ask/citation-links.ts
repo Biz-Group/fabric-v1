@@ -54,6 +54,27 @@ export function entityHref(
   return query ? withQuery(appHref, query) : null;
 }
 
+/** A flow step's link: the process's Process Flow tab with the step selected, as a citation of it opens. */
+export function flowStepHref(path: CitationPath, nodeId: string, appHref: string): string | null {
+  const query = pathQuery(path, "process");
+  return query ? withQuery(appHref, { ...query, tab: "flow", node: nodeId }) : null;
+}
+
+/** A chart point's link: its entity's workbench page, on the tab and step the chart names. */
+export function chartLinkHref(
+  link: { fn: string | null; dept: string | null; proc: string | null; tab: string | null; node: string | null },
+  appHref: string,
+): string | null {
+  if (!link.fn) return null;
+  return withQuery(appHref, {
+    fn: link.fn,
+    dept: link.dept ?? undefined,
+    proc: link.proc ?? undefined,
+    tab: link.tab ?? undefined,
+    node: link.node ?? undefined,
+  });
+}
+
 export function citationTarget(
   citation: Pick<CitationView, "source" | "availability" | "path">,
   routes: { appHref: string; adminUsersHref: string },

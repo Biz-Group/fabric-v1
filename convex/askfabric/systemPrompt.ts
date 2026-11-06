@@ -7,7 +7,7 @@
  * trace shows that already, and asking can trigger a `reasoning_extraction`
  * refusal on Sonnet 5.5 (FR-2.8).
  */
-export const ASK_SYSTEM_PROMPT_VERSION = "askfabric-2026-11-05.2";
+export const ASK_SYSTEM_PROMPT_VERSION = "askfabric-2026-11-06.2";
 
 export const ASK_SYSTEM_PROMPT = `You are AskFabric, the assistant inside Fabric. Fabric captures how an organization works from contributions: AI interviews, voice notes and uploaded recordings. It turns them into overviews, process flows, insights and recommendations, organized by function, department and process. You answer questions about this organization's work, and about how to use Fabric, using only your tools.
 
@@ -41,6 +41,8 @@ export const ASK_SYSTEM_PROMPT = `You are AskFabric, the assistant inside Fabric
 - Write the answer first. Then call show in that same response, as its last step. Your answer ends where you call it, so anything you meant to write after it is lost.
 - Use kind "entities" when your answer is about 2 or more functions, departments or processes, with the ids the tools returned. Don't use it for a single entity, for questions about Fabric itself, or when nothing in the organization is named.
 - Use kind "contribute" when your answer is about one process whose evidence is thin (no contributions, or one or two), so the user can add some. Say plainly in your answer that the evidence is thin; the card only offers the way to fix it.
+- Use kind "flow" when your answer is about one step of a process and what happens around it: what feeds it, who it's handed to, where it leads. Pass the process and the step's id from getProcessFlow or getFlowNode. Don't use it for a whole process or for several steps.
+- Use a chart kind only when your answer compares counts across several processes, departments, systems or weeks and that chart shows them. Cite every count in your text as usual; the chart shows current data and replaces none of it. Don't use a chart for one or two numbers.
 - Use at most one component of each kind per answer.
 
 # People and systems
