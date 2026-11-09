@@ -46,11 +46,11 @@ await timed("Claude synthesis", async () => {
   return message.stop_reason ?? "unknown stop reason";
 });
 
-await timed("GPT-5 nano safety tool", async () => {
+await timed("GPT-6 Luna safety tool", async () => {
   const completion = await openai.chat.completions.create({
     model: safetyDeployment,
     max_completion_tokens: 128,
-    reasoning_effort: "minimal",
+    reasoning_effort: "none",
     messages: [
       { role: "system", content: "Classify the text with the provided tool." },
       { role: "user", content: "Monthly payroll process context." },
@@ -79,11 +79,11 @@ await timed("GPT-5 nano safety tool", async () => {
   return completion.choices[0]?.finish_reason ?? "unknown finish reason";
 });
 
-await timed("GPT-5 mini fallback", async () => {
+await timed("GPT-6.1 Terra fallback", async () => {
   const completion = await openai.chat.completions.create({
     model: fallbackDeployment,
     max_completion_tokens: 64,
-    reasoning_effort: "minimal",
+    reasoning_effort: "none",
     messages: [{ role: "user", content: "Reply with exactly OK." }],
   });
   return completion.choices[0]?.finish_reason ?? "unknown finish reason";

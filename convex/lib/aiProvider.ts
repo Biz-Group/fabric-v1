@@ -13,8 +13,10 @@ export type AIProvider = "foundry-claude" | "foundry-openai";
 export type PersistedAIProvider = "fabric-openrouter" | "fabric-foundry";
 
 export const FOUNDRY_CLAUDE_MODEL = "foundry:claude-haiku-5-5@2";
-export const FOUNDRY_FALLBACK_MODEL = "foundry:gpt-5-mini@2025-08-07";
-export const FOUNDRY_SAFETY_MODEL = "foundry:gpt-5-nano@2025-08-07";
+// Both on EU Data Zone Standard (D45). Moved from gpt-5-mini / gpt-5-nano
+// (Global Standard) on 2026-11-09.
+export const FOUNDRY_FALLBACK_MODEL = "foundry:gpt-6.1-terra@2026-10-26";
+export const FOUNDRY_SAFETY_MODEL = "foundry:gpt-6-luna@2026-09-22";
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_RETRIES = 2;
@@ -273,7 +275,7 @@ function resolveBackend(capability: AICapability): ResolvedAIBackend {
     };
   }
 
-  if ((env.FOUNDRY_SYNTHESIS_BACKEND ?? "claude") === "gpt5mini") {
+  if ((env.FOUNDRY_SYNTHESIS_BACKEND ?? "claude") === "openai") {
     return {
       provider: "foundry-openai",
       model: FOUNDRY_FALLBACK_MODEL,
@@ -560,7 +562,8 @@ async function callFoundryOpenAI(
       { role: "user", content: request.user },
     ],
     max_completion_tokens: request.maxTokens,
-    reasoning_effort: "minimal",
+    // GPT-6 rejects `minimal` with a 400; `none` is its lowest setting.
+    reasoning_effort: "none",
     ...(request.tool
       ? {
           tools: [
@@ -601,15 +604,22 @@ async function callFoundryOpenAI(
     finishReason: choice?.finish_reason ?? null,
     usage: completion.usage
       ? {
-          // OpenAI folds cached tokens INTO prompt_tokens; left as reported,
-          // and reconciled by `TokenRate.inputIncludesCached`.
+          // OpenAI folds BOTH cache figures INTO prompt_tokens; left as
+          // reported, and reconciled by `TokenRate.inputIncludesCached`.
           inputTokens: completion.usage.prompt_tokens,
           outputTokens: completion.usage.completion_tokens,
           cachedReadTokens: asFiniteTokenCount(
             completion.usage.prompt_tokens_details?.cached_tokens,
           ),
-          // Azure's automatic caching has no separate write step to report.
-          cacheWriteTokens: 0,
+          // GPT-6 on Azure reports and bills cache writes; GPT-5 did not, and
+          // the SDK types don't know the field yet.
+          cacheWriteTokens: asFiniteTokenCount(
+            (
+              completion.usage.prompt_tokens_details as
+                | { cache_write_tokens?: unknown }
+                | undefined
+            )?.cache_write_tokens,
+          ),
         }
       : null,
     requestId: requestIdFrom(completion),

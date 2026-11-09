@@ -227,7 +227,7 @@ describe("conversation evidence tool transport", () => {
   test("Foundry OpenAI sends the same schema in strict mode", async () => {
     process.env.FOUNDRY_ENDPOINT = "https://fabric-test.services.ai.azure.com";
     process.env.FOUNDRY_API_KEY = "test-key";
-    process.env.FOUNDRY_SYNTHESIS_BACKEND = "gpt5mini";
+    process.env.FOUNDRY_SYNTHESIS_BACKEND = "openai";
     process.env.FOUNDRY_OPENAI_FALLBACK_DEPLOYMENT = "fabric-gpt";
     let body: Record<string, unknown> | undefined;
     vi.stubGlobal(

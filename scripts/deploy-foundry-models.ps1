@@ -149,8 +149,8 @@ $catalog = az cognitiveservices model list `
 Assert-AzSuccess "Read model catalog"
 
 Assert-Model $catalog "Anthropic" "claude-haiku-5-5" "2" "GlobalStandard"
-Assert-Model $catalog "OpenAI" "gpt-5-nano" "2025-08-07" "GlobalStandard"
-Assert-Model $catalog "OpenAI" "gpt-5-mini" "2025-08-07" "GlobalStandard"
+Assert-Model $catalog "OpenAI" "gpt-6-luna" "2026-09-22" "DataZoneStandard"
+Assert-Model $catalog "OpenAI" "gpt-6.1-terra" "2026-10-26" "DataZoneStandard"
 
 $usage = az cognitiveservices usage list `
   --location $Location `
@@ -166,19 +166,19 @@ Assert-AzSuccess "Read existing deployments"
 
 $claudeQuota = (Get-Quota $usage "AIServices.GlobalStandard.claude-haiku-5-5.Azure") +
   (Get-ExistingCapacity $existingDeployments "fabric-claude-haiku-5-5")
-$nanoQuota = (Get-Quota $usage "OpenAI.GlobalStandard.gpt-5-nano") +
-  (Get-ExistingCapacity $existingDeployments "fabric-description-safety")
-$miniQuota = (Get-Quota $usage "OpenAI.GlobalStandard.gpt-5-mini") +
-  (Get-ExistingCapacity $existingDeployments "fabric-gpt5-mini-fallback")
+$safetyQuota = (Get-Quota $usage "OpenAI.DataZoneStandard.gpt-6-luna") +
+  (Get-ExistingCapacity $existingDeployments "fabric-safety-gpt6-luna")
+$fallbackQuota = (Get-Quota $usage "OpenAI.DataZoneStandard.gpt-6.1-terra") +
+  (Get-ExistingCapacity $existingDeployments "fabric-fallback-gpt6-terra")
 
 if ($claudeQuota -lt $ClaudeCapacity) {
   throw "Less than $ClaudeCapacity capacity units of Claude Haiku 5.5 quota are available."
 }
-if ($nanoQuota -lt $SafetyCapacity) {
-  throw "Less than $SafetyCapacity capacity units of GPT-5 nano quota are available."
+if ($safetyQuota -lt $SafetyCapacity) {
+  throw "Less than $SafetyCapacity capacity units of GPT-6 Luna (EU Data Zone) quota are available."
 }
-if ($miniQuota -lt $FallbackCapacity) {
-  throw "Less than $FallbackCapacity capacity units of GPT-5 mini quota are available."
+if ($fallbackQuota -lt $FallbackCapacity) {
+  throw "Less than $FallbackCapacity capacity units of GPT-6.1 Terra (EU Data Zone) quota are available."
 }
 
 Write-Host "Validated deployment target:"
@@ -186,8 +186,8 @@ Write-Host "  Subscription: $SubscriptionId"
 Write-Host "  Resource:     $ResourceGroup/$AccountName"
 Write-Host "  Region:       $Location"
 Write-Host "  Claude:       claude-haiku-5-5 v2 / GlobalStandard / capacity $ClaudeCapacity"
-Write-Host "  Safety:       gpt-5-nano 2025-08-07 / GlobalStandard / capacity $SafetyCapacity"
-Write-Host "  Fallback:     gpt-5-mini 2025-08-07 / GlobalStandard / capacity $FallbackCapacity"
+Write-Host "  Safety:       gpt-6-luna 2026-09-22 / DataZoneStandard / capacity $SafetyCapacity"
+Write-Host "  Fallback:     gpt-6.1-terra 2026-10-26 / DataZoneStandard / capacity $FallbackCapacity"
 Write-Host "  Industry:     $Industry"
 
 if (-not $Apply) {
@@ -218,19 +218,19 @@ Set-Deployment "fabric-claude-haiku-5-5" @{
   }
 }
 
-Set-Deployment "fabric-description-safety" @{
-  sku = @{ name = "GlobalStandard"; capacity = $SafetyCapacity }
+Set-Deployment "fabric-safety-gpt6-luna" @{
+  sku = @{ name = "DataZoneStandard"; capacity = $SafetyCapacity }
   properties = @{
-    model = @{ format = "OpenAI"; name = "gpt-5-nano"; version = "2025-08-07" }
+    model = @{ format = "OpenAI"; name = "gpt-6-luna"; version = "2026-09-22" }
     raiPolicyName = "Microsoft.DefaultV2"
     versionUpgradeOption = "NoAutoUpgrade"
   }
 }
 
-Set-Deployment "fabric-gpt5-mini-fallback" @{
-  sku = @{ name = "GlobalStandard"; capacity = $FallbackCapacity }
+Set-Deployment "fabric-fallback-gpt6-terra" @{
+  sku = @{ name = "DataZoneStandard"; capacity = $FallbackCapacity }
   properties = @{
-    model = @{ format = "OpenAI"; name = "gpt-5-mini"; version = "2025-08-07" }
+    model = @{ format = "OpenAI"; name = "gpt-6.1-terra"; version = "2026-10-26" }
     raiPolicyName = "Microsoft.DefaultV2"
     versionUpgradeOption = "NoAutoUpgrade"
   }

@@ -16,7 +16,7 @@
  */
 
 /** Bump on any rate change. Rows record the version they were priced at. */
-export const PRICE_VERSION = "2026-11-03";
+export const PRICE_VERSION = "2026-11-09";
 
 /**
  * Recorded instead of a version when no rate is known for a model. Such rows
@@ -38,13 +38,14 @@ export type TokenRate = {
   readonly cacheWrite: number;
   /**
    * Whether the provider's reported input-token count already contains the
-   * cached tokens.
+   * cached tokens — both cache reads and cache writes.
    *
    * This is the single most expensive detail in this file to get wrong.
    * Anthropic reports three **disjoint** buckets (`input_tokens`,
    * `cache_read_input_tokens`, `cache_creation_input_tokens`), whereas OpenAI
    * reports `prompt_tokens` as the **total** with
-   * `prompt_tokens_details.cached_tokens` as a subset of it. Treating the
+   * `prompt_tokens_details.cached_tokens` (and, on GPT-6,
+   * `prompt_tokens_details.cache_write_tokens`) as subsets of it. Treating the
    * OpenAI shape as disjoint charges every cached token twice — once at the
    * full input rate and once at the cached rate.
    */
@@ -114,20 +115,50 @@ export const TOKEN_RATES: Readonly<Record<string, TokenRate>> = {
     inputIncludesCached: false,
   },
 
-  // Azure Global Standard.
+  // Description safety, from 2026-11-09. Azure EU Data Zone Standard, Sweden
+  // Central retail meters "6-luna ... Std DZ" (prices.azure.com, 9 Nov 2026).
+  // Unlike GPT-5, GPT-6 bills cache writes. The 272k long-context threshold
+  // comes from third-party price tables, not Microsoft. No request on this
+  // path comes near it.
+  "foundry-openai:foundry:gpt-6-luna@2026-09-22": {
+    input: 0.12,
+    output: 0.6,
+    cachedRead: 0.012,
+    cacheWrite: 0.15,
+    inputIncludesCached: true,
+    longContext: {
+      aboveInputTokens: 272_000,
+      rate: { input: 0.24, output: 0.9, cachedRead: 0.024, cacheWrite: 0.3 },
+    },
+  },
+
+  // Synthesis fallback (FOUNDRY_SYNTHESIS_BACKEND=openai), from 2026-11-09.
+  // EU Data Zone Standard, meters "61 terra ... Std DZ". Same caveats as Luna.
+  "foundry-openai:foundry:gpt-6.1-terra@2026-10-26": {
+    input: 1.2,
+    output: 6.0,
+    cachedRead: 0.06,
+    cacheWrite: 1.5,
+    inputIncludesCached: true,
+    longContext: {
+      aboveInputTokens: 272_000,
+      rate: { input: 2.4, output: 9.0, cachedRead: 0.12, cacheWrite: 3.0 },
+    },
+  },
+
+  // gpt-5-nano (safety until 2026-11-09), Azure Global Standard. Kept so rows
+  // written before the switch still resolve.
   "foundry-openai:foundry:gpt-5-nano@2025-08-07": {
     input: 0.05,
     output: 0.4,
     cachedRead: 0.005,
-    // Azure's automatic prompt caching carries no separate write charge.
+    // GPT-5's automatic prompt caching carried no separate write charge.
     cacheWrite: 0,
     inputIncludesCached: true,
   },
 
-  // `foundry:gpt-5-mini@2025-08-07` is deliberately ABSENT until the Azure
-  // Global Standard rate is confirmed. It is reachable only via
-  // FOUNDRY_SYNTHESIS_BACKEND=gpt5mini, so until then those rows land as
-  // `unpriced` rather than carrying a guessed rate.
+  // `foundry:gpt-5-mini@2025-08-07` never got a rate. It served no traffic:
+  // FOUNDRY_SYNTHESIS_BACKEND stayed `claude` in both deployments.
 
 };
 
@@ -249,7 +280,7 @@ export function priceTokenUsage(
   const reportedInput = finite(usage.inputTokens);
   // Never let a provider quirk produce a negative billable count.
   const uncachedInput = rate.inputIncludesCached
-    ? Math.max(0, reportedInput - cachedRead)
+    ? Math.max(0, reportedInput - cachedRead - cacheWrite)
     : reportedInput;
   const promptTokens = uncachedInput + cachedRead + cacheWrite;
   const tier =

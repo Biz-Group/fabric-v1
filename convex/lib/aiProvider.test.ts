@@ -302,7 +302,7 @@ describe("AI provider adapter", () => {
     expect(observed?.body).toMatchObject({
       model: "fabric-description-safety",
       max_completion_tokens: 1000,
-      reasoning_effort: "minimal",
+      reasoning_effort: "none",
       parallel_tool_calls: false,
       tools: [{ function: { name: "classify", strict: true } }],
     });

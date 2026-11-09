@@ -13,6 +13,8 @@ const CLAUDE_MODEL = "foundry:claude-haiku-4-5@2";
 const HAIKU_5_5_MODEL = "foundry:claude-haiku-5-5@2";
 const FOUNDRY_OPENAI = "foundry-openai";
 const NANO_MODEL = "foundry:gpt-5-nano@2025-08-07";
+const LUNA_MODEL = "foundry:gpt-6-luna@2026-09-22";
+const TERRA_MODEL = "foundry:gpt-6.1-terra@2026-10-26";
 
 beforeEach(() => {
   resetUnpricedWarnings();
@@ -92,6 +94,31 @@ describe("token pricing", () => {
     expect(withCache.costMicroUsd).toBeLessThan(naivelyDisjoint);
     // All 1,000 input tokens were cached, so nothing bills at the full rate.
     expect(withCache.costMicroUsd).toBe(Math.round(1_000 * 0.005));
+  });
+
+  test("subtracts GPT-6 cache writes from input on the OpenAI convention", () => {
+    // Shape measured on Azure 2026-11-09: prompt_tokens 1,614 with
+    // cache_write_tokens 1,611 inside it. Only 3 bill at the full input rate.
+    const priced = priceTokenUsage(FOUNDRY_OPENAI, LUNA_MODEL, {
+      inputTokens: 1_614,
+      outputTokens: 4,
+      cachedReadTokens: 0,
+      cacheWriteTokens: 1_611,
+    });
+    expect(priced).toEqual({
+      costMicroUsd: Math.round(3 * 0.12 + 1_611 * 0.15 + 4 * 0.6),
+      priceVersion: PRICE_VERSION,
+    });
+  });
+
+  test("prices the GPT-6.1 Terra fallback at its EU Data Zone rate", () => {
+    expect(
+      priceTokenUsage(FOUNDRY_OPENAI, TERRA_MODEL, {
+        inputTokens: 10_000,
+        outputTokens: 1_000,
+        cachedReadTokens: 4_000,
+      }).costMicroUsd,
+    ).toBe(Math.round(6_000 * 1.2 + 4_000 * 0.06 + 1_000 * 6));
   });
 
   test("never produces a negative cost when cached exceeds reported input", () => {

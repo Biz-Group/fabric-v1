@@ -233,7 +233,7 @@ describe("hierarchy descriptions safety gate", () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
     expect(body.model).toBe("fabric-description-safety");
     expect(body.max_completion_tokens).toBe(1000);
-    expect(body.reasoning_effort).toBe("minimal");
+    expect(body.reasoning_effort).toBe("none");
     expect(body.tools[0].function.name).toBe("classify_description_safety");
     expect(body.tools[0].function.strict).toBe(true);
     expect(body.tool_choice.function.name).toBe("classify_description_safety");

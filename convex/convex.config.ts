@@ -11,7 +11,7 @@ const app = defineApp({
     FOUNDRY_ENDPOINT: v.optional(v.string()),
     FOUNDRY_API_KEY: v.optional(v.string()),
     FOUNDRY_SYNTHESIS_BACKEND: v.optional(
-      v.union(v.literal("claude"), v.literal("gpt5mini")),
+      v.union(v.literal("claude"), v.literal("openai")),
     ),
     FOUNDRY_CLAUDE_DEPLOYMENT: v.optional(v.string()),
     FOUNDRY_OPENAI_FALLBACK_DEPLOYMENT: v.optional(v.string()),
