@@ -1504,7 +1504,13 @@ export function ProcessInsightsTab({
         <EvidenceCoverageSection
           nodes={flow.nodes}
           completedConversationCount={completedConversationCount}
-          flowConversationCount={flow.conversationCount}
+          // The flow's count is from when it was generated. A contribution
+          // deleted or moved away since can leave it above the live count
+          // until the flow is rebuilt; never read "5 of 4".
+          flowConversationCount={Math.min(
+            flow.conversationCount,
+            completedConversationCount,
+          )}
           onOpenNode={onOpenProcessFlow}
         />
 

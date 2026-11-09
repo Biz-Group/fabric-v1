@@ -11,6 +11,7 @@ import {
 } from "convex/react";
 import { toast } from "sonner";
 import {
+  ArrowRightLeft,
   ArrowUpRight,
   Bot,
   Download,
@@ -57,6 +58,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ConversationTranscriptDialog } from "@/features/admin/conversation-transcript-dialog";
+import {
+  MoveContributionDialog,
+  type MovableContribution,
+} from "@/features/admin/move-contribution-dialog";
 import {
   buildConversationsCsv,
   downloadCsv,
@@ -167,6 +172,9 @@ export default function AdminConversationsPage() {
   const [viewingId, setViewingId] = useState<Id<"conversations"> | null>(null);
   const [pendingDelete, setPendingDelete] =
     useState<Id<"conversations"> | null>(null);
+  const [pendingMove, setPendingMove] = useState<MovableContribution | null>(
+    null,
+  );
   const [exporting, setExporting] = useState(false);
 
   const me = useQuery(api.users.getMyMembership);
@@ -471,6 +479,20 @@ export default function AdminConversationsPage() {
                               Open in process
                             </DropdownMenuItem>
                           )}
+                          {r.status === "done" && (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setPendingMove({
+                                  _id: r._id,
+                                  contributorName: r.contributorName,
+                                  processId: r.processId,
+                                })
+                              }
+                            >
+                              <ArrowRightLeft />
+                              Move
+                            </DropdownMenuItem>
+                          )}
                           {failure?.retryable && (
                             <DropdownMenuItem
                               onClick={() => void retry(retryTarget)}
@@ -527,6 +549,14 @@ export default function AdminConversationsPage() {
         open={viewingId !== null}
         onOpenChange={(open) => {
           if (!open) setViewingId(null);
+        }}
+      />
+
+      <MoveContributionDialog
+        contribution={pendingMove}
+        open={pendingMove !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingMove(null);
         }}
       />
 

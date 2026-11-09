@@ -214,7 +214,10 @@ function calls(s: Seeded): Record<string, Record<string, unknown>> {
     findHandoffs: { party: "Clerk" },
     findProcessesUsing: { tool: "Excel", actor: "" },
     searchConversations: { query: "walkthrough", processId: "", since: "", cursor: "" },
-    searchFabricHelp: { query: "process flow" },
+    // Help is filtered by role on purpose, so the member-access check needs a
+    // query no admin-only article matches. "process flow" stopped being one
+    // once move-contribution (admin) mentioned processes and flows.
+    searchFabricHelp: { query: "spotlights" },
     rankSignals: { signals: ["friction", "bottleneck", "gap", "handoff", "manualRework"], kind: "org", id: "", limit: 0 },
     listSystems: { kind: "org", id: "" },
     findSimilarWork: { kind: "org", id: "" },

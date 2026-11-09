@@ -5,6 +5,7 @@ import {
   internalMutation,
   internalQuery,
   mutation,
+  MutationCtx,
   query,
   QueryCtx,
 } from "./_generated/server";
@@ -21,6 +22,10 @@ import { authError } from "./lib/authErrors";
 import { userError } from "./lib/userError";
 import { conversationTitle } from "./lib/conversationTitle";
 import { clearCitedTextFor } from "./askLifecycle";
+import {
+  invalidateProcessAfterEvidenceArrived,
+  invalidateProcessAfterEvidenceLeft,
+} from "./lib/processEvidenceInvalidation";
 
 const DEFAULT_COMPACT_CONVERSATION_LIMIT = 50;
 const MAX_COMPACT_CONVERSATION_LIMIT = 100;
@@ -205,6 +210,29 @@ export const getInProcess = query({
       return null;
     }
     return conversation;
+  },
+});
+
+/**
+ * Where a contribution lives now, for a link that `getInProcess` refused
+ * because the contribution was moved. Any member may ask: every member can
+ * already read every process's contributions. Null when the row is gone, in
+ * another org, or its process, department or function no longer resolves.
+ */
+export const locateForMember = query({
+  args: { conversationId: v.id("conversations") },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgMember(ctx);
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation || conversation.clerkOrgId !== caller.orgId) return null;
+    const [row] = await withHierarchy(ctx, caller.orgId, [conversation]);
+    if (!row.processName || !row.departmentId || !row.functionId) return null;
+    return {
+      processId: row.processId,
+      processName: row.processName,
+      departmentId: row.departmentId,
+      functionId: row.functionId,
+    };
   },
 });
 
@@ -685,100 +713,263 @@ export const deleteForAdmin = mutation({
     // AskFabric stops quoting it (FR-9.7).
     await clearCitedTextFor(ctx, caller.orgId, "conversation", args.conversationId);
 
+    await deleteMoveHistoryFor(ctx, caller.orgId, args.conversationId);
+
     if (!deletedDoneConversation) return;
+    await invalidateProcessAfterEvidenceLeft(ctx, caller.orgId, processId);
+  },
+});
 
-    const remainingDone = await ctx.db
-      .query("conversations")
-      .withIndex("by_clerkOrgId_and_processId_and_status", (q) =>
-        q
-          .eq("clerkOrgId", caller.orgId)
-          .eq("processId", processId)
-          .eq("status", "done"),
-      )
-      .take(1);
+// ---------------------------------------------------------------------------
+// Moving a contribution to another process (admin only).
+//
+// Only `done` rows move. A row still processing carries its process in
+// scheduled-action arguments, so a move mid-flight would start the pipelines
+// on the old process; rows awaiting labels or failed are finished first.
+// The row's cached evidence is process-independent (keyed by transcript hash
+// and prompt version), so a move makes no AI call. Both processes' outputs go
+// stale rather than rebuilding, matching delete; see
+// docs/move-contribution-task-list.md.
+// ---------------------------------------------------------------------------
 
-    if (remainingDone.length > 0) {
-      await ctx.runMutation(internal.processFlows.markFlowStale, {
-        processId,
-        clerkOrgId: caller.orgId,
-        // Unconditional: the flow may cite the interview that just went away,
-        // and a count check could miss it if another was added meanwhile.
-        trigger: "evidenceChanged",
-      });
-      const process = await ctx.db.get(processId);
-      if (process && process.clerkOrgId === caller.orgId) {
-        await ctx.runMutation(
-          internal.summariesHelpers.markDepartmentSummaryStale,
-          { departmentId: process.departmentId },
-        );
-      }
-      // Stale, not rebuilt. The deleted conversation may have contributed
-      // citations, so the overview needs regenerating — but bulk-deleting test
-      // recordings is exactly when an automatic rebuild per deletion would burn
-      // the most tokens for the least value. The summary keeps citing the
-      // removed conversation until a contributor rebuilds; its source chip
-      // resolves against loaded conversations and fails safe.
-      await ctx.runMutation(internal.summaryEvidence.markProcessSummaryStale, {
-        processId,
-        clerkOrgId: caller.orgId,
-      });
-      return;
+const MAX_MOVE_NOTE_LENGTH = 500;
+const MAX_MOVE_HISTORY = 20;
+
+/** "Function › Department › Process", or as much of it as resolves. */
+async function processPathLabel(
+  ctx: QueryCtx,
+  orgId: string,
+  process: Doc<"processes">,
+): Promise<string> {
+  const parts = [process.name];
+  const department = await ctx.db.get(process.departmentId);
+  if (department && department.clerkOrgId === orgId) {
+    parts.unshift(department.name);
+    const fn = await ctx.db.get(department.functionId);
+    if (fn && fn.clerkOrgId === orgId) parts.unshift(fn.name);
+  }
+  return parts.join(" › ");
+}
+
+/** Whether a process has a done contribution other than `exceptId`. */
+async function hasOtherDone(
+  ctx: QueryCtx,
+  orgId: string,
+  processId: Id<"processes">,
+  exceptId: Id<"conversations"> | null,
+): Promise<boolean> {
+  const rows = await ctx.db
+    .query("conversations")
+    .withIndex("by_clerkOrgId_and_processId_and_status", (q) =>
+      q.eq("clerkOrgId", orgId).eq("processId", processId).eq("status", "done"),
+    )
+    .take(2);
+  return rows.some((row) => row._id !== exceptId);
+}
+
+async function deleteMoveHistoryFor(
+  ctx: MutationCtx,
+  orgId: string,
+  conversationId: Id<"conversations">,
+): Promise<void> {
+  const rows = await ctx.db
+    .query("conversationMoves")
+    .withIndex("by_clerkOrgId_and_conversationId_and_createdAt", (q) =>
+      q.eq("clerkOrgId", orgId).eq("conversationId", conversationId),
+    )
+    .take(100);
+  for (const row of rows) await ctx.db.delete(row._id);
+}
+
+/** AI interviews were conducted with the process's name and context. */
+function isAgentInterview(conv: Doc<"conversations">): boolean {
+  return (conv.inputMode ?? "agent") === "agent";
+}
+
+/**
+ * Admin-only. What moving a contribution to `targetProcessId` would do, for the
+ * confirmation dialog. Never throws for a refusable move: it says why instead,
+ * so the dialog can explain rather than fail.
+ */
+export const moveImpactForAdmin = query({
+  args: {
+    conversationId: v.id("conversations"),
+    targetProcessId: v.id("processes"),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgAdmin(ctx);
+    const conv = await ctx.db.get(args.conversationId);
+    assertOrgOwns(caller, conv);
+    const target = await ctx.db.get(args.targetProcessId);
+    assertOrgOwns(caller, target);
+    const source = await ctx.db.get(conv.processId);
+
+    const blocker: "not_done" | "same_process" | null =
+      conv.status !== "done"
+        ? "not_done"
+        : conv.processId === target._id
+          ? "same_process"
+          : null;
+
+    const sourceKeepsEvidence = await hasOtherDone(
+      ctx,
+      caller.orgId,
+      conv.processId,
+      conv._id,
+    );
+    const targetHasEvidence = await hasOtherDone(
+      ctx,
+      caller.orgId,
+      target._id,
+      conv._id,
+    );
+
+    return {
+      blocker,
+      isAgentInterview: isAgentInterview(conv),
+      source: {
+        processId: conv.processId,
+        processName: source?.name ?? null,
+        label:
+          source && source.clerkOrgId === caller.orgId
+            ? await processPathLabel(ctx, caller.orgId, source)
+            : null,
+        // "stale": its overview and flow keep their content behind Rebuild.
+        // "cleared": this was its last finished contribution.
+        outcome: sourceKeepsEvidence ? ("stale" as const) : ("cleared" as const),
+      },
+      target: {
+        processId: target._id,
+        processName: target.name,
+        label: await processPathLabel(ctx, caller.orgId, target),
+        // "stale": as above. "generates": its first finished contribution, so
+        // the overview and flow start building straight away.
+        outcome: targetHasEvidence
+          ? ("stale" as const)
+          : ("generates" as const),
+      },
+    };
+  },
+});
+
+/**
+ * Admin-only. Moves a finished contribution to another process in the same
+ * workspace and records who moved it. Both processes' overviews, flows and
+ * parent rollups are invalidated; nothing is rebuilt except a target that had
+ * no finished contribution before.
+ */
+export const moveForAdmin = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+    targetProcessId: v.id("processes"),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgAdmin(ctx);
+    const conv = await ctx.db.get(args.conversationId);
+    if (!conv || conv.clerkOrgId !== caller.orgId) {
+      throw userError("NOT_FOUND", "Not found. It may have been deleted.");
+    }
+    const target = await ctx.db.get(args.targetProcessId);
+    if (!target || target.clerkOrgId !== caller.orgId) {
+      throw userError(
+        "NOT_FOUND",
+        "That process no longer exists. Pick another one.",
+      );
+    }
+    if (conv.status !== "done") {
+      throw userError(
+        "NOT_MOVABLE",
+        "Only finished contributions can be moved. Finish labelling speakers or retry it first.",
+      );
+    }
+    if (conv.processId === target._id) {
+      throw userError(
+        "SAME_PROCESS",
+        "This contribution is already in that process.",
+      );
+    }
+    const note = args.note?.trim() || undefined;
+    if (note && note.length > MAX_MOVE_NOTE_LENGTH) {
+      throw userError(
+        "NOTE_TOO_LONG",
+        `Keep the note under ${MAX_MOVE_NOTE_LENGTH} characters.`,
+      );
     }
 
-    const process = await ctx.db.get(processId);
-    if (!process || process.clerkOrgId !== caller.orgId) return;
+    const fromProcessId = conv.processId;
+    const source = await ctx.db.get(fromProcessId);
+    const fromLabel =
+      source && source.clerkOrgId === caller.orgId
+        ? await processPathLabel(ctx, caller.orgId, source)
+        : "A deleted process";
+    const toLabel = await processPathLabel(ctx, caller.orgId, target);
+    const targetHadDone = await hasOtherDone(
+      ctx,
+      caller.orgId,
+      target._id,
+      null,
+    );
 
-    await ctx.db.patch(processId, {
-      rollingSummary: undefined,
-      summaryV2: undefined,
-      summaryUpdatedAt: undefined,
-      summaryEvidenceRevision: (process.summaryEvidenceRevision ?? 0) + 1,
-      ...(process.summaryV2GenerationId
-        ? { summaryRegenRequestedAgain: true }
-        : {}),
-    });
-    await ctx.runMutation(internal.processFlows.deleteForProcess, {
-      processId,
+    await ctx.db.patch(conv._id, { processId: target._id });
+
+    const user = await ctx.db.get(caller.userId);
+    await ctx.db.insert("conversationMoves", {
       clerkOrgId: caller.orgId,
+      conversationId: conv._id,
+      fromProcessId,
+      toProcessId: target._id,
+      fromLabel,
+      toLabel,
+      note,
+      actorUserId: caller.userId,
+      actorName: user?.name || caller.name || "An admin",
+      createdAt: Date.now(),
     });
 
-    const department = await ctx.db.get(process.departmentId);
-    if (!department || department.clerkOrgId !== caller.orgId) return;
+    await invalidateProcessAfterEvidenceLeft(ctx, caller.orgId, fromProcessId);
+    await invalidateProcessAfterEvidenceArrived(
+      ctx,
+      caller.orgId,
+      target._id,
+      targetHadDone,
+    );
 
-    const siblingProcesses = await ctx.db
-      .query("processes")
-      .withIndex("by_clerkOrgId_and_departmentId", (q) =>
-        q
-          .eq("clerkOrgId", caller.orgId)
-          .eq("departmentId", process.departmentId),
+    // Enough for the caller to link to the contribution in its new place.
+    const targetDepartment = await ctx.db.get(target.departmentId);
+    return {
+      processId: target._id,
+      departmentId: target.departmentId,
+      functionId:
+        targetDepartment && targetDepartment.clerkOrgId === caller.orgId
+          ? targetDepartment.functionId
+          : null,
+    };
+  },
+});
+
+/** Admin-only. Where a contribution has been moved from, newest first. */
+export const moveHistoryForAdmin = query({
+  args: { conversationId: v.id("conversations") },
+  handler: async (ctx, args) => {
+    const caller = await requireOrgAdmin(ctx);
+    const conv = await ctx.db.get(args.conversationId);
+    assertOrgOwns(caller, conv);
+    const rows = await ctx.db
+      .query("conversationMoves")
+      .withIndex("by_clerkOrgId_and_conversationId_and_createdAt", (q) =>
+        q.eq("clerkOrgId", caller.orgId).eq("conversationId", conv._id),
       )
-      .take(1000);
-    const hasSummaries = siblingProcesses.some((p) => p.rollingSummary);
-    if (hasSummaries) {
-      await ctx.runMutation(
-        internal.summariesHelpers.markDepartmentSummaryStale,
-        {
-          departmentId: process.departmentId,
-        },
-      );
-    } else {
-      await ctx.db.patch(process.departmentId, {
-        summary: undefined,
-        summaryV2: undefined,
-        summaryUpdatedAt: undefined,
-        summaryStale: undefined,
-        summarySourceRevision: (department.summarySourceRevision ?? 0) + 1,
-        ...(department.summaryV2GenerationId
-          ? { summaryRegenRequestedAgain: true }
-          : {}),
-      });
-      await ctx.runMutation(
-        internal.summariesHelpers.markFunctionSummaryStale,
-        {
-          functionId: department.functionId,
-        },
-      );
-    }
+      .order("desc")
+      .take(MAX_MOVE_HISTORY);
+    return rows.map((row) => ({
+      _id: row._id,
+      fromLabel: row.fromLabel,
+      toLabel: row.toLabel,
+      note: row.note ?? null,
+      actorName: row.actorName,
+      createdAt: row.createdAt,
+    }));
   },
 });
 

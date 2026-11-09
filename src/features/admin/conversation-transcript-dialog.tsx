@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
-import { ArrowUpRight, Tag } from "lucide-react";
+import { ArrowRightLeft, ArrowUpRight, Tag } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  MoveContributionDialog,
+  type MovableContribution,
+} from "@/features/admin/move-contribution-dialog";
 import { ConversationFailureNotice } from "@/features/conversations/conversation-failure-notice";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 import { processConversationHref } from "@/features/workbench/use-selection-params";
@@ -69,8 +74,17 @@ export function ConversationTranscriptDialog({
   const processHref = conversation
     ? processConversationHref(routes.appHref, conversation)
     : null;
+  const moveHistory = useQuery(
+    api.conversations.moveHistoryForAdmin,
+    conversationId ? { conversationId } : "skip",
+  );
+  // Held here rather than in the page so both admin pages that open this
+  // dialog get the move action. A snapshot, because the transcript closes
+  // (and stops loading) while the move dialog is open.
+  const [moving, setMoving] = useState<MovableContribution | null>(null);
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
@@ -118,6 +132,21 @@ export function ConversationTranscriptDialog({
               <ConversationFailureNotice conversation={conversation} canRetry />
             )}
 
+            {moveHistory && moveHistory.length > 0 && (
+              <section className="space-y-1">
+                <SectionLabel render={<h3 />}>Moved</SectionLabel>
+                <ul className="space-y-1 text-sm text-muted-foreground">
+                  {moveHistory.map((move) => (
+                    <li key={move._id}>
+                      From {move.fromLabel} to {move.toLabel} by{" "}
+                      {move.actorName}, {formatDateTime(move.createdAt)}
+                      {move.note ? ` — “${move.note}”` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             {conversation.summary && (
               <section className="space-y-1">
                 <SectionLabel render={<h3 />}>Summary</SectionLabel>
@@ -159,9 +188,25 @@ export function ConversationTranscriptDialog({
           </div>
         )}
 
-        {conversation && processHref && (
+        {conversation && (processHref || conversation.status === "done") && (
           <DialogFooter>
-            {conversation.status === "needs_speaker_labels" ? (
+            {conversation.status === "done" && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setMoving({
+                    _id: conversation._id,
+                    contributorName: conversation.contributorName,
+                    processId: conversation.processId,
+                  });
+                  onOpenChange(false);
+                }}
+              >
+                <ArrowRightLeft />
+                Move
+              </Button>
+            )}
+            {!processHref ? null : conversation.status === "needs_speaker_labels" ? (
               <Button render={<Link href={processHref} />}>
                 <Tag />
                 Label speakers
@@ -176,5 +221,13 @@ export function ConversationTranscriptDialog({
         )}
       </DialogContent>
     </Dialog>
+    <MoveContributionDialog
+      contribution={moving}
+      open={moving !== null}
+      onOpenChange={(next) => {
+        if (!next) setMoving(null);
+      }}
+    />
+    </>
   );
 }

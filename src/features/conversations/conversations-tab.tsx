@@ -1,15 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState, type Ref } from "react";
+import Link from "next/link";
 import { usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import type { LucideIcon } from "lucide-react";
 import {
+  ArrowRightLeft,
+  ArrowUpRight,
   Bot,
   ChevronDown,
   Clock,
   FileText,
   Mic,
+  MoreHorizontal,
   PlayCircle,
   Upload,
   User,
@@ -24,13 +28,25 @@ import {
   isStackedBelow,
   scrollIntoNearestScroller,
 } from "@/features/conversations/playback-layout";
+import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 import { StatusBadge } from "@/features/status/status-badge";
+import { processConversationHref } from "@/features/workbench/use-selection-params";
 import {
   conversationStatusMeta,
   STATUS_TONE_SURFACE,
 } from "@/features/status/status-meta";
+import {
+  MoveContributionDialog,
+  type MovableContribution,
+} from "@/features/admin/move-contribution-dialog";
 import { Button } from "@/components/ui/button";
 import { cardVariants } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   Select,
@@ -65,6 +81,8 @@ type ProcessConversationListProps = {
   canLabelSpeakers: boolean;
   /** Admins can retry failed contributions from the playback panel. */
   canRetry: boolean;
+  /** Admins can move a finished contribution to another process. */
+  canMove?: boolean;
   labelingJumpKey?: number;
   focusConversationId?: Id<"conversations"> | null;
   focusConversationJumpKey?: number;
@@ -207,13 +225,17 @@ function ConversationRow({
   conversation,
   selected,
   onSelect,
+  onMove,
   buttonRef,
 }: {
   conversation: CompactConversation;
   selected: boolean;
   onSelect: () => void;
+  /** Set only for admins; the menu shows on finished rows alone. */
+  onMove?: () => void;
   buttonRef?: Ref<HTMLButtonElement>;
 }) {
+  const showMenu = Boolean(onMove) && conversation.status === "done";
   const type = TYPE_META[conversation.inputMode];
   const status = conversationStatusMeta[conversation.status];
   const TypeIcon = type.icon;
@@ -306,7 +328,79 @@ function ConversationRow({
           </span>
         </span>
       </button>
+      {showMenu && (
+        <div className="flex shrink-0 items-start py-2.5 pr-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground"
+                />
+              }
+            >
+              <MoreHorizontal aria-hidden="true" />
+              <span className="sr-only">Actions for {title}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onMove}>
+                <ArrowRightLeft />
+                Move
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * A link to a contribution this process doesn't have. When an admin moved it,
+ * point at where it lives now instead of a dead end; the tree selection is
+ * left alone until the person chooses to go.
+ */
+function UnavailableConversation({
+  conversationId,
+}: {
+  conversationId: Id<"conversations">;
+}) {
+  const routes = useWorkspaceRoutes();
+  const location = useQuery(api.conversations.locateForMember, {
+    conversationId,
+  });
+  const href = location
+    ? processConversationHref(routes.appHref, {
+        _id: conversationId,
+        ...location,
+      })
+    : null;
+
+  return (
+    <section className="flex h-full min-h-72 flex-col bg-background">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-4">
+        <EmptyState
+          icon={FileText}
+          title={location ? "Contribution moved" : "Contribution unavailable"}
+          description={
+            location
+              ? `It now belongs to ${location.processName}.`
+              : location === null
+                ? "It may have been deleted."
+                : "It may have been deleted or moved to another process."
+          }
+          className="w-full border-0 bg-transparent"
+        />
+        {href && (
+          <Button variant="outline" size="sm" render={<Link href={href} />}>
+            <ArrowUpRight />
+            Open in {location?.processName}
+          </Button>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -364,18 +458,7 @@ function ConversationPlaybackPanel({
   }
 
   if (conversation === null) {
-    return (
-      <section className="flex h-full min-h-72 flex-col bg-background">
-        <div className="flex min-h-0 flex-1 items-center justify-center p-4">
-          <EmptyState
-            icon={FileText}
-            title="Contribution unavailable"
-            description="It may have been deleted or moved to another process."
-            className="w-full border-0 bg-transparent"
-          />
-        </div>
-      </section>
-    );
+    return <UnavailableConversation conversationId={conversationId} />;
   }
 
   return (
@@ -421,12 +504,16 @@ export function ProcessConversationsTab({
   processId,
   canLabelSpeakers,
   canRetry,
+  canMove = false,
   labelingJumpKey = 0,
   focusConversationId = null,
   focusConversationJumpKey = 0,
   onCapture,
 }: ProcessConversationListProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [pendingMove, setPendingMove] = useState<MovableContribution | null>(
+    null,
+  );
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
   // May point past the loaded pages: a link opens its contribution whether or
@@ -717,6 +804,16 @@ export function ProcessConversationsTab({
                     conversation={conversation}
                     selected={activeConversationId === conversation._id}
                     onSelect={() => selectConversation(conversation._id)}
+                    onMove={
+                      canMove
+                        ? () =>
+                            setPendingMove({
+                              _id: conversation._id,
+                              contributorName: conversation.contributorName,
+                              processId,
+                            })
+                        : undefined
+                    }
                     buttonRef={(node) => {
                       if (node) {
                         conversationButtonRefs.current.set(
@@ -774,6 +871,22 @@ export function ProcessConversationsTab({
           />
         </aside>
       </div>
+      {canMove && (
+        <MoveContributionDialog
+          contribution={pendingMove}
+          open={pendingMove !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingMove(null);
+          }}
+          onMoved={(movedId) => {
+            // The row leaves this list; let the first remaining one open
+            // rather than a "moved" notice for something the admin just moved.
+            setSelectedConversationId((current) =>
+              current === movedId ? null : current,
+            );
+          }}
+        />
+      )}
     </TooltipProvider>
   );
 }

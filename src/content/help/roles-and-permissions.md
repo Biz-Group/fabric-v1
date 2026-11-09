@@ -46,7 +46,7 @@ An admin can do everything a contributor can, plus:
 
 - Open the Admin area: Overview, Members, Contributions and Branding.
 - Invite members, change roles, and remove members.
-- Retry contributions that failed processing, and delete contributions.
+- Retry contributions that failed processing, delete contributions, and move finished contributions to another process.
 - Export contributions as a CSV file.
 - Record on behalf of someone else.
 - Approve the workspace's accent color.

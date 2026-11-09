@@ -29,7 +29,7 @@ The sidebar links to Home and Release notes. Admins also see Admin. You can coll
 
 The Process Tree lists functions, then departments, then processes. Select a row to open it in the main panel, and use the arrow next to a row to expand or collapse it. You can hide the tree with Hide process tree and bring it back with Show process tree.
 
-Contributors and admins also get an add menu in the tree and actions on each row to add a department or process, edit an item, or delete it. A function that still has departments, a department that still has processes, or a process that still has contributions cannot be deleted until those are removed first.
+Contributors and admins also get an add menu in the tree and actions on each row to add a department or process, edit an item, or delete it. A function that still has departments, a department that still has processes, or a process that still has contributions cannot be deleted until those are removed first. An admin can move a process's contributions to another process instead of deleting them.
 
 On a phone, the tree becomes a drill-down: functions, then departments, then processes.
 

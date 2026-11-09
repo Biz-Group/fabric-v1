@@ -33,6 +33,13 @@ export const removeTestData = internalMutation({
 
     for (const conv of testConversations) {
       affectedProcessIds.add(conv.processId);
+      const moves = await ctx.db
+        .query("conversationMoves")
+        .withIndex("by_clerkOrgId_and_conversationId_and_createdAt", (q) =>
+          q.eq("clerkOrgId", args.clerkOrgId).eq("conversationId", conv._id),
+        )
+        .take(100);
+      for (const move of moves) await ctx.db.delete(move._id);
       await ctx.db.delete(conv._id);
     }
 

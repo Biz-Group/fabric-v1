@@ -739,6 +739,30 @@ export default defineSchema({
       filterFields: ["clerkOrgId", "status", "processId"],
     }),
 
+  // History of an admin moving a contribution to another process. The labels
+  // are "Function › Department › Process" as they read at the time, so the
+  // history still makes sense after a rename or a deleted process. Only done
+  // contributions move, and those are never retried, so `conversationId` is
+  // stable for the life of the row.
+  conversationMoves: defineTable({
+    clerkOrgId: v.string(),
+    conversationId: v.id("conversations"),
+    fromProcessId: v.id("processes"),
+    toProcessId: v.id("processes"),
+    fromLabel: v.string(),
+    toLabel: v.string(),
+    note: v.optional(v.string()),
+    actorUserId: v.id("users"),
+    actorName: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_clerkOrgId_and_conversationId_and_createdAt", [
+      "clerkOrgId",
+      "conversationId",
+      "createdAt",
+    ])
+    .index("by_clerkOrgId_and_createdAt", ["clerkOrgId", "createdAt"]),
+
   // One active upload grant per user/process. A grant proves the caller went
   // through the authenticated URL-issuance path and makes blob admission
   // single-use; it is deleted whether admission succeeds or is rejected.

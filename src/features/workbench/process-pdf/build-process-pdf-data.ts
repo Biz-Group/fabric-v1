@@ -426,7 +426,12 @@ export function buildProcessPdfData(input: ProcessPdfInput): ProcessPdfData {
     flowStage: flow ? flowStage(flow) : "none",
     flowGeneratedAt: flow?.generatedAt ?? null,
     flowStale: flow?.stale ?? false,
-    flowConversationCount: flow?.conversationCount ?? 0,
+    // Clamped: a contribution deleted or moved away since generation can
+    // leave the flow's count above the live one until it is rebuilt.
+    flowConversationCount: Math.min(
+      flow?.conversationCount ?? 0,
+      input.completedConversationCount,
+    ),
     completedConversationCount: input.completedConversationCount,
     flowErrorMessage: flow?.errorMessage ?? null,
     hasFlow,
@@ -507,7 +512,7 @@ export function buildProcessPdfData(input: ProcessPdfInput): ProcessPdfData {
   const metrics: Metric[] = [
     {
       label: "Evidence",
-      value: String(flow.conversationCount),
+      value: String(base.flowConversationCount),
       detail: `of ${input.completedConversationCount} completed contributions`,
     },
     {

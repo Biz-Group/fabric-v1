@@ -2045,6 +2045,7 @@ export function ProcessWorkbench() {
                 processId={selectedProcessId!}
                 canLabelSpeakers={canEdit}
                 canRetry={userRole === "admin"}
+                canMove={userRole === "admin"}
                 labelingJumpKey={labelingJumpKey}
                 focusConversationId={conversationFocusId}
                 focusConversationJumpKey={conversationFocusJumpKey}

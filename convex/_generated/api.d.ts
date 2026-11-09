@@ -90,6 +90,7 @@ import type * as lib_memberProfile from "../lib/memberProfile.js";
 import type * as lib_onboarding from "../lib/onboarding.js";
 import type * as lib_orgAuth from "../lib/orgAuth.js";
 import type * as lib_orgRollout from "../lib/orgRollout.js";
+import type * as lib_processEvidenceInvalidation from "../lib/processEvidenceInvalidation.js";
 import type * as lib_processOverviewV2 from "../lib/processOverviewV2.js";
 import type * as lib_recommendationReconcile from "../lib/recommendationReconcile.js";
 import type * as lib_recommendationScoring from "../lib/recommendationScoring.js";
@@ -214,6 +215,7 @@ declare const fullApi: ApiFromModules<{
   "lib/onboarding": typeof lib_onboarding;
   "lib/orgAuth": typeof lib_orgAuth;
   "lib/orgRollout": typeof lib_orgRollout;
+  "lib/processEvidenceInvalidation": typeof lib_processEvidenceInvalidation;
   "lib/processOverviewV2": typeof lib_processOverviewV2;
   "lib/recommendationReconcile": typeof lib_recommendationReconcile;
   "lib/recommendationScoring": typeof lib_recommendationScoring;
