@@ -34,6 +34,10 @@ const COPY: Record<AuthErrorCode | "UNKNOWN", Copy> = {
     title: "You don't have permission to view this",
     body: "Your role in this workspace doesn't include this page. Ask a workspace admin if you need access.",
   },
+  WORKSPACE_CLOSED: {
+    title: "This workspace is closed",
+    body: "Your organisation's Fabric workspace has been closed, so it can't be opened any more. If you think that's a mistake, contact your organisation's Fabric admin.",
+  },
   UNKNOWN: {
     title: "Something went wrong",
     body: "This page hit an unexpected error. Try again, or reload the page.",
@@ -75,6 +79,18 @@ export function RouteError({
           }
         >
           Sign in again
+        </Button>
+      );
+      break;
+    case "WORKSPACE_CLOSED":
+      actions = (
+        <Button
+          variant="outline"
+          size="lg"
+          className={actionSize}
+          onClick={() => void signOut({ redirectUrl: "/sign-in" })}
+        >
+          Sign out
         </Button>
       );
       break;

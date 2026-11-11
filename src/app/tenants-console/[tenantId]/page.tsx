@@ -33,6 +33,17 @@ import {
 import { LogoFileButton } from "@/features/tenants-console/logo-file-button";
 import { TenantInvitations } from "@/features/tenants-console/tenant-invitations";
 import {
+  ClosedWorkspaceCard,
+  CloseWorkspaceCard,
+  isClosedTenantStatus,
+  WorkspaceStatusBadge,
+} from "@/features/tenants-console/workspace-offboarding";
+import { WorkspaceExportCard } from "@/features/tenants-console/workspace-export";
+import {
+  EraseMemberButton,
+  ErasureList,
+} from "@/features/tenants-console/person-erasure";
+import {
   tenantHostname,
   tenantWorkspaceUrl,
 } from "@/features/tenants-console/tenant-url";
@@ -81,6 +92,25 @@ export default function TenantDetailPage() {
 type TenantView = NonNullable<FunctionReturnType<typeof api.tenants.get>>;
 
 function TenantDetail({ tenant }: { tenant: TenantView }) {
+  // A closed workspace is reinstated or purged, never edited, so its
+  // settings cards give way to the offboarding status.
+  if (isClosedTenantStatus(tenant.status)) {
+    return (
+      <div className="space-y-6">
+        <TenantHeader tenant={tenant} />
+        <ClosedWorkspaceCard tenant={tenant} />
+        {tenant.status !== "purging" && tenant.status !== "purged" && (
+          <WorkspaceExportCard tenantId={tenant.tenantId} />
+        )}
+        <MembersCard
+          tenantId={tenant.tenantId}
+          clerkOrgId={tenant.clerkOrgId}
+          canErase={tenant.status !== "purging" && tenant.status !== "purged"}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <TenantHeader tenant={tenant} />
@@ -108,7 +138,11 @@ function TenantDetail({ tenant }: { tenant: TenantView }) {
         </CardContent>
       </Card>
 
-      <MembersCard clerkOrgId={tenant.clerkOrgId} />
+      <MembersCard tenantId={tenant.tenantId} clerkOrgId={tenant.clerkOrgId} canErase />
+
+      <WorkspaceExportCard tenantId={tenant.tenantId} />
+
+      <CloseWorkspaceCard tenant={tenant} />
     </div>
   );
 }
@@ -178,9 +212,15 @@ function TenantHeader({ tenant }: { tenant: TenantView }) {
           ) : (
             <div className="flex items-center gap-2">
               <PageTitle>{tenant.name}</PageTitle>
-              <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-                Rename
-              </Button>
+              {!isClosedTenantStatus(tenant.status) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditing(true)}
+                >
+                  Rename
+                </Button>
+              )}
             </div>
           )}
           <div className="mt-0.5 flex items-center gap-3 text-sm text-muted-foreground">
@@ -194,10 +234,9 @@ function TenantHeader({ tenant }: { tenant: TenantView }) {
               <ExternalLink className="size-3" />
             </a>
             <span>Created {formatDate(tenant.createdAt)}</span>
-            {tenant.status === "needsAttention" && (
-              <Badge tone="warning">Needs attention</Badge>
+            {tenant.status !== "active" && (
+              <WorkspaceStatusBadge status={tenant.status} />
             )}
-            {tenant.status === "deleted" && <Badge tone="neutral">Deleted</Badge>}
           </div>
         </div>
       </div>
@@ -400,7 +439,15 @@ function LogoCard({ tenant }: { tenant: TenantView }) {
   );
 }
 
-function MembersCard({ clerkOrgId }: { clerkOrgId: string }) {
+function MembersCard({
+  tenantId,
+  clerkOrgId,
+  canErase,
+}: {
+  tenantId: Id<"tenants">;
+  clerkOrgId: string;
+  canErase: boolean;
+}) {
   const members = useQuery(api.tenants.listTenantMembers, { clerkOrgId });
 
   return (
@@ -408,11 +455,12 @@ function MembersCard({ clerkOrgId }: { clerkOrgId: string }) {
       <CardHeader>
         <CardTitle>Members</CardTitle>
         <CardDescription>
-          Read-only. Role changes and removals happen in the workspace&apos;s
-          own admin console.
+          Role changes and removals happen in the workspace&apos;s own admin
+          console. Erase is for a client&apos;s request to delete someone&apos;s
+          data.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-6">
         {members === undefined ? (
           <p className="text-sm text-muted-foreground">Loading members…</p>
         ) : members.length === 0 ? (
@@ -425,6 +473,7 @@ function MembersCard({ clerkOrgId }: { clerkOrgId: string }) {
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Joined</TableHead>
+                {canErase && <TableHead className="sr-only">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -445,11 +494,19 @@ function MembersCard({ clerkOrgId }: { clerkOrgId: string }) {
                   <TableCell className="text-muted-foreground">
                     {formatDate(member.createdAt)}
                   </TableCell>
+                  {canErase && (
+                    <TableCell className="text-right">
+                      {member.platformRole !== "superAdmin" && (
+                        <EraseMemberButton tenantId={tenantId} membershipId={member.membershipId} />
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
+        <ErasureList tenantId={tenantId} />
       </CardContent>
     </Card>
   );

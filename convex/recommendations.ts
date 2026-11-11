@@ -50,6 +50,7 @@ import {
   recommendationMatchKey,
 } from "./lib/recommendationScoring";
 import { planReconciliation } from "./lib/recommendationReconcile";
+import { isWorkspaceClosed } from "./lib/workspaceStatus";
 import {
   recommendationContentValidator,
   recommendationDecisionStatusValidator,
@@ -1346,7 +1347,8 @@ export const stepRecommendationBackfill = internalMutation({
     const flow = page.page[0];
 
     let scheduledRun = false;
-    if (flow) {
+    // No AI spend on a workspace closed for offboarding; it counts as skipped.
+    if (flow && !(await isWorkspaceClosed(ctx, flow.clerkOrgId))) {
       const previous = await latestRun(ctx, flow.clerkOrgId, flow.processId);
       const alreadyCurrent =
         previous?.status === "ready" &&

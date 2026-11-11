@@ -1,7 +1,9 @@
 import { v } from "convex/values";
 import { QueryCtx, MutationCtx, ActionCtx } from "../_generated/server";
 import { Doc, Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import { authError } from "./authErrors";
+import { isWorkspaceClosed } from "./workspaceStatus";
 
 // Per-org role hierarchy: admin > contributor > viewer.
 export type Role = "admin" | "contributor" | "viewer";
@@ -86,7 +88,11 @@ export type ResolvedViewer = {
 
 type ViewerLookup =
   | { ok: true; viewer: ResolvedViewer }
-  | { ok: false; code: "NOT_MEMBER" | "REMOVED"; message: string };
+  | {
+      ok: false;
+      code: "NOT_MEMBER" | "REMOVED" | "WORKSPACE_CLOSED";
+      message: string;
+    };
 
 async function lookupOrgViewer(
   ctx: QueryCtx | MutationCtx,
@@ -117,6 +123,16 @@ async function lookupOrgViewer(
       ok: false,
       code: membership ? "REMOVED" : "NOT_MEMBER",
       message: "Not a member of this organization",
+    };
+  }
+
+  // Checked after membership, so only members learn the workspace is closed.
+  // Every member is shut out, staff included (docs/client-offboarding-plan.md).
+  if (await isWorkspaceClosed(ctx, orgId)) {
+    return {
+      ok: false,
+      code: "WORKSPACE_CLOSED",
+      message: "This workspace is closed",
     };
   }
 
@@ -225,6 +241,13 @@ export async function resolveOrgForAction(
   if (!identity) throw authError("NOT_AUTHENTICATED", "Not authenticated");
   const { orgId, orgSlug } = getActiveOrgClaims(identity);
   if (!orgId) throw authError("NO_ACTIVE_ORG", "No active organization");
+  // Internals called from actions check membership with their own lookups,
+  // so the closed-workspace gate is applied once here for all of them.
+  const closed: boolean = await ctx.runQuery(
+    internal.workspaceLifecycle.isClosedInternal,
+    { clerkOrgId: orgId },
+  );
+  if (closed) throw authError("WORKSPACE_CLOSED", "This workspace is closed");
   return { orgId, orgSlug, tokenIdentifier: identity.tokenIdentifier };
 }
 

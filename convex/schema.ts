@@ -431,6 +431,31 @@ export default defineSchema({
       v.literal("needsAttention"),
       // Org deleted in Clerk; row kept for audit/history.
       v.literal("deleted"),
+      // Offboarding (docs/client-offboarding-plan.md, lib/workspaceStatus.ts).
+      // Suspended: nobody can reach it; reinstating reopens it. Purging and
+      // purged: the one-way deletion is running or done.
+      v.literal("suspended"),
+      v.literal("purging"),
+      v.literal("purged"),
+    ),
+    // Set while the workspace is closed for offboarding; cleared on reinstate.
+    offboarding: v.optional(
+      v.object({
+        suspendedAt: v.number(),
+        // Absent when Clerk closed it (the org was deleted in its dashboard).
+        suspendedByUserId: v.optional(v.id("users")),
+        suspendedByName: v.string(),
+        // "clerkDeleted": the Clerk org is gone, so there is nothing to
+        // reopen; the workspace can still be exported, then it is purged.
+        origin: v.optional(v.union(v.literal("console"), v.literal("clerkDeleted"))),
+        reason: v.string(),
+        // When the automatic purge runs (D2: 30 days after suspension).
+        purgeAfter: v.number(),
+        // Clerk invitations still pending at suspension, and how many of
+        // them could not be revoked (a retry is offered in the console).
+        invitationsRevoked: v.optional(v.number()),
+        invitationRevokeErrors: v.optional(v.array(v.string())),
+      }),
     ),
     provisioningErrors: v.optional(v.array(v.string())),
     // Retained so retryProvisioning can re-run failed steps.
@@ -466,12 +491,232 @@ export default defineSchema({
       v.literal("reconcile"),
       // A Fabric team member opened an AskFabric exchange a user shared (FR-7.3).
       v.literal("sharedExchangeViewed"),
+      // Offboarding: a platform admin closed or reopened the workspace.
+      v.literal("workspaceSuspended"),
+      v.literal("workspaceReinstated"),
+      v.literal("workspaceExported"),
     ),
     detail: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_clerkOrgId_and_createdAt", ["clerkOrgId", "createdAt"])
     .index("by_targetUserId", ["targetUserId"]),
+
+  // A workspace export (docs/client-offboarding-plan.md, Phase 2): audio
+  // zipped in parts, then one data zip. Built in the background by
+  // workspaceExportBuild.ts; the files are deleted when the link expires.
+  tenantExports: defineTable({
+    clerkOrgId: v.string(),
+    tenantId: v.id("tenants"),
+    status: v.union(
+      v.literal("running"),
+      v.literal("ready"),
+      v.literal("failed"),
+      v.literal("expired"),
+    ),
+    phase: v.union(v.literal("audio"), v.literal("data"), v.literal("done")),
+    requestedByUserId: v.id("users"),
+    requestedByName: v.string(),
+    // Where the audio pass resumes: a `conversations` page cursor.
+    audioCursor: v.union(v.string(), v.null()),
+    audioIncluded: v.number(),
+    audioMissing: v.number(),
+    audioBytes: v.number(),
+    partCount: v.number(),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
+  }).index("by_clerkOrgId_and_createdAt", ["clerkOrgId", "createdAt"]),
+
+  tenantExportFiles: defineTable({
+    clerkOrgId: v.string(),
+    exportId: v.id("tenantExports"),
+    name: v.string(),
+    kind: v.union(v.literal("data"), v.literal("audio")),
+    storageId: v.id("_storage"),
+    sizeBytes: v.number(),
+    createdAt: v.number(),
+  }).index("by_clerkOrgId_and_exportId", ["clerkOrgId", "exportId"]),
+
+  // Where each interview's recording went in an export, or why it is missing;
+  // written by the audio pass and read back into the data zip's index.
+  tenantExportAudioEntries: defineTable({
+    clerkOrgId: v.string(),
+    exportId: v.id("tenantExports"),
+    conversationId: v.id("conversations"),
+    status: v.union(v.literal("included"), v.literal("missing")),
+    path: v.optional(v.string()),
+    partName: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
+    reason: v.optional(v.string()),
+  }).index("by_clerkOrgId_and_exportId", ["clerkOrgId", "exportId"]),
+
+  // A workspace purge (docs/client-offboarding-plan.md, Phase 3): the driver
+  // of the one-way deletion, and afterwards its completion certificate. Kept
+  // after the purge (D4) with counts only, no client content.
+  tenantPurges: defineTable({
+    clerkOrgId: v.string(),
+    tenantId: v.id("tenants"),
+    trigger: v.union(v.literal("scheduled"), v.literal("manual")),
+    requestedByUserId: v.optional(v.id("users")),
+    requestedByName: v.optional(v.string()),
+    status: v.union(
+      v.literal("running"),
+      // A vendor deletion failed or rows kept reappearing; a platform admin
+      // retries from the console (D6: no certificate until it succeeds).
+      v.literal("needsRetry"),
+      v.literal("complete"),
+    ),
+    phase: v.union(
+      v.literal("collect"),
+      v.literal("tables"),
+      v.literal("vendors"),
+      v.literal("verify"),
+      v.literal("done"),
+    ),
+    collectSource: v.optional(
+      v.union(v.literal("conversations"), v.literal("memberships")),
+    ),
+    // Collect: a page cursor. Tables: the scrub pass's page cursor.
+    cursor: v.union(v.string(), v.null()),
+    tableIndex: v.number(),
+    sweepRound: v.number(),
+    rowsDeleted: v.record(v.string(), v.number()),
+    filesDeleted: v.number(),
+    usageRowsScrubbed: v.number(),
+    elevenlabs: v.object({
+      deleted: v.number(),
+      alreadyGone: v.number(),
+      // Not production: the ElevenLabs agent is shared with production, so
+      // a dev purge never deletes there.
+      skipped: v.number(),
+      failed: v.number(),
+    }),
+    clerkOrg: v.union(
+      v.literal("pending"),
+      v.literal("deleted"),
+      v.literal("alreadyGone"),
+      v.literal("failed"),
+    ),
+    people: v.object({
+      erased: v.number(),
+      keptOtherWorkspace: v.number(),
+      keptStaff: v.number(),
+      alreadyErased: v.number(),
+      failed: v.number(),
+    }),
+    lastError: v.optional(v.string()),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_clerkOrgId_and_startedAt", ["clerkOrgId", "startedAt"])
+    .index("by_status_and_updatedAt", ["status", "updatedAt"]),
+
+  // The purge's work list outside Fabric, collected before the rows that name
+  // them are deleted: ElevenLabs conversations (the only record of which
+  // client one belongs to is the Fabric row) and the people to consider for
+  // erasure (D5). Deleted when the purge completes.
+  tenantPurgeItems: defineTable({
+    clerkOrgId: v.string(),
+    purgeId: v.id("tenantPurges"),
+    kind: v.union(v.literal("elevenlabsConversation"), v.literal("person")),
+    // An ElevenLabs conversation id, or a `users` id for a person.
+    externalId: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("done"),
+      v.literal("skipped"),
+      v.literal("failed"),
+    ),
+    outcome: v.optional(v.string()),
+    error: v.optional(v.string()),
+  })
+    .index("by_clerkOrgId_and_purgeId_and_status", ["clerkOrgId", "purgeId", "status"])
+    .index("by_purgeId_and_kind_and_externalId", ["purgeId", "kind", "externalId"]),
+
+  // Erasing one person from a workspace (docs/client-offboarding-plan.md,
+  // Phase 4). Drives the job, then stays as the record that it was done:
+  // `emailLower` and `name` are held only while it runs, to match rows that
+  // name the person rather than point at their id.
+  personErasures: defineTable({
+    clerkOrgId: v.string(),
+    tenantId: v.id("tenants"),
+    userId: v.id("users"),
+    membershipId: v.optional(v.id("memberships")),
+    emailLower: v.optional(v.string()),
+    name: v.optional(v.string()),
+    requestedByUserId: v.id("users"),
+    requestedByName: v.string(),
+    status: v.union(v.literal("running"), v.literal("needsRetry"), v.literal("complete")),
+    phase: v.union(
+      v.literal("membership"),
+      v.literal("contributions"),
+      v.literal("records"),
+      v.literal("reprocess"),
+      v.literal("vendors"),
+      v.literal("done"),
+    ),
+    // Contributions: which index pass. Records: which scan table.
+    step: v.number(),
+    cursor: v.union(v.string(), v.null()),
+    clerkMembership: v.union(
+      v.literal("pending"),
+      v.literal("removed"),
+      v.literal("alreadyGone"),
+      v.literal("failed"),
+    ),
+    account: v.union(
+      v.literal("pending"),
+      v.literal("erased"),
+      v.literal("keptOtherWorkspace"),
+      v.literal("keptStaff"),
+      v.literal("alreadyErased"),
+      v.literal("failed"),
+    ),
+    counts: v.object({
+      contributionsDeleted: v.number(),
+      contributionsDenamed: v.number(),
+      recordsUpdated: v.number(),
+      recordsDeleted: v.number(),
+      filesDeleted: v.number(),
+      processesRebuilt: v.number(),
+      processesCleared: v.number(),
+      elevenlabsDeleted: v.number(),
+      elevenlabsSkipped: v.number(),
+      elevenlabsFailed: v.number(),
+    }),
+    lastError: v.optional(v.string()),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_clerkOrgId_and_startedAt", ["clerkOrgId", "startedAt"])
+    .index("by_status_and_updatedAt", ["status", "updatedAt"]),
+
+  personErasureItems: defineTable({
+    clerkOrgId: v.string(),
+    erasureId: v.id("personErasures"),
+    kind: v.union(v.literal("elevenlabsConversation"), v.literal("process")),
+    externalId: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("done"),
+      v.literal("skipped"),
+      v.literal("failed"),
+    ),
+    outcome: v.optional(v.string()),
+    error: v.optional(v.string()),
+  })
+    .index("by_clerkOrgId_and_erasureId_and_kind_and_status", [
+      "clerkOrgId",
+      "erasureId",
+      "kind",
+      "status",
+    ])
+    .index("by_erasureId_and_kind_and_externalId", ["erasureId", "kind", "externalId"]),
 
   orgMembershipStats: defineTable({
     clerkOrgId: v.string(),
@@ -815,7 +1060,10 @@ export default defineSchema({
     admittedUploads: v.number(),
     admittedBytes: v.number(),
     updatedAt: v.number(),
-  }).index("by_key", ["key"]),
+  })
+    .index("by_key", ["key"])
+    // Workspace offboarding deletes an org's counters (lib/tenantData.ts).
+    .index("by_clerkOrgId", ["clerkOrgId"]),
 
   // Process flow diagrams — one per process, generated from conversation data
   processFlows: defineTable({

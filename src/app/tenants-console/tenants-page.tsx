@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { PageTitle } from "@/components/ui/page-title";
+import { WorkspaceStatusBadge } from "@/features/tenants-console/workspace-offboarding";
 import {
   Table,
   TableBody,
@@ -28,15 +29,6 @@ function formatDate(ts: number) {
     day: "numeric",
     year: "numeric",
   });
-}
-
-function StatusBadge({ status }: { status: string }) {
-  if (status === "active") return <Badge tone="success">Active</Badge>;
-  // Provisioning failed partway; "Retry provisioning" fixes it, so it waits on
-  // a person rather than having failed for good.
-  if (status === "needsAttention")
-    return <Badge tone="warning">Needs attention</Badge>;
-  return <Badge tone="neutral">Deleted</Badge>;
 }
 
 export default function TenantsListPage() {
@@ -140,7 +132,7 @@ export default function TenantsListPage() {
                     {tenant.pendingInviteCount ?? "—"}
                   </TableCell>
                   <TableCell>
-                    <StatusBadge status={tenant.status} />
+                    <WorkspaceStatusBadge status={tenant.status} />
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {formatDate(tenant.createdAt)}

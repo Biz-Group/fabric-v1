@@ -81,6 +81,7 @@ import type * as lib_conversationTitle from "../lib/conversationTitle.js";
 import type * as lib_descriptionSafetyValidators from "../lib/descriptionSafetyValidators.js";
 import type * as lib_elevenLabsCharging from "../lib/elevenLabsCharging.js";
 import type * as lib_elevenLabsConversation from "../lib/elevenLabsConversation.js";
+import type * as lib_exportRender from "../lib/exportRender.js";
 import type * as lib_flowNeighbourhood from "../lib/flowNeighbourhood.js";
 import type * as lib_flowQuality from "../lib/flowQuality.js";
 import type * as lib_flowStages from "../lib/flowStages.js";
@@ -92,6 +93,7 @@ import type * as lib_orgAuth from "../lib/orgAuth.js";
 import type * as lib_orgRollout from "../lib/orgRollout.js";
 import type * as lib_processEvidenceInvalidation from "../lib/processEvidenceInvalidation.js";
 import type * as lib_processOverviewV2 from "../lib/processOverviewV2.js";
+import type * as lib_profileErasure from "../lib/profileErasure.js";
 import type * as lib_recommendationReconcile from "../lib/recommendationReconcile.js";
 import type * as lib_recommendationScoring from "../lib/recommendationScoring.js";
 import type * as lib_recommendationStage from "../lib/recommendationStage.js";
@@ -99,13 +101,16 @@ import type * as lib_roles from "../lib/roles.js";
 import type * as lib_slugs from "../lib/slugs.js";
 import type * as lib_summaryEvaluation from "../lib/summaryEvaluation.js";
 import type * as lib_summaryV2Feature from "../lib/summaryV2Feature.js";
+import type * as lib_tenantData from "../lib/tenantData.js";
 import type * as lib_textNormalization from "../lib/textNormalization.js";
 import type * as lib_transcriptHash from "../lib/transcriptHash.js";
 import type * as lib_userError from "../lib/userError.js";
+import type * as lib_workspaceStatus from "../lib/workspaceStatus.js";
 import type * as migrations from "../migrations.js";
 import type * as onboarding from "../onboarding.js";
 import type * as orgIntegrity from "../orgIntegrity.js";
 import type * as orgThemes from "../orgThemes.js";
+import type * as personErasure from "../personErasure.js";
 import type * as platform from "../platform.js";
 import type * as postCall from "../postCall.js";
 import type * as processFlows from "../processFlows.js";
@@ -125,6 +130,10 @@ import type * as testFixtures_summaryV2 from "../testFixtures/summaryV2.js";
 import type * as themeColors from "../themeColors.js";
 import type * as users from "../users.js";
 import type * as voiceRecordings from "../voiceRecordings.js";
+import type * as workspaceExport from "../workspaceExport.js";
+import type * as workspaceExportBuild from "../workspaceExportBuild.js";
+import type * as workspaceLifecycle from "../workspaceLifecycle.js";
+import type * as workspacePurge from "../workspacePurge.js";
 
 import type {
   ApiFromModules,
@@ -206,6 +215,7 @@ declare const fullApi: ApiFromModules<{
   "lib/descriptionSafetyValidators": typeof lib_descriptionSafetyValidators;
   "lib/elevenLabsCharging": typeof lib_elevenLabsCharging;
   "lib/elevenLabsConversation": typeof lib_elevenLabsConversation;
+  "lib/exportRender": typeof lib_exportRender;
   "lib/flowNeighbourhood": typeof lib_flowNeighbourhood;
   "lib/flowQuality": typeof lib_flowQuality;
   "lib/flowStages": typeof lib_flowStages;
@@ -217,6 +227,7 @@ declare const fullApi: ApiFromModules<{
   "lib/orgRollout": typeof lib_orgRollout;
   "lib/processEvidenceInvalidation": typeof lib_processEvidenceInvalidation;
   "lib/processOverviewV2": typeof lib_processOverviewV2;
+  "lib/profileErasure": typeof lib_profileErasure;
   "lib/recommendationReconcile": typeof lib_recommendationReconcile;
   "lib/recommendationScoring": typeof lib_recommendationScoring;
   "lib/recommendationStage": typeof lib_recommendationStage;
@@ -224,13 +235,16 @@ declare const fullApi: ApiFromModules<{
   "lib/slugs": typeof lib_slugs;
   "lib/summaryEvaluation": typeof lib_summaryEvaluation;
   "lib/summaryV2Feature": typeof lib_summaryV2Feature;
+  "lib/tenantData": typeof lib_tenantData;
   "lib/textNormalization": typeof lib_textNormalization;
   "lib/transcriptHash": typeof lib_transcriptHash;
   "lib/userError": typeof lib_userError;
+  "lib/workspaceStatus": typeof lib_workspaceStatus;
   migrations: typeof migrations;
   onboarding: typeof onboarding;
   orgIntegrity: typeof orgIntegrity;
   orgThemes: typeof orgThemes;
+  personErasure: typeof personErasure;
   platform: typeof platform;
   postCall: typeof postCall;
   processFlows: typeof processFlows;
@@ -250,6 +264,10 @@ declare const fullApi: ApiFromModules<{
   themeColors: typeof themeColors;
   users: typeof users;
   voiceRecordings: typeof voiceRecordings;
+  workspaceExport: typeof workspaceExport;
+  workspaceExportBuild: typeof workspaceExportBuild;
+  workspaceLifecycle: typeof workspaceLifecycle;
+  workspacePurge: typeof workspacePurge;
 }>;
 
 /**

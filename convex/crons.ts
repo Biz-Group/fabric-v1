@@ -78,6 +78,21 @@ crons.interval(
   {},
 );
 
+// Workspace offboarding (docs/client-offboarding-plan.md): deletes the data of
+// workspaces suspended 30 days ago (D2), and resumes a purge that stalled.
+crons.interval(
+  "purge workspaces closed 30 days ago",
+  { hours: 1 },
+  internal.workspacePurge.startDuePurges,
+  {},
+);
+crons.interval(
+  "resume stalled person erasures",
+  { hours: 1 },
+  internal.personErasure.resumeStalled,
+  {},
+);
+
 // Folds yesterday's ledger into rollups so the console reads O(1) for history
 // instead of scanning. Runs at 00:30 UTC — after the day closes, with enough
 // margin that a straggling forward from dev still lands in the right day.

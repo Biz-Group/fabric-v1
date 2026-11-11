@@ -299,6 +299,19 @@ function WorkspaceAccess({
     return <StallableLoading message="Loading workspace…" />;
   }
 
+  if (joinStatus?.closed) {
+    return (
+      <AccessScreen title="This workspace is closed">
+        <p className="max-w-md text-sm text-muted-foreground">
+          Your organisation&apos;s Fabric workspace has been closed, so it
+          can&apos;t be opened any more. If you think that&apos;s a mistake,
+          contact your organisation&apos;s Fabric admin.
+        </p>
+        <SignOutLink />
+      </AccessScreen>
+    );
+  }
+
   if (joinStatus?.blocked) {
     return (
       <AccessScreen title="Your access to this workspace was removed">

@@ -37,10 +37,12 @@ import {
 } from "./lib/clerkApi";
 import {
   allowedDomainsFromMetadata,
-  markTenantDeleted,
+  closeTenantDeletedInClerk,
   upsertTenantFromClerkOrg,
 } from "./tenants";
 import { purgeAskFabricForMember, purgeAskFabricForOrg } from "./askLifecycle";
+import { isWorkspaceClosed } from "./lib/workspaceStatus";
+import { blankUserProfile } from "./lib/profileErasure";
 
 const roleValidator = v.union(
   v.literal("admin"),
@@ -501,6 +503,9 @@ async function upsertUserAndMembership(
     await syncMembershipProfilesForUser(ctx, user);
     return user._id;
   }
+  // Nobody joins, or refreshes a membership in, a workspace closed for
+  // offboarding (lib/workspaceStatus.ts); the profile update above still holds.
+  if (await isWorkspaceClosed(ctx, orgId)) return user._id;
 
   const existingMembership = await ctx.db
     .query("memberships")
@@ -1705,8 +1710,17 @@ export const removeMembersFromOrg = action({
  * caller's own status for the given org. */
 export const getMyJoinStatus = query({
   args: { clerkOrgId: v.string() },
-  handler: async (ctx, args) => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ blocked: boolean; closed?: true }> => {
     const identity = await requireAuth(ctx);
+    // Closed for offboarding: nobody may join, so say so rather than show a
+    // setup failure. Only the closure is revealed, which anyone with the
+    // workspace's address would discover on arrival anyway.
+    if (await isWorkspaceClosed(ctx, args.clerkOrgId)) {
+      return { blocked: true, closed: true };
+    }
     const user = await ctx.db
       .query("users")
       .withIndex("by_tokenIdentifier", (q) =>
@@ -1967,7 +1981,10 @@ export const handleClerkWebhook = internalMutation({
           )
           .unique();
         if (user) {
-          await ctx.db.patch(user._id, { deletedAt: Date.now() });
+          // Their interviews stay with the client; their profile keeps no
+          // name or email (Saish 2026-11-11). A full erasure is a separate,
+          // deliberate step in the tenants console.
+          await blankUserProfile(ctx, user);
           const memberships = await ctx.db
             .query("memberships")
             .withIndex("by_userId", (q) => q.eq("userId", user._id))
@@ -2082,7 +2099,7 @@ export const handleClerkWebhook = internalMutation({
     if (args.eventType === "organization.deleted") {
       const clerkOrgId = getString(data.id);
       if (clerkOrgId) {
-        await markTenantDeleted(ctx, clerkOrgId);
+        await closeTenantDeletedInClerk(ctx, clerkOrgId);
         await purgeAskFabricForOrg(ctx, clerkOrgId);
       }
     }

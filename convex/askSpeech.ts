@@ -8,6 +8,7 @@ import { recordSpeechUsage, type UsageAttribution } from "./lib/aiUsageMeter";
 import { AUDIO_PLAYBACK_TOKEN_TTL_MS, signAskSpeechToken, verifyAskSpeechToken } from "./lib/audioPlaybackToken";
 import { isActiveMembership, requireOrgMember } from "./lib/orgAuth";
 import { userError } from "./lib/userError";
+import { isWorkspaceClosed } from "./lib/workspaceStatus";
 
 /**
  * Read aloud (ElevenLabs text-to-speech). The first press streams the
@@ -72,6 +73,7 @@ export const streamTarget = internalQuery({
   handler: async (ctx, args): Promise<SpeechTarget> => {
     const membership: Doc<"memberships"> | null = await ctx.db.get(args.membershipId);
     if (!isActiveMembership(membership) || membership.clerkOrgId !== args.clerkOrgId) throw notFound();
+    if (await isWorkspaceClosed(ctx, args.clerkOrgId)) throw notFound();
     const user = await ctx.db.get(membership.userId);
     if (!user || user.deletedAt !== undefined) throw notFound();
     return await answerTarget(ctx, args.messageId, { orgId: args.clerkOrgId, userId: membership.userId });

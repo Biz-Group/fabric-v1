@@ -29,6 +29,7 @@ import {
   sanitizeContributorName,
 } from "./lib/contributorAttribution";
 import { summaryTitleFromAnalysis } from "./lib/conversationTitle";
+import { isWorkspaceClosed } from "./lib/workspaceStatus";
 import { startConversationPipelines } from "./lib/conversationPipelines";
 import { conversationFailureReasonValidator } from "./lib/conversationFailure";
 import {
@@ -768,6 +769,8 @@ export const getConversationAudioSource = internalQuery({
     ) {
       return null;
     }
+    // Closing a workspace revokes its open playback links too.
+    if (await isWorkspaceClosed(ctx, args.clerkOrgId)) return null;
 
     const conv = await ctx.db.get(args.conversationId);
     if (!conv || conv.clerkOrgId !== args.clerkOrgId) return null;

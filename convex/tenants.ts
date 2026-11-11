@@ -28,6 +28,8 @@ import {
   type FanOutResult,
 } from "./platform";
 import { inviteRedirectUrl } from "./invitations";
+import { userError } from "./lib/userError";
+import { isClosedStatus, PURGE_GRACE_MS } from "./lib/workspaceStatus";
 
 // ---------------------------------------------------------------------------
 // Platform tenant registry backing tenants.<root> (the Biz Group console).
@@ -127,22 +129,86 @@ export async function upsertTenantFromClerkOrg(
   });
 }
 
-/** Marks the mirror row deleted when Clerk reports the org gone. Kept (not
- * removed) for audit/history; the slug becomes reusable via Clerk anyway. */
-export async function markTenantDeleted(
+/** Console changes (provisioning, invites, settings) are for open workspaces;
+ * a closed one only gets reinstated or purged (workspaceLifecycle.ts). */
+function assertTenantOpen(tenant: Doc<"tenants">): void {
+  if (isClosedStatus(tenant.status)) {
+    throw userError(
+      "WORKSPACE_CLOSED",
+      tenant.status === "deleted"
+        ? "This workspace was deleted."
+        : "This workspace is closed. Reinstate it first to change it.",
+    );
+  }
+}
+
+/**
+ * The org was deleted in Clerk (its dashboard, not Fabric's console). Its data
+ * in Fabric must not linger unseen (docs/client-offboarding-plan.md, Phase 5),
+ * so the workspace is closed exactly as a console suspension would, with the
+ * 30-day purge scheduled. It can't be reopened (the Clerk org is gone), only
+ * exported until the purge. A workspace already in offboarding keeps its
+ * state, so the purge's own deletion of the Clerk org changes nothing.
+ *
+ * With no mirror row (the console never saw the org) but data in Fabric, a
+ * row is created so the purge has something to drive it.
+ */
+export async function closeTenantDeletedInClerk(
   ctx: MutationCtx,
   clerkOrgId: string,
 ): Promise<void> {
+  const now = Date.now();
   const existing = await ctx.db
     .query("tenants")
     .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
     .unique();
-  if (existing && existing.status !== "deleted") {
-    await ctx.db.patch(existing._id, {
-      status: "deleted",
-      updatedAt: Date.now(),
+  if (existing && isClosedStatus(existing.status)) return;
+
+  if (!existing) {
+    const hasData =
+      (await ctx.db
+        .query("memberships")
+        .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
+        .first()) !== null ||
+      (await ctx.db
+        .query("conversations")
+        .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
+        .first()) !== null ||
+      (await ctx.db
+        .query("functions")
+        .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
+        .first()) !== null;
+    if (!hasData) return;
+  }
+
+  const offboarding = {
+    suspendedAt: now,
+    suspendedByName: "Clerk (organization deleted)",
+    reason: "The organization was deleted in the Clerk dashboard.",
+    purgeAfter: now + PURGE_GRACE_MS,
+    origin: "clerkDeleted" as const,
+  };
+  if (existing) {
+    await ctx.db.patch(existing._id, { status: "suspended", offboarding, updatedAt: now });
+  } else {
+    await ctx.db.insert("tenants", {
+      clerkOrgId,
+      name: "Deleted organization",
+      slug: `deleted-${clerkOrgId.toLowerCase().replace(/[^a-z0-9-]/g, "-")}`,
+      allowedEmailDomains: [],
+      status: "suspended",
+      offboarding,
+      source: "clerkSync",
+      createdAt: now,
+      updatedAt: now,
     });
   }
+  await ctx.db.insert("authAuditEvents", {
+    clerkOrgId,
+    action: "workspaceSuspended",
+    detail: `Organization deleted in Clerk. Purge after ${new Date(offboarding.purgeAfter).toISOString()}.`,
+    createdAt: now,
+  });
 }
 
 async function uploadOrgLogo(
@@ -298,6 +364,8 @@ export const patchTenantInternal = internalMutation({
     if (!tenant) throw new Error("Tenant not found");
 
     const patch: Partial<Doc<"tenants">> = { updatedAt: Date.now() };
+    // Provisioning bookkeeping never reopens a closed workspace.
+    const statusLocked = isClosedStatus(tenant.status);
     if (args.name !== undefined) patch.name = args.name;
     if (args.logoUrl !== undefined) patch.logoUrl = args.logoUrl;
     if (args.logoStorageId !== undefined) patch.logoStorageId = args.logoStorageId;
@@ -317,6 +385,7 @@ export const patchTenantInternal = internalMutation({
             ? "active"
             : tenant.status;
     }
+    if (statusLocked) delete patch.status;
     await ctx.db.patch(args.tenantId, patch);
   },
 });
@@ -326,7 +395,7 @@ export const listActiveTenantsInternal = internalQuery({
   handler: async (ctx) => {
     const rows = await ctx.db.query("tenants").take(500);
     return rows
-      .filter((t) => t.status !== "deleted")
+      .filter((t) => !isClosedStatus(t.status))
       .map((t) => ({ tenantId: t._id, clerkOrgId: t.clerkOrgId, slug: t.slug }));
   },
 });
@@ -396,6 +465,7 @@ export const list = query({
           allowedEmailDomains: tenant.allowedEmailDomains,
           status: tenant.status,
           provisioningErrors: tenant.provisioningErrors ?? [],
+          purgeAfter: tenant.offboarding?.purgeAfter ?? null,
           createdAt: tenant.createdAt,
           memberCount: counts.memberCount,
           adminCount: counts.adminCount,
@@ -428,6 +498,18 @@ export const get = query({
       provisioningErrors: tenant.provisioningErrors ?? [],
       firstInviteEmail: tenant.firstInviteEmail ?? null,
       hasRetainedLogo: tenant.logoStorageId !== undefined,
+      offboarding: tenant.offboarding
+        ? {
+            suspendedAt: tenant.offboarding.suspendedAt,
+            suspendedByName: tenant.offboarding.suspendedByName,
+            origin: tenant.offboarding.origin ?? "console",
+            reason: tenant.offboarding.reason,
+            purgeAfter: tenant.offboarding.purgeAfter,
+            invitationsRevoked: tenant.offboarding.invitationsRevoked ?? 0,
+            invitationRevokeErrors:
+              tenant.offboarding.invitationRevokeErrors ?? [],
+          }
+        : null,
       createdAt: tenant.createdAt,
       memberCount: counts.memberCount,
       adminCount: counts.adminCount,
@@ -519,7 +601,12 @@ export const createTenant = action({
       internal.tenants.getTenantBySlugInternal,
       { slug },
     );
-    if (existingBySlug && existingBySlug.status !== "deleted") {
+    // A deleted or purged workspace's Clerk org is gone, so its slug is free.
+    if (
+      existingBySlug &&
+      existingBySlug.status !== "deleted" &&
+      existingBySlug.status !== "purged"
+    ) {
       throw new Error(`A tenant with slug "${slug}" already exists.`);
     }
 
@@ -634,9 +721,8 @@ export const retryProvisioning = action({
       internal.tenants.getTenantInternal,
       { tenantId: args.tenantId },
     );
-    if (!tenant || tenant.status === "deleted") {
-      throw new Error("Tenant not found");
-    }
+    if (!tenant) throw new Error("Tenant not found");
+    assertTenantOpen(tenant);
 
     const errors: string[] = [];
 
@@ -721,9 +807,8 @@ export const updateAllowedEmailDomains = action({
       internal.tenants.getTenantInternal,
       { tenantId: args.tenantId },
     );
-    if (!tenant || tenant.status === "deleted") {
-      throw new Error("Tenant not found");
-    }
+    if (!tenant) throw new Error("Tenant not found");
+    assertTenantOpen(tenant);
 
     const result = await setAllowedEmailDomainsImpl(
       tenant.clerkOrgId,
@@ -752,9 +837,8 @@ export const renameTenant = action({
       internal.tenants.getTenantInternal,
       { tenantId: args.tenantId },
     );
-    if (!tenant || tenant.status === "deleted") {
-      throw new Error("Tenant not found");
-    }
+    if (!tenant) throw new Error("Tenant not found");
+    assertTenantOpen(tenant);
 
     await clerkFetch(`/organizations/${tenant.clerkOrgId}`, {
       method: "PATCH",
@@ -777,9 +861,8 @@ export const updateLogo = action({
       internal.tenants.getTenantInternal,
       { tenantId: args.tenantId },
     );
-    if (!tenant || tenant.status === "deleted") {
-      throw new Error("Tenant not found");
-    }
+    if (!tenant) throw new Error("Tenant not found");
+    assertTenantOpen(tenant);
 
     const blob = await ctx.storage.get(args.logoStorageId);
     if (!blob) throw new Error("Uploaded logo file not found in storage");
@@ -862,9 +945,8 @@ export const inviteTenantUser = action({
       internal.tenants.getTenantInternal,
       { tenantId: args.tenantId },
     );
-    if (!tenant || tenant.status === "deleted") {
-      throw new Error("Tenant not found");
-    }
+    if (!tenant) throw new Error("Tenant not found");
+    assertTenantOpen(tenant);
 
     await createTenantInvitation(ctx, {
       clerkOrgId: tenant.clerkOrgId,

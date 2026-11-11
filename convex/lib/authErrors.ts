@@ -13,6 +13,8 @@ export const AUTH_ERROR_CODES = [
   "NOT_MEMBER",
   "REMOVED",
   "INSUFFICIENT_ROLE",
+  // The workspace was suspended or deleted for offboarding (lib/workspaceStatus.ts).
+  "WORKSPACE_CLOSED",
 ] as const;
 
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];

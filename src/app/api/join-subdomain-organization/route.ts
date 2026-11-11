@@ -228,10 +228,11 @@ async function decideJoin(
   // for a clear answer and to avoid spending a Clerk seat. If the status
   // can't be read, fall through and let Convex decide.
   let blocked = false;
+  let closed = false;
   try {
     const token = await getToken({ template: "convex" });
     if (token) {
-      ({ blocked } = await fetchQuery(
+      ({ blocked, closed = false } = await fetchQuery(
         api.users.getMyJoinStatus,
         { clerkOrgId: organization.id },
         { token },
@@ -249,6 +250,14 @@ async function decideJoin(
         errorType: error instanceof Error ? error.name : "UnknownError",
       })}`,
     );
+  }
+  if (closed) {
+    return {
+      kind: "refused",
+      status: 403,
+      reason: "workspace_closed",
+      error: "This workspace is closed, so it can't be joined.",
+    };
   }
   if (blocked) {
     return {

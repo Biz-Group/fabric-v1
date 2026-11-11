@@ -213,6 +213,22 @@ export default function AdminOverviewPage() {
         )}
       </div>
 
+      {/* Closing a workspace is done by Biz Group from the tenants console
+          (docs/client-offboarding-plan.md), never from inside the workspace. */}
+      <div className="space-y-1 border-t pt-6">
+        <h3 className="text-sm font-semibold">Workspace data</h3>
+        <p className="text-sm text-muted-foreground">
+          To request deletion of this workspace and its data, email{" "}
+          <a
+            href="mailto:hi@bizgroup.ae"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            hi@bizgroup.ae
+          </a>
+          .
+        </p>
+      </div>
+
       <ConversationTranscriptDialog
         conversationId={viewingId}
         open={viewingId !== null}
