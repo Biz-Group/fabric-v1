@@ -377,6 +377,14 @@ function fallbackSummaryFromTranscript(
   return text.length > 800 ? `${text.slice(0, 799)}…` : text;
 }
 
+/**
+ * Batch speech-to-text model for recordings and uploads. `scribe_v3` (released
+ * 2026-11-10) takes the same request and returns the same response as
+ * `scribe_v2`. The rate key must exist in `VOICE_RATES`.
+ */
+const SCRIBE_MODEL = "scribe_v3";
+const SCRIBE_RATE_KEY = `elevenlabs:${SCRIBE_MODEL}`;
+
 async function transcribeWithScribe(
   audio: Blob,
   apiKey: string,
@@ -385,12 +393,16 @@ async function transcribeWithScribe(
   const form = new FormData();
   const extension = audioFileExtension(mimeType);
   form.append("file", audio, `voice-recording.${extension}`);
-  form.append("model_id", "scribe_v2");
+  form.append("model_id", SCRIBE_MODEL);
   form.append("language_code", "en");
   form.append("tag_audio_events", "true");
   form.append("timestamps_granularity", "word");
   form.append("diarize", "true");
   form.append("no_verbatim", "true");
+  // "40 tickets a day", not "forty tickets a day": analysis extracts
+  // frequency, volume and duration, which read more reliably as digits.
+  // scribe_v3 only; the API rejects anything but "digits" or "words".
+  form.append("numbers_format", "digits");
 
   const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
     method: "POST",
@@ -1364,8 +1376,8 @@ export const processVoiceRecordingInternal = internalAction({
           {
             operation: "voice-transcription",
             provider: "elevenlabs",
-            model: "scribe_v2",
-            rateKey: "elevenlabs:scribe_v2",
+            model: SCRIBE_MODEL,
+            rateKey: SCRIBE_RATE_KEY,
             seconds: args.durationSeconds ?? 0,
             status: "failed",
             startedAt: transcriptionStartedAt,
@@ -1396,8 +1408,8 @@ export const processVoiceRecordingInternal = internalAction({
         {
           operation: "voice-transcription",
           provider: "elevenlabs",
-          model: "scribe_v2",
-          rateKey: "elevenlabs:scribe_v2",
+          model: SCRIBE_MODEL,
+          rateKey: SCRIBE_RATE_KEY,
           seconds: inferredDuration ?? 0,
           startedAt: transcriptionStartedAt,
         },

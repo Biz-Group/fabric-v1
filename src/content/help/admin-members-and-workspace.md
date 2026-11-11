@@ -41,7 +41,7 @@ Pending invitations appear in a list below, with their expiry date. You can **Re
 
 This page lists every contribution in the workspace. Search by contributor, process, title or summary, and filter by status.
 
-From a row's menu you can **View transcript**, **Label speakers** (when it needs labels), **Open in process**, **Move** (finished contributions only), retry a failed contribution when a retry can help, or **Delete**. Deleting permanently removes the transcript, summary and audio details, and the process overview is refreshed without it. See "Move a contribution to another process" for what a move changes.
+From a row's menu you can **View transcript**, **Label speakers** (when it needs labels), **Open in process**, **Move** (finished contributions only), retry a failed contribution when a retry can help, or **Delete**. Deleting permanently removes the transcript, summary and audio details, and the process overview is refreshed without it. You must give a reason; **Deleted** at the top of the page lists recent deletions, who made them and why. See "Move a contribution to another process" for what a move changes.
 
 **Export CSV** downloads the contributions that match your current filters, including who submitted each one and when consent was confirmed for on-behalf recordings.
 

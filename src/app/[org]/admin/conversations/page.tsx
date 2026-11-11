@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   useConvex,
-  useMutation,
   usePaginatedQuery,
   useQuery,
 } from "convex/react";
@@ -56,8 +55,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ConversationTranscriptDialog } from "@/features/admin/conversation-transcript-dialog";
+import {
+  DeleteContributionDialog,
+  type DeletableContribution,
+} from "@/features/admin/delete-contribution-dialog";
+import { DeletedContributionsDialog } from "@/features/admin/deleted-contributions-dialog";
 import {
   MoveContributionDialog,
   type MovableContribution,
@@ -171,7 +174,8 @@ export default function AdminConversationsPage() {
   const [search, setSearch] = useState("");
   const [viewingId, setViewingId] = useState<Id<"conversations"> | null>(null);
   const [pendingDelete, setPendingDelete] =
-    useState<Id<"conversations"> | null>(null);
+    useState<DeletableContribution | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false);
   const [pendingMove, setPendingMove] = useState<MovableContribution | null>(
     null,
   );
@@ -212,19 +216,7 @@ export default function AdminConversationsPage() {
   const truncated = searching && searchResult?.truncated === true;
 
   const convex = useConvex();
-  const deleteConversation = useMutation(api.conversations.deleteForAdmin);
   const { retry, retryingId } = useRetryConversation();
-
-  const handleDelete = async () => {
-    if (!pendingDelete) return;
-    try {
-      await deleteConversation({ conversationId: pendingDelete });
-      toast.success("Contribution deleted.");
-    } catch (err) {
-      toast.error(describeError(err, "Failed to delete contribution."));
-      throw err;
-    }
-  };
 
   const handleExport = async () => {
     setExporting(true);
@@ -282,14 +274,20 @@ export default function AdminConversationsPage() {
             Review and manage every contribution captured in this workspace.
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleExport}
-          disabled={exporting || loadingRows || rows.length === 0}
-        >
-          <Download />
-          {exporting ? "Exporting…" : "Export CSV"}
-        </Button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="outline" onClick={() => setShowDeleted(true)}>
+            <Trash2 />
+            Deleted
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            disabled={exporting || loadingRows || rows.length === 0}
+          >
+            <Download />
+            {exporting ? "Exporting…" : "Export CSV"}
+          </Button>
+        </div>
       </div>
 
       {/* Filter bar */}
@@ -506,7 +504,12 @@ export default function AdminConversationsPage() {
                           )}
                           <DropdownMenuItem
                             variant="destructive"
-                            onClick={() => setPendingDelete(r._id)}
+                            onClick={() =>
+                              setPendingDelete({
+                                _id: r._id,
+                                contributorName: r.contributorName,
+                              })
+                            }
                           >
                             <Trash2 />
                             Delete
@@ -560,16 +563,17 @@ export default function AdminConversationsPage() {
         }}
       />
 
-      <ConfirmDialog
+      <DeleteContributionDialog
+        contribution={pendingDelete}
         open={pendingDelete !== null}
         onOpenChange={(open) => {
           if (!open) setPendingDelete(null);
         }}
-        title="Delete this contribution?"
-        description="The transcript, summary, and audio metadata will be permanently removed. The process overview will be refreshed without it. This action cannot be undone."
-        confirmLabel="Delete"
-        destructive
-        onConfirm={handleDelete}
+      />
+
+      <DeletedContributionsDialog
+        open={showDeleted}
+        onOpenChange={setShowDeleted}
       />
     </div>
   );

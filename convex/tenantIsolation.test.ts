@@ -2691,6 +2691,7 @@ describe("conversations admin — cross-tenant scoping", () => {
         .withIdentity(identityForOrgA())
         .mutation(api.conversations.deleteForAdmin, {
           conversationId: bConvId,
+          reason: "Test cleanup",
         }),
     ).rejects.toThrow(/Not found/);
 
@@ -2708,6 +2709,7 @@ describe("conversations admin — cross-tenant scoping", () => {
       .withIdentity(identityForOrgA())
       .mutation(api.conversations.deleteForAdmin, {
         conversationId: convId,
+        reason: "Test cleanup",
       });
 
     const gone = await t.run(async (ctx) => ctx.db.get(convId));
@@ -2731,6 +2733,7 @@ describe("conversations admin — cross-tenant scoping", () => {
         .withIdentity(identityForOrgA())
         .mutation(api.conversations.deleteForAdmin, {
           conversationId: convId,
+          reason: "Test cleanup",
         }),
     ).rejects.toThrow(/Insufficient permissions/);
   });

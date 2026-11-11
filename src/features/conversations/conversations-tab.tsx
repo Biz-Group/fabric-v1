@@ -14,6 +14,7 @@ import {
   FileText,
   Mic,
   MoreHorizontal,
+  Trash2,
   PlayCircle,
   Upload,
   User,
@@ -35,6 +36,10 @@ import {
   conversationStatusMeta,
   STATUS_TONE_SURFACE,
 } from "@/features/status/status-meta";
+import {
+  DeleteContributionDialog,
+  type DeletableContribution,
+} from "@/features/admin/delete-contribution-dialog";
 import {
   MoveContributionDialog,
   type MovableContribution,
@@ -81,8 +86,11 @@ type ProcessConversationListProps = {
   canLabelSpeakers: boolean;
   /** Admins can retry failed contributions from the playback panel. */
   canRetry: boolean;
-  /** Admins can move a finished contribution to another process. */
-  canMove?: boolean;
+  /**
+   * Admins get a menu on each card: Move (finished contributions only) and
+   * Delete (any status, with a required reason).
+   */
+  canManage?: boolean;
   labelingJumpKey?: number;
   focusConversationId?: Id<"conversations"> | null;
   focusConversationJumpKey?: number;
@@ -226,16 +234,20 @@ function ConversationRow({
   selected,
   onSelect,
   onMove,
+  onDelete,
   buttonRef,
 }: {
   conversation: CompactConversation;
   selected: boolean;
   onSelect: () => void;
-  /** Set only for admins; the menu shows on finished rows alone. */
+  /** Set only for admins. Move is offered on finished rows alone. */
   onMove?: () => void;
+  /** Set only for admins. */
+  onDelete?: () => void;
   buttonRef?: Ref<HTMLButtonElement>;
 }) {
-  const showMenu = Boolean(onMove) && conversation.status === "done";
+  const canMoveRow = Boolean(onMove) && conversation.status === "done";
+  const showMenu = canMoveRow || Boolean(onDelete);
   const type = TYPE_META[conversation.inputMode];
   const status = conversationStatusMeta[conversation.status];
   const TypeIcon = type.icon;
@@ -345,10 +357,18 @@ function ConversationRow({
               <span className="sr-only">Actions for {title}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onMove}>
-                <ArrowRightLeft />
-                Move
-              </DropdownMenuItem>
+              {canMoveRow && (
+                <DropdownMenuItem onClick={onMove}>
+                  <ArrowRightLeft />
+                  Move
+                </DropdownMenuItem>
+              )}
+              {onDelete && (
+                <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                  <Trash2 />
+                  Delete
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -504,7 +524,7 @@ export function ProcessConversationsTab({
   processId,
   canLabelSpeakers,
   canRetry,
-  canMove = false,
+  canManage = false,
   labelingJumpKey = 0,
   focusConversationId = null,
   focusConversationJumpKey = 0,
@@ -514,6 +534,8 @@ export function ProcessConversationsTab({
   const [pendingMove, setPendingMove] = useState<MovableContribution | null>(
     null,
   );
+  const [pendingDelete, setPendingDelete] =
+    useState<DeletableContribution | null>(null);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
   // May point past the loaded pages: a link opens its contribution whether or
@@ -632,6 +654,15 @@ export function ProcessConversationsTab({
     focusConversationJumpKey,
     loadingFirstPage,
   ]);
+
+  // A moved or deleted row leaves this list. If it was the open one, let the
+  // first remaining row open rather than a "moved"/"unavailable" notice for
+  // something the admin just did.
+  const releaseSelection = (conversationId: Id<"conversations">) => {
+    setSelectedConversationId((current) =>
+      current === conversationId ? null : current,
+    );
+  };
 
   const selectConversation = (conversationId: Id<"conversations">) => {
     setSelectedConversationId(conversationId);
@@ -805,12 +836,21 @@ export function ProcessConversationsTab({
                     selected={activeConversationId === conversation._id}
                     onSelect={() => selectConversation(conversation._id)}
                     onMove={
-                      canMove
+                      canManage
                         ? () =>
                             setPendingMove({
                               _id: conversation._id,
                               contributorName: conversation.contributorName,
                               processId,
+                            })
+                        : undefined
+                    }
+                    onDelete={
+                      canManage
+                        ? () =>
+                            setPendingDelete({
+                              _id: conversation._id,
+                              contributorName: conversation.contributorName,
                             })
                         : undefined
                     }
@@ -871,21 +911,25 @@ export function ProcessConversationsTab({
           />
         </aside>
       </div>
-      {canMove && (
-        <MoveContributionDialog
-          contribution={pendingMove}
-          open={pendingMove !== null}
-          onOpenChange={(open) => {
-            if (!open) setPendingMove(null);
-          }}
-          onMoved={(movedId) => {
-            // The row leaves this list; let the first remaining one open
-            // rather than a "moved" notice for something the admin just moved.
-            setSelectedConversationId((current) =>
-              current === movedId ? null : current,
-            );
-          }}
-        />
+      {canManage && (
+        <>
+          <MoveContributionDialog
+            contribution={pendingMove}
+            open={pendingMove !== null}
+            onOpenChange={(open) => {
+              if (!open) setPendingMove(null);
+            }}
+            onMoved={releaseSelection}
+          />
+          <DeleteContributionDialog
+            contribution={pendingDelete}
+            open={pendingDelete !== null}
+            onOpenChange={(open) => {
+              if (!open) setPendingDelete(null);
+            }}
+            onDeleted={releaseSelection}
+          />
+        </>
       )}
     </TooltipProvider>
   );

@@ -16,7 +16,7 @@
  */
 
 /** Bump on any rate change. Rows record the version they were priced at. */
-export const PRICE_VERSION = "2026-11-09";
+export const PRICE_VERSION = "2026-11-11";
 
 /**
  * Recorded instead of a version when no rate is known for a model. Such rows
@@ -184,11 +184,16 @@ export const VOICE_RATES: Readonly<Record<string, number>> = {
   // their `call_duration_secs`, never a wall-clock duration.
   "elevenlabs:agent-call": usdPerMinute(0.08),
 
-  // Scribe v2 speech-to-text, $0.22/hour. Our request sends diarize,
-  // tag_audio_events, word timestamps and no_verbatim — none of which are
-  // metered add-ons, so the base rate applies. If entity detection
-  // (+$0.070/hr) or keyterm prompting (+$0.050/hr) is ever enabled, add a
-  // distinct key rather than editing this one.
+  // Scribe batch speech-to-text. Our request sends diarize, tag_audio_events,
+  // word timestamps and no_verbatim — none of which are metered add-ons, so
+  // the base rate applies. If keyterm prompting (+$0.050/hr, 20% surcharge)
+  // or transcript editing (+$0.070/hr) is ever enabled, add a distinct key
+  // rather than editing these.
+  //
+  // scribe_v3 is $0.20/hour (elevenlabs.io/pricing/api, 11 Nov 2026). The
+  // scribe_v2 entry stays for rows already in the ledger; that page now lists
+  // v2 at $0.20 too, but rows are versioned rather than restated.
+  "elevenlabs:scribe_v3": usdPerHour(0.2),
   "elevenlabs:scribe_v2": usdPerHour(0.22),
 };
 

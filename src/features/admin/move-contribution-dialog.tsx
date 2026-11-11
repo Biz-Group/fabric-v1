@@ -69,6 +69,7 @@ export function MoveContributionDialog({
               onMoved?.(contribution._id);
               onOpenChange(false);
             }}
+            onCancel={() => onOpenChange(false)}
           />
         )}
       </DialogContent>
@@ -79,10 +80,12 @@ export function MoveContributionDialog({
 function MoveContributionForm({
   contribution,
   onDone,
+  onCancel,
 }: {
   contribution: MovableContribution;
   /** Called only after a successful move. */
   onDone: () => void;
+  onCancel: () => void;
 }) {
   const router = useRouter();
   const routes = useWorkspaceRoutes();
@@ -213,7 +216,7 @@ function MoveContributionForm({
       )}
 
       <DialogFooter>
-        <Button variant="outline" onClick={onDone} disabled={pending}>
+        <Button variant="outline" onClick={onCancel} disabled={pending}>
           Cancel
         </Button>
         <Button onClick={handleMove} disabled={!canMove}>

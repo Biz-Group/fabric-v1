@@ -188,7 +188,13 @@ describe("voice pricing", () => {
     });
   });
 
-  test("prices Scribe at the $0.22/hour rate", () => {
+  test("prices Scribe v3 at the $0.20/hour rate", () => {
+    expect(priceVoiceUsage("elevenlabs:scribe_v3", 3_600).costMicroUsd).toBe(
+      200_000,
+    );
+  });
+
+  test("keeps the Scribe v2 rate for existing ledger rows", () => {
     expect(priceVoiceUsage("elevenlabs:scribe_v2", 3_600).costMicroUsd).toBe(
       220_000,
     );

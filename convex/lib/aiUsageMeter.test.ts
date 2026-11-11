@@ -210,8 +210,8 @@ describe("buildVoiceUsageEvent", () => {
       createdAt: 1_000,
       operation: "voice-transcription",
       provider: "elevenlabs",
-      model: "scribe_v2",
-      rateKey: "elevenlabs:scribe_v2",
+      model: "scribe_v3",
+      rateKey: "elevenlabs:scribe_v3",
       seconds: 600,
       status: "ok",
       ...overrides,
@@ -220,10 +220,10 @@ describe("buildVoiceUsageEvent", () => {
 
   test("prices Scribe from its billed duration", () => {
     const event = buildVoice();
-    // 600s at $0.22/hour = $0.0366666… → 36,667 micro-USD.
+    // 600s at $0.20/hour = $0.0333333… → 33,333 micro-USD.
     expect(event.unit).toBe("seconds");
     expect(event.seconds).toBe(600);
-    expect(event.costMicroUsd).toBe(Math.round((600 * 220_000) / 3600));
+    expect(event.costMicroUsd).toBe(Math.round((600 * 200_000) / 3600));
     expect(event.costSource).toBe("computed");
   });
 

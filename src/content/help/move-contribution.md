@@ -37,4 +37,4 @@ Only finished contributions can be moved. If a contribution still needs speaker 
 
 The transcript shows who moved the contribution, when, where it moved from and to, and the reason if one was given. Links to the contribution in its old process show where it lives now, with a button to open it there.
 
-Only admins can move contributions, and only within the same workspace.
+Only admins can move contributions, and only within the same workspace. The same **⋯** menu also has **Delete**, which needs a reason.

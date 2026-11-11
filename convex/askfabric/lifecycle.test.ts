@@ -167,7 +167,7 @@ describe("source deletion clears cited text (FR-9.7)", () => {
       return { admin, conversationId, ...thread };
     });
     const asAdmin = t.withIdentity({ tokenIdentifier: ids.admin.tokenIdentifier, subject: "user_admin", issuer: ISSUER, orgId: ORG, orgSlug: ORG });
-    await asAdmin.mutation(api.conversations.deleteForAdmin, { conversationId: ids.conversationId });
+    await asAdmin.mutation(api.conversations.deleteForAdmin, { conversationId: ids.conversationId, reason: "Test cleanup" });
     await drain(t);
 
     const rows = await t.run(async (ctx) => ({

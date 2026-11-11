@@ -259,7 +259,7 @@ describe("deletion flow integrity", () => {
 
     await t
       .withIdentity(identityFor("admin"))
-      .mutation(api.conversations.deleteForAdmin, { conversationId });
+      .mutation(api.conversations.deleteForAdmin, { conversationId, reason: "Test cleanup" });
 
     const rows = await t.run(async (ctx) => ({
       process: await ctx.db.get(ids.processId),
@@ -289,6 +289,7 @@ describe("deletion flow integrity", () => {
       .withIdentity(identityFor("admin"))
       .mutation(api.conversations.deleteForAdmin, {
         conversationId: firstConversationId,
+        reason: "Test cleanup",
       });
 
     const rows = await t.run(async (ctx) => ({
@@ -314,7 +315,7 @@ describe("deletion flow integrity", () => {
 
     await t
       .withIdentity(identityFor("admin"))
-      .mutation(api.conversations.deleteForAdmin, { conversationId });
+      .mutation(api.conversations.deleteForAdmin, { conversationId, reason: "Test cleanup" });
 
     const after = await t.run(async (ctx) => ({
       process: await ctx.db.get(ids.processId),

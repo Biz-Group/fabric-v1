@@ -416,7 +416,7 @@ describe("conversations.moveForAdmin", () => {
       actorName: "Ada Admin",
     });
 
-    await admin.mutation(api.conversations.deleteForAdmin, { conversationId });
+    await admin.mutation(api.conversations.deleteForAdmin, { conversationId, reason: "Duplicate" });
     const remaining = await t.run((ctx) =>
       ctx.db.query("conversationMoves").collect(),
     );
@@ -571,5 +571,111 @@ describe("conversations.moveImpactForAdmin", () => {
           targetProcessId: ids.targetId,
         }),
     ).rejects.toThrow();
+  });
+});
+
+describe("conversations.deleteForAdmin reason (D6)", () => {
+  test("refuses a blank or over-long reason and keeps the row", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seedOrg(t);
+    const conversationId = await insertConversation(t, ids.sourceId);
+    const admin = t.withIdentity(identityFor("admin"));
+
+    expect(
+      await rejectionCode(
+        admin.mutation(api.conversations.deleteForAdmin, { conversationId }),
+      ),
+    ).toBe("REASON_REQUIRED");
+    expect(
+      await rejectionCode(
+        admin.mutation(api.conversations.deleteForAdmin, {
+          conversationId,
+          reason: "   ",
+        }),
+      ),
+    ).toBe("REASON_REQUIRED");
+    expect(
+      await rejectionCode(
+        admin.mutation(api.conversations.deleteForAdmin, {
+          conversationId,
+          reason: "x".repeat(501),
+        }),
+      ),
+    ).toBe("REASON_TOO_LONG");
+
+    expect(await t.run((ctx) => ctx.db.get(conversationId))).not.toBeNull();
+    expect(
+      await t.run((ctx) => ctx.db.query("conversationDeletions").collect()),
+    ).toHaveLength(0);
+  });
+
+  test("logs what was deleted, by whom and why", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seedOrg(t);
+    const conversationId = await insertConversation(t, ids.sourceId, {
+      status: "failed",
+      inputMode: "voiceRecord",
+      title: "Payroll cut-off walkthrough",
+      contributorName: "Priya",
+    });
+    const admin = t.withIdentity(identityFor("admin"));
+
+    await admin.mutation(api.conversations.deleteForAdmin, {
+      conversationId,
+      reason: "  Recorded twice  ",
+    });
+
+    expect(await t.run((ctx) => ctx.db.get(conversationId))).toBeNull();
+    const log = await admin.query(api.conversations.deletionLogForAdmin, {});
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({
+      title: "Payroll cut-off walkthrough",
+      contributorName: "Priya",
+      inputMode: "voiceRecord",
+      status: "failed",
+      processLabel: "Operations › Payroll › Monthly payroll",
+      reason: "Recorded twice",
+      actorName: "Ada Admin",
+    });
+  });
+
+  test("the log is admin-only and scoped to the caller's org", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seedOrg(t);
+    const otherOrgConversation = await t.run((ctx) =>
+      ctx.db.insert("conversations", {
+        processId: ids.otherOrgProcessId,
+        clerkOrgId: ORG_B,
+        contributorName: "Elsewhere",
+        status: "done",
+      }),
+    );
+    await t.run((ctx) =>
+      ctx.db.insert("conversationDeletions", {
+        clerkOrgId: ORG_B,
+        conversationId: otherOrgConversation,
+        processId: ids.otherOrgProcessId,
+        processLabel: "Other",
+        contributorName: "Elsewhere",
+        inputMode: "agent",
+        status: "done",
+        recordedAt: 0,
+        reason: "Other org",
+        actorUserId: ids.users.admin,
+        actorName: "Admin B",
+        createdAt: 0,
+      }),
+    );
+
+    await expect(
+      t
+        .withIdentity(identityFor("contributor"))
+        .query(api.conversations.deletionLogForAdmin, {}),
+    ).rejects.toThrow();
+    await expect(
+      t
+        .withIdentity(identityFor("admin"))
+        .query(api.conversations.deletionLogForAdmin, {}),
+    ).resolves.toEqual([]);
   });
 });

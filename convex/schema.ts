@@ -763,6 +763,29 @@ export default defineSchema({
     ])
     .index("by_clerkOrgId_and_createdAt", ["clerkOrgId", "createdAt"]),
 
+  // Why an admin deleted a contribution (docs/move-contribution-task-list.md
+  // D6/D7). The contribution itself is gone, so this keeps a snapshot of what
+  // it was; `conversationId` and `processId` may no longer resolve.
+  conversationDeletions: defineTable({
+    clerkOrgId: v.string(),
+    conversationId: v.id("conversations"),
+    processId: v.id("processes"),
+    processLabel: v.string(),
+    title: v.optional(v.string()),
+    contributorName: v.string(),
+    inputMode: v.union(
+      v.literal("agent"),
+      v.literal("voiceRecord"),
+      v.literal("audioUpload"),
+    ),
+    status: conversationStatusValidator,
+    recordedAt: v.number(),
+    reason: v.string(),
+    actorUserId: v.id("users"),
+    actorName: v.string(),
+    createdAt: v.number(),
+  }).index("by_clerkOrgId_and_createdAt", ["clerkOrgId", "createdAt"]),
+
   // One active upload grant per user/process. A grant proves the caller went
   // through the authenticated URL-issuance path and makes blob admission
   // single-use; it is deleted whether admission succeeds or is rejected.

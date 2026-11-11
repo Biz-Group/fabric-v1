@@ -692,14 +692,59 @@ export const countForOrg = query({
  * org's row by id. After deletion we schedule a full summary rebuild for the
  * parent process so the rolling summary stays consistent.
  */
+/**
+ * Admin-only. Permanently deletes a contribution. A reason is required (D6 in
+ * docs/move-contribution-task-list.md) and kept, with a snapshot of what was
+ * deleted, in `conversationDeletions`.
+ */
 export const deleteForAdmin = mutation({
-  args: { conversationId: v.id("conversations") },
+  // Optional in the validator so a client without the field gets a readable
+  // refusal rather than an argument-validation error; required below.
+  args: {
+    conversationId: v.id("conversations"),
+    reason: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const caller = await requireOrgAdmin(ctx);
     const conv = await ctx.db.get(args.conversationId);
     assertOrgOwns(caller, conv);
 
+    const reason = args.reason?.trim() ?? "";
+    if (!reason) {
+      throw userError(
+        "REASON_REQUIRED",
+        "Say why you're deleting this contribution.",
+      );
+    }
+    if (reason.length > MAX_DELETE_REASON_LENGTH) {
+      throw userError(
+        "REASON_TOO_LONG",
+        `Keep the reason under ${MAX_DELETE_REASON_LENGTH} characters.`,
+      );
+    }
+
     const processId = conv.processId;
+    const process = await ctx.db.get(processId);
+    const user = await ctx.db.get(caller.userId);
+    await ctx.db.insert("conversationDeletions", {
+      clerkOrgId: caller.orgId,
+      conversationId: conv._id,
+      processId,
+      processLabel:
+        process && process.clerkOrgId === caller.orgId
+          ? await processPathLabel(ctx, caller.orgId, process)
+          : "A deleted process",
+      title: conversationTitle(conv),
+      contributorName: conv.contributorName,
+      inputMode: conv.inputMode ?? "agent",
+      status: conv.status,
+      recordedAt: conv._creationTime,
+      reason,
+      actorUserId: caller.userId,
+      actorName: user?.name || caller.name || "An admin",
+      createdAt: Date.now(),
+    });
+
     const deletedDoneConversation = conv.status === "done";
     if (conv.audioStorageId) {
       try {
@@ -717,6 +762,36 @@ export const deleteForAdmin = mutation({
 
     if (!deletedDoneConversation) return;
     await invalidateProcessAfterEvidenceLeft(ctx, caller.orgId, processId);
+  },
+});
+
+const MAX_DELETE_REASON_LENGTH = 500;
+const DELETION_LOG_LIMIT = 50;
+
+/** Admin-only. The workspace's most recent contribution deletions and why. */
+export const deletionLogForAdmin = query({
+  args: {},
+  handler: async (ctx) => {
+    const caller = await requireOrgAdmin(ctx);
+    const rows = await ctx.db
+      .query("conversationDeletions")
+      .withIndex("by_clerkOrgId_and_createdAt", (q) =>
+        q.eq("clerkOrgId", caller.orgId),
+      )
+      .order("desc")
+      .take(DELETION_LOG_LIMIT);
+    return rows.map((row) => ({
+      _id: row._id,
+      title: row.title ?? null,
+      contributorName: row.contributorName,
+      inputMode: row.inputMode,
+      status: row.status,
+      processLabel: row.processLabel,
+      recordedAt: row.recordedAt,
+      reason: row.reason,
+      actorName: row.actorName,
+      createdAt: row.createdAt,
+    }));
   },
 });
 
