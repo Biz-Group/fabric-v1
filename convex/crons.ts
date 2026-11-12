@@ -103,6 +103,22 @@ crons.daily(
   {},
 );
 
+// Fabric MCP metering (Phase 3): folds yesterday's tool calls into one
+// mcpUsageDays row per workspace, then trims raw calls past retention, skipping
+// any day the fold hasn't covered.
+crons.daily(
+  "fold yesterday's MCP calls into daily usage",
+  { hourUTC: 0, minuteUTC: 40 },
+  internal.mcpUsage.foldDay,
+  {},
+);
+crons.daily(
+  "prune MCP calls past retention",
+  { hourUTC: 3, minuteUTC: 10 },
+  internal.mcpUsage.pruneOldCalls,
+  {},
+);
+
 // Trims raw ledger rows past the retention window. Skips any day that has not
 // been rolled up, so a stalled fold shows up as a growing table rather than
 // permanent data loss.

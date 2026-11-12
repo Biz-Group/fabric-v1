@@ -41,6 +41,7 @@ import {
   type DeploymentFilter,
   type RangeKey,
 } from "@/features/tenants-console/usage-shared";
+import { McpTenantUsageSection } from "@/features/tenants-console/mcp-usage-section";
 
 const LOG_PAGE_SIZE = 50;
 
@@ -169,6 +170,8 @@ export default function TenantUsagePage() {
           }),
         )}
       />
+
+      <McpTenantUsageSection clerkOrgId={clerkOrgId} from={from} to={to} />
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-2">

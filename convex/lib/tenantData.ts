@@ -107,6 +107,13 @@ export const TENANT_DATA: Record<TableNames, TenantDataEntry> = {
     purge: "delete",
     userIdFields: ["approvedByUserId"],
   },
+  orgFeatures: {
+    scope: "org",
+    orgIndex: "by_clerkOrgId",
+    class: "tenant",
+    purge: "delete",
+    userIdFields: ["mcpGrantedByUserId", "mcpEnabledByUserId"],
+  },
 
   // ---- People ----------------------------------------------------------------
   memberships: {
@@ -273,6 +280,21 @@ export const TENANT_DATA: Record<TableNames, TenantDataEntry> = {
     class: "billing",
     purge: "keep",
   },
+  // Fabric MCP (Phase 3): the per-call audit names the member, so it goes
+  // with the workspace; the daily counts are the add-on's billing record.
+  mcpCalls: {
+    scope: "org",
+    orgIndex: "by_clerkOrgId_and_createdAt",
+    class: "operational",
+    purge: "delete",
+    userIdFields: ["userId"],
+  },
+  mcpUsageDays: {
+    scope: "org",
+    orgIndex: "by_clerkOrgId_and_period",
+    class: "billing",
+    purge: "keep",
+  },
 
   // ---- AskFabric -------------------------------------------------------------
   askThreads: {
@@ -393,6 +415,7 @@ export const ERASURE: Record<TableNames, "scan" | string | null> = {
   recommendationBackfills: null,
   tenants: "Only Biz Group staff create workspaces; staff are never erased.",
   orgThemes: "scan",
+  orgFeatures: "scan",
   memberships: "scan",
   membershipIntents: "scan",
   orgMembershipStats: null,
@@ -416,6 +439,8 @@ export const ERASURE: Record<TableNames, "scan" | string | null> = {
   summaryChunks: null,
   aiUsageEvents: "scan",
   aiUsageRollups: null,
+  mcpCalls: "scan",
+  mcpUsageDays: null,
   askThreads: "Deleted with the rest of their AskFabric content (askLifecycle.purgeAskFabricForMember).",
   askMessages: "Deleted with their threads.",
   askCitations: "Deleted with their threads.",
@@ -443,6 +468,7 @@ export const EXPORT_POLICY: Record<TableNames, true | string> = {
   recommendationBackfills: "Platform bookkeeping.",
   tenants: "Covered by the README; the row holds Biz Group's internal notes.",
   orgThemes: "Colours derived from the logo.",
+  orgFeatures: true,
   memberships: true,
   membershipIntents: true,
   orgMembershipStats: "Counts derived from memberships.",
@@ -466,6 +492,8 @@ export const EXPORT_POLICY: Record<TableNames, true | string> = {
   summaryChunks: "Intermediate output of overview generation.",
   aiUsageEvents: "Biz Group's own cost records.",
   aiUsageRollups: "Biz Group's own cost records.",
+  mcpCalls: true,
+  mcpUsageDays: "Biz Group's own usage records.",
   // Saish 2026-11-11: AskFabric chats are private to each member (D12), so
   // they never leave the workspace in an export.
   askThreads: "AskFabric chats are private to each member.",

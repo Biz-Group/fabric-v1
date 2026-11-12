@@ -1,7 +1,8 @@
 import { v } from "convex/values";
-import { env, internalQuery } from "../_generated/server";
+import { internalQuery } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import { orgViewerValidator, requireOrgViewer, resolveOrgViewer } from "../lib/orgAuth";
-import { isOrgInRollout, parseOrgRollout } from "../lib/orgRollout";
+import { mcpAccessFor } from "../mcpSettings";
 import { citationPathResolver } from "../askfabric/citationAccess";
 import { citationTarget } from "../lib/citationLinks";
 
@@ -17,42 +18,35 @@ export type McpViewerLookup =
   | {
       ok: true;
       viewer: { tokenIdentifier: string; orgId: string };
+      userId: Id<"users">;
       slug: string;
       role: "admin" | "contributor" | "viewer";
-      /** False when the workspace hasn't turned MCP on: the connection is refused (403). */
+      /**
+       * False unless the deployment switch, the add-on and the admin's switch
+       * all allow MCP (mcpSettings.ts): the connection is then refused (403).
+       */
       enabled: boolean;
+      /** The admin's toggle for conversation-level tools (M2). */
+      conversationTools: boolean;
     }
   | { ok: false; status: 404; reason: "UNKNOWN_WORKSPACE" };
 
-/**
- * The workspace is named one of two ways (M8): by the slug in a per-workspace
- * URL (`/mcp/<slug>`), or by the org the user picked on Clerk's consent screen
- * (`/mcp`, the token's `org_id`). Either way membership decides access.
- */
+/** The workspace comes from the URL slug (one URL per workspace, M13); membership decides access. */
 export const resolveViewer = internalQuery({
-  args: {
-    workspace: v.union(v.object({ slug: v.string() }), v.object({ clerkOrgId: v.string() })),
-    tokenIdentifier: v.string(),
-  },
-  handler: async (ctx, { workspace, tokenIdentifier }): Promise<McpViewerLookup> => {
-    const tenant =
-      "slug" in workspace
-        ? await ctx.db
-            .query("tenants")
-            .withIndex("by_slug", (q) => q.eq("slug", workspace.slug.toLowerCase()))
-            .first()
-        : await ctx.db
-            .query("tenants")
-            .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", workspace.clerkOrgId))
-            .first();
+  args: { slug: v.string(), tokenIdentifier: v.string() },
+  handler: async (ctx, { slug, tokenIdentifier }): Promise<McpViewerLookup> => {
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug.toLowerCase()))
+      .first();
     // Unknown, deleted and closed workspaces answer alike, before membership,
     // so the endpoint never confirms a workspace to a non-member.
     if (!tenant || tenant.status !== "active") return { ok: false, status: 404, reason: "UNKNOWN_WORKSPACE" };
     const viewer = { tokenIdentifier, orgId: tenant.clerkOrgId };
     const resolved = await resolveOrgViewer(ctx, viewer);
     if (!resolved) return { ok: false, status: 404, reason: "UNKNOWN_WORKSPACE" };
-    const enabled = isOrgInRollout(parseOrgRollout(env.FABRIC_MCP), tenant.clerkOrgId);
-    return { ok: true, viewer, slug: tenant.slug, role: resolved.role, enabled };
+    const { enabled, conversationTools } = await mcpAccessFor(ctx, tenant.clerkOrgId);
+    return { ok: true, viewer, userId: resolved.user._id, slug: tenant.slug, role: resolved.role, enabled, conversationTools };
   },
 });
 

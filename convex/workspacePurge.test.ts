@@ -228,7 +228,9 @@ function stubVendors(options: { elevenlabsStatus?: number; adaElsewhere?: boolea
 
 async function settle(t: TestConvex) {
   // Steps far enough for re-sweeps (2 minutes apart), never as far as any expiry.
-  for (let step = 0; step < 40; step++) {
+  // Each scheduled hop takes one step, so the count grows with the purge's
+  // table list (60 since orgFeatures, the Fabric MCP settings).
+  for (let step = 0; step < 60; step++) {
     vi.advanceTimersByTime(60_000);
     await t.finishInProgressScheduledFunctions();
   }

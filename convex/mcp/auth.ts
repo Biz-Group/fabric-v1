@@ -29,8 +29,6 @@ export type VerifiedToken = {
   clerkUserId: string;
   clientId: string;
   scopes: string[];
-  /** The workspace picked on the consent screen (`user:org:read`), if any. */
-  orgId: string | null;
   format: "jwt" | "opaque";
   audience: AudienceCheck;
   /** The token's audience values, kept only when they don't match (they are URLs, not personal data). */
@@ -95,7 +93,6 @@ async function verifyJwt(token: string, iss: string, resource: string): Promise<
       clerkUserId: payload.sub,
       clientId,
       scopes: scopesOf(payload),
-      orgId: typeof payload.org_id === "string" && payload.org_id ? payload.org_id : null,
       format: "jwt",
       audience,
       ...(audience === "mismatch" ? { audienceSeen: audiences } : {}),
@@ -109,7 +106,6 @@ type OpaqueVerifyResponse = {
   scopes?: string[];
   revoked?: boolean;
   expired?: boolean;
-  org_id?: string;
 };
 
 async function verifyOpaque(token: string): Promise<TokenCheck> {
@@ -130,7 +126,6 @@ async function verifyOpaque(token: string): Promise<TokenCheck> {
       clerkUserId: response.subject,
       clientId: response.client_id,
       scopes: response.scopes ?? [],
-      orgId: typeof response.org_id === "string" && response.org_id ? response.org_id : null,
       format: "opaque",
       audience: "absent",
     },

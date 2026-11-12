@@ -495,6 +495,13 @@ export default defineSchema({
       v.literal("workspaceSuspended"),
       v.literal("workspaceReinstated"),
       v.literal("workspaceExported"),
+      // Fabric MCP server (Phase 2): add-on granted or revoked by Fabric
+      // staff; switched on or off by an admin; conversation tools changed.
+      v.literal("mcpGranted"),
+      v.literal("mcpRevoked"),
+      v.literal("mcpEnabled"),
+      v.literal("mcpDisabled"),
+      v.literal("mcpConversationToolsChanged"),
     ),
     detail: v.optional(v.string()),
     createdAt: v.number(),
@@ -773,6 +780,67 @@ export default defineSchema({
     extractedAt: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_clerkOrgId", ["clerkOrgId"]),
+
+  // Per-workspace feature settings (docs/fabric-mcp-build-task-list.md, Phase 2).
+  // One row per org, created on first write. Today it holds the Fabric MCP
+  // server: the paid add-on Fabric staff grant (M6), the admin switch with the
+  // residency policy the admin accepted (M1, M4, M9), and whether
+  // conversation-level tools are exposed (M2).
+  orgFeatures: defineTable({
+    clerkOrgId: v.string(),
+    mcpGranted: v.boolean(),
+    mcpGrantedAt: v.optional(v.number()),
+    mcpGrantedByUserId: v.optional(v.id("users")),
+    mcpEnabled: v.boolean(),
+    mcpEnabledAt: v.optional(v.number()),
+    mcpEnabledByUserId: v.optional(v.id("users")),
+    // True when a Fabric super-admin switched it on (B5): shown to the
+    // workspace's admins as "Enabled by Fabric staff".
+    mcpEnabledByStaff: v.optional(v.boolean()),
+    // The residency policy version the enabling admin accepted.
+    mcpPolicyVersion: v.optional(v.string()),
+    mcpConversationTools: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_clerkOrgId", ["clerkOrgId"]),
+
+  // Fabric MCP server audit and metering (Phase 3, B2): one row per tool
+  // call. No tool input or output is stored. Folded nightly into
+  // mcpUsageDays, then pruned after the retention window.
+  mcpCalls: defineTable({
+    clerkOrgId: v.string(),
+    userId: v.optional(v.id("users")),
+    // The OAuth client that made the call (a Clerk client id, or a CIMD URL).
+    clientId: v.string(),
+    tool: v.string(),
+    outcome: v.union(
+      v.literal("ok"),
+      v.literal("notFound"),
+      v.literal("error"),
+      v.literal("badArguments"),
+      v.literal("rateLimited"),
+    ),
+    resultCount: v.number(),
+    truncated: v.boolean(),
+    latencyMs: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_clerkOrgId_and_createdAt", ["clerkOrgId", "createdAt"])
+    .index("by_createdAt", ["createdAt"]),
+
+  // One row per workspace per UTC day with MCP calls: the billing record for
+  // the add-on (M6, B2). Content-free and person-free (counts only).
+  mcpUsageDays: defineTable({
+    clerkOrgId: v.string(),
+    period: v.string(),
+    calls: v.number(),
+    failures: v.number(),
+    users: v.number(),
+    tools: v.array(v.object({ tool: v.string(), calls: v.number(), failures: v.number() })),
+    clients: v.array(v.object({ clientId: v.string(), calls: v.number() })),
+    foldedAt: v.number(),
+  })
+    .index("by_clerkOrgId_and_period", ["clerkOrgId", "period"])
+    .index("by_period", ["period"]),
 
   // Organizational hierarchy
   functions: defineTable({

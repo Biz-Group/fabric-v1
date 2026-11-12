@@ -22,6 +22,7 @@ import {
   type DeploymentFilter,
   type RangeKey,
 } from "@/features/tenants-console/usage-shared";
+import { McpUsageOverview } from "@/features/tenants-console/mcp-usage-section";
 
 export default function UsageOverviewPage() {
   const [range, setRange] = useState<RangeKey>("30d");
@@ -161,6 +162,8 @@ export default function UsageOverviewPage() {
           }),
         )}
       />
+
+      <McpUsageOverview from={from} to={to} />
 
       <UsageLedgerNote />
     </div>

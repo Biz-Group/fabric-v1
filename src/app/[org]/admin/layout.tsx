@@ -2,7 +2,7 @@
 
 import { useQuery } from "convex/react";
 import Link from "next/link";
-import { Home, MessageSquare, Palette, Sparkles, Users } from "lucide-react";
+import { Bot, Home, MessageSquare, Palette, Sparkles, Users } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import { buttonVariants } from "@/components/ui/button";
 import { PageTitle } from "@/components/ui/page-title";
@@ -26,6 +26,9 @@ export default function AdminLayout({
   // but misconfigured (so the page can say why). Never for a switched-off org.
   const askFabric = useQuery(api.ask.getAvailability);
   const showAskFabric = askFabric?.available === true || (askFabric?.reason != null && askFabric.reason !== "switchOff");
+  // Admin → MCP only where Fabric staff granted the MCP add-on (M6).
+  // Skipped for non-admins, whose call would be refused.
+  const mcp = useQuery(api.mcpSettings.adminSettings, membership?.role === "admin" ? {} : "skip");
   const routes = useWorkspaceRoutes();
 
   if (membership === undefined) {
@@ -82,6 +85,13 @@ export default function AdminLayout({
           label: "AskFabric",
           active: routes.isActivePath("/admin/askfabric", { exact: true }),
           visible: showAskFabric,
+        },
+        {
+          href: routes.adminMcpHref,
+          icon: Bot,
+          label: "MCP",
+          active: routes.isActivePath("/admin/mcp", { exact: true }),
+          visible: mcp?.granted === true,
         },
         {
           href: routes.adminAppearanceHref,

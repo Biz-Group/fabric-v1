@@ -394,6 +394,17 @@ export const SCAN_HANDLERS: Partial<Record<TableNames, Handler>> = {
   orgThemes: async (ctx, row, who) =>
     row.approvedByUserId === who.userId ? patchRow(ctx, row._id, { approvedByUserId: undefined }) : "unchanged",
 
+  orgFeatures: async (ctx, row, who) => {
+    const patch = {
+      ...(row.mcpGrantedByUserId === who.userId ? { mcpGrantedByUserId: undefined } : {}),
+      ...(row.mcpEnabledByUserId === who.userId ? { mcpEnabledByUserId: undefined } : {}),
+    };
+    return Object.keys(patch).length ? patchRow(ctx, row._id, patch) : "unchanged";
+  },
+
+  mcpCalls: async (ctx, row, who) =>
+    row.userId === who.userId ? patchRow(ctx, row._id, { userId: undefined }) : "unchanged",
+
   memberships: async (ctx, row, who) =>
     row.invitedBy === who.userId ? patchRow(ctx, row._id, { invitedBy: undefined }) : "unchanged",
 

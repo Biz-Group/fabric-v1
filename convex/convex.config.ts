@@ -77,6 +77,9 @@ const app = defineApp({
     // URL. Otherwise a mismatch is only logged (Clerk instance setting
     // aud_claim_enabled controls whether tokens carry `aud` at all).
     FABRIC_MCP_ENFORCE_AUDIENCE: v.optional(v.string()),
+    // Display names for OAuth client ids in usage views: "id=Name,id2=Name 2".
+    // CIMD clients (URLs) are shown by host without an entry.
+    FABRIC_MCP_CLIENT_NAMES: v.optional(v.string()),
   },
 });
 app.use(migrations);

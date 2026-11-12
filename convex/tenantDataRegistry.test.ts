@@ -154,6 +154,8 @@ describe("tenant data registry", () => {
     expect(survivors).toEqual([
       "aiUsageEvents:keep",
       "aiUsageRollups:keep",
+      // Fabric MCP's daily counts: the add-on's billing record, person-free (D4).
+      "mcpUsageDays:keep",
       "tenantPurgeItems:keep",
       "tenantPurges:keep",
       "tenants:tombstone",

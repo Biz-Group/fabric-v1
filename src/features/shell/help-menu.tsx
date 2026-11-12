@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import {
+  Bot,
   CircleHelp,
   Compass,
   ListChecks,
@@ -45,8 +46,8 @@ function scrollToGettingStarted() {
 
 /**
  * The header's "?" menu: the two-minute tour, Show me around (the Explore
- * walkthrough, for anyone), Getting started (eligible admins) and release
- * notes. A dot marks the icon while a member who's being onboarded hasn't
+ * walkthrough, for anyone), Getting started (eligible admins), Connect AI
+ * assistants (when the workspace has MCP on, B6) and release notes. A dot marks the icon while a member who's being onboarded hasn't
  * watched the tour.
  */
 export function HelpMenu() {
@@ -54,6 +55,7 @@ export function HelpMenu() {
   const routes = useWorkspaceRoutes();
   const onboarding = useQuery(api.onboarding.getMyOnboarding);
   const setChecklistHidden = useMutation(api.onboarding.setChecklistHidden);
+  const mcp = useQuery(api.mcpSettings.mySetup);
   const [tourOpen, setTourOpen] = useState(false);
 
   const showDot = Boolean(onboarding?.eligible && !onboarding.tour.watched);
@@ -111,6 +113,12 @@ export function HelpMenu() {
             <DropdownMenuItem onClick={() => void openGettingStarted()}>
               <ListChecks className="size-4" />
               Getting started
+            </DropdownMenuItem>
+          )}
+          {mcp?.status === "on" && (
+            <DropdownMenuItem onClick={() => router.push(routes.connectHref)}>
+              <Bot className="size-4" />
+              Connect AI assistants
             </DropdownMenuItem>
           )}
           <DropdownMenuItem onClick={() => router.push(routes.releaseNotesHref)}>

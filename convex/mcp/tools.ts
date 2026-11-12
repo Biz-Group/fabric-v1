@@ -30,9 +30,21 @@ export const MCP_ASK_TOOL_NAMES = [
   "searchFabricHelp",
 ] as const;
 
+/**
+ * Conversation-level tools: transcripts and contribution evidence. Exposed
+ * only when the workspace admin turns them on (M2), since they carry
+ * contributors' own words.
+ */
+export const MCP_CONVERSATION_TOOL_NAMES = [
+  "listConversations",
+  "getConversationEvidence",
+  "getTranscript",
+  "searchConversations",
+] as const;
+
 export const WORKSPACE_TOOL_NAME = "getWorkspaceContents";
 
-/** Every exposed tool name, in `tools/list` order. */
+/** Every always-on tool name, in `tools/list` order. */
 export const MCP_TOOL_NAMES = [WORKSPACE_TOOL_NAME, ...MCP_ASK_TOOL_NAMES] as const;
 
 type ExecutorRef = FunctionReference<"query", "internal", { viewer: { tokenIdentifier: string; orgId: string } } & Record<string, unknown>, AskToolResult>;
@@ -58,11 +70,15 @@ function fromAskTool(tool: RegisteredAskTool): McpTool {
   return { name: tool.name, description: tool.description, inputSchema: tool.inputSchema, executorRef: tool.executorRef as unknown as ExecutorRef };
 }
 
-export function mcpTools(): McpTool[] {
+export type McpToolOptions = { conversationTools: boolean };
+
+/** The tools a workspace exposes. Conversation tools come last, so the always-on prefix stays stable. */
+export function mcpTools({ conversationTools }: McpToolOptions): McpTool[] {
   const byName = new Map(ASK_TOOLS.map((tool) => [tool.name as string, tool]));
+  const names: readonly string[] = conversationTools ? [...MCP_ASK_TOOL_NAMES, ...MCP_CONVERSATION_TOOL_NAMES] : MCP_ASK_TOOL_NAMES;
   return [
     WORKSPACE_TOOL,
-    ...MCP_ASK_TOOL_NAMES.map((name) => {
+    ...names.map((name) => {
       const tool = byName.get(name);
       if (!tool) throw new Error(`MCP tool ${name} is not in the AskFabric catalog`);
       return fromAskTool(tool);
@@ -70,13 +86,13 @@ export function mcpTools(): McpTool[] {
   ];
 }
 
-export function getMcpTool(name: string): McpTool | undefined {
-  return mcpTools().find((tool) => tool.name === name);
+export function getMcpTool(name: string, options: McpToolOptions): McpTool | undefined {
+  return mcpTools(options).find((tool) => tool.name === name);
 }
 
 /** `tools/list` entries, in a fixed order so client prompt caches hold. */
-export function toolListEntries() {
-  return mcpTools().map((tool) => ({
+export function toolListEntries(options: McpToolOptions) {
+  return mcpTools(options).map((tool) => ({
     name: tool.name,
     description: tool.description,
     inputSchema: tool.inputSchema,

@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { LogoFileButton } from "@/features/tenants-console/logo-file-button";
+import { McpAddOnCard } from "@/features/tenants-console/mcp-add-on-card";
 import { TenantInvitations } from "@/features/tenants-console/tenant-invitations";
 import {
   ClosedWorkspaceCard,
@@ -139,6 +140,8 @@ function TenantDetail({ tenant }: { tenant: TenantView }) {
       </Card>
 
       <MembersCard tenantId={tenant.tenantId} clerkOrgId={tenant.clerkOrgId} canErase />
+
+      <McpAddOnCard tenantId={tenant.tenantId} />
 
       <WorkspaceExportCard tenantId={tenant.tenantId} />
 

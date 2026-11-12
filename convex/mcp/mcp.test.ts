@@ -10,7 +10,7 @@ import { ASK_TOOLS } from "../askTools/catalog";
 import { NOT_FOUND, searchResult, type AskToolResult } from "../askTools/results";
 import { resetJwksCache, verifyAccessToken } from "./auth";
 import { detectEra, finishResult, headerMismatch, parseMessage, type JsonRpcRequest } from "./protocol";
-import { MCP_TOOL_NAMES, toMcpContent, toolListEntries } from "./tools";
+import { MCP_CONVERSATION_TOOL_NAMES, MCP_TOOL_NAMES, toMcpContent, toolListEntries } from "./tools";
 
 const modules = import.meta.glob("/convex/**/*.ts");
 const RESOURCE = "https://spike.convex.site/mcp/alpha";
@@ -81,7 +81,7 @@ describe("protocol", () => {
 
 describe("tools", () => {
   test("exposes only the synthesised member tools (M2), all read-only", () => {
-    const entries = toolListEntries();
+    const entries = toolListEntries({ conversationTools: false });
     expect(entries.map((e) => e.name)).toEqual([...MCP_TOOL_NAMES]);
     expect(entries[0].name).toBe("getWorkspaceContents");
     for (const excluded of ["getTranscript", "searchConversations", "listConversations", "getConversationEvidence", "getParticipation", "show"]) {
@@ -92,6 +92,13 @@ describe("tools", () => {
     const schemas = JSON.stringify(entries.map((e) => e.inputSchema)).toLowerCase();
     for (const field of ["orgid", "userid", "tokenidentifier", "viewer"]) expect(schemas).not.toContain(`"${field}"`);
     expect(ASK_TOOLS.length).toBeGreaterThan(entries.length);
+  });
+
+  test("conversation tools are appended only when the admin turns them on (M2)", () => {
+    const withConversations = toolListEntries({ conversationTools: true }).map((e) => e.name);
+    expect(withConversations).toEqual([...MCP_TOOL_NAMES, ...MCP_CONVERSATION_TOOL_NAMES]);
+    expect(withConversations).not.toContain("getParticipation");
+    expect(withConversations).not.toContain("show");
   });
 
   test("turns search results into linked text sections", () => {
@@ -130,6 +137,11 @@ async function seed(ctx: MutationCtx) {
     });
   await tenant(ORG_A, "alpha");
   await tenant(ORG_B, "beta");
+  // Alpha has the add-on and has switched MCP on; beta has the add-on only.
+  const features = (clerkOrgId: string, mcpEnabled: boolean) =>
+    ctx.db.insert("orgFeatures", { clerkOrgId, mcpGranted: true, mcpEnabled, mcpConversationTools: false, updatedAt: 0 });
+  await features(ORG_A, true);
+  await features(ORG_B, false);
   await tenant("org_mcp_closed", "closed", "suspended");
   const person = async (name: string, orgId: string, removed = false) => {
     const tokenIdentifier = `${ISSUER}|${name}`;
@@ -157,12 +169,9 @@ describe("resolveViewer", () => {
     const t = setup();
     const people = await t.run(seed);
     const resolve = (slug: string, tokenIdentifier: string) =>
-      t.query(internal.mcp.access.resolveViewer, { workspace: { slug }, tokenIdentifier });
+      t.query(internal.mcp.access.resolveViewer, { slug, tokenIdentifier });
 
-    expect(await resolve("alpha", people.ana)).toEqual({ ok: true, viewer: { tokenIdentifier: people.ana, orgId: ORG_A }, slug: "alpha", role: "viewer", enabled: true });
-    // The picker names the workspace by the org chosen at sign-in.
-    expect(await t.query(internal.mcp.access.resolveViewer, { workspace: { clerkOrgId: ORG_A }, tokenIdentifier: people.ana })).toMatchObject({ ok: true, slug: "alpha" });
-    expect(await t.query(internal.mcp.access.resolveViewer, { workspace: { clerkOrgId: ORG_A }, tokenIdentifier: people.bob })).toMatchObject({ ok: false, status: 404 });
+    expect(await resolve("alpha", people.ana)).toMatchObject({ ok: true, viewer: { tokenIdentifier: people.ana, orgId: ORG_A }, slug: "alpha", role: "viewer", enabled: true, conversationTools: false });
     expect(await resolve("ALPHA", people.ana)).toMatchObject({ ok: true });
     // Another tenant's member, a removed member, an unknown slug and a closed
     // workspace all look the same.
@@ -241,41 +250,35 @@ describe("HTTP", () => {
     expect(await response.json()).toMatchObject({ resource: "https://spike.convex.site/mcp/alpha", authorization_servers: [ISSUER] });
   });
 
-  test("the picker URL asks for the org scope", async () => {
+  test("there is no picker: bare /mcp is not an endpoint (M13)", async () => {
     const t = setup();
-    const challenge = await t.fetch("/mcp", { method: "POST", body: "{}" });
-    expect(challenge.headers.get("WWW-Authenticate")).toContain('oauth-protected-resource/mcp", scope="profile email user:org:read"');
-    const metadata = await (await t.fetch("/.well-known/oauth-protected-resource/mcp", { method: "GET" })).json();
-    expect(metadata).toMatchObject({ resource: "https://spike.convex.site/mcp", scopes_supported: ["profile", "email", "user:org:read"] });
+    expect((await t.fetch("/mcp", { method: "POST", body: "{}" })).status).toBe(404);
+    expect((await t.fetch("/.well-known/oauth-protected-resource/mcp", { method: "GET" })).status).toBe(404);
   });
 
-  test("routes signed-in calls by the URL or the picked workspace, never across them", async () => {
+  test("routes signed-in calls by the workspace in the URL, and only for its members", async () => {
     const t = setup();
     await t.run(seed);
     const sign = await signerFor();
-    const listTools = async (path: string, claims: Record<string, unknown>) =>
+    const listTools = async (path: string) =>
       t.fetch(path, {
         method: "POST",
-        headers: { Authorization: `Bearer ${await sign({ client_id: CLIENT, ...claims }, ISSUER, "ana")}` },
+        headers: { Authorization: `Bearer ${await sign({ client_id: CLIENT }, ISSUER, "ana")}` },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
       });
-    expect((await listTools("/mcp/alpha", {})).status).toBe(200);
-    expect((await listTools("/mcp", { org_id: ORG_A })).status).toBe(200);
-    // Picker without a picked workspace: sign in again.
-    expect((await listTools("/mcp", {})).status).toBe(401);
-    // A token picked for beta is refused at alpha's URL.
-    expect((await listTools("/mcp/alpha", { org_id: ORG_B })).status).toBe(403);
-    // Ana picking beta, where she isn't a member, gets the same 404 as an unknown workspace.
-    expect((await listTools("/mcp", { org_id: ORG_B })).status).toBe(404);
+    expect((await listTools("/mcp/alpha")).status).toBe(200);
+    // Beta exists, but Ana isn't a member: the same 404 as an unknown workspace.
+    expect((await listTools("/mcp/beta")).status).toBe(404);
+    expect((await listTools("/mcp/nope")).status).toBe(404);
   });
 
   test("a member of a workspace with MCP off is refused at connection", async () => {
     const t = setup();
     await t.run(seed);
     const sign = await signerFor();
-    const token = await sign({ client_id: CLIENT, org_id: ORG_B }, ISSUER, "bob");
+    const token = await sign({ client_id: CLIENT }, ISSUER, "bob");
     const post = (body: unknown) =>
-      t.fetch("/mcp", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+      t.fetch("/mcp/beta", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
     const listed = await post({ jsonrpc: "2.0", id: 1, method: "tools/list" });
     expect(listed.status).toBe(403);
     expect((await listed.json()).error.message).toMatch(/isn't turned on for this Fabric workspace/);
@@ -317,6 +320,30 @@ describe("HTTP", () => {
     expect(text).toMatch(/Department: Payables \[/);
     expect(text).toMatch(/Process: Invoice approval \[/);
     expect(text).not.toContain("Beta");
+  });
+
+  test("records every tool call for audit and metering, without its content", async () => {
+    const t = setup();
+    await t.run(seed);
+    const sign = await signerFor();
+    const token = await sign({ client_id: CLIENT }, ISSUER, "ana");
+    const callTool = (name: string, args: Record<string, unknown>) =>
+      t.fetch("/mcp/alpha", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
+      });
+    await callTool("getWorkspaceContents", {});
+    await callTool("getOverview", { nonsense: true });
+    const rows = await t.run(async (ctx) => await ctx.db.query("mcpCalls").collect());
+    expect(rows.map((row) => [row.tool, row.outcome, row.clientId, row.clerkOrgId])).toEqual([
+      ["getWorkspaceContents", "ok", CLIENT, ORG_A],
+      ["getOverview", "badArguments", CLIENT, ORG_A],
+    ]);
+    expect(rows.every((row) => row.userId !== undefined)).toBe(true);
+    expect(Object.keys(rows[0]).sort()).toEqual(
+      ["_creationTime", "_id", "clerkOrgId", "clientId", "createdAt", "latencyMs", "outcome", "resultCount", "tool", "truncated", "userId"],
+    );
   });
 
   test("rate-limits a user's tool calls and says when to retry", async () => {
