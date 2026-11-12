@@ -62,6 +62,15 @@ const app = defineApp({
     // must watch the tour before building. Unset or invalid turns onboarding
     // off, which makes this the kill switch. See lib/onboarding.ts.
     ONBOARDING_LAUNCHED_AT: v.optional(v.string()),
+    // Fabric MCP server (SPIKE, docs/fabric-mcp-server-feasibility.md).
+    // Rollout switch in the same three forms as SUMMARY_V2. See convex/mcp/.
+    FABRIC_MCP: v.optional(v.string()),
+    // Comma-separated Clerk OAuth client ids whose tokens the MCP server
+    // accepts. Unset accepts none (fails closed).
+    FABRIC_MCP_CLIENT_IDS: v.optional(v.string()),
+    // Required token audience, when set. Clerk lets only confidential OAuth
+    // apps set one, so public clients (Claude Code, CIMD) rely on the allowlist.
+    FABRIC_MCP_AUDIENCE: v.optional(v.string()),
   },
 });
 app.use(migrations);

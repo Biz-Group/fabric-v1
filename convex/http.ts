@@ -9,6 +9,7 @@ import {
 import { verifyAudioPlaybackToken } from "./lib/audioPlaybackToken";
 import { SPEECH_STREAM_PATH, streamAskSpeech } from "./askSpeech";
 import { parseByteRange, sliceByteStream } from "./lib/audioRange";
+import { registerMcpRoutes } from "./mcp/routes";
 
 function base64ToBytes(value: string): ArrayBuffer | null {
   try {
@@ -497,5 +498,8 @@ http.route({
     });
   }),
 });
+
+// Fabric MCP server (SPIKE): see convex/mcp/routes.ts.
+registerMcpRoutes(http);
 
 export default http;
