@@ -1,14 +1,20 @@
+import type { FunctionReference } from "convex/server";
+import { internal } from "../_generated/api";
 import { ASK_TOOLS } from "../askTools/catalog";
-import type { RegisteredAskTool } from "../askTools/registry";
+import type { JsonSchema, RegisteredAskTool } from "../askTools/registry";
 import type { AskToolResult } from "../askTools/results";
 
 /**
- * The AskFabric tools exposed over MCP (SPIKE). Decision M2 (2026-11-12) keeps
- * the synthesised layer and leaves out transcripts, conversation-level tools,
- * participation and the display tool. The AskFabric system prompt carries the
- * named-people guardrail (D7), and that prompt doesn't travel over MCP.
+ * The tools the Fabric MCP server exposes.
+ *
+ * Decision M2 (2026-11-12) keeps the synthesised layer and leaves out
+ * transcripts, conversation-level tools, participation and the display tool,
+ * because the AskFabric system prompt that carries the named-people guardrail
+ * (D7) doesn't travel over MCP. Descriptions are AskFabric's own, unchanged,
+ * so AskFabric's prompt and eval are untouched; MCP-specific guidance goes in
+ * the server instructions.
  */
-export const MCP_TOOL_NAMES = [
+export const MCP_ASK_TOOL_NAMES = [
   "searchHierarchy",
   "browseHierarchy",
   "getOverview",
@@ -24,24 +30,51 @@ export const MCP_TOOL_NAMES = [
   "searchFabricHelp",
 ] as const;
 
-export function mcpTools(): RegisteredAskTool[] {
+export const WORKSPACE_TOOL_NAME = "getWorkspaceContents";
+
+/** Every exposed tool name, in `tools/list` order. */
+export const MCP_TOOL_NAMES = [WORKSPACE_TOOL_NAME, ...MCP_ASK_TOOL_NAMES] as const;
+
+type ExecutorRef = FunctionReference<"query", "internal", { viewer: { tokenIdentifier: string; orgId: string } } & Record<string, unknown>, AskToolResult>;
+
+export type McpTool = {
+  name: string;
+  description: string;
+  inputSchema: JsonSchema;
+  /** An internal query taking the viewer plus the tool's arguments. */
+  executorRef: ExecutorRef;
+};
+
+const WORKSPACE_TOOL: McpTool = {
+  name: WORKSPACE_TOOL_NAME,
+  description:
+    "List this organization's whole structure in one call: every function, its departments and their processes, with ids and, where available, each process's overview headline. Call it first, then pass the ids to the other tools. For a large organization, processes are summarised as counts per department; find them with searchHierarchy or browseHierarchy.",
+  inputSchema: { type: "object", additionalProperties: false, properties: {}, required: [] },
+  executorRef: internal.mcp.workspace.getWorkspaceContents as unknown as ExecutorRef,
+};
+
+function fromAskTool(tool: RegisteredAskTool): McpTool {
+  if (tool.access !== "member" || tool.display) throw new Error(`MCP tool ${tool.name} must be a member data tool`);
+  return { name: tool.name, description: tool.description, inputSchema: tool.inputSchema, executorRef: tool.executorRef as unknown as ExecutorRef };
+}
+
+export function mcpTools(): McpTool[] {
   const byName = new Map(ASK_TOOLS.map((tool) => [tool.name as string, tool]));
-  return MCP_TOOL_NAMES.map((name) => {
-    const tool = byName.get(name);
-    if (!tool) throw new Error(`MCP tool ${name} is not in the AskFabric catalog`);
-    if (tool.access !== "member" || tool.display) throw new Error(`MCP tool ${name} must be a member data tool`);
-    return tool;
-  });
+  return [
+    WORKSPACE_TOOL,
+    ...MCP_ASK_TOOL_NAMES.map((name) => {
+      const tool = byName.get(name);
+      if (!tool) throw new Error(`MCP tool ${name} is not in the AskFabric catalog`);
+      return fromAskTool(tool);
+    }),
+  ];
 }
 
-export function getMcpTool(name: string): RegisteredAskTool | undefined {
-  return (MCP_TOOL_NAMES as readonly string[]).includes(name) ? mcpTools().find((tool) => tool.name === name) : undefined;
+export function getMcpTool(name: string): McpTool | undefined {
+  return mcpTools().find((tool) => tool.name === name);
 }
 
-/**
- * `tools/list` entries, in a fixed order so client prompt caches hold. The
- * AskFabric schemas are already strict JSON Schema, which MCP accepts as is.
- */
+/** `tools/list` entries, in a fixed order so client prompt caches hold. */
 export function toolListEntries() {
   return mcpTools().map((tool) => ({
     name: tool.name,

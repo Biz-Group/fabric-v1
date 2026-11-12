@@ -39,8 +39,9 @@ type Env = {
   readonly ASKFABRIC_TTS_MODEL: string | undefined;
   readonly ASKFABRIC_TTS_VOICE_ID: string | undefined;
   readonly FABRIC_MCP: string | undefined;
-  readonly FABRIC_MCP_AUDIENCE: string | undefined;
   readonly FABRIC_MCP_CLIENT_IDS: string | undefined;
+  readonly FABRIC_MCP_ENFORCE_AUDIENCE: string | undefined;
+  readonly FABRIC_MCP_PUBLIC_URL: string | undefined;
   readonly FOUNDRY_API_KEY: string | undefined;
   readonly FOUNDRY_CLAUDE_DEPLOYMENT: string | undefined;
   readonly FOUNDRY_ENDPOINT: string | undefined;

@@ -3,7 +3,7 @@ import { env, internalQuery } from "../_generated/server";
 import { orgViewerValidator, requireOrgViewer, resolveOrgViewer } from "../lib/orgAuth";
 import { isOrgInRollout, parseOrgRollout } from "../lib/orgRollout";
 import { citationPathResolver } from "../askfabric/citationAccess";
-import { citationTarget } from "../../src/features/ask/citation-links";
+import { citationTarget } from "../lib/citationLinks";
 
 /**
  * Tenant and member resolution for the Fabric MCP server (SPIKE).

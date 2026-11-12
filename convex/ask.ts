@@ -37,7 +37,6 @@ import {
 } from "./lib/askLimits";
 import { meteredStream, type UsageAttribution } from "./lib/aiUsageMeter";
 import { orgViewerValidator, requireOrgMember, requireOrgViewer } from "./lib/orgAuth";
-import { readableSummaryV2 } from "./lib/summaryV2Feature";
 import { userError } from "./lib/userError";
 import { ASK_TOOLS } from "./askTools/catalog";
 import type { AskDisplayExecutorRef } from "./askTools/registry";
@@ -46,6 +45,7 @@ import { loadHierarchy } from "./askTools/scope";
 import {
   buildHistoryMessages,
   buildTableOfContents,
+  tocFromHierarchy,
   displayNote,
   tableOfContentsIds,
   userTurnMessage,
@@ -455,27 +455,7 @@ export const loadTurnContext = internalQuery({
     }
 
     const hierarchy = await loadHierarchy(ctx, viewer.orgId);
-    const toc: TocFunction[] = hierarchy.functions.map((fn) => ({
-      id: fn._id,
-      name: fn.name,
-      departments: hierarchy.departments
-        .filter((dept) => dept.functionId === fn._id)
-        .map((dept) => ({
-          id: dept._id,
-          name: dept.name,
-          processes: hierarchy.processes
-            .filter((process) => process.departmentId === dept._id)
-            .map((process) => {
-              const overview = readableSummaryV2(process.clerkOrgId, process.summaryV2);
-              return {
-                id: process._id,
-                name: process.name,
-                headline: overview?.headline ?? null,
-                generatedAt: overview?.provenance.generatedAt ?? null,
-              };
-            }),
-        })),
-    }));
+    const toc: TocFunction[] = tocFromHierarchy(hierarchy);
 
     const placementDept = viewer.membership.departmentId
       ? hierarchy.departmentById.get(viewer.membership.departmentId)

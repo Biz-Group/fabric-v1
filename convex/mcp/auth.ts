@@ -1,24 +1,29 @@
-import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload } from "jose";
+import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { env } from "../_generated/server";
 import { clerkFetch } from "../lib/clerkApi";
 
 /**
- * Bearer-token verification for the Fabric MCP server (SPIKE).
+ * Bearer-token verification for the Fabric MCP server.
  *
  * MCP clients present a Clerk OAuth access token. We verify it here rather
  * than adding Clerk's OAuth issuer to `auth.config.ts`: that would make an
  * MCP token a valid Convex identity for every `requireAuth` function, not
  * just these read-only tools.
  *
- * Clerk issues JWT or opaque access tokens depending on instance settings, so
- * the spike accepts both. Clerk session tokens share the issuer and must be
- * refused: one is never an OAuth grant.
+ * Clerk issues JWT or opaque access tokens depending on the instance setting
+ * (`oauth_jwt_access_tokens`), so both are accepted. JWTs are checked locally
+ * and stay valid until they expire (24 hours, not configurable); membership,
+ * the tenant switch and the kill switch are checked on every call instead.
+ * Clerk session tokens share the issuer and are always refused.
  *
- * Audience: Clerk lets only confidential OAuth apps set an audience URI, and
- * Claude Code and CIMD clients are public. So the spike binds tokens to an
- * allowlist of OAuth client ids (`FABRIC_MCP_CLIENT_IDS`), plus the audience
- * when `FABRIC_MCP_AUDIENCE` is set.
+ * Binding: tokens must come from an allowlisted OAuth client
+ * (`FABRIC_MCP_CLIENT_IDS`, fails closed). With Clerk's `aud_claim_enabled`,
+ * a token also names the resource it was issued for; that must be the URL the
+ * client called. `FABRIC_MCP_ENFORCE_AUDIENCE=true` makes that mandatory;
+ * otherwise a missing or different audience is only reported for logging.
  */
+
+export type AudienceCheck = "match" | "absent" | "mismatch";
 
 export type VerifiedToken = {
   clerkUserId: string;
@@ -27,18 +32,14 @@ export type VerifiedToken = {
   /** The workspace picked on the consent screen (`user:org:read`), if any. */
   orgId: string | null;
   format: "jwt" | "opaque";
-  /** Claim names and token shape only, never values that identify a person. */
-  shape: Record<string, unknown>;
+  audience: AudienceCheck;
+  /** The token's audience values, kept only when they don't match (they are URLs, not personal data). */
+  audienceSeen?: string[];
 };
 
-export type TokenCheck = { ok: true; token: VerifiedToken } | { ok: false; reason: string; shape?: Record<string, unknown> };
+export type TokenCheck = { ok: true; token: VerifiedToken } | { ok: false; reason: string };
 
 let jwks: { issuer: string; set: ReturnType<typeof createRemoteJWKSet> } | null = null;
-
-function issuer(): string | null {
-  const domain = process.env.CLERK_JWT_ISSUER_DOMAIN?.trim().replace(/\/+$/, "");
-  return domain ? domain : null;
-}
 
 /** Tests sign with a fresh key each time; this drops the cached key set. */
 export function resetJwksCache(): void {
@@ -46,25 +47,18 @@ export function resetJwksCache(): void {
 }
 
 export function mcpIssuer(): string | null {
-  return issuer();
+  const domain = process.env.CLERK_JWT_ISSUER_DOMAIN?.trim().replace(/\/+$/, "");
+  return domain ? domain : null;
 }
 
 function allowedClientIds(): Set<string> | null {
   const raw = env.FABRIC_MCP_CLIENT_IDS?.trim();
   if (!raw) return null;
-  return new Set(raw.split(",").map((id) => id.trim()).filter(Boolean));
+  return new Set(raw.split(",").map((id: string) => id.trim()).filter(Boolean));
 }
 
-function jwtShape(header: Record<string, unknown>, payload: JWTPayload): Record<string, unknown> {
-  return {
-    typ: header.typ ?? null,
-    alg: header.alg ?? null,
-    claims: Object.keys(payload).sort(),
-    aud: payload.aud ?? null,
-    scope: typeof payload.scope === "string" ? payload.scope : null,
-    hasOrgId: "org_id" in payload,
-    lifetimeSecs: payload.exp && payload.iat ? payload.exp - payload.iat : null,
-  };
+function enforceAudience(): boolean {
+  return env.FABRIC_MCP_ENFORCE_AUDIENCE?.trim().toLowerCase() === "true";
 }
 
 function scopesOf(payload: JWTPayload): string[] {
@@ -73,32 +67,40 @@ function scopesOf(payload: JWTPayload): string[] {
   return [];
 }
 
-async function verifyJwt(token: string, iss: string): Promise<TokenCheck> {
-  let header: Record<string, unknown>;
-  try {
-    header = decodeProtectedHeader(token) as Record<string, unknown>;
-  } catch {
-    return { ok: false, reason: "malformed token" };
-  }
+function checkAudience(audiences: string[], resource: string): AudienceCheck {
+  if (audiences.length === 0) return "absent";
+  return audiences.includes(resource) ? "match" : "mismatch";
+}
+
+async function verifyJwt(token: string, iss: string, resource: string): Promise<TokenCheck> {
   if (!jwks || jwks.issuer !== iss) {
     jwks = { issuer: iss, set: createRemoteJWKSet(new URL(`${iss}/.well-known/jwks.json`)) };
   }
-  const audience = env.FABRIC_MCP_AUDIENCE?.trim() || undefined;
   let payload: JWTPayload;
   try {
-    ({ payload } = await jwtVerify(token, jwks.set, { issuer: iss, audience, algorithms: ["RS256"] }));
+    ({ payload } = await jwtVerify(token, jwks.set, { issuer: iss, algorithms: ["RS256"] }));
   } catch (error) {
     return { ok: false, reason: `jwt rejected: ${(error as Error).name}` };
   }
-  const shape = jwtShape(header, payload);
-  const auds = Array.isArray(payload.aud) ? payload.aud : payload.aud ? [payload.aud] : [];
+  const audiences = Array.isArray(payload.aud) ? payload.aud : payload.aud ? [payload.aud] : [];
   // A Clerk session token (or a `convex` template token) is not an OAuth grant.
-  if ("sid" in payload || auds.includes("convex")) return { ok: false, reason: "session token, not an OAuth access token", shape };
-  const clientId = typeof payload.client_id === "string" ? payload.client_id : typeof payload.azp === "string" ? payload.azp : null;
-  if (!clientId) return { ok: false, reason: "no client_id claim", shape };
-  if (!payload.sub) return { ok: false, reason: "no subject", shape };
-  const orgId = typeof payload.org_id === "string" && payload.org_id ? payload.org_id : null;
-  return { ok: true, token: { clerkUserId: payload.sub, clientId, scopes: scopesOf(payload), orgId, format: "jwt", shape } };
+  if ("sid" in payload || audiences.includes("convex")) return { ok: false, reason: "session token, not an OAuth access token" };
+  const clientId = typeof payload.client_id === "string" ? payload.client_id : null;
+  if (!clientId) return { ok: false, reason: "no client_id claim" };
+  if (!payload.sub) return { ok: false, reason: "no subject" };
+  const audience = checkAudience(audiences, resource);
+  return {
+    ok: true,
+    token: {
+      clerkUserId: payload.sub,
+      clientId,
+      scopes: scopesOf(payload),
+      orgId: typeof payload.org_id === "string" && payload.org_id ? payload.org_id : null,
+      format: "jwt",
+      audience,
+      ...(audience === "mismatch" ? { audienceSeen: audiences } : {}),
+    },
+  };
 }
 
 type OpaqueVerifyResponse = {
@@ -107,7 +109,7 @@ type OpaqueVerifyResponse = {
   scopes?: string[];
   revoked?: boolean;
   expired?: boolean;
-  [key: string]: unknown;
+  org_id?: string;
 };
 
 async function verifyOpaque(token: string): Promise<TokenCheck> {
@@ -120,9 +122,8 @@ async function verifyOpaque(token: string): Promise<TokenCheck> {
   } catch {
     return { ok: false, reason: "opaque token rejected by Clerk" };
   }
-  const shape = { fields: Object.keys(response ?? {}).sort() };
-  if (!response || response.revoked || response.expired) return { ok: false, reason: "token revoked or expired", shape };
-  if (!response.subject || !response.client_id) return { ok: false, reason: "verify response missing subject or client", shape };
+  if (!response || response.revoked || response.expired) return { ok: false, reason: "token revoked or expired" };
+  if (!response.subject || !response.client_id) return { ok: false, reason: "verify response missing subject or client" };
   return {
     ok: true,
     token: {
@@ -131,29 +132,31 @@ async function verifyOpaque(token: string): Promise<TokenCheck> {
       scopes: response.scopes ?? [],
       orgId: typeof response.org_id === "string" && response.org_id ? response.org_id : null,
       format: "opaque",
-      shape,
+      audience: "absent",
     },
   };
 }
 
-export async function verifyAccessToken(authorization: string | null): Promise<TokenCheck> {
+/** Verifies the bearer token for a request to `resource` (the URL the client called). */
+export async function verifyAccessToken(authorization: string | null, resource: string): Promise<TokenCheck> {
   const match = authorization?.match(/^Bearer\s+(\S+)$/i);
   if (!match) return { ok: false, reason: "no bearer token" };
-  const iss = issuer();
+  const iss = mcpIssuer();
   if (!iss) return { ok: false, reason: "CLERK_JWT_ISSUER_DOMAIN is not set" };
   const token = match[1];
-  const result = token.split(".").length === 3 ? await verifyJwt(token, iss) : await verifyOpaque(token);
+  const result = token.split(".").length === 3 ? await verifyJwt(token, iss, resource) : await verifyOpaque(token);
   if (!result.ok) return result;
   // Fails closed: with no allowlist, no OAuth client is accepted.
   const allowed = allowedClientIds();
-  if (!allowed || !allowed.has(result.token.clientId)) {
-    return { ok: false, reason: "OAuth client is not allowed", shape: result.token.shape };
+  if (!allowed || !allowed.has(result.token.clientId)) return { ok: false, reason: "OAuth client is not allowed" };
+  if (enforceAudience() && result.token.audience !== "match") {
+    return { ok: false, reason: `audience ${result.token.audience}` };
   }
   return result;
 }
 
 /** Convex's identity key for a Clerk user: the same one the web app stores. */
 export function tokenIdentifierFor(clerkUserId: string): string | null {
-  const iss = issuer();
+  const iss = mcpIssuer();
   return iss ? `${iss}|${clerkUserId}` : null;
 }

@@ -1,4 +1,6 @@
 import { estimateTokens } from "../askTools/results";
+import type { OrgHierarchy } from "../askTools/scope";
+import { readableSummaryV2 } from "../lib/summaryV2Feature";
 
 /**
  * Context assembly (FR-2.6, FR-2.7). The order is fixed for prompt caching:
@@ -68,6 +70,37 @@ export function buildTableOfContents(functions: TocFunction[]): string {
     tokens += cost;
   }
   return render(included);
+}
+
+/**
+ * The table-of-contents input for an org: functions, their departments and
+ * processes, with each process's readable overview headline. Shared by the
+ * AskFabric turn and the MCP workspace-contents tool.
+ */
+export function tocFromHierarchy(
+  hierarchy: Pick<OrgHierarchy, "functions" | "departments" | "processes">,
+): TocFunction[] {
+  return hierarchy.functions.map((fn) => ({
+    id: fn._id,
+    name: fn.name,
+    departments: hierarchy.departments
+      .filter((dept) => dept.functionId === fn._id)
+      .map((dept) => ({
+        id: dept._id,
+        name: dept.name,
+        processes: hierarchy.processes
+          .filter((process) => process.departmentId === dept._id)
+          .map((process) => {
+            const overview = readableSummaryV2(process.clerkOrgId, process.summaryV2);
+            return {
+              id: process._id,
+              name: process.name,
+              headline: overview?.headline ?? null,
+              generatedAt: overview?.provenance.generatedAt ?? null,
+            };
+          }),
+      })),
+  }));
 }
 
 /** The entity ids the table of contents lists, which the model has seen (D56). */

@@ -3,6 +3,7 @@ import { env, httpAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { authErrorCode } from "../lib/authErrors";
 import type { AskToolResult } from "../askTools/results";
+import { checkRateLimit } from "./limits";
 import { mcpIssuer, tokenIdentifierFor, verifyAccessToken, type VerifiedToken } from "./auth";
 import {
   ERRORS,
@@ -22,14 +23,16 @@ import {
 import { getMcpTool, sourcesIn, toMcpContent, toolListEntries } from "./tools";
 
 /**
- * Fabric MCP server routes (SPIKE, docs/fabric-mcp-server-feasibility.md).
+ * Fabric MCP server routes (docs/fabric-mcp-server-feasibility.md).
  *
- *   POST /mcp/<slug>                                  the MCP endpoint, one per workspace
- *   GET  /.well-known/oauth-protected-resource/mcp/<slug>   RFC 9728 metadata
- *   GET  /.well-known/oauth-authorization-server      Clerk's metadata, for 2025-03-26 clients
+ *   POST /mcp/<slug>                                      one workspace's endpoint
+ *   POST /mcp                                             the picker: the workspace chosen at sign-in (M8)
+ *   GET  /.well-known/oauth-protected-resource/mcp[/<slug>]   RFC 9728 metadata
+ *   GET  /.well-known/oauth-authorization-server          Clerk's metadata, for 2025-03-26 clients
  *
  * The endpoint is stateless: every request is authorized and resolved on its
- * own, and JSON responses only (no SSE), which every revision allows.
+ * own, and JSON responses only (no SSE), which every revision allows. URLs are
+ * built from FABRIC_MCP_PUBLIC_URL (M11), falling back to the Convex site URL.
  */
 
 const MCP_PREFIX = "/mcp/";
@@ -37,7 +40,7 @@ const PRM_PREFIX = "/.well-known/oauth-protected-resource/mcp/";
 const SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 function siteUrl(): string {
-  return (env.CONVEX_SITE_URL ?? "").replace(/\/+$/, "");
+  return (env.FABRIC_MCP_PUBLIC_URL?.trim() || env.CONVEX_SITE_URL || "").replace(/\/+$/, "");
 }
 
 /**
@@ -95,7 +98,8 @@ const MCP_OFF_MESSAGE =
   "MCP access isn't turned on for this Fabric workspace, so no Fabric data is available here. Ask your Fabric admin to enable it, or reconnect and pick a different workspace.";
 
 function log(event: string, fields: Record<string, unknown>): void {
-  // Spike telemetry: shape and ids only, never tool input or output.
+  // Ids and outcomes only, never tool input or output. Phase 3 replaces the
+  // call log with the mcpCalls audit table.
   console.log(JSON.stringify({ mcp: event, ...fields }));
 }
 
@@ -137,6 +141,18 @@ async function callTool(call: CallContext, era: Era, message: JsonRpcRequest): P
     return { jsonrpc: "2.0", id, result: finishResult(era, { content: [{ type: "text", text: `Invalid arguments for ${name} (${problem}).` }], isError: true }) };
   }
 
+  const limit = await checkRateLimit(call.ctx, { tokenIdentifier: call.viewer.tokenIdentifier, orgId: call.viewer.orgId });
+  if (!limit.ok) {
+    log("rate_limited", { tool: name, scope: limit.scope, org: call.viewer.orgId, client: call.token.clientId });
+    const seconds = Math.max(1, Math.ceil(limit.retryAfterMs / 1000));
+    const who = limit.scope === "user" ? "your" : "this workspace's";
+    return {
+      jsonrpc: "2.0",
+      id,
+      result: finishResult(era, { content: [{ type: "text", text: `Fabric rate limit reached for ${who} requests. Wait ${seconds} seconds, then try again with fewer calls.` }], isError: true }),
+    };
+  }
+
   const startedAt = Date.now();
   let result: AskToolResult;
   try {
@@ -173,9 +189,9 @@ async function handlePost(ctx: ActionCtx, req: Request): Promise<Response> {
   // which closes DNS-rebinding and cross-site form posts.
   if (req.headers.get("Origin")) return json(rpcError(null, ERRORS.invalidRequest, "Origin not allowed"), 403);
 
-  const check = await verifyAccessToken(req.headers.get("Authorization"));
+  const check = await verifyAccessToken(req.headers.get("Authorization"), resourceUrl(target));
   if (!check.ok) {
-    log("auth_rejected", { reason: check.reason, shape: check.shape ?? null });
+    log("auth_rejected", { reason: check.reason });
     return unauthorized(target, check.reason !== "no bearer token");
   }
   const tokenIdentifier = tokenIdentifierFor(check.token.clerkUserId);
@@ -232,7 +248,14 @@ async function handlePost(ctx: ActionCtx, req: Request): Promise<Response> {
 
   if (isNotification(message)) return new Response(null, { status: 202 });
   const id = message.id ?? null;
-  log("request", { method: message.method, era: era.kind, version: era.version, client: check.token.clientId, format: check.token.format, shape: check.token.shape });
+  log("request", {
+    method: message.method,
+    era: era.kind,
+    version: era.version,
+    client: check.token.clientId,
+    audience: check.token.audience,
+    ...(check.token.audienceSeen ? { audienceSeen: check.token.audienceSeen } : {}),
+  });
 
   switch (message.method) {
     case "initialize":

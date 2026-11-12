@@ -1,5 +1,6 @@
 import { defineApp } from "convex/server";
 import migrations from "@convex-dev/migrations/convex.config.js";
+import rateLimiter from "@convex-dev/rate-limiter/convex.config.js";
 import { v } from "convex/values";
 
 const app = defineApp({
@@ -62,17 +63,23 @@ const app = defineApp({
     // must watch the tour before building. Unset or invalid turns onboarding
     // off, which makes this the kill switch. See lib/onboarding.ts.
     ONBOARDING_LAUNCHED_AT: v.optional(v.string()),
-    // Fabric MCP server (SPIKE, docs/fabric-mcp-server-feasibility.md).
-    // Rollout switch in the same three forms as SUMMARY_V2. See convex/mcp/.
+    // Fabric MCP server (docs/fabric-mcp-server-feasibility.md, convex/mcp/).
+    // Deployment-level switch in the same three forms as SUMMARY_V2.
     FABRIC_MCP: v.optional(v.string()),
     // Comma-separated Clerk OAuth client ids whose tokens the MCP server
     // accepts. Unset accepts none (fails closed).
     FABRIC_MCP_CLIENT_IDS: v.optional(v.string()),
-    // Required token audience, when set. Clerk lets only confidential OAuth
-    // apps set one, so public clients (Claude Code, CIMD) rely on the allowlist.
-    FABRIC_MCP_AUDIENCE: v.optional(v.string()),
+    // The public base URL clients connect to, e.g. https://mcp.bizfabric.ai
+    // (M11). Unset falls back to CONVEX_SITE_URL. Every connector is bound to
+    // this URL, so change it only before real users connect.
+    FABRIC_MCP_PUBLIC_URL: v.optional(v.string()),
+    // "true" rejects tokens whose `aud` claim isn't this server's resource
+    // URL. Otherwise a mismatch is only logged (Clerk instance setting
+    // aud_claim_enabled controls whether tokens carry `aud` at all).
+    FABRIC_MCP_ENFORCE_AUDIENCE: v.optional(v.string()),
   },
 });
 app.use(migrations);
+app.use(rateLimiter);
 
 export default app;

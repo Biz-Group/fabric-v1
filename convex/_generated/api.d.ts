@@ -71,6 +71,7 @@ import type * as lib_audioPlaybackToken from "../lib/audioPlaybackToken.js";
 import type * as lib_audioRange from "../lib/audioRange.js";
 import type * as lib_audioUpload from "../lib/audioUpload.js";
 import type * as lib_authErrors from "../lib/authErrors.js";
+import type * as lib_citationLinks from "../lib/citationLinks.js";
 import type * as lib_clerkApi from "../lib/clerkApi.js";
 import type * as lib_contributorAttribution from "../lib/contributorAttribution.js";
 import type * as lib_conversationAnalysis from "../lib/conversationAnalysis.js";
@@ -108,9 +109,11 @@ import type * as lib_userError from "../lib/userError.js";
 import type * as lib_workspaceStatus from "../lib/workspaceStatus.js";
 import type * as mcp_access from "../mcp/access.js";
 import type * as mcp_auth from "../mcp/auth.js";
+import type * as mcp_limits from "../mcp/limits.js";
 import type * as mcp_protocol from "../mcp/protocol.js";
 import type * as mcp_routes from "../mcp/routes.js";
 import type * as mcp_tools from "../mcp/tools.js";
+import type * as mcp_workspace from "../mcp/workspace.js";
 import type * as migrations from "../migrations.js";
 import type * as onboarding from "../onboarding.js";
 import type * as orgIntegrity from "../orgIntegrity.js";
@@ -210,6 +213,7 @@ declare const fullApi: ApiFromModules<{
   "lib/audioRange": typeof lib_audioRange;
   "lib/audioUpload": typeof lib_audioUpload;
   "lib/authErrors": typeof lib_authErrors;
+  "lib/citationLinks": typeof lib_citationLinks;
   "lib/clerkApi": typeof lib_clerkApi;
   "lib/contributorAttribution": typeof lib_contributorAttribution;
   "lib/conversationAnalysis": typeof lib_conversationAnalysis;
@@ -247,9 +251,11 @@ declare const fullApi: ApiFromModules<{
   "lib/workspaceStatus": typeof lib_workspaceStatus;
   "mcp/access": typeof mcp_access;
   "mcp/auth": typeof mcp_auth;
+  "mcp/limits": typeof mcp_limits;
   "mcp/protocol": typeof mcp_protocol;
   "mcp/routes": typeof mcp_routes;
   "mcp/tools": typeof mcp_tools;
+  "mcp/workspace": typeof mcp_workspace;
   migrations: typeof migrations;
   onboarding: typeof onboarding;
   orgIntegrity: typeof orgIntegrity;
@@ -308,4 +314,5 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
 };

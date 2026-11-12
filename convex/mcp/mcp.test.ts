@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
+import rateLimiterTest from "@convex-dev/rate-limiter/test";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "../_generated/api";
@@ -12,6 +13,14 @@ import { detectEra, finishResult, headerMismatch, parseMessage, type JsonRpcRequ
 import { MCP_TOOL_NAMES, toMcpContent, toolListEntries } from "./tools";
 
 const modules = import.meta.glob("/convex/**/*.ts");
+const RESOURCE = "https://spike.convex.site/mcp/alpha";
+
+/** A test deployment with the rate-limiter component mounted. */
+function setup() {
+  const t = convexTest(schema, modules);
+  rateLimiterTest.register(t);
+  return t;
+}
 const ISSUER = "https://mcp-spike.test";
 const ORG_A = "org_mcp_a";
 const ORG_B = "org_mcp_b";
@@ -74,6 +83,7 @@ describe("tools", () => {
   test("exposes only the synthesised member tools (M2), all read-only", () => {
     const entries = toolListEntries();
     expect(entries.map((e) => e.name)).toEqual([...MCP_TOOL_NAMES]);
+    expect(entries[0].name).toBe("getWorkspaceContents");
     for (const excluded of ["getTranscript", "searchConversations", "listConversations", "getConversationEvidence", "getParticipation", "show"]) {
       expect(entries.map((e) => e.name)).not.toContain(excluded);
     }
@@ -144,7 +154,7 @@ async function seed(ctx: MutationCtx) {
 
 describe("resolveViewer", () => {
   test("only an active member of an enabled workspace gets through", async () => {
-    const t = convexTest(schema, modules);
+    const t = setup();
     const people = await t.run(seed);
     const resolve = (slug: string, tokenIdentifier: string) =>
       t.query(internal.mcp.access.resolveViewer, { workspace: { slug }, tokenIdentifier });
@@ -175,28 +185,49 @@ async function signerFor() {
 
 describe("verifyAccessToken", () => {
   const signer = signerFor;
+  const verify = (authorization: string | null) => verifyAccessToken(authorization, RESOURCE);
 
   test("accepts an OAuth token from an allowed client", async () => {
     const sign = await signer();
-    const check = await verifyAccessToken(`Bearer ${await sign({ client_id: CLIENT, scope: "profile email" })}`);
+    const check = await verify(`Bearer ${await sign({ client_id: CLIENT, scope: "profile email" })}`);
     expect(check).toMatchObject({ ok: true, token: { clerkUserId: "user_ana", clientId: CLIENT, scopes: ["profile", "email"], format: "jwt" } });
   });
 
   test("refuses session tokens, other clients, other issuers and a missing allowlist", async () => {
     const sign = await signer();
-    expect(await verifyAccessToken(`Bearer ${await sign({ sid: "sess_1", azp: CLIENT })}`)).toMatchObject({ ok: false, reason: expect.stringMatching(/session token/) });
-    expect(await verifyAccessToken(`Bearer ${await sign({ aud: "convex", client_id: CLIENT })}`)).toMatchObject({ ok: false });
-    expect(await verifyAccessToken(`Bearer ${await sign({ client_id: "someone_else" })}`)).toMatchObject({ ok: false, reason: "OAuth client is not allowed" });
-    expect(await verifyAccessToken(`Bearer ${await sign({ client_id: CLIENT }, "https://evil.test")}`)).toMatchObject({ ok: false });
-    expect(await verifyAccessToken(null)).toMatchObject({ ok: false, reason: "no bearer token" });
+    expect(await verify(`Bearer ${await sign({ sid: "sess_1", azp: CLIENT })}`)).toMatchObject({ ok: false, reason: expect.stringMatching(/session token/) });
+    expect(await verify(`Bearer ${await sign({ aud: "convex", client_id: CLIENT })}`)).toMatchObject({ ok: false });
+    expect(await verify(`Bearer ${await sign({ client_id: "someone_else" })}`)).toMatchObject({ ok: false, reason: "OAuth client is not allowed" });
+    expect(await verify(`Bearer ${await sign({ client_id: CLIENT }, "https://evil.test")}`)).toMatchObject({ ok: false });
+    expect(await verify(null)).toMatchObject({ ok: false, reason: "no bearer token" });
     delete process.env.FABRIC_MCP_CLIENT_IDS;
-    expect(await verifyAccessToken(`Bearer ${await sign({ client_id: CLIENT })}`)).toMatchObject({ ok: false, reason: "OAuth client is not allowed" });
+    expect(await verify(`Bearer ${await sign({ client_id: CLIENT })}`)).toMatchObject({ ok: false, reason: "OAuth client is not allowed" });
+  });
+
+  test("checks the audience against the URL called, enforcing it only when switched on", async () => {
+    const sign = await signer();
+    const token = (aud?: string) => sign({ client_id: CLIENT, ...(aud ? { aud } : {}) });
+    expect(await verify(`Bearer ${await token(RESOURCE)}`)).toMatchObject({ ok: true, token: { audience: "match" } });
+    expect(await verify(`Bearer ${await token()}`)).toMatchObject({ ok: true, token: { audience: "absent" } });
+    // Log-only by default: a token issued for another workspace's URL still passes, but is flagged.
+    expect(await verify(`Bearer ${await token("https://spike.convex.site/mcp/beta")}`)).toMatchObject({
+      ok: true,
+      token: { audience: "mismatch", audienceSeen: ["https://spike.convex.site/mcp/beta"] },
+    });
+    process.env.FABRIC_MCP_ENFORCE_AUDIENCE = "true";
+    try {
+      expect(await verify(`Bearer ${await token(RESOURCE)}`)).toMatchObject({ ok: true });
+      expect(await verify(`Bearer ${await token("https://spike.convex.site/mcp/beta")}`)).toMatchObject({ ok: false, reason: "audience mismatch" });
+      expect(await verify(`Bearer ${await token()}`)).toMatchObject({ ok: false, reason: "audience absent" });
+    } finally {
+      delete process.env.FABRIC_MCP_ENFORCE_AUDIENCE;
+    }
   });
 });
 
 describe("HTTP", () => {
   test("challenges an unauthenticated request with the resource metadata URL", async () => {
-    const t = convexTest(schema, modules);
+    const t = setup();
     const response = await t.fetch("/mcp/alpha", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }) });
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toBe(
@@ -205,13 +236,13 @@ describe("HTTP", () => {
   });
 
   test("serves protected resource metadata for the workspace URL", async () => {
-    const t = convexTest(schema, modules);
+    const t = setup();
     const response = await t.fetch("/.well-known/oauth-protected-resource/mcp/alpha", { method: "GET" });
     expect(await response.json()).toMatchObject({ resource: "https://spike.convex.site/mcp/alpha", authorization_servers: [ISSUER] });
   });
 
   test("the picker URL asks for the org scope", async () => {
-    const t = convexTest(schema, modules);
+    const t = setup();
     const challenge = await t.fetch("/mcp", { method: "POST", body: "{}" });
     expect(challenge.headers.get("WWW-Authenticate")).toContain('oauth-protected-resource/mcp", scope="profile email user:org:read"');
     const metadata = await (await t.fetch("/.well-known/oauth-protected-resource/mcp", { method: "GET" })).json();
@@ -219,7 +250,7 @@ describe("HTTP", () => {
   });
 
   test("routes signed-in calls by the URL or the picked workspace, never across them", async () => {
-    const t = convexTest(schema, modules);
+    const t = setup();
     await t.run(seed);
     const sign = await signerFor();
     const listTools = async (path: string, claims: Record<string, unknown>) =>
@@ -239,7 +270,7 @@ describe("HTTP", () => {
   });
 
   test("a member of a workspace with MCP off is refused at connection", async () => {
-    const t = convexTest(schema, modules);
+    const t = setup();
     await t.run(seed);
     const sign = await signerFor();
     const token = await sign({ client_id: CLIENT, org_id: ORG_B }, ISSUER, "bob");
@@ -251,8 +282,64 @@ describe("HTTP", () => {
     expect((await post({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "getCoverage", arguments: {} } })).status).toBe(403);
   });
 
+  test("uses the public URL for metadata and challenges when set", async () => {
+    process.env.FABRIC_MCP_PUBLIC_URL = "https://mcp.example.test/";
+    try {
+      const t = setup();
+      const metadata = await (await t.fetch("/.well-known/oauth-protected-resource/mcp/alpha", { method: "GET" })).json();
+      expect(metadata.resource).toBe("https://mcp.example.test/mcp/alpha");
+      const challenge = await t.fetch("/mcp/alpha", { method: "POST", body: "{}" });
+      expect(challenge.headers.get("WWW-Authenticate")).toContain('resource_metadata="https://mcp.example.test/.well-known/oauth-protected-resource/mcp/alpha"');
+    } finally {
+      delete process.env.FABRIC_MCP_PUBLIC_URL;
+    }
+  });
+
+  test("getWorkspaceContents returns the whole tree with ids in one call", async () => {
+    const t = setup();
+    await t.run(async (ctx: MutationCtx) => {
+      await seed(ctx);
+      const functionId = await ctx.db.insert("functions", { name: "Finance", sortOrder: 0, clerkOrgId: ORG_A });
+      const departmentId = await ctx.db.insert("departments", { name: "Payables", functionId, sortOrder: 0, clerkOrgId: ORG_A });
+      await ctx.db.insert("processes", { name: "Invoice approval", departmentId, sortOrder: 0, clerkOrgId: ORG_A });
+      // Another tenant's structure must never appear.
+      const other = await ctx.db.insert("functions", { name: "Beta secret", sortOrder: 0, clerkOrgId: ORG_B });
+      await ctx.db.insert("departments", { name: "Beta dept", functionId: other, sortOrder: 0, clerkOrgId: ORG_B });
+    });
+    const sign = await signerFor();
+    const response = await t.fetch("/mcp/alpha", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${await sign({ client_id: CLIENT }, ISSUER, "ana")}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "getWorkspaceContents", arguments: {} } }),
+    });
+    const text: string = (await response.json()).result.content[0].text;
+    expect(text).toMatch(/Function: Finance \[/);
+    expect(text).toMatch(/Department: Payables \[/);
+    expect(text).toMatch(/Process: Invoice approval \[/);
+    expect(text).not.toContain("Beta");
+  });
+
+  test("rate-limits a user's tool calls and says when to retry", async () => {
+    const t = setup();
+    await t.run(seed);
+    const sign = await signerFor();
+    const token = await sign({ client_id: CLIENT }, ISSUER, "ana");
+    const call = async () =>
+      (
+        await t.fetch("/mcp/alpha", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "getWorkspaceContents", arguments: {} } }),
+        })
+      ).json();
+    for (let i = 0; i < 60; i++) expect((await call()).result.isError).toBe(false);
+    const limited = await call();
+    expect(limited.result.isError).toBe(true);
+    expect(limited.result.content[0].text).toMatch(/rate limit reached for your requests\. Wait \d+ seconds/);
+  });
+
   test("refuses browser origins and GET", async () => {
-    const t = convexTest(schema, modules);
+    const t = setup();
     expect((await t.fetch("/mcp/alpha", { method: "POST", headers: { Origin: "https://evil.test" }, body: "{}" })).status).toBe(403);
     expect((await t.fetch("/mcp/alpha", { method: "GET" })).status).toBe(405);
   });
