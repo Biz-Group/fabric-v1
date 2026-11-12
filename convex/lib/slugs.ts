@@ -20,6 +20,14 @@ export const RESERVED_TENANT_SLUGS: ReadonlySet<string> = new Set([
   "mail",
   "admin",
   "status",
+  // Paths under /mcp/ that OAuth clients guess (convex/mcp/routes.ts), and
+  // the MCP host itself: never workspace slugs.
+  "mcp",
+  "register",
+  "authorize",
+  "token",
+  "oauth",
+  "callback",
 ]);
 
 export function isValidTenantSlug(slug: string): boolean {

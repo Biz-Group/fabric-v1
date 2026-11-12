@@ -49,9 +49,17 @@ type Target = { slug: string };
 
 const SCOPES = ["profile", "email"];
 
+/**
+ * OAuth endpoint names a 2025-03-26 client guesses on the MCP host when the
+ * authorization server advertises none (e.g. `/register` without dynamic
+ * client registration). They are never workspaces, so they get a 404, not a
+ * misleading sign-in challenge.
+ */
+const RESERVED = new Set(["register", "authorize", "token", "oauth", "callback"]);
+
 function targetAfter(pathname: string, prefix: string): Target | null {
   const rest = pathname.replace(/\/+$/, "").slice(prefix.length).toLowerCase();
-  return pathname.startsWith(prefix) && SLUG.test(rest) ? { slug: rest } : null;
+  return pathname.startsWith(prefix) && SLUG.test(rest) && !RESERVED.has(rest) ? { slug: rest } : null;
 }
 
 function resourceUrl(target: Target): string {

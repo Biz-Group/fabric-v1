@@ -20,3 +20,4 @@ Each article is a Markdown file named `<id>.md` with YAML frontmatter. Cite an a
 | admin-members-and-workspace | Admin: members, contributions and branding | admin | Invite members, manage roles, review and retry contributions, export CSV, and set the workspace accent color. |
 | move-contribution | Move a contribution to another process | admin | Admins can move a finished contribution recorded under the wrong process to any other process in the workspace. |
 | askfabric | Ask questions with AskFabric | viewer, contributor, admin | Ask about how your organization works and get sourced answers; private threads, daily beta limits, rating and sharing, and the admin view. |
+| fabric-mcp | Connect AI assistants to Fabric (MCP) | viewer, contributor, admin | Ask Claude or Microsoft Copilot about your organization using what you can see in Fabric; admins switch it on, members connect with one URL per workspace. |

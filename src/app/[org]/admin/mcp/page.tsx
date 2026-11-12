@@ -103,7 +103,7 @@ export default function AdminMcpPage() {
               </section>
               <label className="flex items-start gap-2 text-sm">
                 <Checkbox checked={accepted} onCheckedChange={(checked) => setAccepted(checked === true)} className="mt-0.5" />
-                <span>I accept these terms on behalf of this workspace.</span>
+                <span>{settings.policy.acceptance}</span>
               </label>
               <Button
                 disabled={!accepted || busy}

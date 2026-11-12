@@ -254,6 +254,8 @@ describe("HTTP", () => {
     const t = setup();
     expect((await t.fetch("/mcp", { method: "POST", body: "{}" })).status).toBe(404);
     expect((await t.fetch("/.well-known/oauth-protected-resource/mcp", { method: "GET" })).status).toBe(404);
+    // OAuth paths a client guesses on our host are never workspaces.
+    expect((await t.fetch("/mcp/register", { method: "POST", body: "{}" })).status).toBe(404);
   });
 
   test("routes signed-in calls by the workspace in the URL, and only for its members", async () => {

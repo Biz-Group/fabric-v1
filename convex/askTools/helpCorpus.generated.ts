@@ -3,7 +3,7 @@
 import type { HelpArticle } from "./helpCorpusBuild";
 
 /** Left out while REVIEW-NOTES.md has open items for them. */
-export const EXCLUDED_HELP_ARTICLES: readonly string[] = ["askfabric-extras"];
+export const EXCLUDED_HELP_ARTICLES: readonly string[] = ["askfabric-extras","fabric-mcp"];
 
 export const HELP_ARTICLES: readonly HelpArticle[] = [
   {

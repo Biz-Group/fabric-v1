@@ -4,7 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { requireOrgAdmin, requireOrgMember, requireSuperAdmin } from "./lib/orgAuth";
 import { isOrgInRollout, parseOrgRollout } from "./lib/orgRollout";
 import { userError } from "./lib/userError";
-import { MCP_POLICY } from "./mcp/policy";
+import { MCP_POLICY, MCP_POLICY_ACCEPTANCE } from "./mcp/policy";
 import { workspaceMcpUrl } from "./mcp/urls";
 
 /**
@@ -134,7 +134,7 @@ export const adminSettings = query({
       enabledByStaff: features.mcpEnabledByStaff === true,
       acceptedPolicyVersion: features.mcpPolicyVersion ?? null,
       conversationTools: features.mcpConversationTools,
-      policy: MCP_POLICY,
+      policy: { ...MCP_POLICY, acceptance: MCP_POLICY_ACCEPTANCE },
       workspaceUrl: slug ? workspaceMcpUrl(slug) : null,
     };
   },
