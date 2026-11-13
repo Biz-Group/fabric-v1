@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
+import { mcpProxy } from "@/lib/mcp-proxy";
 import { getTenantSubdomain, isTenantsConsoleHost } from "@/lib/subdomain";
 
 // Auth pages live only on tenant subdomains, never on apex. Apex is pure
@@ -29,7 +30,7 @@ const isSubdomainPublicPath = createRouteMatcher([
 // Unset = treat every request as apex (legacy single-tenant dev without subdomains).
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "";
 
-export default clerkMiddleware(
+export const clerkProxy = clerkMiddleware(
   async (auth, req) => {
     if (isLegalPath(req)) return;
 
@@ -103,6 +104,15 @@ export default clerkMiddleware(
   // right org. Activation is handled client-side by the `setActive` fallback
   // in `[org]/layout` instead.
 );
+
+/**
+ * The MCP host (mcp.<root>) is proxied to Convex before Clerk sees it: it is
+ * not a tenant subdomain, and MCP clients authenticate with OAuth bearer
+ * tokens, not Clerk sessions (src/lib/mcp-proxy.ts).
+ */
+export default function proxy(req: NextRequest, event: NextFetchEvent) {
+  return mcpProxy(req) ?? clerkProxy(req, event);
+}
 
 export const config = {
   matcher: [

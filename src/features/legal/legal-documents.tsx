@@ -33,6 +33,7 @@ export const privacyPolicy: LegalDocument = {
     "Approve retention periods for recordings, transcripts, generated knowledge, account records, logs, and backups, including how deletion propagates to providers and derived outputs.",
     "Confirm applicable UAE, free-zone, and overseas privacy regimes, lawful grounds for each purpose, and the operational process for rights requests and complaints.",
     "Validate the cookie and storage inventory, any consent requirements, marketing practices, and the effective date before publication as an approved policy.",
+    "Confirm the AI assistant connection (MCP) wording against the assistant providers customers are likely to use, and whether customers should be pointed to those providers’ data terms.",
   ],
   sections: [
     {
@@ -92,6 +93,7 @@ export const privacyPolicy: LegalDocument = {
       content: <>
         <p>Information may be available to your organization’s authorized users and administrators according to their workspace permissions. Administrators manage membership and can review or manage organization content. Fabric is a workplace knowledge service, so contributions should not be assumed to be private from your organization.</p>
         <p>We use service providers to deliver the application, including Clerk for authentication and organization membership, Convex for application data and file storage, ElevenLabs for voice and transcription, and Microsoft Foundry for AI processing. Hosting, infrastructure, and support providers may also process information needed for their services.</p>
+        <p>If your organization has added Fabric’s AI assistant connection (Model Context Protocol, or MCP) and an administrator has switched it on, members can connect AI assistants that support MCP to the workspace. An assistant receives the workspace information that member is permitted to see, when the member asks it something, and the assistant’s provider then handles that information under its own terms. Your organization chooses which assistants are used.</p>
         <p>Authorized Biz Group personnel and professional advisers may access information where needed for support, administration, security, or legal matters. We may disclose information when required by law, to respond to lawful requests, or to protect rights and safety. Information may also be transferred in connection with a merger, acquisition, or business transfer, subject to applicable privacy requirements.</p>
         <p>This policy covers Fabric’s handling of information. Third-party sites you visit through external links have their own privacy practices.</p>
       </>,
@@ -107,14 +109,14 @@ export const privacyPolicy: LegalDocument = {
     {
       id: "international-processing", title: "International processing",
       content: <>
-        <p>Biz Group is based in the UAE. Our service providers may process or store information in other countries depending on their infrastructure and the configuration used for your organization. Do not assume that using Fabric means all information remains in the UAE.</p>
+        <p>Biz Group is based in the UAE. Our service providers may process or store information in other countries depending on their infrastructure and the configuration used for your organization. Do not assume that using Fabric means all information remains in the UAE. Information read by an AI assistant your organization connects to Fabric is processed wherever that assistant’s provider operates, which may differ from where Fabric processes it.</p>
         <p>International transfers must comply with the requirements of applicable law and the relevant customer and provider agreements. Contact us for details of processing locations and any transfer safeguards applicable to your organization.</p>
       </>,
     },
     {
       id: "retention", title: "Retention and deletion",
       content: <>
-        <p>Retention depends on the type of information, the purpose for which it is held, the organization’s instructions and service agreement, and any legal or security requirements. Workplace content is kept to provide the organization’s knowledge workspace unless deleted or otherwise addressed under its agreement. Account, support, usage, and security records may be kept for administration, troubleshooting, dispute resolution, or legal obligations.</p>
+        <p>Retention depends on the type of information, the purpose for which it is held, the organization’s instructions and service agreement, and any legal or security requirements. Workplace content is kept to provide the organization’s knowledge workspace unless deleted or otherwise addressed under its agreement. Account, support, usage, and security records may be kept for administration, troubleshooting, dispute resolution, or legal obligations. When the AI assistant connection is used, Fabric keeps a record of each request (when, by whom, through which assistant and which tool, never the question or answer) for 90 days; daily totals without names are kept as billing records.</p>
         <p>Authorized administrators can delete conversations in Fabric. Deleting a conversation should not be assumed to immediately remove every related summary, process map, backup, or provider-held copy. Derived knowledge and provider records can have separate lifecycles and may require additional action.</p>
         <p>For a deletion or retention request, contact your organization’s administrator or <LegalContact />. We will assess the request against applicable law, the organization’s instructions, and any information we must retain.</p>
       </>,
@@ -179,7 +181,7 @@ export const termsOfUse: LegalDocument = {
       id: "service", title: "What Fabric provides",
       content: <>
         <p>Fabric captures workplace knowledge through AI-guided interviews, direct recordings, and audio uploads. It uses transcription and AI processing to create summaries, process knowledge, maps, and operational insights for review by the organization.</p>
-        <p>Features depend on workspace configuration, permissions, and available third-party services. We may maintain, update, or change the service, subject to any commitments in your organization’s agreement. Demonstrations and preview features illustrate capabilities and are not promises of a particular outcome.</p>
+        <p>Features depend on workspace configuration, permissions, and available third-party services. We may maintain, update, or change the service, subject to any commitments in your organization’s agreement. Demonstrations and preview features illustrate capabilities and are not promises of a particular outcome. Optional add-ons, such as connecting AI assistants to a workspace (MCP), are available where included in your organization’s agreement.</p>
       </>,
     },
     {
@@ -208,6 +210,7 @@ export const termsOfUse: LegalDocument = {
           <li>Access another organization’s information, evade access controls, or misuse invitations or credentials.</li>
           <li>Disrupt the service, introduce malware, probe for vulnerabilities without authorization, or bypass usage restrictions.</li>
           <li>Extract information through unauthorized scraping or use the service to infringe privacy, intellectual property, or other rights.</li>
+          <li>Use an AI assistant connection to get around workspace permissions, or to copy workspace content in bulk beyond what your organization has authorized. Fabric limits request rates and may suspend a connection that is misused.</li>
           <li>Treat AI results as the sole basis for consequential decisions about individuals without appropriate verification and lawful safeguards.</li>
         </ul>
       </>,
@@ -226,6 +229,7 @@ export const termsOfUse: LegalDocument = {
         <p>AI-generated transcripts, summaries, maps, and recommendations may be inaccurate, incomplete, or unsuitable for a particular decision. They can reflect errors or omissions in source material. Check outputs against the underlying evidence and obtain appropriate professional advice when necessary.</p>
         <p>As between Biz Group and the customer organization, and to the extent permitted by law and applicable third-party rights, the organization may use the outputs produced from its Customer Content for its business purposes. Biz Group does not claim ownership of the organization’s underlying content. AI outputs may not be unique or eligible for intellectual property protection.</p>
         <p>Fabric does not guarantee business improvements, regulatory compliance, or the accuracy of statements about individuals. Your organization remains responsible for decisions made using the service.</p>
+        <p>Answers from an AI assistant connected to Fabric are produced by that assistant, not by Fabric, even when they cite Fabric content. Check them against the linked Fabric pages before relying on them.</p>
       </>,
     },
     {
@@ -247,6 +251,7 @@ export const termsOfUse: LegalDocument = {
       content: <>
         <p>Fabric relies on third-party authentication, hosting, storage, voice, transcription, and AI services. Their availability or technical limits can affect Fabric. Separate terms may apply if you directly use a third-party service or follow an external link.</p>
         <p>Any commitments Biz Group makes about third-party processing or service availability are governed by the applicable written customer agreement. An external link does not imply endorsement of the linked service.</p>
+        <p>If your organization connects AI assistants to Fabric, it does so by its own choice and under that assistant’s terms. Biz Group isn’t responsible for how an assistant’s provider processes, stores, or uses information it reads from Fabric, or for the assistant’s answers. The administrator who switches the connection on accepts these terms on behalf of the organization.</p>
       </>,
     },
     {

@@ -181,7 +181,10 @@ export async function verifyAccessToken(
   const allowed = allowedClientIds();
   if (!allowed?.has(result.token.clientId)) {
     const owned = lookupWorkspaceClient ? await lookupWorkspaceClient(result.token.clientId) : null;
-    if (!owned) return { ok: false, reason: "OAuth client is not allowed" };
+    if (!owned) {
+      // The client id is logged so a new client (e.g. an assistant's CIMD URL) can be allowlisted.
+      return { ok: false, reason: "OAuth client is not allowed", detail: { clientId: result.token.clientId, issuedAt: null, claimNames: [] } };
+    }
     result.token.workspaceClientOrgId = owned.clerkOrgId;
   }
   // A dedicated confidential client that sends no `resource` gets no `aud`

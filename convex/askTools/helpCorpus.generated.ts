@@ -3,7 +3,7 @@
 import type { HelpArticle } from "./helpCorpusBuild";
 
 /** Left out while REVIEW-NOTES.md has open items for them. */
-export const EXCLUDED_HELP_ARTICLES: readonly string[] = ["askfabric-extras","fabric-mcp"];
+export const EXCLUDED_HELP_ARTICLES: readonly string[] = ["askfabric-extras"];
 
 export const HELP_ARTICLES: readonly HelpArticle[] = [
   {
@@ -160,6 +160,30 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
       "contribute-on-behalf"
     ],
     "body": "If you already have a recording, such as an interview, a meeting or a voice memo, you can upload it instead of recording again. Fabric handles it the same way as a live voice note. You need contributor or admin access.\n\n## Upload a file\n\n1. Open the process.\n2. In the process header, select **Upload files**. On a phone, tap the **+** button (Add a contribution) and choose it there.\n3. Check your name and read the recording notice, which says the uploaded audio will be transcribed and stored to help document your organization's processes.\n4. Select **Choose audio file** and pick your file.\n5. When it shows \"Audio file ready\", select **Upload and process**.\n\nKeep the tab open until the upload finishes. If it is interrupted, select **Retry upload**.\n\n## What Fabric accepts\n\n- Formats: MP3, M4A, MP4, WAV, WebM, OGG, FLAC, AAC, AIFF or AMR.\n- Size: up to 100 MB per file.\n- Length: up to four hours of audio.\n- Meeting videos saved as MP4 or WebM are accepted. For a very long meeting video, export just the audio as M4A or MP3 and upload that.\n\nFabric also checks that the file really is audio, and rejects files that are not.\n\n## What happens next\n\nFabric transcribes the file and identifies the speakers. You then name each speaker before analysis starts. See \"Label speakers before analysis\". When processing finishes, the upload appears on the Contributions tab as an uploaded recording.\n\n## When an upload fails\n\nA contribution can show as Failed for reasons Fabric states, such as:\n\n- The file could not be read, or no speech was found. Retrying will not help, so capture it again with a corrected file.\n- The recording is longer than four hours. Upload a shorter one.\n- Transcription or analysis did not finish. These are usually temporary, and an admin can retry them.\n\nSee \"What happens after you contribute\" for the full list of states."
+  },
+  {
+    "id": "fabric-mcp",
+    "title": "Connect AI assistants to Fabric (MCP)",
+    "summary": "Ask Claude or Microsoft Copilot about your organization using what you can see in Fabric; how admins switch it on, how members connect, and what the assistant can read.",
+    "audience": [
+      "viewer",
+      "contributor",
+      "admin"
+    ],
+    "tags": [
+      "mcp",
+      "claude",
+      "copilot",
+      "ai assistants",
+      "connector",
+      "add-on"
+    ],
+    "related": [
+      "askfabric",
+      "roles-and-permissions",
+      "admin-members-and-workspace"
+    ],
+    "body": "Fabric can connect to AI assistants such as Claude through the Model Context Protocol (MCP). The assistant can then answer questions about how your organization works, with links back to the Fabric pages its answer comes from.\n\n## Before you start\n\nMCP is an add-on to your Fabric plan. Once Fabric has added it, a workspace admin switches it on under **Admin**, then **MCP**, after reading and accepting the terms. Those terms explain that data an assistant reads leaves Fabric and is handled by the assistant's provider.\n\n## Connecting an assistant\n\nOpen the **?** menu and choose **Connect AI assistants** to copy your workspace's connection URL. Each workspace has its own URL; if you belong to several, add one connector for each.\n\nIn Claude, go to **Settings**, then **Connectors**, then **Add custom connector**. Paste the URL, then sign in with your Fabric account when asked. On Claude Team and Enterprise, an owner may need to add the connector first.\n\nIn Microsoft Copilot Studio, an agent maker adds Fabric as a **Model Context Protocol** tool with **OAuth 2.0, Manual**, using the credentials an admin creates on the **MCP** page. Each connector's callback URL must be added on that page before anyone signs in. Microsoft 365 Copilot in Teams and Office is coming later.\n\n## What the assistant can read\n\n- Only what you can see in Fabric. Your role and membership are checked on every request.\n- Overviews, process flows, signals, systems, coverage and Fabric help.\n- Individual contributions and transcripts, only if an admin ticks **Also allow individual contributions**.\n\nThe assistant can't change anything in Fabric. Heavy use is slowed down: 60 requests a minute per person, and 600 per workspace.\n\n## If it doesn't connect\n\nIf the assistant says you signed in but it was refused, MCP is switched off for that workspace, or you aren't a member of it. Ask a workspace admin.\n\n## For admins\n\nThe **MCP** page shows who switched it on and when, which version of the terms was accepted, and the contributions setting. Its **Usage** card shows calls, active members and assistants over the last 30 days. Fabric records which tool was used and when, never what was asked. Switching MCP off cuts access straight away."
   },
   {
     "id": "insights-and-recommendations",
