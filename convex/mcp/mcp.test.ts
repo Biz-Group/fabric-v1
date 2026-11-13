@@ -13,7 +13,7 @@ import { detectEra, finishResult, headerMismatch, parseMessage, type JsonRpcRequ
 import { MCP_CONVERSATION_TOOL_NAMES, MCP_TOOL_NAMES, mcpTools, toMcpContent, toolListEntries } from "./tools";
 
 const modules = import.meta.glob("/convex/**/*.ts");
-const RESOURCE = "https://spike.convex.site/mcp/alpha";
+const RESOURCE = "https://mcp.example.test/mcp/alpha";
 
 /** A test deployment with the rate-limiter component mounted. */
 function setup() {
@@ -21,15 +21,15 @@ function setup() {
   rateLimiterTest.register(t);
   return t;
 }
-const ISSUER = "https://mcp-spike.test";
+const ISSUER = "https://issuer.example.test";
 const ORG_A = "org_mcp_a";
 const ORG_B = "org_mcp_b";
-const CLIENT = "client_spike";
+const CLIENT = "client_test";
 const ENV: Record<string, string> = {
   CLERK_JWT_ISSUER_DOMAIN: ISSUER,
   FABRIC_MCP: ORG_A,
   FABRIC_MCP_CLIENT_IDS: CLIENT,
-  CONVEX_SITE_URL: "https://spike.convex.site",
+  CONVEX_SITE_URL: "https://mcp.example.test",
 };
 const saved = Object.fromEntries(Object.keys(ENV).map((k) => [k, process.env[k]]));
 
@@ -219,7 +219,7 @@ describe("verifyAccessToken", () => {
   test("accepts an OAuth token from an allowed client", async () => {
     const sign = await signer();
     const check = await verify(`Bearer ${await sign({ client_id: CLIENT, scope: "profile email" })}`);
-    expect(check).toMatchObject({ ok: true, token: { clerkUserId: "user_ana", clientId: CLIENT, scopes: ["profile", "email"], format: "jwt" } });
+    expect(check).toMatchObject({ ok: true, token: { clerkUserId: "user_ana", clientId: CLIENT, scopes: ["profile", "email"] } });
   });
 
   test("refuses session tokens, other clients, other issuers and a missing allowlist", async () => {
@@ -239,25 +239,17 @@ describe("verifyAccessToken", () => {
     expect(await verify(`Bearer ${await token(RESOURCE)}`)).toMatchObject({ ok: true, token: { audience: "match" } });
     expect(await verify(`Bearer ${await token()}`)).toMatchObject({ ok: true, token: { audience: "absent" } });
     // Log-only by default: a token issued for another workspace's URL still passes, but is flagged.
-    expect(await verify(`Bearer ${await token("https://spike.convex.site/mcp/beta")}`)).toMatchObject({
+    expect(await verify(`Bearer ${await token("https://mcp.example.test/mcp/beta")}`)).toMatchObject({
       ok: true,
-      token: { audience: "mismatch", audienceSeen: ["https://spike.convex.site/mcp/beta"] },
+      token: { audience: "mismatch", audienceSeen: ["https://mcp.example.test/mcp/beta"] },
     });
     process.env.FABRIC_MCP_ENFORCE_AUDIENCE = "true";
     try {
       expect(await verify(`Bearer ${await token(RESOURCE)}`)).toMatchObject({ ok: true });
-      expect(await verify(`Bearer ${await token("https://spike.convex.site/mcp/beta")}`)).toMatchObject({ ok: false, reason: "audience mismatch" });
+      expect(await verify(`Bearer ${await token("https://mcp.example.test/mcp/beta")}`)).toMatchObject({ ok: false, reason: "audience mismatch" });
       expect(await verify(`Bearer ${await token()}`)).toMatchObject({ ok: false, reason: "audience absent" });
-      // The server-wide audience (a confidential app's fixed audience_uri) is accepted when the server passes it.
-      expect(await verifyAccessToken(`Bearer ${await token("https://spike.convex.site/mcp")}`, RESOURCE, "https://spike.convex.site/mcp")).toMatchObject({ ok: true, token: { audience: "match" } });
-      expect(await verifyAccessToken(`Bearer ${await token("https://elsewhere.test/mcp")}`, RESOURCE, "https://spike.convex.site/mcp")).toMatchObject({ ok: false, reason: "audience mismatch" });
-      // A listed confidential client may send no audience, but a wrong one is still refused.
-      process.env.FABRIC_MCP_AUDIENCE_OPTIONAL_CLIENTS = CLIENT;
-      expect(await verify(`Bearer ${await token()}`)).toMatchObject({ ok: true, token: { audience: "absent" } });
-      expect(await verify(`Bearer ${await token("https://spike.convex.site/mcp/beta")}`)).toMatchObject({ ok: false, reason: "audience mismatch" });
     } finally {
       delete process.env.FABRIC_MCP_ENFORCE_AUDIENCE;
-      delete process.env.FABRIC_MCP_AUDIENCE_OPTIONAL_CLIENTS;
     }
   });
 });
@@ -268,14 +260,14 @@ describe("HTTP", () => {
     const response = await t.fetch("/mcp/alpha", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }) });
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toBe(
-      'Bearer resource_metadata="https://spike.convex.site/.well-known/oauth-protected-resource/mcp/alpha", scope="profile email"',
+      'Bearer resource_metadata="https://mcp.example.test/.well-known/oauth-protected-resource/mcp/alpha", scope="profile email"',
     );
   });
 
   test("serves protected resource metadata for the workspace URL", async () => {
     const t = setup();
     const response = await t.fetch("/.well-known/oauth-protected-resource/mcp/alpha", { method: "GET" });
-    expect(await response.json()).toMatchObject({ resource: "https://spike.convex.site/mcp/alpha", authorization_servers: [ISSUER] });
+    expect(await response.json()).toMatchObject({ resource: "https://mcp.example.test/mcp/alpha", authorization_servers: [ISSUER] });
   });
 
   test("there is no picker: bare /mcp is not an endpoint (M13)", async () => {

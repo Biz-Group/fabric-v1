@@ -7,7 +7,7 @@ import { citationPathResolver } from "../askfabric/citationAccess";
 import { citationTarget } from "../lib/citationLinks";
 
 /**
- * Tenant and member resolution for the Fabric MCP server (SPIKE).
+ * Tenant and member resolution for the Fabric MCP server.
  *
  * The tenant comes from the URL slug, never from the token or the model. The
  * member comes from the verified token. Every tool call then re-resolves both

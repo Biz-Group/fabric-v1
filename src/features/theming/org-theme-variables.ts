@@ -79,7 +79,7 @@ export const PREVIEW_NEUTRAL_VARIABLES: Record<
     "--background": "oklch(1 0 0)",
     "--foreground": "oklch(0.145 0 0)",
     "--muted": "oklch(0.97 0 0)",
-    "--muted-foreground": "oklch(0.556 0 0)",
+    "--muted-foreground": "oklch(0.53 0 0)",
     "--border": "oklch(0.922 0 0)",
   },
   dark: {

@@ -39,7 +39,6 @@ type Env = {
   readonly ASKFABRIC_TTS_MODEL: string | undefined;
   readonly ASKFABRIC_TTS_VOICE_ID: string | undefined;
   readonly FABRIC_MCP: string | undefined;
-  readonly FABRIC_MCP_AUDIENCE_OPTIONAL_CLIENTS: string | undefined;
   readonly FABRIC_MCP_CLIENT_IDS: string | undefined;
   readonly FABRIC_MCP_CLIENT_NAMES: string | undefined;
   readonly FABRIC_MCP_ENFORCE_AUDIENCE: string | undefined;

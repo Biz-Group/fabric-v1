@@ -281,7 +281,6 @@ async function handlePost(ctx: ActionCtx, req: Request): Promise<Response> {
   const check = await verifyAccessToken(
     req.headers.get("Authorization"),
     resourceUrl(target),
-    `${siteUrl()}/mcp`,
     (clientId) => ctx.runQuery(internal.mcpClients.workspaceClientFor, { clientId }),
   );
   if (!check.ok) {
