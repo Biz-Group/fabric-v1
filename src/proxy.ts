@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
-import { mcpProxy } from "@/lib/mcp-proxy";
+import { mcpProxy, oauthSignInRedirect } from "@/lib/mcp-proxy";
 import { getTenantSubdomain, isTenantsConsoleHost } from "@/lib/subdomain";
 
 // Auth pages live only on tenant subdomains, never on apex. Apex is pure
@@ -68,6 +68,10 @@ export const clerkProxy = clerkMiddleware(
     // /sign-up on the apex gets redirected to the marketing page (sign-in is
     // a per-tenant flow, not a global one).
     if (!subdomain) {
+      // An MCP client's OAuth sign-in lands here (Clerk's sign-in URL is the
+      // apex); send it to the workspace's own sign-in (src/lib/mcp-proxy.ts).
+      const oauth = oauthSignInRedirect(req, ROOT_DOMAIN);
+      if (oauth) return oauth;
       if (isAuthPath(req) || isJoinOrganizationPath(req)) {
         const url = req.nextUrl.clone();
         url.pathname = "/";

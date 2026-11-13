@@ -9,7 +9,10 @@
  * sessionStorage (per tab, per subdomain) rather than in the URL.
  *
  * Everything read from the URL or storage goes through `toSafeReturnPath`, so
- * the result can only ever be a path on the current host.
+ * the result can only ever be a path on the current host, with one exception:
+ * the OAuth consent page of our own Clerk account portal
+ * (`https://accounts.<root>/oauth-consent`), where an MCP client's sign-in
+ * (Claude, Copilot) continues after a workspace sign-in (`toSafeOAuthConsentUrl`).
  */
 
 const STORAGE_KEY = "fabric:return-path";
@@ -43,11 +46,41 @@ export function toSafeReturnPath(
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
+/**
+ * The Clerk account portal's OAuth consent URL, kept whole, when `raw` is
+ * exactly that page on this deployment's root domain
+ * (`https://accounts.<root>/oauth-consent?...`); otherwise null. Clerk then
+ * validates the OAuth request itself.
+ */
+export function toSafeOAuthConsentUrl(
+  raw: string | null | undefined,
+  currentHost: string,
+): string | null {
+  if (!raw || !currentHost) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  const root = currentHost.toLowerCase().split(".").slice(1).join(".");
+  if (!root.includes(".")) return null;
+  if (url.protocol !== "https:") return null;
+  if (url.host.toLowerCase() !== `accounts.${root}`) return null;
+  if (url.pathname !== "/oauth-consent") return null;
+  return url.href;
+}
+
+/** A remembered destination: a path on this host, or the OAuth consent URL. */
+function toSafeDestination(raw: string | null | undefined, currentHost: string): string | null {
+  return toSafeOAuthConsentUrl(raw, currentHost) ?? toSafeReturnPath(raw, currentHost);
+}
+
 /** Stores the validated `redirect_url` from the current page, or clears a
  * stale one when this sign-in has none. */
 export function rememberReturnPathFromUrl(): void {
   const raw = new URLSearchParams(window.location.search).get("redirect_url");
-  const path = toSafeReturnPath(raw, window.location.host);
+  const path = toSafeDestination(raw, window.location.host);
   try {
     if (path) window.sessionStorage.setItem(STORAGE_KEY, path);
     else window.sessionStorage.removeItem(STORAGE_KEY);
@@ -64,7 +97,12 @@ export function readReturnPath(): string {
   } catch {
     // Storage blocked.
   }
-  return toSafeReturnPath(stored, window.location.host) ?? "/";
+  return toSafeDestination(stored, window.location.host) ?? "/";
+}
+
+/** True when the destination is another host (the OAuth consent page), so it needs a full navigation. */
+export function isExternalDestination(destination: string): boolean {
+  return /^https:\/\//.test(destination);
 }
 
 export function clearReturnPath(): void {

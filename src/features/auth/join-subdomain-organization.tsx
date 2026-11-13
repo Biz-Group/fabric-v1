@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { getTenantSubdomain } from "@/lib/subdomain";
 import { offerPasskeyAfterSignIn } from "./passkey-offer";
-import { clearReturnPath, readReturnPath, signInUrlFor } from "./return-path";
+import { clearReturnPath, isExternalDestination, readReturnPath, signInUrlFor } from "./return-path";
 
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "";
 
@@ -79,6 +79,11 @@ export function JoinSubdomainOrganization() {
     const destination = readReturnPath();
     clearReturnPath();
     offerPasskeyAfterSignIn();
+    // An MCP client's sign-in continues on the Clerk consent page (another host).
+    if (isExternalDestination(destination)) {
+      window.location.assign(destination);
+      return;
+    }
     router.replace(destination);
     router.refresh();
   }, [router]);

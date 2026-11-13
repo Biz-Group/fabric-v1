@@ -96,3 +96,27 @@ describe("MCP host (M11 Option B)", () => {
     expect(mcpProxy(request("mcp.bizfabric.ai", "/mcp/acme"))).toBeNull();
   });
 });
+
+describe("MCP OAuth sign-in on the apex", () => {
+  const consent =
+    "https://accounts.bizfabric.ai/oauth-consent?client_id=x&resource=https%3A%2F%2Fmcp.bizfabric.ai%2Fmcp%2Fbiz-group&state=s";
+  beforeEach(() => vi.stubEnv("MCP_HOST", "mcp.bizfabric.ai"));
+
+  it("sends an MCP consent sign-in to the workspace's own sign-in page", async () => {
+    const response = await handler({ protect }, request("www.bizfabric.ai", `/?redirect_url=${encodeURIComponent(consent)}`));
+    const location = new URL(response?.headers.get("location") ?? "");
+    expect(location.origin + location.pathname).toBe("https://biz-group.bizfabric.ai/sign-in");
+    expect(location.searchParams.get("redirect_url")).toBe(consent);
+    expect(protect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a consent for another resource", consent.replace("mcp.bizfabric.ai", "evil.example")],
+    ["another host than the account portal", consent.replace("accounts.bizfabric.ai", "evil.example")],
+    ["no redirect", ""],
+  ])("leaves %s to the marketing site", async (_label, raw) => {
+    const response = await handler({ protect }, request("www.bizfabric.ai", raw ? `/?redirect_url=${encodeURIComponent(raw)}` : "/"));
+    expect(response?.headers.get("location") ?? "").not.toContain("/sign-in");
+  });
+});
+

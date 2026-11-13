@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { signInUrlFor, toSafeReturnPath } from "./return-path";
+import { isExternalDestination, signInUrlFor, toSafeOAuthConsentUrl, toSafeReturnPath } from "./return-path";
 
 const HOST = "acme.bizfabric.ai";
 
@@ -61,3 +61,26 @@ describe("signInUrlFor", () => {
     expect(toSafeReturnPath(raw, HOST)).toBe("/?process=p1&tab=map");
   });
 });
+
+describe("toSafeOAuthConsentUrl (MCP sign-in)", () => {
+  const consent =
+    "https://accounts.bizfabric.ai/oauth-consent?client_id=https%3A%2F%2Fclaude.ai%2Foauth%2Fmcp-oauth-client-metadata&resource=https%3A%2F%2Fmcp.bizfabric.ai%2Fmcp%2Fbiz-group";
+
+  test("keeps the account portal's consent page on this root domain, whole", () => {
+    expect(toSafeOAuthConsentUrl(consent, "biz-group.bizfabric.ai")).toBe(consent);
+    expect(isExternalDestination(consent)).toBe(true);
+    expect(isExternalDestination("/biz-group?fn=1")).toBe(false);
+  });
+
+  test.each([
+    ["another host", "https://evil.example/oauth-consent?x=1"],
+    ["another root domain", "https://accounts.evil.example/oauth-consent"],
+    ["another portal page", "https://accounts.bizfabric.ai/user"],
+    ["plain http", "http://accounts.bizfabric.ai/oauth-consent"],
+    ["a lookalike host", "https://accounts.bizfabric.ai.evil.example/oauth-consent"],
+    ["a relative path", "/oauth-consent"],
+  ])("refuses %s", (_label, raw) => {
+    expect(toSafeOAuthConsentUrl(raw, "biz-group.bizfabric.ai")).toBeNull();
+  });
+});
+

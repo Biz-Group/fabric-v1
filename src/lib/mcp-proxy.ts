@@ -28,3 +28,32 @@ export function mcpProxy(req: NextRequest): NextResponse | null {
   }
   return NextResponse.rewrite(new URL(`${upstream}${pathname}${search}`));
 }
+
+/**
+ * Clerk sends a signed-out user in an OAuth flow to the instance's sign-in URL
+ * (the apex marketing site), carrying the account portal's consent URL as
+ * `redirect_url`. Fabric signs people in on workspace subdomains only, so when
+ * that consent is for an MCP workspace URL (`resource=https://<MCP_HOST>/mcp/<slug>`),
+ * send them to that workspace's sign-in, which returns to the consent page.
+ */
+export function oauthSignInRedirect(req: NextRequest, rootDomain: string): NextResponse | null {
+  const mcpHost = process.env.MCP_HOST?.trim().toLowerCase();
+  const raw = req.nextUrl.searchParams.get("redirect_url");
+  if (!mcpHost || !raw || !rootDomain) return null;
+  let consent: URL;
+  let resource: URL;
+  try {
+    consent = new URL(raw);
+    resource = new URL(consent.searchParams.get("resource") ?? "");
+  } catch {
+    return null;
+  }
+  const root = rootDomain.split(":")[0].toLowerCase();
+  if (consent.protocol !== "https:" || consent.host.toLowerCase() !== `accounts.${root}` || consent.pathname !== "/oauth-consent") return null;
+  if (hostname(resource.host) !== mcpHost) return null;
+  const slug = resource.pathname.match(/^\/mcp\/([a-z0-9][a-z0-9-]{0,62})\/?$/)?.[1];
+  if (!slug) return null;
+  const target = new URL(`${req.nextUrl.protocol}//${slug}.${rootDomain}/sign-in`);
+  target.searchParams.set("redirect_url", consent.href);
+  return NextResponse.redirect(target);
+}
