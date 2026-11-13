@@ -389,6 +389,68 @@ describe("HTTP", () => {
     expect(result.isError).toBe(false);
   });
 
+  describe("MCP Apps cards (Phase 5)", () => {
+    async function rpc(t: ReturnType<typeof setup>, body: unknown) {
+      const sign = await signerFor();
+      const response = await t.fetch("/mcp/alpha", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${await sign({ client_id: CLIENT }, ISSUER, "ana")}` },
+        body: JSON.stringify(body),
+      });
+      return await response.json();
+    }
+
+    test("show tools declare the card resource, which the server serves", async () => {
+      const t = setup();
+      await t.run(seed);
+      const tools = (await rpc(t, { jsonrpc: "2.0", id: 1, method: "tools/list" })).result.tools as Array<{ name: string; _meta?: { ui?: { resourceUri?: string } } }>;
+      const withCards = tools.filter((tool) => tool._meta?.ui?.resourceUri === "ui://fabric/cards").map((tool) => tool.name);
+      expect(withCards).toEqual(["showCards", "showFlowStep", "showChart"]);
+      expect(tools.find((tool) => tool.name === "getOverview")?._meta).toBeUndefined();
+
+      const listed = (await rpc(t, { jsonrpc: "2.0", id: 2, method: "resources/list" })).result.resources;
+      expect(listed).toEqual([expect.objectContaining({ uri: "ui://fabric/cards", mimeType: "text/html;profile=mcp-app" })]);
+      const read = (await rpc(t, { jsonrpc: "2.0", id: 3, method: "resources/read", params: { uri: "ui://fabric/cards" } })).result.contents[0];
+      expect(read.mimeType).toBe("text/html;profile=mcp-app");
+      expect(read.text).toMatch(/^<!doctype html>/);
+      // Self-contained: nothing loads from elsewhere.
+      expect(read.text).not.toMatch(/<script[^>]+src=|<link[^>]+href=/);
+      expect((await rpc(t, { jsonrpc: "2.0", id: 4, method: "resources/read", params: { uri: "ui://other" } })).error).toBeDefined();
+    });
+
+    test("showCards returns linked card data for the viewer's own entities only", async () => {
+      const t = setup();
+      const ids = await t.run(async (ctx: MutationCtx) => {
+        await seed(ctx);
+        const functionId = await ctx.db.insert("functions", { name: "Finance", sortOrder: 0, clerkOrgId: ORG_A });
+        const departmentId = await ctx.db.insert("departments", { name: "Payables", functionId, sortOrder: 0, clerkOrgId: ORG_A });
+        const processId = await ctx.db.insert("processes", { name: "Invoice approval", departmentId, sortOrder: 0, clerkOrgId: ORG_A });
+        const otherFn = await ctx.db.insert("functions", { name: "Beta secret", sortOrder: 0, clerkOrgId: ORG_B });
+        return { functionId, processId, otherFn };
+      });
+      const result = (
+        await rpc(t, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "showCards", arguments: { ids: [ids.processId, ids.functionId, ids.otherFn, "nonsense"] } } })
+      ).result;
+      expect(result.isError).toBe(false);
+      expect(result.structuredContent.kind).toBe("cards");
+      expect(result.structuredContent.cards.map((card: { name: string }) => card.name)).toEqual(["Invoice approval", "Finance"]);
+      expect(result.content[0].text).toContain("Showing 2 cards");
+      expect(JSON.stringify(result)).not.toContain("Beta secret");
+    });
+
+    test("show tools say when there is nothing to show, without a card", async () => {
+      const t = setup();
+      await t.run(seed);
+      const chart = (await rpc(t, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "showChart", arguments: { chart: "signalsByProcess" } } })).result;
+      expect(chart.isError).toBe(false);
+      expect(chart.structuredContent).toBeUndefined();
+      expect(chart.content[0].text).toMatch(/Nothing to show/);
+      const flow = (await rpc(t, { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "showFlowStep", arguments: { processId: "nope", stepId: "n1" } } })).result;
+      expect(flow.structuredContent).toBeUndefined();
+      expect(flow.content[0].text).toMatch(/Nothing to show/);
+    });
+  });
+
   test("rate-limits a user's tool calls and says when to retry", async () => {
     const t = setup();
     await t.run(seed);

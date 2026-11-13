@@ -22,7 +22,9 @@ import {
   type JsonRpcRequest,
   type JsonRpcResponse,
 } from "./protocol";
-import { getMcpTool, sourcesIn, toMcpContent, toolListEntries } from "./tools";
+import { CARDS_RESOURCE_MIME, CARDS_RESOURCE_URI, getMcpTool, sourcesIn, toMcpContent, toolListEntries, type McpTool } from "./tools";
+import type { McpDisplayResult } from "./display";
+import { MCP_CARDS_HTML } from "./cardsHtml.generated";
 
 /**
  * Fabric MCP server routes (docs/fabric-mcp-server-feasibility.md).
@@ -182,6 +184,7 @@ async function callTool(call: CallContext, era: Era, message: JsonRpcRequest): P
   }
 
   const startedAt = Date.now();
+  if (tool.display) return await callDisplayTool(call, era, id, name, tool, args, startedAt);
   let result: AskToolResult;
   try {
     // The viewer comes last so a client can never supply its own.
@@ -203,6 +206,68 @@ async function callTool(call: CallContext, era: Era, message: JsonRpcRequest): P
     latencyMs: Date.now() - startedAt,
   });
   return { jsonrpc: "2.0", id, result: finishResult(era, { content, isError: false }) };
+}
+
+/** A show tool (Phase 5): text for the model, plus the card's data for MCP Apps hosts. */
+async function callDisplayTool(
+  call: CallContext,
+  era: Era,
+  id: JsonRpcRequest["id"] | null,
+  name: string,
+  tool: McpTool,
+  args: Record<string, unknown>,
+  startedAt: number,
+): Promise<JsonRpcResponse> {
+  let result: McpDisplayResult;
+  try {
+    result = (await call.ctx.runQuery(tool.executorRef, { ...args, viewer: call.viewer })) as unknown as McpDisplayResult;
+  } catch (error) {
+    if (authErrorCode(error)) return rpcError(id ?? null, ERRORS.invalidRequest, "You no longer have access to this Fabric workspace");
+    log("tool_error", { tool: name, client: call.token.clientId, org: call.viewer.orgId });
+    await recordCall(call, name, "error", { latencyMs: Date.now() - startedAt });
+    return { jsonrpc: "2.0", id: id ?? null, result: finishResult(era, { content: [{ type: "text", text: `${name} failed. Check the argument values against the tool's schema.` }], isError: true }) };
+  }
+  await recordCall(call, name, result.found ? "ok" : "notFound", { resultCount: result.resultCount, latencyMs: Date.now() - startedAt });
+  return {
+    jsonrpc: "2.0",
+    id: id ?? null,
+    result: finishResult(era, {
+      content: [{ type: "text", text: result.text }],
+      ...(result.structured ? { structuredContent: result.structured } : {}),
+      isError: false,
+    }),
+  };
+}
+
+const CARDS_RESOURCE = {
+  uri: CARDS_RESOURCE_URI,
+  name: "fabric-cards",
+  title: "Fabric cards",
+  description: "Renders Fabric cards, flow steps and charts for the show tools.",
+  mimeType: CARDS_RESOURCE_MIME,
+};
+
+function readResource(era: Era, id: JsonRpcRequest["id"] | null, uri: unknown): JsonRpcResponse {
+  if (uri !== CARDS_RESOURCE_URI) return rpcError(id ?? null, ERRORS.invalidParams, "Resource not found");
+  return {
+    jsonrpc: "2.0",
+    id: id ?? null,
+    result: finishResult(
+      era,
+      {
+        contents: [
+          {
+            uri: CARDS_RESOURCE_URI,
+            mimeType: CARDS_RESOURCE_MIME,
+            text: MCP_CARDS_HTML,
+            // No external origins: the host's default, fully locked-down CSP applies.
+            _meta: { ui: { prefersBorder: true } },
+          },
+        ],
+      },
+      true,
+    ),
+  };
 }
 
 async function handlePost(ctx: ActionCtx, req: Request): Promise<Response> {
@@ -286,6 +351,12 @@ async function handlePost(ctx: ActionCtx, req: Request): Promise<Response> {
       return json({ jsonrpc: "2.0", id, result: finishResult(era, discoverResult(), true) });
     case "tools/list":
       return json({ jsonrpc: "2.0", id, result: finishResult(era, { tools: toolListEntries({ conversationTools: lookup.conversationTools }) }, true) });
+    case "resources/list":
+      return json({ jsonrpc: "2.0", id, result: finishResult(era, { resources: [CARDS_RESOURCE] }, true) });
+    case "resources/templates/list":
+      return json({ jsonrpc: "2.0", id, result: finishResult(era, { resourceTemplates: [] }, true) });
+    case "resources/read":
+      return json(readResource(era, id, message.params?.uri));
     case "tools/call":
       return json(await callTool({ ctx, slug: lookup.slug, viewer: lookup.viewer, userId: lookup.userId, token: check.token, conversationTools: lookup.conversationTools }, era, message));
     default:

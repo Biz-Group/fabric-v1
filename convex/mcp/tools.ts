@@ -44,8 +44,15 @@ export const MCP_CONVERSATION_TOOL_NAMES = [
 
 export const WORKSPACE_TOOL_NAME = "getWorkspaceContents";
 
+/** MCP Apps show tools (Phase 5, B9): each renders a card in hosts that support it. */
+export const MCP_DISPLAY_TOOL_NAMES = ["showCards", "showFlowStep", "showChart"] as const;
+
+/** The one UI resource every show tool renders with (`resources/read`). */
+export const CARDS_RESOURCE_URI = "ui://fabric/cards";
+export const CARDS_RESOURCE_MIME = "text/html;profile=mcp-app";
+
 /** Every always-on tool name, in `tools/list` order. */
-export const MCP_TOOL_NAMES = [WORKSPACE_TOOL_NAME, ...MCP_ASK_TOOL_NAMES] as const;
+export const MCP_TOOL_NAMES = [WORKSPACE_TOOL_NAME, ...MCP_ASK_TOOL_NAMES, ...MCP_DISPLAY_TOOL_NAMES] as const;
 
 type ExecutorRef = FunctionReference<"query", "internal", { viewer: { tokenIdentifier: string; orgId: string } } & Record<string, unknown>, AskToolResult>;
 
@@ -60,7 +67,60 @@ export type McpTool = {
   defaults: Record<string, unknown>;
   /** An internal query taking the viewer plus the tool's arguments. */
   executorRef: ExecutorRef;
+  /** Set on show tools: the executor returns an `McpDisplayResult` and the host renders a card. */
+  display?: true;
 };
+
+const CHART_IDS = ["signalsByProcess", "systemFriction", "coverageByDepartment", "contributionsOverTime"];
+
+function displayTool(name: string, description: string, inputSchema: JsonSchema, executorRef: unknown): McpTool {
+  return { name, description, inputSchema, ...relaxSchema(inputSchema), executorRef: executorRef as ExecutorRef, display: true };
+}
+
+const DISPLAY_TOOLS = (): McpTool[] => [
+  displayTool(
+    "showCards",
+    "Show functions, departments or processes as cards under your answer: name, where it sits, its overview headline and counts, with a link to open it in Fabric. Use it when naming a few specific parts of the organization the user may want to open. Returns a short text version too.",
+    {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        ids: { type: "array", items: { type: "string" }, description: "1 to 12 ids of functions, departments or processes, exactly as other Fabric tools returned them." },
+      },
+      required: ["ids"],
+    },
+    internal.mcp.display.showCards,
+  ),
+  displayTool(
+    "showFlowStep",
+    "Show one step of a process flow as a card: the step, the steps just before and after it, and a link to the flow in Fabric. Use it when discussing a specific step, handoff or bottleneck.",
+    {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        processId: { type: "string", description: "The process id." },
+        stepId: { type: "string", description: "The step id, as getProcessFlow lists it." },
+      },
+      required: ["processId", "stepId"],
+    },
+    internal.mcp.display.showFlowStep,
+  ),
+  displayTool(
+    "showChart",
+    "Show a chart under your answer. signalsByProcess: friction, bottleneck and handoff signals per process. systemFriction: pain points and rekeying per system. coverageByDepartment: processes with and without contributions. contributionsOverTime: contributions per week. Use it when a comparison or trend is clearer as a chart.",
+    {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        chart: { type: "string", enum: CHART_IDS, description: "Which chart to show." },
+        kind: { type: "string", enum: ["org", "function", "department", "process"], description: "Limit to this entity kind, or \"org\" for the whole organization." },
+        id: { type: "string", description: "The entity id, or \"\" for the whole organization." },
+      },
+      required: ["chart", "kind", "id"],
+    },
+    internal.mcp.display.showChart,
+  ),
+];
 
 const WORKSPACE_TOOL: McpTool = {
   name: WORKSPACE_TOOL_NAME,
@@ -121,14 +181,18 @@ export type McpToolOptions = { conversationTools: boolean };
 /** The tools a workspace exposes. Conversation tools come last, so the always-on prefix stays stable. */
 export function mcpTools({ conversationTools }: McpToolOptions): McpTool[] {
   const byName = new Map(ASK_TOOLS.map((tool) => [tool.name as string, tool]));
-  const names: readonly string[] = conversationTools ? [...MCP_ASK_TOOL_NAMES, ...MCP_CONVERSATION_TOOL_NAMES] : MCP_ASK_TOOL_NAMES;
+  const askTool = (name: string) => {
+    const tool = byName.get(name);
+    if (!tool) throw new Error(`MCP tool ${name} is not in the AskFabric catalog`);
+    return fromAskTool(tool);
+  };
+  // Order: workspace tree, data tools, show tools, then the optional
+  // conversation tools last, so the always-on prefix stays stable.
   return [
     WORKSPACE_TOOL,
-    ...names.map((name) => {
-      const tool = byName.get(name);
-      if (!tool) throw new Error(`MCP tool ${name} is not in the AskFabric catalog`);
-      return fromAskTool(tool);
-    }),
+    ...MCP_ASK_TOOL_NAMES.map(askTool),
+    ...DISPLAY_TOOLS(),
+    ...(conversationTools ? MCP_CONVERSATION_TOOL_NAMES.map(askTool) : []),
   ];
 }
 
@@ -142,6 +206,7 @@ export function toolListEntries(options: McpToolOptions) {
     name: tool.name,
     description: tool.description,
     inputSchema: tool.publishedSchema,
+    ...(tool.display ? { _meta: { ui: { resourceUri: CARDS_RESOURCE_URI } } } : {}),
     annotations: {
       title: tool.name,
       readOnlyHint: true,

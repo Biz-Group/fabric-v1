@@ -159,7 +159,8 @@ export const COPILOT_SERVER_DESCRIPTION =
 export function initializeResult(version: string): Record<string, unknown> {
   return {
     protocolVersion: version,
-    capabilities: { tools: { listChanged: false } },
+    // `resources` serves the MCP Apps card UI (`ui://fabric/cards`, Phase 5).
+    capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
     serverInfo: SERVER_INFO,
     instructions: SERVER_INSTRUCTIONS,
   };
@@ -168,7 +169,11 @@ export function initializeResult(version: string): Record<string, unknown> {
 export function discoverResult(): Record<string, unknown> {
   return {
     supportedVersions: SUPPORTED_VERSIONS,
-    capabilities: { tools: {} },
+    capabilities: {
+      tools: {},
+      resources: {},
+      extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } },
+    },
     instructions: SERVER_INSTRUCTIONS,
   };
 }

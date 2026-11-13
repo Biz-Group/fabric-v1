@@ -51,7 +51,7 @@ export const resolveViewer = internalQuery({
 });
 
 /** The workspace origin a member opens in a browser, e.g. https://biz-group.bizfabric.ai. */
-function workspaceOrigin(slug: string): string | null {
+export function workspaceOrigin(slug: string): string | null {
   const root = process.env.ROOT_DOMAIN?.trim();
   if (!root) return null;
   // Dev runs the app on lvh.me:3000 over http.

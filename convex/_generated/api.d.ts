@@ -109,6 +109,7 @@ import type * as lib_userError from "../lib/userError.js";
 import type * as lib_workspaceStatus from "../lib/workspaceStatus.js";
 import type * as mcp_access from "../mcp/access.js";
 import type * as mcp_auth from "../mcp/auth.js";
+import type * as mcp_display from "../mcp/display.js";
 import type * as mcp_limits from "../mcp/limits.js";
 import type * as mcp_policy from "../mcp/policy.js";
 import type * as mcp_protocol from "../mcp/protocol.js";
@@ -257,6 +258,7 @@ declare const fullApi: ApiFromModules<{
   "lib/workspaceStatus": typeof lib_workspaceStatus;
   "mcp/access": typeof mcp_access;
   "mcp/auth": typeof mcp_auth;
+  "mcp/display": typeof mcp_display;
   "mcp/limits": typeof mcp_limits;
   "mcp/policy": typeof mcp_policy;
   "mcp/protocol": typeof mcp_protocol;

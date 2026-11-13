@@ -1521,26 +1521,34 @@ export const getFlowNeighbourhood = query({
   ),
   handler: async (ctx, args) => {
     const caller = await requireOrgMember(ctx);
-    const process = await ctx.db.get(args.processId);
-    if (!process || process.clerkOrgId !== caller.orgId) return null;
-    const flow = await ctx.db
-      .query("processFlows")
-      .withIndex("by_clerkOrgId_and_processId", (q) =>
-        q.eq("clerkOrgId", caller.orgId).eq("processId", args.processId),
-      )
-      .first();
-    const neighbourhood = flow ? flowNeighbourhood(flow, args.nodeId) : null;
-    if (!flow || !neighbourhood) return null;
-    const dept = await ctx.db.get(process.departmentId);
-    return {
-      processName: process.name,
-      path: { fn: dept?.functionId ?? null, dept: process.departmentId, proc: process._id },
-      ...neighbourhood,
-      generatedAt: flow.generatedAt,
-      stale: flow.stale,
-    };
+    return await buildFlowNeighbourhood(ctx, caller.orgId, args.processId, args.nodeId);
   },
 });
+
+/**
+ * The flow-snippet data for an org's process and step, or null. Shared by
+ * AskFabric's snippet and the MCP server's `showFlowStep`.
+ */
+export async function buildFlowNeighbourhood(ctx: QueryCtx, orgId: string, rawProcessId: string, nodeId: string) {
+  const processId = ctx.db.normalizeId("processes", rawProcessId);
+  if (!processId) return null;
+  const process = await ctx.db.get(processId);
+  if (!process || process.clerkOrgId !== orgId) return null;
+  const flow = await ctx.db
+    .query("processFlows")
+    .withIndex("by_clerkOrgId_and_processId", (q) => q.eq("clerkOrgId", orgId).eq("processId", processId))
+    .first();
+  const neighbourhood = flow ? flowNeighbourhood(flow, nodeId) : null;
+  if (!flow || !neighbourhood) return null;
+  const dept = await ctx.db.get(process.departmentId);
+  return {
+    processName: process.name,
+    path: { fn: dept?.functionId ?? null, dept: process.departmentId, proc: process._id },
+    ...neighbourhood,
+    generatedAt: flow.generatedAt,
+    stale: flow.stale,
+  };
+}
 
 
 // ---------------------------------------------------------------------------

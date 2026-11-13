@@ -96,7 +96,7 @@ const NOT_GROUNDED =
  * Convex id encodes its table), or null for anything else. `show` takes bare
  * ids so its schema stays small: the strict-tool grammar is at its limit.
  */
-function kindOfId(ctx: QueryCtx, id: string): HierarchyKind | null {
+export function kindOfId(ctx: QueryCtx, id: string): HierarchyKind | null {
   if (ctx.db.normalizeId("processes", id)) return "process";
   if (ctx.db.normalizeId("departments", id)) return "department";
   if (ctx.db.normalizeId("functions", id)) return "function";
