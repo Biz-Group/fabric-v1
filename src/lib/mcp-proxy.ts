@@ -31,12 +31,17 @@ export function mcpProxy(req: NextRequest): NextResponse | null {
 
 const SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
-/** The workspace slug a Copilot Studio client belongs to, asked of Convex (bounded wait). */
-async function slugForClient(clientId: string): Promise<string | null> {
+/**
+ * Which workspace's sign-in to show, asked of Convex (bounded wait). Convex
+ * answers only for clients the MCP server accepts: a workspace's own Copilot
+ * Studio client, or an allowlisted client (Claude) with an MCP `resource`.
+ */
+async function signInWorkspace(clientId: string, resource: string): Promise<string | null> {
   const upstream = process.env.MCP_UPSTREAM_URL?.trim().replace(/\/+$/, "");
-  if (!upstream || !/^[A-Za-z0-9_-]{8,64}$/.test(clientId)) return null;
+  if (!upstream || !clientId || clientId.length > 300 || resource.length > 300) return null;
   try {
-    const response = await fetch(`${upstream}/mcp-oauth/client-workspace?client_id=${encodeURIComponent(clientId)}`, {
+    const query = new URLSearchParams({ client_id: clientId, resource });
+    const response = await fetch(`${upstream}/mcp-oauth/client-workspace?${query}`, {
       signal: AbortSignal.timeout(3000),
     });
     if (!response.ok) return null;
@@ -50,13 +55,13 @@ async function slugForClient(clientId: string): Promise<string | null> {
 /**
  * Clerk sends a signed-out user in an OAuth flow to the instance's sign-in URL
  * (the apex marketing site), carrying the account portal's consent URL as
- * `redirect_url`. Fabric signs people in on workspace subdomains only, so this
- * finds the workspace and sends them to its sign-in, which returns to the
- * consent page:
- *   - from the consent's `resource` (https://<MCP_HOST>/mcp/<slug>), which
- *     Claude sends;
- *   - otherwise from its `client_id`, when it is a workspace's own Copilot
- *     Studio client (Copilot Studio sends no `resource`).
+ * `redirect_url`. Fabric signs people in on workspace subdomains only, so for
+ * a client the MCP server accepts, this sends them to the right workspace's
+ * sign-in, which returns to the consent page. Convex decides (see
+ * `signInWorkspace`): a workspace's own Copilot Studio client, or an
+ * allowlisted client whose `resource` names an MCP workspace URL. Any other
+ * client's consent request stays on the marketing site, so Fabric never lends
+ * its sign-in page to an OAuth client it wouldn't accept.
  */
 export async function oauthSignInRedirect(req: NextRequest, rootDomain: string): Promise<NextResponse | null> {
   const mcpHost = process.env.MCP_HOST?.trim().toLowerCase();
@@ -71,18 +76,7 @@ export async function oauthSignInRedirect(req: NextRequest, rootDomain: string):
   const root = rootDomain.split(":")[0].toLowerCase();
   if (consent.protocol !== "https:" || consent.host.toLowerCase() !== `accounts.${root}` || consent.pathname !== "/oauth-consent") return null;
 
-  let slug: string | null = null;
-  const resource = consent.searchParams.get("resource");
-  if (resource) {
-    try {
-      const url = new URL(resource);
-      const match = url.pathname.match(/^\/mcp\/([a-z0-9][a-z0-9-]{0,62})\/?$/);
-      if (hostname(url.host) === mcpHost && match) slug = match[1];
-    } catch {
-      // Not a URL: fall through to the client id.
-    }
-  }
-  if (!slug) slug = await slugForClient(consent.searchParams.get("client_id") ?? "");
+  const slug = await signInWorkspace(consent.searchParams.get("client_id") ?? "", consent.searchParams.get("resource") ?? "");
   if (!slug) return null;
 
   const target = new URL(`${req.nextUrl.protocol}//${slug}.${rootDomain}/sign-in`);

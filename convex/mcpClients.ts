@@ -6,9 +6,9 @@ import { ClerkApiError, clerkFetch } from "./lib/clerkApi";
 import { requireOrgAdmin } from "./lib/orgAuth";
 import { userError } from "./lib/userError";
 import { mcpAccessFor } from "./mcpSettings";
-import { mcpIssuer } from "./mcp/auth";
+import { isAllowlistedClient, mcpIssuer } from "./mcp/auth";
 import { COPILOT_SERVER_DESCRIPTION, COPILOT_SERVER_NAME } from "./mcp/protocol";
-import { workspaceMcpUrl } from "./mcp/urls";
+import { mcpBaseUrl, workspaceMcpUrl } from "./mcp/urls";
 
 /**
  * Self-service Copilot Studio credentials (docs/fabric-mcp-build-task-list.md,
@@ -50,23 +50,38 @@ export const workspaceClientFor = internalQuery({
 });
 
 /**
- * For the web app's sign-in redirect: the workspace slug that owns a
- * Copilot Studio client. Copilot Studio's consent request carries no
- * `resource`, so its client id is the only way to know which workspace's
- * sign-in page to show. Client ids are random and not secret; the slug is a
- * public subdomain.
+ * For the web app's OAuth sign-in redirect (src/lib/mcp-proxy.ts): which
+ * workspace's sign-in page to show, but only for a client the MCP server
+ * accepts, so a consent request from any other client never gets a
+ * Fabric-branded sign-in.
+ *   - A workspace's own Copilot Studio client → that workspace. Copilot Studio
+ *     sends no `resource`, so the client id is the only way to know.
+ *   - An allowlisted client (e.g. Claude) → the workspace named by its
+ *     `resource` (`<public base>/mcp/<slug>`).
+ * Anything else, or a closed workspace, → null.
  */
-export const workspaceSlugForClient = internalQuery({
-  args: { clientId: v.string() },
-  handler: async (ctx, { clientId }): Promise<string | null> => {
+export const signInWorkspace = internalQuery({
+  args: { clientId: v.string(), resource: v.string() },
+  handler: async (ctx, { clientId, resource }): Promise<string | null> => {
     const row = await ctx.db
       .query("mcpOAuthClients")
       .withIndex("by_clientId", (q) => q.eq("clientId", clientId))
       .first();
-    if (!row) return null;
+    if (row) {
+      const tenant = await ctx.db
+        .query("tenants")
+        .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", row.clerkOrgId))
+        .first();
+      return tenant && tenant.status === "active" ? tenant.slug : null;
+    }
+    if (!isAllowlistedClient(clientId)) return null;
+    const prefix = `${mcpBaseUrl()}/mcp/`;
+    if (!resource.startsWith(prefix)) return null;
+    const slug = resource.slice(prefix.length).replace(/\/$/, "");
+    if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug)) return null;
     const tenant = await ctx.db
       .query("tenants")
-      .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", row.clerkOrgId))
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
       .first();
     return tenant && tenant.status === "active" ? tenant.slug : null;
   },

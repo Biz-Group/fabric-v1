@@ -59,6 +59,11 @@ export function mcpIssuer(): string | null {
   return domain ? domain : null;
 }
 
+/** True when the deployment allowlist (FABRIC_MCP_CLIENT_IDS) names this client. */
+export function isAllowlistedClient(clientId: string): boolean {
+  return allowedClientIds()?.has(clientId) ?? false;
+}
+
 function allowedClientIds(): Set<string> | null {
   const raw = env.FABRIC_MCP_CLIENT_IDS?.trim();
   if (!raw) return null;

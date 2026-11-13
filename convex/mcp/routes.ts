@@ -323,14 +323,17 @@ export function registerMcpRoutes(http: HttpRouter): void {
   http.route({ pathPrefix: MCP_PREFIX, method: "DELETE", handler: notAllowed });
   http.route({ pathPrefix: PRM_PREFIX, method: "GET", handler: metadata });
   http.route({ path: "/.well-known/oauth-authorization-server", method: "GET", handler: httpAction(authorizationServerMetadata) });
-  // The web app's OAuth sign-in redirect asks which workspace owns a client (src/lib/mcp-proxy.ts).
+  // The web app's OAuth sign-in redirect asks which workspace's sign-in to
+  // show, for accepted clients only (mcpClients.signInWorkspace).
   http.route({
     path: "/mcp-oauth/client-workspace",
     method: "GET",
     handler: httpAction(async (ctx, req) => {
-      const clientId = new URL(req.url).searchParams.get("client_id") ?? "";
-      if (!/^[A-Za-z0-9_-]{8,64}$/.test(clientId)) return json({ error: "not_found" }, 404);
-      const slug = await ctx.runQuery(internal.mcpClients.workspaceSlugForClient, { clientId });
+      const params = new URL(req.url).searchParams;
+      const clientId = params.get("client_id") ?? "";
+      const resource = params.get("resource") ?? "";
+      if (!clientId || clientId.length > 300 || resource.length > 300) return json({ error: "not_found" }, 404);
+      const slug = await ctx.runQuery(internal.mcpClients.signInWorkspace, { clientId, resource });
       return slug ? json({ slug }) : json({ error: "not_found" }, 404);
     }),
   });

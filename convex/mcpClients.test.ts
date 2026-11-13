@@ -184,13 +184,22 @@ describe("Copilot Studio credentials", () => {
     expect((await call("/mcp/acme", "member", "client_unknown")).status).toBe(401);
   });
 
-  test("the sign-in redirect can find a client's workspace, and nothing else", async () => {
+  test("the sign-in redirect finds a workspace only for clients the MCP server accepts", async () => {
     const { t, as } = await setup();
+    process.env.FABRIC_MCP_CLIENT_IDS = "https://claude.ai/oauth/mcp-oauth-client-metadata";
     await as("admin").action(api.mcpClients.createCopilotStudioClient, {});
-    const lookup = async (clientId: string) => await t.fetch(`/mcp-oauth/client-workspace?client_id=${clientId}`, { method: "GET" });
+    const lookup = async (clientId: string, resource = "") =>
+      await t.fetch(`/mcp-oauth/client-workspace?${new URLSearchParams({ client_id: clientId, resource })}`, { method: "GET" });
+    // A workspace's own Copilot Studio client, with no resource.
     expect(await (await lookup("client_1")).json()).toEqual({ slug: "acme" });
-    expect((await lookup("client_unknown")).status).toBe(404);
-    expect((await lookup("bad id!")).status).toBe(404);
+    // An allowlisted client naming an MCP workspace URL.
+    expect(await (await lookup("https://claude.ai/oauth/mcp-oauth-client-metadata", "https://clients.convex.site/mcp/acme")).json()).toEqual({ slug: "acme" });
+    // Refused: an unknown client even with our resource, an allowlisted client
+    // with a foreign or missing resource, or a workspace that doesn't exist.
+    expect((await lookup("https://evil.example/client.json", "https://clients.convex.site/mcp/acme")).status).toBe(404);
+    expect((await lookup("https://claude.ai/oauth/mcp-oauth-client-metadata", "https://evil.example/mcp/acme")).status).toBe(404);
+    expect((await lookup("https://claude.ai/oauth/mcp-oauth-client-metadata")).status).toBe(404);
+    expect((await lookup("https://claude.ai/oauth/mcp-oauth-client-metadata", "https://clients.convex.site/mcp/nope")).status).toBe(404);
   });
 
   test("revoking the add-on deletes the credentials at Clerk", async () => {
