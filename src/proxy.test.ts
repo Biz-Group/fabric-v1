@@ -110,6 +110,32 @@ describe("MCP OAuth sign-in on the apex", () => {
     expect(protect).not.toHaveBeenCalled();
   });
 
+  it("finds the workspace from a Copilot Studio client id when the consent has no resource", async () => {
+    vi.stubEnv("MCP_UPSTREAM_URL", "https://prod-example.eu-west-1.convex.site");
+    const lookups: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        lookups.push(url);
+        return url.includes("client_id=bCLTLloAwViNWWwT") ? Response.json({ slug: "biz-group" }) : Response.json({}, { status: 404 });
+      }),
+    );
+    try {
+      const copilot = "https://accounts.bizfabric.ai/oauth-consent?client_id=bCLTLloAwViNWWwT&redirect_uri=https%3A%2F%2Fglobal.consent.azure-apim.net%2Fredirect%2Fx";
+      const response = await handler({ protect }, request("www.bizfabric.ai", `/?redirect_url=${encodeURIComponent(copilot)}`));
+      const location = new URL(response?.headers.get("location") ?? "");
+      expect(location.origin + location.pathname).toBe("https://biz-group.bizfabric.ai/sign-in");
+      expect(location.searchParams.get("redirect_url")).toBe(copilot);
+      expect(lookups).toEqual(["https://prod-example.eu-west-1.convex.site/mcp-oauth/client-workspace?client_id=bCLTLloAwViNWWwT"]);
+
+      const unknown = copilot.replace("bCLTLloAwViNWWwT", "someoneElse123");
+      const other = await handler({ protect }, request("www.bizfabric.ai", `/?redirect_url=${encodeURIComponent(unknown)}`));
+      expect(other?.headers.get("location") ?? "").not.toContain("/sign-in");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it.each([
     ["a consent for another resource", consent.replace("mcp.bizfabric.ai", "evil.example")],
     ["another host than the account portal", consent.replace("accounts.bizfabric.ai", "evil.example")],

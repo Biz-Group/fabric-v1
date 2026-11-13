@@ -147,6 +147,15 @@ export const SERVER_INSTRUCTIONS = [
   "Do not profile, rank or judge named individuals, and do not recommend vendors or products: answer about the work, not the people.",
 ].join(" ");
 
+/**
+ * The name and description a Copilot Studio maker enters when adding Fabric as
+ * an MCP tool (required fields). Copilot's orchestrator reads the description
+ * to decide when to call Fabric, so it says what Fabric knows and when to use it.
+ */
+export const COPILOT_SERVER_NAME = "Fabric";
+export const COPILOT_SERVER_DESCRIPTION =
+  "Fabric knows how this organization works, captured from interviews with its people: its functions, departments and processes, how each process flows step by step, AI overviews, friction and improvement signals, the systems and tools in use, and how much of the organization has contributed. Use it to answer questions about how work gets done, where it breaks down and what could be improved. Answers include links back to the Fabric pages they come from. Fabric only shows what the signed-in user can see.";
+
 export function initializeResult(version: string): Record<string, unknown> {
   return {
     protocolVersion: version,

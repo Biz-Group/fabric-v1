@@ -184,6 +184,15 @@ describe("Copilot Studio credentials", () => {
     expect((await call("/mcp/acme", "member", "client_unknown")).status).toBe(401);
   });
 
+  test("the sign-in redirect can find a client's workspace, and nothing else", async () => {
+    const { t, as } = await setup();
+    await as("admin").action(api.mcpClients.createCopilotStudioClient, {});
+    const lookup = async (clientId: string) => await t.fetch(`/mcp-oauth/client-workspace?client_id=${clientId}`, { method: "GET" });
+    expect(await (await lookup("client_1")).json()).toEqual({ slug: "acme" });
+    expect((await lookup("client_unknown")).status).toBe(404);
+    expect((await lookup("bad id!")).status).toBe(404);
+  });
+
   test("revoking the add-on deletes the credentials at Clerk", async () => {
     vi.useFakeTimers();
     try {

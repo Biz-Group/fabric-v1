@@ -74,10 +74,12 @@ export function CopilotStudioCard() {
           <>
             <ol className="list-decimal space-y-1 pl-4 text-sm text-muted-foreground">
               <li>In Copilot Studio, open your agent, then Tools → Add a tool → Model Context Protocol.</li>
-              <li>Paste the server URL, choose OAuth 2.0 → Manual, and fill in the fields below.</li>
+              <li>Enter the server name, description and URL, choose OAuth 2.0 → Manual, and fill in the fields below.</li>
               <li>Save, then copy the callback (redirect) URL Copilot Studio shows and add it here before connecting.</li>
             </ol>
             <div className="space-y-4">
+              <CopyField label="Server name" value={setup.serverName} />
+              <CopyField label="Server description" value={setup.serverDescription} multiline />
               {setup.serverUrl && <CopyField label="Server URL" value={setup.serverUrl} />}
               <CopyField label="Client ID" value={client.clientId} />
               <div className="space-y-1">
@@ -162,6 +164,8 @@ export function CopilotStudioCard() {
           </DialogHeader>
           {secret && (
             <div className="space-y-4">
+              <CopyField label="Server name" value={setup.serverName} />
+              <CopyField label="Server description" value={setup.serverDescription} multiline />
               {setup.serverUrl && <CopyField label="Server URL" value={setup.serverUrl} />}
               <CopyField label="Client ID" value={secret.clientId} />
               <CopyField label="Client secret" value={secret.clientSecret} />

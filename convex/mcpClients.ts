@@ -7,6 +7,7 @@ import { requireOrgAdmin } from "./lib/orgAuth";
 import { userError } from "./lib/userError";
 import { mcpAccessFor } from "./mcpSettings";
 import { mcpIssuer } from "./mcp/auth";
+import { COPILOT_SERVER_DESCRIPTION, COPILOT_SERVER_NAME } from "./mcp/protocol";
 import { workspaceMcpUrl } from "./mcp/urls";
 
 /**
@@ -48,6 +49,29 @@ export const workspaceClientFor = internalQuery({
   },
 });
 
+/**
+ * For the web app's sign-in redirect: the workspace slug that owns a
+ * Copilot Studio client. Copilot Studio's consent request carries no
+ * `resource`, so its client id is the only way to know which workspace's
+ * sign-in page to show. Client ids are random and not secret; the slug is a
+ * public subdomain.
+ */
+export const workspaceSlugForClient = internalQuery({
+  args: { clientId: v.string() },
+  handler: async (ctx, { clientId }): Promise<string | null> => {
+    const row = await ctx.db
+      .query("mcpOAuthClients")
+      .withIndex("by_clientId", (q) => q.eq("clientId", clientId))
+      .first();
+    if (!row) return null;
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", row.clerkOrgId))
+      .first();
+    return tenant && tenant.status === "active" ? tenant.slug : null;
+  },
+});
+
 function oauthUrls() {
   const issuer = mcpIssuer();
   return {
@@ -75,6 +99,8 @@ export const copilotStudioSetup = query({
     const createdBy = row?.createdByUserId ? await ctx.db.get(row.createdByUserId) : null;
     return {
       available: true as const,
+      serverName: COPILOT_SERVER_NAME,
+      serverDescription: COPILOT_SERVER_DESCRIPTION,
       serverUrl: tenant ? workspaceMcpUrl(tenant.slug) : null,
       ...oauthUrls(),
       client: row

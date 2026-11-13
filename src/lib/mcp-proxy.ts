@@ -29,30 +29,62 @@ export function mcpProxy(req: NextRequest): NextResponse | null {
   return NextResponse.rewrite(new URL(`${upstream}${pathname}${search}`));
 }
 
+const SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+/** The workspace slug a Copilot Studio client belongs to, asked of Convex (bounded wait). */
+async function slugForClient(clientId: string): Promise<string | null> {
+  const upstream = process.env.MCP_UPSTREAM_URL?.trim().replace(/\/+$/, "");
+  if (!upstream || !/^[A-Za-z0-9_-]{8,64}$/.test(clientId)) return null;
+  try {
+    const response = await fetch(`${upstream}/mcp-oauth/client-workspace?client_id=${encodeURIComponent(clientId)}`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!response.ok) return null;
+    const { slug } = (await response.json()) as { slug?: unknown };
+    return typeof slug === "string" && SLUG.test(slug) ? slug : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Clerk sends a signed-out user in an OAuth flow to the instance's sign-in URL
  * (the apex marketing site), carrying the account portal's consent URL as
- * `redirect_url`. Fabric signs people in on workspace subdomains only, so when
- * that consent is for an MCP workspace URL (`resource=https://<MCP_HOST>/mcp/<slug>`),
- * send them to that workspace's sign-in, which returns to the consent page.
+ * `redirect_url`. Fabric signs people in on workspace subdomains only, so this
+ * finds the workspace and sends them to its sign-in, which returns to the
+ * consent page:
+ *   - from the consent's `resource` (https://<MCP_HOST>/mcp/<slug>), which
+ *     Claude sends;
+ *   - otherwise from its `client_id`, when it is a workspace's own Copilot
+ *     Studio client (Copilot Studio sends no `resource`).
  */
-export function oauthSignInRedirect(req: NextRequest, rootDomain: string): NextResponse | null {
+export async function oauthSignInRedirect(req: NextRequest, rootDomain: string): Promise<NextResponse | null> {
   const mcpHost = process.env.MCP_HOST?.trim().toLowerCase();
   const raw = req.nextUrl.searchParams.get("redirect_url");
   if (!mcpHost || !raw || !rootDomain) return null;
   let consent: URL;
-  let resource: URL;
   try {
     consent = new URL(raw);
-    resource = new URL(consent.searchParams.get("resource") ?? "");
   } catch {
     return null;
   }
   const root = rootDomain.split(":")[0].toLowerCase();
   if (consent.protocol !== "https:" || consent.host.toLowerCase() !== `accounts.${root}` || consent.pathname !== "/oauth-consent") return null;
-  if (hostname(resource.host) !== mcpHost) return null;
-  const slug = resource.pathname.match(/^\/mcp\/([a-z0-9][a-z0-9-]{0,62})\/?$/)?.[1];
+
+  let slug: string | null = null;
+  const resource = consent.searchParams.get("resource");
+  if (resource) {
+    try {
+      const url = new URL(resource);
+      const match = url.pathname.match(/^\/mcp\/([a-z0-9][a-z0-9-]{0,62})\/?$/);
+      if (hostname(url.host) === mcpHost && match) slug = match[1];
+    } catch {
+      // Not a URL: fall through to the client id.
+    }
+  }
+  if (!slug) slug = await slugForClient(consent.searchParams.get("client_id") ?? "");
   if (!slug) return null;
+
   const target = new URL(`${req.nextUrl.protocol}//${slug}.${rootDomain}/sign-in`);
   target.searchParams.set("redirect_url", consent.href);
   return NextResponse.redirect(target);

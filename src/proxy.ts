@@ -70,7 +70,7 @@ export const clerkProxy = clerkMiddleware(
     if (!subdomain) {
       // An MCP client's OAuth sign-in lands here (Clerk's sign-in URL is the
       // apex); send it to the workspace's own sign-in (src/lib/mcp-proxy.ts).
-      const oauth = oauthSignInRedirect(req, ROOT_DOMAIN);
+      const oauth = await oauthSignInRedirect(req, ROOT_DOMAIN);
       if (oauth) return oauth;
       if (isAuthPath(req) || isJoinOrganizationPath(req)) {
         const url = req.nextUrl.clone();
