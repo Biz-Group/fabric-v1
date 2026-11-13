@@ -282,6 +282,16 @@ export const TENANT_DATA: Record<TableNames, TenantDataEntry> = {
   },
   // Fabric MCP (Phase 3): the per-call audit names the member, so it goes
   // with the workspace; the daily counts are the add-on's billing record.
+  mcpOAuthClients: {
+    scope: "org",
+    orgIndex: "by_clerkOrgId",
+    class: "operational",
+    purge: "delete",
+    userIdFields: ["createdByUserId"],
+    // The Clerk application is deleted when the add-on is revoked or the
+    // workspace is closed (mcpClients.deleteAllMcpClientsForOrg), before purge.
+    externalIdFields: [{ field: "clerkAppId", system: "clerk" }],
+  },
   mcpCalls: {
     scope: "org",
     orgIndex: "by_clerkOrgId_and_createdAt",
@@ -440,6 +450,7 @@ export const ERASURE: Record<TableNames, "scan" | string | null> = {
   aiUsageEvents: "scan",
   aiUsageRollups: null,
   mcpCalls: "scan",
+  mcpOAuthClients: "scan",
   mcpUsageDays: null,
   askThreads: "Deleted with the rest of their AskFabric content (askLifecycle.purgeAskFabricForMember).",
   askMessages: "Deleted with their threads.",
@@ -493,6 +504,7 @@ export const EXPORT_POLICY: Record<TableNames, true | string> = {
   aiUsageEvents: "Biz Group's own cost records.",
   aiUsageRollups: "Biz Group's own cost records.",
   mcpCalls: true,
+  mcpOAuthClients: "Credentials for the workspace's Copilot Studio connection; not useful outside Fabric.",
   mcpUsageDays: "Biz Group's own usage records.",
   // Saish 2026-11-11: AskFabric chats are private to each member (D12), so
   // they never leave the workspace in an export.

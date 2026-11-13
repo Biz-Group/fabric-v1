@@ -52,7 +52,12 @@ type ExecutorRef = FunctionReference<"query", "internal", { viewer: { tokenIdent
 export type McpTool = {
   name: string;
   description: string;
+  /** The strict AskFabric schema, every field required; what the executor validates. */
   inputSchema: JsonSchema;
+  /** What clients see: the same schema with placeholder fields made optional. */
+  publishedSchema: JsonSchema;
+  /** The placeholder value for each optional field, filled in before the executor runs. */
+  defaults: Record<string, unknown>;
   /** An internal query taking the viewer plus the tool's arguments. */
   executorRef: ExecutorRef;
 };
@@ -62,12 +67,53 @@ const WORKSPACE_TOOL: McpTool = {
   description:
     "List this organization's whole structure in one call: every function, its departments and their processes, with ids and, where available, each process's overview headline. Call it first, then pass the ids to the other tools. For a large organization, processes are summarised as counts per department; find them with searchHierarchy or browseHierarchy.",
   inputSchema: { type: "object", additionalProperties: false, properties: {}, required: [] },
+  publishedSchema: { type: "object", additionalProperties: false, properties: {}, required: [] },
+  defaults: {},
   executorRef: internal.mcp.workspace.getWorkspaceContents as unknown as ExecutorRef,
 };
 
+/**
+ * The placeholder a field's description documents, if any. AskFabric's strict
+ * tool use makes every field required, so optional inputs take placeholders
+ * ("" / [] / -1 / 0 / false / "org" / "root"), each written into the field's
+ * description. MCP clients such as Copilot Studio treat every required field
+ * as one to ask the user for, so MCP publishes these fields as optional and
+ * fills the placeholder in itself.
+ */
+export function placeholderFor(field: JsonSchema): { value: unknown } | null {
+  const description = typeof field.description === "string" ? field.description : "";
+  const options = Array.isArray(field.enum) ? (field.enum as unknown[]) : [];
+  if (options.includes("org") && description.includes('"org"')) return { value: "org" };
+  if (options.includes("root") && description.includes('"root"')) return { value: "root" };
+  if (field.type === "string" && /(^|\s)""(\s|\.|,|$)|or ""|"" for|"" with/.test(description)) return { value: "" };
+  if (field.type === "array" && /\[\]/.test(description)) return { value: [] };
+  if (field.type === "number" && /\bor -1\b/.test(description)) return { value: -1 };
+  if (field.type === "number" && /\b0 for the default\b/.test(description)) return { value: 0 };
+  if (field.type === "boolean" && /otherwise false/.test(description)) return { value: false };
+  return null;
+}
+
+/** The client-facing schema and the defaults that complete a call to the strict schema. */
+export function relaxSchema(schema: JsonSchema): { publishedSchema: JsonSchema; defaults: Record<string, unknown> } {
+  const properties = (schema.properties ?? {}) as Record<string, JsonSchema>;
+  const defaults: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(properties)) {
+    const placeholder = placeholderFor(field);
+    if (placeholder) defaults[key] = placeholder.value;
+  }
+  const required = ((schema.required ?? []) as string[]).filter((key) => !(key in defaults));
+  return { publishedSchema: { ...schema, required }, defaults };
+}
+
 function fromAskTool(tool: RegisteredAskTool): McpTool {
   if (tool.access !== "member" || tool.display) throw new Error(`MCP tool ${tool.name} must be a member data tool`);
-  return { name: tool.name, description: tool.description, inputSchema: tool.inputSchema, executorRef: tool.executorRef as unknown as ExecutorRef };
+  return {
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    ...relaxSchema(tool.inputSchema),
+    executorRef: tool.executorRef as unknown as ExecutorRef,
+  };
 }
 
 export type McpToolOptions = { conversationTools: boolean };
@@ -95,7 +141,7 @@ export function toolListEntries(options: McpToolOptions) {
   return mcpTools(options).map((tool) => ({
     name: tool.name,
     description: tool.description,
-    inputSchema: tool.inputSchema,
+    inputSchema: tool.publishedSchema,
     annotations: {
       title: tool.name,
       readOnlyHint: true,

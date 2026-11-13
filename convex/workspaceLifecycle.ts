@@ -21,6 +21,7 @@ import {
   isWorkspaceClosed,
   PURGE_GRACE_MS,
 } from "./lib/workspaceStatus";
+import { deleteAllMcpClientsForOrg } from "./mcpClients";
 
 // ---------------------------------------------------------------------------
 // Workspace offboarding, phase 1: suspend and reinstate
@@ -233,7 +234,9 @@ export const suspendWorkspace = action({
       clerkOrgId,
       clerkUserIdFromTokenIdentifier(caller.tokenIdentifier),
     );
-    return { purgeAfter, invitationsRevoked: revoked, errors };
+    // A closed workspace's MCP OAuth clients are deleted at Clerk now, not left for the purge.
+    const mcp = await deleteAllMcpClientsForOrg(ctx, clerkOrgId, "workspace closed");
+    return { purgeAfter, invitationsRevoked: revoked, errors: [...errors, ...mcp.errors] };
   },
 });
 

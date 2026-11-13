@@ -5,7 +5,38 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
-/** A read-only URL with a copy button. */
+/**
+ * Copies text. The Clipboard API exists only in secure contexts (https or
+ * localhost), so local dev on http://*.lvh.me falls back to a hidden textarea
+ * and execCommand. The textarea goes next to the button, so a dialog's focus
+ * trap doesn't stop it being selected.
+ */
+export async function copyText(text: string, near?: HTMLElement | null): Promise<boolean> {
+  if (window.isSecureContext && navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to the legacy path.
+    }
+  }
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  (near?.parentElement ?? document.body).appendChild(area);
+  area.select();
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    area.remove();
+  }
+}
+
+/** A read-only value with a copy button. */
 export function CopyField({ label, value, hint }: { label: string; value: string; hint?: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -18,13 +49,12 @@ export function CopyField({ label, value, hint }: { label: string; value: string
           variant="outline"
           size="icon"
           aria-label={`Copy ${label}`}
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(value);
+          onClick={async (event) => {
+            if (await copyText(value, event.currentTarget)) {
               setCopied(true);
               setTimeout(() => setCopied(false), 2000);
-            } catch {
-              toast.error("Couldn't copy the URL.");
+            } else {
+              toast.error(`Couldn't copy the ${label.toLowerCase()}. Select it and copy it by hand.`);
             }
           }}
         >
@@ -64,10 +94,11 @@ export function ConnectionGuide({ workspaceUrl }: { workspaceUrl: string | null 
           </p>
         </section>
         <section className="space-y-2 rounded-md border p-4">
-          <h3 className="text-sm font-semibold">Microsoft Copilot</h3>
+          <h3 className="text-sm font-semibold">Microsoft Copilot Studio</h3>
           <p className="text-sm text-muted-foreground">
-            Coming soon. Your Microsoft 365 administrator will add Fabric for your organization; you then sign in with
-            your Fabric account the first time you use it.
+            A Copilot Studio agent maker adds Fabric as a Model Context Protocol tool, using credentials a Fabric admin
+            creates under Admin → MCP. You sign in with your Fabric account the first time the agent uses it.
+            Microsoft 365 Copilot (Teams and Office) is coming later.
           </p>
         </section>
       </div>

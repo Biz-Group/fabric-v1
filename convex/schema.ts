@@ -502,6 +502,11 @@ export default defineSchema({
       v.literal("mcpEnabled"),
       v.literal("mcpDisabled"),
       v.literal("mcpConversationToolsChanged"),
+      // Copilot Studio credentials (B7): created, changed (callback URL or
+      // secret), deleted.
+      v.literal("mcpClientCreated"),
+      v.literal("mcpClientChanged"),
+      v.literal("mcpClientDeleted"),
     ),
     detail: v.optional(v.string()),
     createdAt: v.number(),
@@ -802,6 +807,26 @@ export default defineSchema({
     mcpConversationTools: v.boolean(),
     updatedAt: v.number(),
   }).index("by_clerkOrgId", ["clerkOrgId"]),
+
+  // A workspace's own OAuth client for Microsoft Copilot Studio (Phase 6, B7):
+  // a confidential Clerk OAuth application created from Admin → MCP. Its
+  // secret is shown once and never stored here. Tokens from this client are
+  // accepted only for this workspace's MCP URL. Deleted at Clerk when the
+  // add-on is revoked or the workspace is closed (mcpClients.ts).
+  mcpOAuthClients: defineTable({
+    clerkOrgId: v.string(),
+    kind: v.literal("copilotStudio"),
+    // Clerk's OAuth application id (oa_…), for updates and deletion.
+    clerkAppId: v.string(),
+    clientId: v.string(),
+    // Each Copilot Studio connector has its own callback URL.
+    callbackUrls: v.array(v.string()),
+    createdAt: v.number(),
+    createdByUserId: v.optional(v.id("users")),
+    secretRotatedAt: v.optional(v.number()),
+  })
+    .index("by_clerkOrgId", ["clerkOrgId"])
+    .index("by_clientId", ["clientId"]),
 
   // Fabric MCP server audit and metering (Phase 3, B2): one row per tool
   // call. No tool input or output is stored. Folded nightly into

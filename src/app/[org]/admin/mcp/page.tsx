@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageTitle } from "@/components/ui/page-title";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConnectionGuide } from "@/features/mcp/connection-guide";
+import { CopilotStudioCard } from "@/features/mcp/copilot-studio-card";
 import { McpBreakdownTables, McpDailyBars, McpUsageStats } from "@/features/mcp/mcp-usage";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatRelativeTime } from "@/features/home/home-view-model";
@@ -162,6 +163,8 @@ export default function AdminMcpPage() {
               <ConnectionGuide workspaceUrl={settings.workspaceUrl} />
             </CardContent>
           </Card>
+
+          <CopilotStudioCard />
         </>
       )}
 

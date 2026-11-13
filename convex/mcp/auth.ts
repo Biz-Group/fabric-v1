@@ -33,9 +33,19 @@ export type VerifiedToken = {
   audience: AudienceCheck;
   /** The token's audience values, kept only when they don't match (they are URLs, not personal data). */
   audienceSeen?: string[];
+  /**
+   * Set when the client is a workspace's own Copilot Studio client (B7): its
+   * tokens are valid only for that workspace's URL.
+   */
+  workspaceClientOrgId?: string;
+  /** When the token was issued (epoch seconds) and its claim names: diagnostics for refusals. */
+  issuedAt?: number;
+  claimNames?: string[];
 };
 
-export type TokenCheck = { ok: true; token: VerifiedToken } | { ok: false; reason: string };
+export type TokenCheck =
+  | { ok: true; token: VerifiedToken }
+  | { ok: false; reason: string; detail?: { clientId: string; issuedAt: string | null; claimNames: string[] } };
 
 let jwks: { issuer: string; set: ReturnType<typeof createRemoteJWKSet> } | null = null;
 
@@ -55,6 +65,11 @@ function allowedClientIds(): Set<string> | null {
   return new Set(raw.split(",").map((id: string) => id.trim()).filter(Boolean));
 }
 
+function audienceOptionalClients(): Set<string> {
+  const raw = env.FABRIC_MCP_AUDIENCE_OPTIONAL_CLIENTS?.trim() ?? "";
+  return new Set(raw.split(",").map((id: string) => id.trim()).filter(Boolean));
+}
+
 function enforceAudience(): boolean {
   return env.FABRIC_MCP_ENFORCE_AUDIENCE?.trim().toLowerCase() === "true";
 }
@@ -65,12 +80,20 @@ function scopesOf(payload: JWTPayload): string[] {
   return [];
 }
 
-function checkAudience(audiences: string[], resource: string): AudienceCheck {
+/**
+ * A token's audience must name this server: either the exact workspace URL
+ * the client called (what Clerk sets from the client's RFC 8707 `resource`,
+ * as Claude sends), or the server-wide audience `<base>/mcp` (a confidential
+ * Clerk app's fixed `audience_uri`, for clients that send no `resource`, such
+ * as Copilot Studio's manual OAuth). Either way the workspace is still
+ * checked by membership on every call.
+ */
+function checkAudience(audiences: string[], accepted: readonly string[]): AudienceCheck {
   if (audiences.length === 0) return "absent";
-  return audiences.includes(resource) ? "match" : "mismatch";
+  return audiences.some((aud) => accepted.includes(aud)) ? "match" : "mismatch";
 }
 
-async function verifyJwt(token: string, iss: string, resource: string): Promise<TokenCheck> {
+async function verifyJwt(token: string, iss: string, accepted: readonly string[]): Promise<TokenCheck> {
   if (!jwks || jwks.issuer !== iss) {
     jwks = { issuer: iss, set: createRemoteJWKSet(new URL(`${iss}/.well-known/jwks.json`)) };
   }
@@ -86,7 +109,7 @@ async function verifyJwt(token: string, iss: string, resource: string): Promise<
   const clientId = typeof payload.client_id === "string" ? payload.client_id : null;
   if (!clientId) return { ok: false, reason: "no client_id claim" };
   if (!payload.sub) return { ok: false, reason: "no subject" };
-  const audience = checkAudience(audiences, resource);
+  const audience = checkAudience(audiences, accepted);
   return {
     ok: true,
     token: {
@@ -96,6 +119,8 @@ async function verifyJwt(token: string, iss: string, resource: string): Promise<
       format: "jwt",
       audience,
       ...(audience === "mismatch" ? { audienceSeen: audiences } : {}),
+      issuedAt: typeof payload.iat === "number" ? payload.iat : undefined,
+      claimNames: Object.keys(payload).sort(),
     },
   };
 }
@@ -132,20 +157,46 @@ async function verifyOpaque(token: string): Promise<TokenCheck> {
   };
 }
 
-/** Verifies the bearer token for a request to `resource` (the URL the client called). */
-export async function verifyAccessToken(authorization: string | null, resource: string): Promise<TokenCheck> {
+/**
+ * Verifies the bearer token for a request to `resource` (the URL the client
+ * called). `serverAudience` is the server-wide audience, `<base>/mcp`.
+ */
+export async function verifyAccessToken(
+  authorization: string | null,
+  resource: string,
+  serverAudience?: string,
+  /** Finds a workspace's own OAuth client (mcpClients.workspaceClientFor). */
+  lookupWorkspaceClient?: (clientId: string) => Promise<{ clerkOrgId: string } | null>,
+): Promise<TokenCheck> {
   const match = authorization?.match(/^Bearer\s+(\S+)$/i);
   if (!match) return { ok: false, reason: "no bearer token" };
   const iss = mcpIssuer();
   if (!iss) return { ok: false, reason: "CLERK_JWT_ISSUER_DOMAIN is not set" };
   const token = match[1];
-  const result = token.split(".").length === 3 ? await verifyJwt(token, iss, resource) : await verifyOpaque(token);
+  const accepted = serverAudience ? [resource, serverAudience] : [resource];
+  const result = token.split(".").length === 3 ? await verifyJwt(token, iss, accepted) : await verifyOpaque(token);
   if (!result.ok) return result;
-  // Fails closed: with no allowlist, no OAuth client is accepted.
+  // Admission fails closed: a client is either on the deployment's allowlist
+  // (any workspace) or a workspace's own client (that workspace only).
   const allowed = allowedClientIds();
-  if (!allowed || !allowed.has(result.token.clientId)) return { ok: false, reason: "OAuth client is not allowed" };
-  if (enforceAudience() && result.token.audience !== "match") {
-    return { ok: false, reason: `audience ${result.token.audience}` };
+  if (!allowed?.has(result.token.clientId)) {
+    const owned = lookupWorkspaceClient ? await lookupWorkspaceClient(result.token.clientId) : null;
+    if (!owned) return { ok: false, reason: "OAuth client is not allowed" };
+    result.token.workspaceClientOrgId = owned.clerkOrgId;
+  }
+  // A dedicated confidential client that sends no `resource` gets no `aud`
+  // from Clerk; its secret, and for a workspace client its one workspace,
+  // bind it to this server instead.
+  const audienceOptional =
+    result.token.audience === "absent" &&
+    (result.token.workspaceClientOrgId !== undefined || audienceOptionalClients().has(result.token.clientId));
+  if (enforceAudience() && result.token.audience !== "match" && !audienceOptional) {
+    const { clientId, issuedAt, claimNames } = result.token;
+    return {
+      ok: false,
+      reason: `audience ${result.token.audience}`,
+      detail: { clientId, issuedAt: issuedAt ? new Date(issuedAt * 1000).toISOString() : null, claimNames: claimNames ?? [] },
+    };
   }
   return result;
 }

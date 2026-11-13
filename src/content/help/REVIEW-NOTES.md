@@ -42,6 +42,6 @@ Saish approved all 14 articles as written on 2026-10-23. Items that were left ou
 
 New article for the Fabric MCP server (Phase 4, 2026-11-12), awaiting Saish's review; help search leaves it out until this section is removed.
 
-- Copilot is described as "coming soon" until Phase 6 ships; update the "Connecting an assistant" section then.
+- Copilot Studio (B7) is described; Microsoft 365 Copilot is "coming later" (B8).
 - The terms it refers to are approved (`convex/mcp/policy.ts`, version `2026-11-v1`).
 - Says the contributions toggle exposes transcripts; matches `MCP_CONVERSATION_TOOL_NAMES`.

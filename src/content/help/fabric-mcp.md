@@ -15,6 +15,8 @@ verifiedAgainst:
   - convex/mcp/tools.ts
   - convex/mcp/limits.ts
   - convex/mcpUsage.ts
+  - convex/mcpClients.ts
+  - src/features/mcp/copilot-studio-card.tsx
 ---
 
 Fabric can connect to AI assistants such as Claude through the Model Context Protocol (MCP). The assistant can then answer questions about how your organization works, with links back to the Fabric pages its answer comes from.
@@ -27,7 +29,9 @@ MCP is an add-on to your Fabric plan. Once Fabric has added it, a workspace admi
 
 Open the **?** menu and choose **Connect AI assistants** to copy your workspace's connection URL. Each workspace has its own URL; if you belong to several, add one connector for each.
 
-In Claude, go to **Settings**, then **Connectors**, then **Add custom connector**. Paste the URL, then sign in with your Fabric account when asked. On Claude Team and Enterprise, an owner may need to add the connector first. Microsoft Copilot support is coming soon.
+In Claude, go to **Settings**, then **Connectors**, then **Add custom connector**. Paste the URL, then sign in with your Fabric account when asked. On Claude Team and Enterprise, an owner may need to add the connector first.
+
+In Microsoft Copilot Studio, an agent maker adds Fabric as a **Model Context Protocol** tool with **OAuth 2.0, Manual**, using the credentials an admin creates on the **MCP** page. Each connector's callback URL must be added on that page before anyone signs in. Microsoft 365 Copilot in Teams and Office is coming later.
 
 ## What the assistant can read
 

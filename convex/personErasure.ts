@@ -402,6 +402,9 @@ export const SCAN_HANDLERS: Partial<Record<TableNames, Handler>> = {
     return Object.keys(patch).length ? patchRow(ctx, row._id, patch) : "unchanged";
   },
 
+  mcpOAuthClients: async (ctx, row, who) =>
+    row.createdByUserId === who.userId ? patchRow(ctx, row._id, { createdByUserId: undefined }) : "unchanged",
+
   mcpCalls: async (ctx, row, who) =>
     row.userId === who.userId ? patchRow(ctx, row._id, { userId: undefined }) : "unchanged",
 

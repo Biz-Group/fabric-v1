@@ -160,7 +160,8 @@ async function callTool(call: CallContext, era: Era, message: JsonRpcRequest): P
     await recordCall(call, name, "badArguments");
     return rpcError(id, ERRORS.invalidParams, "Tool arguments must be an object");
   }
-  const args = rawArgs as Record<string, unknown>;
+  // Optional fields the client left out take their documented placeholders.
+  const args = { ...tool.defaults, ...(rawArgs as Record<string, unknown>) };
   const problem = argumentProblem(tool.inputSchema, args);
   if (problem) {
     await recordCall(call, name, "badArguments");
@@ -212,9 +213,14 @@ async function handlePost(ctx: ActionCtx, req: Request): Promise<Response> {
   // which closes DNS-rebinding and cross-site form posts.
   if (req.headers.get("Origin")) return json(rpcError(null, ERRORS.invalidRequest, "Origin not allowed"), 403);
 
-  const check = await verifyAccessToken(req.headers.get("Authorization"), resourceUrl(target));
+  const check = await verifyAccessToken(
+    req.headers.get("Authorization"),
+    resourceUrl(target),
+    `${siteUrl()}/mcp`,
+    (clientId) => ctx.runQuery(internal.mcpClients.workspaceClientFor, { clientId }),
+  );
   if (!check.ok) {
-    log("auth_rejected", { reason: check.reason });
+    log("auth_rejected", { reason: check.reason, ...(check.detail ? { detail: check.detail } : {}) });
     return unauthorized(target, check.reason !== "no bearer token");
   }
   const tokenIdentifier = tokenIdentifierFor(check.token.clerkUserId);
@@ -224,6 +230,11 @@ async function handlePost(ctx: ActionCtx, req: Request): Promise<Response> {
   if (!lookup.ok) {
     log("viewer_rejected", { reason: lookup.reason, client: check.token.clientId });
     return json(rpcError(null, ERRORS.invalidRequest, "Unknown workspace"), lookup.status);
+  }
+  if (check.token.workspaceClientOrgId && check.token.workspaceClientOrgId !== lookup.viewer.orgId) {
+    // A workspace's Copilot Studio credentials work only for that workspace (B7).
+    log("viewer_rejected", { reason: "WORKSPACE_CLIENT_MISMATCH", client: check.token.clientId });
+    return json(rpcError(null, ERRORS.invalidRequest, "These credentials belong to a different Fabric workspace"), 403);
   }
   if (!lookup.enabled) {
     // Refused at connection, so a workspace without MCP never looks connected.

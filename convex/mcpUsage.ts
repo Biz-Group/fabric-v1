@@ -190,13 +190,22 @@ async function workspaceDays(ctx: QueryCtx, clerkOrgId: string, from: string, to
   return { days, capped };
 }
 
-function shape(days: McpDayCounts[]) {
+/** The workspace's own OAuth clients (Copilot Studio, B7), labelled by kind. */
+async function workspaceClientNames(ctx: QueryCtx, clerkOrgId: string): Promise<Map<string, string>> {
+  const rows = await ctx.db
+    .query("mcpOAuthClients")
+    .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
+    .take(50);
+  return new Map(rows.map((row) => [row.clientId, "Copilot Studio"]));
+}
+
+function shape(days: McpDayCounts[], names: ReadonlyMap<string, string> = new Map()) {
   const totals = sumDays(days);
   return {
     byDay: days.map((day) => ({ period: day.period, calls: day.calls, failures: day.failures, users: day.users })),
     totals: {
       ...totals,
-      clients: totals.clients.map((c) => ({ ...c, label: clientLabel(c.clientId, env.FABRIC_MCP_CLIENT_NAMES) })),
+      clients: totals.clients.map((c) => ({ ...c, label: names.get(c.clientId) ?? clientLabel(c.clientId, env.FABRIC_MCP_CLIENT_NAMES) })),
     },
   };
 }
@@ -209,7 +218,7 @@ export const tenantUsage = query({
   handler: async (ctx, { clerkOrgId, from, to }) => {
     await requireSuperAdmin(ctx);
     const { days, capped } = await workspaceDays(ctx, clerkOrgId, from, to);
-    return { ...shape(days), capped };
+    return { ...shape(days, await workspaceClientNames(ctx, clerkOrgId)), capped };
   },
 });
 
@@ -288,7 +297,7 @@ export const workspaceUsage = query({
     }
     members.sort((a, b) => b.calls - a.calls);
     return {
-      ...shape(days),
+      ...shape(days, await workspaceClientNames(ctx, org.orgId)),
       activeMembers: members.length,
       members,
       capped: capped || rows.length === MEMBER_SCAN_CAP,

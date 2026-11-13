@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { env, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import { requireOrgAdmin, requireOrgMember, requireSuperAdmin } from "./lib/orgAuth";
 import { isOrgInRollout, parseOrgRollout } from "./lib/orgRollout";
 import { userError } from "./lib/userError";
@@ -233,6 +234,8 @@ export const setGranted = mutation({
     } else {
       await writeFeatures(ctx, tenant.clerkOrgId, { mcpGranted: false, mcpEnabled: false });
       await audit(ctx, tenant.clerkOrgId, staff._id, "mcpRevoked");
+      // The workspace's Copilot Studio credentials go with the add-on (B7).
+      await ctx.scheduler.runAfter(0, internal.mcpClients.deleteAllForOrg, { clerkOrgId: tenant.clerkOrgId, reason: "add-on revoked" });
     }
     return null;
   },

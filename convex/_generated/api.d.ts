@@ -117,6 +117,7 @@ import type * as mcp_tools from "../mcp/tools.js";
 import type * as mcp_urls from "../mcp/urls.js";
 import type * as mcp_usageFold from "../mcp/usageFold.js";
 import type * as mcp_workspace from "../mcp/workspace.js";
+import type * as mcpClients from "../mcpClients.js";
 import type * as mcpSettings from "../mcpSettings.js";
 import type * as mcpUsage from "../mcpUsage.js";
 import type * as migrations from "../migrations.js";
@@ -264,6 +265,7 @@ declare const fullApi: ApiFromModules<{
   "mcp/urls": typeof mcp_urls;
   "mcp/usageFold": typeof mcp_usageFold;
   "mcp/workspace": typeof mcp_workspace;
+  mcpClients: typeof mcpClients;
   mcpSettings: typeof mcpSettings;
   mcpUsage: typeof mcpUsage;
   migrations: typeof migrations;

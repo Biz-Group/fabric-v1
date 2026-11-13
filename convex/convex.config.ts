@@ -77,6 +77,12 @@ const app = defineApp({
     // URL. Otherwise a mismatch is only logged (Clerk instance setting
     // aud_claim_enabled controls whether tokens carry `aud` at all).
     FABRIC_MCP_ENFORCE_AUDIENCE: v.optional(v.string()),
+    // Comma-separated CONFIDENTIAL Clerk OAuth client ids whose tokens may
+    // carry no audience: clients that send no RFC 8707 `resource` (Copilot
+    // Studio's manual OAuth). Clerk then issues no `aud`, even with the app's
+    // audience_uri set (verified on dev 2026-11-13). A token with an audience
+    // must still match. Never list a public client here.
+    FABRIC_MCP_AUDIENCE_OPTIONAL_CLIENTS: v.optional(v.string()),
     // Display names for OAuth client ids in usage views: "id=Name,id2=Name 2".
     // CIMD clients (URLs) are shown by host without an entry.
     FABRIC_MCP_CLIENT_NAMES: v.optional(v.string()),

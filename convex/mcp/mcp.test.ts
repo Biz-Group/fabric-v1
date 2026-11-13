@@ -10,7 +10,7 @@ import { ASK_TOOLS } from "../askTools/catalog";
 import { NOT_FOUND, searchResult, type AskToolResult } from "../askTools/results";
 import { resetJwksCache, verifyAccessToken } from "./auth";
 import { detectEra, finishResult, headerMismatch, parseMessage, type JsonRpcRequest } from "./protocol";
-import { MCP_CONVERSATION_TOOL_NAMES, MCP_TOOL_NAMES, toMcpContent, toolListEntries } from "./tools";
+import { MCP_CONVERSATION_TOOL_NAMES, MCP_TOOL_NAMES, mcpTools, toMcpContent, toolListEntries } from "./tools";
 
 const modules = import.meta.glob("/convex/**/*.ts");
 const RESOURCE = "https://spike.convex.site/mcp/alpha";
@@ -92,6 +92,26 @@ describe("tools", () => {
     const schemas = JSON.stringify(entries.map((e) => e.inputSchema)).toLowerCase();
     for (const field of ["orgid", "userid", "tokenidentifier", "viewer"]) expect(schemas).not.toContain(`"${field}"`);
     expect(ASK_TOOLS.length).toBeGreaterThan(entries.length);
+  });
+
+  test("placeholder inputs are published as optional, so clients don't ask users for them", () => {
+    const tools = Object.fromEntries(mcpTools({ conversationTools: true }).map((tool) => [tool.name, tool]));
+    expect(tools.getCoverage.publishedSchema.required).toEqual([]);
+    expect(tools.getCoverage.defaults).toEqual({ kind: "org", id: "" });
+    expect(tools.rankSignals.publishedSchema.required).toEqual(["signals"]);
+    expect(tools.rankSignals.defaults).toMatchObject({ kind: "org", id: "", limit: 0 });
+    expect(tools.browseHierarchy.defaults).toMatchObject({ kind: "root", id: "" });
+    expect(tools.searchHierarchy.publishedSchema.required).toEqual(["query"]);
+    expect(tools.getTranscript.publishedSchema.required).toEqual(["conversationId"]);
+    expect(tools.getTranscript.defaults).toMatchObject({ atSeconds: -1, full: false, query: "" });
+    // Every field is either still required or has a default: the strict executor always gets a full call.
+    for (const tool of Object.values(tools)) {
+      const strict = (tool.inputSchema.required ?? []) as string[];
+      const published = (tool.publishedSchema.required ?? []) as string[];
+      expect(strict.every((key) => published.includes(key) || key in tool.defaults)).toBe(true);
+      // The strict schema the executor validates is untouched.
+      expect(strict).toEqual(Object.keys((tool.inputSchema.properties ?? {}) as object));
+    }
   });
 
   test("conversation tools are appended only when the admin turns them on (M2)", () => {
@@ -228,8 +248,16 @@ describe("verifyAccessToken", () => {
       expect(await verify(`Bearer ${await token(RESOURCE)}`)).toMatchObject({ ok: true });
       expect(await verify(`Bearer ${await token("https://spike.convex.site/mcp/beta")}`)).toMatchObject({ ok: false, reason: "audience mismatch" });
       expect(await verify(`Bearer ${await token()}`)).toMatchObject({ ok: false, reason: "audience absent" });
+      // The server-wide audience (a confidential app's fixed audience_uri) is accepted when the server passes it.
+      expect(await verifyAccessToken(`Bearer ${await token("https://spike.convex.site/mcp")}`, RESOURCE, "https://spike.convex.site/mcp")).toMatchObject({ ok: true, token: { audience: "match" } });
+      expect(await verifyAccessToken(`Bearer ${await token("https://elsewhere.test/mcp")}`, RESOURCE, "https://spike.convex.site/mcp")).toMatchObject({ ok: false, reason: "audience mismatch" });
+      // A listed confidential client may send no audience, but a wrong one is still refused.
+      process.env.FABRIC_MCP_AUDIENCE_OPTIONAL_CLIENTS = CLIENT;
+      expect(await verify(`Bearer ${await token()}`)).toMatchObject({ ok: true, token: { audience: "absent" } });
+      expect(await verify(`Bearer ${await token("https://spike.convex.site/mcp/beta")}`)).toMatchObject({ ok: false, reason: "audience mismatch" });
     } finally {
       delete process.env.FABRIC_MCP_ENFORCE_AUDIENCE;
+      delete process.env.FABRIC_MCP_AUDIENCE_OPTIONAL_CLIENTS;
     }
   });
 });
@@ -346,6 +374,19 @@ describe("HTTP", () => {
     expect(Object.keys(rows[0]).sort()).toEqual(
       ["_creationTime", "_id", "clerkOrgId", "clientId", "createdAt", "latencyMs", "outcome", "resultCount", "tool", "truncated", "userId"],
     );
+  });
+
+  test("a call with only the required inputs runs, with placeholders filled in", async () => {
+    const t = setup();
+    await t.run(seed);
+    const sign = await signerFor();
+    const response = await t.fetch("/mcp/alpha", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${await sign({ client_id: CLIENT }, ISSUER, "ana")}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "getCoverage", arguments: {} } }),
+    });
+    const result = (await response.json()).result;
+    expect(result.isError).toBe(false);
   });
 
   test("rate-limits a user's tool calls and says when to retry", async () => {
