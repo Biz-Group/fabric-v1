@@ -745,10 +745,17 @@ export function RecordingModal({
     }
   }, [conversation]);
 
-  // Send text message
+  // Send text message. The SDK only reports user turns through onMessage
+  // when they come from speech (user_transcript); a typed message is never
+  // echoed back, so it has to be added to the live transcript here.
   const handleSendText = useCallback(() => {
-    if (!textInput.trim() || !isConnected) return;
-    conversation.sendUserMessage(textInput.trim());
+    const text = textInput.trim();
+    if (!text || !isConnected) return;
+    conversation.sendUserMessage(text);
+    setMessages((prev) => [
+      ...prev,
+      { id: messageIdRef.current++, source: "user", content: text },
+    ]);
     setTextInput("");
   }, [conversation, textInput, isConnected]);
 
