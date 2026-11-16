@@ -469,6 +469,7 @@ export function RecordingModal({
     transcript?: { role: string; content: string; time_in_call_secs: number }[];
   } | null>(null);
   const fetchConversation = useAction(api.postCall.fetchConversation);
+  const startInterview = useAction(api.interviewSessions.startInterview);
   const generateVoiceRecordingUploadUrl = useMutation(
     api.voiceRecordings.generateUploadUrl
   );
@@ -706,17 +707,23 @@ export function RecordingModal({
   const isConnecting = status === "connecting";
   const isDisconnected = status === "disconnected";
 
-  // Start the ElevenLabs session
+  // Start the ElevenLabs session. Fabric issues the conversation token after
+  // checking the member and the daily limits; the agent accepts nothing else.
   const startSession = useCallback(async () => {
-    const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
-    if (!agentId) {
-      setDisconnectError("ElevenLabs Agent ID is not configured.");
+    let conversationToken: string;
+    try {
+      ({ conversationToken } = await startInterview({ processId }));
+    } catch (err) {
+      console.error("Failed to authorise interview:", err);
+      setDisconnectError(
+        userErrorMessage(err) ?? "Couldn't start the interview. Please try again."
+      );
       return;
     }
 
     try {
       await conversation.startSession({
-        agentId,
+        conversationToken,
         connectionType: "webrtc",
         userId: contributorName,
         dynamicVariables: buildDynamicVariables(),
@@ -727,7 +734,7 @@ export function RecordingModal({
         "Failed to start the interview. Please check your microphone and try again."
       );
     }
-  }, [conversation, contributorName, buildDynamicVariables]);
+  }, [conversation, contributorName, buildDynamicVariables, startInterview, processId]);
 
   // End the session
   const endSession = useCallback(async () => {

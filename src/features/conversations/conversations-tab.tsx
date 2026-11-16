@@ -433,7 +433,7 @@ function ConversationPlaybackPanel({
 }: {
   conversationId: Id<"conversations"> | null;
   /** Undefined while loading; null when the row is gone or out of reach. */
-  conversation: Doc<"conversations"> | null | undefined;
+  conversation: (Doc<"conversations"> & { canLabelSpeakers: boolean }) | null | undefined;
   canLabelSpeakers: boolean;
   canRetry: boolean;
   hasConversations: boolean;
@@ -486,7 +486,9 @@ function ConversationPlaybackPanel({
       <FocusedConversationPlayback
         conversation={conversation}
         title={playbackTitle(conversation)}
-        canLabelSpeakers={canLabelSpeakers}
+        // Contributors in general, narrowed to the people who may label this
+        // recording: its submitter, the person it's on behalf of, or an admin.
+        canLabelSpeakers={canLabelSpeakers && conversation.canLabelSpeakers}
         canRetry={canRetry}
       />
     </section>

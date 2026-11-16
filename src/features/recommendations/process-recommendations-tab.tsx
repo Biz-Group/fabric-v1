@@ -25,7 +25,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingState } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { describeError } from "@/lib/user-error-message";
+import { describeError, upToDateRefusal } from "@/lib/user-error-message";
 import {
   flowDetailProgress,
   flowHasIncompleteDetails,
@@ -220,7 +220,11 @@ export function ProcessRecommendationsTab({
       const result = await regenerate({ processId });
       if (result.message) toast.info(result.message);
     } catch (error) {
-      toast.error(describeError(error, "Could not start the recommendation analysis."));
+      // The button shows only for a missing or failed run, so "already up to
+      // date" means a run finished meanwhile: say so rather than alarm.
+      const upToDate = upToDateRefusal(error);
+      if (upToDate) toast.info(upToDate.message);
+      else toast.error(describeError(error, "Could not start the recommendation analysis."));
     } finally {
       setRequesting(false);
     }

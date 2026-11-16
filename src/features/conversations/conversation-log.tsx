@@ -1250,7 +1250,8 @@ export function FocusedConversationPlayback({
 
             {isAwaitingSpeakerLabels && !canLabelSpeakers && (
               <p className="text-sm text-muted-foreground">
-                Waiting for a contributor to name speakers before analysis runs.
+                Waiting for the submitter, the named contributor or an admin to
+                name the speakers before analysis runs.
               </p>
             )}
 

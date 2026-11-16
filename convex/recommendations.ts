@@ -23,6 +23,7 @@ import {
   type AIRequest,
 } from "./lib/aiProvider";
 import { meteredCompletion, type UsageAttribution } from "./lib/aiUsageMeter";
+import { takeManualRun } from "./lib/manualRuns";
 import { extractDataCollection } from "./lib/conversationAnalysis";
 import {
   INSIGHTS_RATE_LIMIT_RETRY_DELAYS_MS,
@@ -201,6 +202,26 @@ async function storedRecommendations(
 // Starting a run
 // ---------------------------------------------------------------------------
 
+/** A run in flight for this flow generation with a live heartbeat: join it. */
+function joinableRun(run: Doc<"recommendationRuns">, generation: string, now: number): boolean {
+  return (
+    (run.status === "pending" || run.status === "running") &&
+    run.flowGenerationId === generation &&
+    now - run.lastProgressAt < RUN_JOIN_WINDOW_MS
+  );
+}
+
+/**
+ * Whether a manual rerun has anything to redo: no run yet, the last one
+ * failed or wedged, it was for an older flow, or the prompt has changed since.
+ */
+function recommendationsHaveWork(previous: Doc<"recommendationRuns"> | null, generation: string): boolean {
+  if (!previous) return true;
+  // Failed, or pending/running past the join window (wedged).
+  if (previous.status !== "ready") return true;
+  return previous.flowGenerationId !== generation || previous.promptVersion !== RECOMMENDATIONS_PROMPT_VERSION;
+}
+
 /**
  * Starts a recommendation run for the process's current flow, or joins one
  * already in flight for the same flow generation. Returns null when the flow
@@ -224,12 +245,7 @@ export async function startRecommendationRunForOrg(
   const now = Date.now();
   const generation = flowGenerationKey(flow);
   const previous = await latestRun(ctx, args.clerkOrgId, args.processId);
-  if (
-    previous &&
-    (previous.status === "pending" || previous.status === "running") &&
-    previous.flowGenerationId === generation &&
-    now - previous.lastProgressAt < RUN_JOIN_WINDOW_MS
-  ) {
+  if (previous && joinableRun(previous, generation, now)) {
     return { runId: previous.runId, joined: true };
   }
 
@@ -274,12 +290,31 @@ export const rerunRecommendations = internalMutation({
 });
 
 export const regenerateRecommendations = mutation({
-  args: { processId: v.id("processes") },
+  args: {
+    processId: v.id("processes"),
+    // Admins only: rerun recommendations that are already up to date (D4).
+    force: v.optional(v.boolean()),
+  },
   handler: async (ctx, args): Promise<{ message: string | null }> => {
     const caller = await requireOrgContributor(ctx);
     const process = await ctx.db.get(args.processId);
     if (!process || process.clerkOrgId !== caller.orgId) {
       throw new Error("Process not found");
+    }
+    // Manual-run limits (D4), in this transaction. A press that will join a
+    // run already in flight, or that can't run yet, costs nothing.
+    const flow = await getFlow(ctx, caller.orgId, args.processId);
+    if (flow && isFlowUsable(flow)) {
+      const generation = flowGenerationKey(flow);
+      const previous = await latestRun(ctx, caller.orgId, args.processId);
+      if (!previous || !joinableRun(previous, generation, Date.now())) {
+        await takeManualRun(ctx, caller, {
+          kind: "recommendations",
+          processId: args.processId,
+          hasWork: recommendationsHaveWork(previous, generation),
+          force: args.force ?? false,
+        });
+      }
     }
     const started = await startRecommendationRunForOrg(ctx, {
       clerkOrgId: caller.orgId,

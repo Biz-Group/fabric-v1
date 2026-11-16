@@ -4,8 +4,10 @@ import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 
 import { SectionLabel } from "@/components/ui/section-label";
+import { noImages } from "@/lib/markdown-no-images";
 
 const components: Components = {
+  ...noImages,
   h2: ({ children }) => (
     <SectionLabel
       render={<h3 />}

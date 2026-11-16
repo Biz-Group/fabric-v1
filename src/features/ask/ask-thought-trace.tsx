@@ -7,6 +7,7 @@ import type { AskMessagePart } from "../../../convex/lib/askSchema";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
 import { cn } from "@/lib/utils";
+import { noImages } from "@/lib/markdown-no-images";
 import { AskThinkingMark } from "./ask-thinking-mark";
 import {
   statusLine,
@@ -40,7 +41,7 @@ function Step({ step }: { step: TraceStep }) {
       <div className="min-w-0 flex-1 text-xs text-muted-foreground">
         {step.kind === "reasoning" ? (
           <div className="[&_li]:ml-4 [&_li]:list-disc [&_p]:my-0.5 [&_strong]:font-medium">
-            <ReactMarkdown>{step.text}</ReactMarkdown>
+            <ReactMarkdown components={noImages}>{step.text}</ReactMarkdown>
           </div>
         ) : (
           <p className="flex flex-wrap items-baseline gap-x-2">

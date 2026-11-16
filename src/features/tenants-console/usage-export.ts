@@ -1,5 +1,6 @@
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "../../../convex/_generated/api";
+import { csvCell } from "../../../convex/lib/csv";
 
 type LogRow = FunctionReturnType<typeof api.aiUsage.usageLog>["page"][number];
 
@@ -42,12 +43,9 @@ const CSV_COLUMNS = [
   "http_status",
 ] as const;
 
-function escape(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  const s = String(value);
-  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
+// Quotes, and neutralises formula injection: tenant names and entity labels
+// (contributor names) are user-controlled.
+const escape = csvCell;
 
 function rowToCsv(r: LogRow): string {
   return [

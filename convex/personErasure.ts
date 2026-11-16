@@ -468,6 +468,15 @@ export const SCAN_HANDLERS: Partial<Record<TableNames, Handler>> = {
     return "deleted";
   },
 
+  // Start records only. An imported interview's ElevenLabs copy is deleted
+  // with its conversation; one that was never imported stays at ElevenLabs
+  // (as before sessions existed) until the workspace is purged.
+  interviewSessions: async (ctx, row, who) => {
+    if (row.userId !== who.userId) return "unchanged";
+    await ctx.db.delete(row._id);
+    return "deleted";
+  },
+
   // The decision stays (it's the workspace's), without their note.
   recommendationDecisions: async (ctx, row, who) =>
     row.actorUserId === who.userId && row.note !== undefined ? patchRow(ctx, row._id, { note: undefined }) : "unchanged",

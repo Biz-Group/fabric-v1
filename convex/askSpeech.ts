@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { action, internalMutation, internalQuery, type ActionCtx, type QueryCtx } from "./_generated/server";
+import { action, internalMutation, internalQuery, type ActionCtx, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { ASKFABRIC_OPERATIONS } from "./lib/askFabricFeature";
@@ -65,18 +65,61 @@ export const speechTarget = internalQuery({
 });
 
 /**
- * For a stream link: the membership it was signed for must still be active,
- * so removing a member revokes their open links at once.
+ * How long a generation claim holds. The upstream fetch, body included, is
+ * aborted at TTS_TIMEOUT_MS, so a claim older than this plus a margin belongs
+ * to a request that died without releasing it.
  */
-export const streamTarget = internalQuery({
+export const SPEECH_CLAIM_TTL_MS = TTS_TIMEOUT_MS + 30_000;
+
+export type StreamClaim = SpeechTarget | { kind: "busy" };
+
+/**
+ * For a stream link: the membership it was signed for must still be active,
+ * so removing a member revokes their open links at once. A mutation, not a
+ * query, so that claiming the generation is atomic: of N parallel requests on
+ * one link, exactly one gets `generate` and pays ElevenLabs; the rest get
+ * `busy` until the audio is stored (then `stored`).
+ */
+export const claimStream = internalMutation({
   args: { messageId: v.id("askMessages"), clerkOrgId: v.string(), membershipId: v.id("memberships") },
-  handler: async (ctx, args): Promise<SpeechTarget> => {
+  handler: async (ctx, args): Promise<StreamClaim> => {
     const membership: Doc<"memberships"> | null = await ctx.db.get(args.membershipId);
     if (!isActiveMembership(membership) || membership.clerkOrgId !== args.clerkOrgId) throw notFound();
     if (await isWorkspaceClosed(ctx, args.clerkOrgId)) throw notFound();
     const user = await ctx.db.get(membership.userId);
     if (!user || user.deletedAt !== undefined) throw notFound();
-    return await answerTarget(ctx, args.messageId, { orgId: args.clerkOrgId, userId: membership.userId });
+    const target = await answerTarget(ctx, args.messageId, { orgId: args.clerkOrgId, userId: membership.userId });
+    if (target.kind === "stored") return target;
+
+    const now = Date.now();
+    const claim = await ctx.db
+      .query("askSpeechClaims")
+      .withIndex("by_messageId", (q) => q.eq("messageId", args.messageId))
+      .first();
+    if (claim && now - claim.claimedAt < SPEECH_CLAIM_TTL_MS) return { kind: "busy" };
+    if (claim) {
+      await ctx.db.patch("askSpeechClaims", claim._id, { claimedAt: now });
+    } else {
+      await ctx.db.insert("askSpeechClaims", { messageId: args.messageId, clerkOrgId: args.clerkOrgId, claimedAt: now });
+    }
+    return target;
+  },
+});
+
+async function deleteClaims(ctx: MutationCtx, messageId: Id<"askMessages">) {
+  const claims = await ctx.db
+    .query("askSpeechClaims")
+    .withIndex("by_messageId", (q) => q.eq("messageId", messageId))
+    .take(10);
+  for (const claim of claims) await ctx.db.delete("askSpeechClaims", claim._id);
+}
+
+/** Frees the claim after a failed generation, so the next press can retry. */
+export const releaseStreamClaim = internalMutation({
+  args: { messageId: v.id("askMessages") },
+  handler: async (ctx, args): Promise<null> => {
+    await deleteClaims(ctx, args.messageId);
+    return null;
   },
 });
 
@@ -93,6 +136,7 @@ export const saveSpeech = internalMutation({
     characters: v.number(),
   },
   handler: async (ctx, args): Promise<string | null> => {
+    await deleteClaims(ctx, args.messageId);
     const message = await ctx.db.get(args.messageId);
     const thread = message ? await ctx.db.get(message.threadId) : null;
     if (!message || !thread || thread.status === "deleting") {
@@ -190,9 +234,9 @@ export async function streamAskSpeech(
     return reject(404, "Not found");
   }
 
-  let target: SpeechTarget;
+  let claim: StreamClaim;
   try {
-    target = await ctx.runQuery(internal.askSpeech.streamTarget, {
+    claim = await ctx.runMutation(internal.askSpeech.claimStream, {
       messageId: messageId as Id<"askMessages">,
       clerkOrgId,
       membershipId: membershipId as Id<"memberships">,
@@ -200,11 +244,17 @@ export async function streamAskSpeech(
   } catch {
     return reject(404, "Not found");
   }
+  // Another request on this answer is already generating it. The client asks
+  // `readAloud` again shortly and gets the stored file once it lands.
+  if (claim.kind === "busy") return reject(409, "Already being prepared.");
   const audioHeaders = cors({ ...SPEECH_HEADERS, "Content-Type": "audio/mpeg" });
-  if (target.kind === "stored") {
-    const blob = await ctx.storage.get(target.storageId);
+  if (claim.kind === "stored") {
+    const blob = await ctx.storage.get(claim.storageId);
     return blob ? new Response(blob, { status: 200, headers: audioHeaders }) : reject(404, "Not found");
   }
+  const target = claim;
+  const release = () =>
+    ctx.runMutation(internal.askSpeech.releaseStreamClaim, { messageId: messageId as Id<"askMessages"> });
 
   const { voiceId, model } = readSpeechConfig();
   const attribution: UsageAttribution = {
@@ -240,6 +290,7 @@ export async function streamAskSpeech(
     const errorType = error instanceof Error ? error.name : "UnknownError";
     console.error("AskFabric read aloud request failed", { errorType });
     await meter("failed", 0, { errorType });
+    await release();
     return reject(502, "Couldn't read this answer aloud.");
   }
   const requestId = upstream.headers.get("request-id") ?? undefined;
@@ -247,6 +298,7 @@ export async function streamAskSpeech(
     const detail = (await upstream.text().catch(() => "")).slice(0, 300);
     console.error("AskFabric read aloud rejected", { status: upstream.status, requestId, detail });
     await meter("failed", 0, { requestId, errorType: `http_${upstream.status}`, httpStatus: upstream.status });
+    await release();
     return reject(502, "Couldn't read this answer aloud.");
   }
 
@@ -258,6 +310,7 @@ export async function streamAskSpeech(
     if (!outcome.ok) {
       console.error("AskFabric read aloud stream broke", { requestId, errorType: outcome.errorType });
       await meter("failed", target.text.length, { requestId, errorType: outcome.errorType });
+      await release();
       return;
     }
     await meter("ok", target.text.length, { requestId });

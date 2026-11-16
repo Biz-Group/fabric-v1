@@ -654,6 +654,57 @@ describe("speaker label submission", () => {
     ]);
   });
 
+  test("only the recording's owner or an admin can label it", async () => {
+    const t = convexTest(schema, modules);
+    const { conversationId } = await seedSpeakerLabelFixture(t);
+    await seedOrgAMember(t, "user_c", "contributor");
+    await seedOrgAMember(t, "user_admin", "admin");
+    const labels = [
+      { speakerId: "speaker_0", displayName: "Alice" },
+      { speakerId: "speaker_1", displayName: "Finance Lead" },
+    ];
+
+    await expect(
+      t
+        .withIdentity(identityForOrgAUser("user_c", "Carol"))
+        .mutation(api.voiceRecordings.submitSpeakerLabels, { conversationId, labels }),
+    ).rejects.toThrow(/Insufficient permissions/);
+    expect((await t.run((ctx) => ctx.db.get(conversationId)))?.status).toBe("needs_speaker_labels");
+
+    await t
+      .withIdentity(identityForOrgAUser("user_admin", "Admin"))
+      .mutation(api.voiceRecordings.submitSpeakerLabels, { conversationId, labels });
+    expect((await t.run((ctx) => ctx.db.get(conversationId)))?.status).toBe("processing");
+  });
+
+  test("on a recording made on someone's behalf, the named person can label it too", async () => {
+    const t = convexTest(schema, modules);
+    const { conversationId } = await seedSpeakerLabelFixture(t);
+    const carol = await seedOrgAMember(t, "user_c", "contributor");
+    const adminId = await seedOrgAMember(t, "user_admin", "admin");
+    // Submitted by the admin, on Carol's behalf.
+    await t.run((ctx) =>
+      ctx.db.patch(conversationId, { userId: adminId, subjectUserId: carol, submittedByName: "Admin" }),
+    );
+    const labels = [
+      { speakerId: "speaker_0", displayName: "Carol" },
+      { speakerId: "speaker_1", displayName: "Finance Lead" },
+    ];
+    const processId = (await t.run((ctx) => ctx.db.get(conversationId)))!.processId;
+
+    // Alice is a contributor but neither submitter nor subject now.
+    const alice = t.withIdentity(identityForOrgA());
+    expect((await alice.query(api.conversations.getInProcess, { processId, conversationId }))?.canLabelSpeakers).toBe(false);
+    await expect(
+      alice.mutation(api.voiceRecordings.submitSpeakerLabels, { conversationId, labels }),
+    ).rejects.toThrow(/Insufficient permissions/);
+
+    const asCarol = t.withIdentity(identityForOrgAUser("user_c", "Carol"));
+    expect((await asCarol.query(api.conversations.getInProcess, { processId, conversationId }))?.canLabelSpeakers).toBe(true);
+    await asCarol.mutation(api.voiceRecordings.submitSpeakerLabels, { conversationId, labels });
+    expect((await t.run((ctx) => ctx.db.get(conversationId)))?.status).toBe("processing");
+  });
+
   test("rejects missing labels", async () => {
     const t = convexTest(schema, modules);
     const { conversationId } = await seedSpeakerLabelFixture(t);

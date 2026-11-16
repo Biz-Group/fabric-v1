@@ -68,6 +68,8 @@ import {
   hasRetainedPreviousFlow,
 } from "@/lib/flow-status";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useRegenerate } from "@/hooks/use-regenerate";
+import { describeError } from "@/lib/user-error-message";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -157,6 +159,7 @@ function ProcessFlowInner({
   const isMobile = useIsMobile();
   const flow = useQuery(api.processFlows.getProcessFlow, { processId });
   const generateFlow = useAction(api.processFlows.generateProcessFlow);
+  const regenerate = useRegenerate();
   const retryNodeDetail = useAction(api.processFlows.retryNodeDetail);
   const reduceMotion = useReducedMotion();
   const [viewPreferences, setViewPreferences] = useFlowViewPreferences();
@@ -312,13 +315,13 @@ function ProcessFlowInner({
     setIsGenerating(true);
     setActionError(null);
     try {
-      await generateFlow({ processId });
-    } catch {
-      setActionError("Failed to start flow generation. Please try again.");
+      await regenerate.run((force) => generateFlow({ processId, force }));
+    } catch (error) {
+      setActionError(describeError(error, "Failed to start flow generation. Please try again."));
     } finally {
       setIsGenerating(false);
     }
-  }, [generateFlow, processId]);
+  }, [generateFlow, processId, regenerate]);
 
   const handleRetryNodeDetail = useCallback(
     async (nodeId: string) => {
@@ -1011,6 +1014,7 @@ function ProcessFlowInner({
 
   return (
     <TooltipProvider delay={250}>
+      {regenerate.dialog}
       {/* One element for both modes: swapping wrapper components remounted the
           canvas, which reset the viewport and dropped focus from the toggle. */}
       <div

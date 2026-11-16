@@ -141,6 +141,24 @@ async function seed(t: TestConvex, options: { purgeAfter?: number } = {}): Promi
       status: "done",
       clerkOrgId: ORG_A,
     });
+    // Interviews Fabric authorised: one imported (its conversation is above),
+    // one abandoned before import, whose copy exists only at ElevenLabs.
+    await ctx.db.insert("interviewSessions", {
+      clerkOrgId: ORG_A,
+      userId: ada,
+      processId: procA,
+      status: "imported",
+      issuedAt: now,
+      elevenlabsConversationId: "conv_leaving1",
+    });
+    await ctx.db.insert("interviewSessions", {
+      clerkOrgId: ORG_A,
+      userId: ada,
+      processId: procA,
+      status: "expired",
+      issuedAt: now,
+      elevenlabsConversationId: "conv_abandoned1",
+    });
     const conversationB = await ctx.db.insert("conversations", {
       processId: procB,
       elevenlabsConversationId: "conv_staying1",
@@ -315,6 +333,10 @@ describe("purging a workspace", () => {
     const deletes = calls.filter((c) => c.method === "DELETE").map((c) => c.url);
     expect(deletes).toContain(`https://api.clerk.com/v1/organizations/${ORG_A}`);
     expect(deletes).toContain("https://api.elevenlabs.io/v1/convai/conversations/conv_leaving1");
+    // An interview started but never imported is deleted at ElevenLabs too,
+    // and the imported one is deleted once, not twice.
+    expect(deletes).toContain("https://api.elevenlabs.io/v1/convai/conversations/conv_abandoned1");
+    expect(deletes.filter((u) => u.endsWith("/conv_leaving1"))).toHaveLength(1);
     expect(deletes).toContain("https://api.clerk.com/v1/users/user_ada");
     expect(deletes.some((u) => u.includes("user_bo") || u.includes("user_staff"))).toBe(false);
     expect(deletes.some((u) => u.includes("conv_staying1"))).toBe(false);
@@ -328,7 +350,7 @@ describe("purging a workspace", () => {
       filesDeleted: 3,
       usageRowsScrubbed: 1,
       clerkOrg: "deleted",
-      elevenlabs: { deleted: 1, alreadyGone: 0, skipped: 0, failed: 0 },
+      elevenlabs: { deleted: 2, alreadyGone: 0, skipped: 0, failed: 0 },
       people: { erased: 1, keptOtherWorkspace: 1, keptStaff: 1, failed: 0 },
     });
     expect(certificate?.rowsByTable).toMatchObject({ conversations: 2, memberships: 3, askThreads: 1 });
@@ -359,7 +381,7 @@ describe("purging a workspace", () => {
     const certificate = await t
       .withIdentity(identity("user_staff"))
       .query(api.workspacePurge.getPurge, { tenantId: ids.tenantA });
-    expect(certificate).toMatchObject({ status: "complete", elevenlabs: { skipped: 1, deleted: 0 } });
+    expect(certificate).toMatchObject({ status: "complete", elevenlabs: { skipped: 2, deleted: 0 } });
   });
 
   test("holds the certificate back until a failed ElevenLabs deletion is retried (D6)", async () => {
@@ -372,7 +394,7 @@ describe("purging a workspace", () => {
     const staff = t.withIdentity(identity("user_staff"));
     expect(await staff.query(api.workspacePurge.getPurge, { tenantId: ids.tenantA })).toMatchObject({
       status: "needsRetry",
-      elevenlabs: { failed: 1 },
+      elevenlabs: { failed: 2 },
     });
     expect((await t.run((ctx) => ctx.db.get(ids.tenantA)))?.status).toBe("purging");
 
@@ -381,7 +403,7 @@ describe("purging a workspace", () => {
     await settle(t);
     expect(await staff.query(api.workspacePurge.getPurge, { tenantId: ids.tenantA })).toMatchObject({
       status: "complete",
-      elevenlabs: { deleted: 1, failed: 0 },
+      elevenlabs: { deleted: 2, failed: 0 },
     });
     expect((await t.run((ctx) => ctx.db.get(ids.tenantA)))?.status).toBe("purged");
   });

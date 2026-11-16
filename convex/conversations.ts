@@ -21,6 +21,7 @@ import {
 import { authError } from "./lib/authErrors";
 import { userError } from "./lib/userError";
 import { conversationTitle } from "./lib/conversationTitle";
+import { canLabelSpeakers } from "./lib/speakerLabels";
 import { clearCitedTextFor } from "./askLifecycle";
 import {
   invalidateProcessAfterEvidenceArrived,
@@ -209,7 +210,12 @@ export const getInProcess = query({
     ) {
       return null;
     }
-    return conversation;
+    return {
+      ...conversation,
+      // Whether this caller gets the "name the speakers" panel: the same
+      // rule submitSpeakerLabels enforces.
+      canLabelSpeakers: canLabelSpeakers(caller, conversation),
+    };
   },
 });
 

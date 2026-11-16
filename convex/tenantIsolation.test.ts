@@ -2314,6 +2314,7 @@ describe("member removal is durable", () => {
 describe("ElevenLabs imports are bound to the first importing org", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   async function seedOrgBImport(t: ReturnType<typeof convexTest>, procB: Id<"processes">) {
@@ -2342,6 +2343,115 @@ describe("ElevenLabs imports are bound to the first importing org", () => {
       }),
     ).rejects.toThrow(/can't be imported into this workspace/);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  function stubElevenLabsDone(conversationId: string) {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          conversation_id: conversationId,
+          status: "done",
+          transcript: [{ role: "user", message: "We approve invoices twice.", time_in_call_secs: 1 }],
+          metadata: { call_duration_secs: 60 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubEnv("ELEVENLABS_API_KEY", "el_test_key");
+    return fetchMock;
+  }
+
+  async function orgAImports(t: ReturnType<typeof convexTest>, id: string) {
+    const rows = await t.run((ctx) => ctx.db.query("conversations").collect());
+    return rows.filter((row) => row.elevenlabsConversationId === id);
+  }
+
+  test("re-sending an imported conversation returns it and buys nothing", async () => {
+    const t = convexTest(schema, modules);
+    const { procA } = await seedTwoOrgs(t);
+    const fetchMock = stubElevenLabsDone("conv_a_once");
+    const asA = t.withIdentity(identityForOrgA());
+
+    expect(
+      await asA.action(api.postCall.fetchConversation, { elevenlabsConversationId: "conv_a_once", processId: procA }),
+    ).toEqual({ status: "done" });
+    const callsAfterFirst = fetchMock.mock.calls.length;
+    const usageAfterFirst = await t.run(async (ctx) => (await ctx.db.query("aiUsageEvents").collect()).length);
+
+    for (let i = 0; i < 3; i++) {
+      expect(
+        await asA.action(api.postCall.fetchConversation, { elevenlabsConversationId: "conv_a_once", processId: procA }),
+      ).toEqual({ status: "done" });
+    }
+    expect(await orgAImports(t, "conv_a_once")).toHaveLength(1);
+    // Answered from the row: no poll, no usage row, no pipeline.
+    expect(fetchMock.mock.calls.length).toBe(callsAfterFirst);
+    expect(await t.run(async (ctx) => (await ctx.db.query("aiUsageEvents").collect()).length)).toBe(usageAfterFirst);
+  });
+
+  test("concurrent inserts of one conversation leave one row", async () => {
+    const t = convexTest(schema, modules);
+    const { procA } = await seedTwoOrgs(t);
+    const insert = () =>
+      t.mutation(internal.postCall.insertConversation, {
+        processId: procA,
+        clerkOrgId: ORG_A,
+        elevenlabsConversationId: "conv_a_race",
+        contributorName: "Alice",
+        status: "done",
+      });
+    const results = await Promise.all([insert(), insert(), insert()]);
+    expect(results.filter((r) => r.created)).toHaveLength(1);
+    expect(new Set(results.map((r) => r.conversationId)).size).toBe(1);
+    expect(await orgAImports(t, "conv_a_race")).toHaveLength(1);
+  });
+
+  test("an import that timed out is completed in place by a later one", async () => {
+    const t = convexTest(schema, modules);
+    const { procA } = await seedTwoOrgs(t);
+    const base = {
+      processId: procA,
+      clerkOrgId: ORG_A,
+      elevenlabsConversationId: "conv_a_slow",
+      contributorName: "Alice",
+    };
+    const first = await t.mutation(internal.postCall.insertConversation, { ...base, status: "processing" });
+    const second = await t.mutation(internal.postCall.insertConversation, { ...base, status: "processing" });
+    expect(second).toMatchObject({ created: false, conversationId: first.conversationId, status: "processing" });
+
+    const done = await t.mutation(internal.postCall.insertConversation, { ...base, status: "done", summary: "s" });
+    expect(done).toMatchObject({ created: true, conversationId: first.conversationId, status: "done" });
+    const rows = await orgAImports(t, "conv_a_slow");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: "done", summary: "s" });
+
+    // Once settled, a further import changes nothing.
+    const again = await t.mutation(internal.postCall.insertConversation, { ...base, status: "failed", failureReason: "interview_fetch" });
+    expect(again).toMatchObject({ created: false, status: "done" });
+  });
+
+  test("an admin retry of a failed import still works", async () => {
+    const t = convexTest(schema, modules);
+    const { procA } = await seedTwoOrgs(t);
+    const failedId = await t.run((ctx) =>
+      ctx.db.insert("conversations", {
+        processId: procA,
+        clerkOrgId: ORG_A,
+        elevenlabsConversationId: "conv_a_retry",
+        contributorName: "Alice",
+        inputMode: "agent",
+        status: "failed",
+        failureReason: "interview_fetch",
+      }),
+    );
+    stubElevenLabsDone("conv_a_retry");
+    expect(
+      await t.withIdentity(identityForOrgA()).action(api.conversations.retryFetch, { conversationId: failedId }),
+    ).toEqual({ status: "done" });
+    const rows = await orgAImports(t, "conv_a_retry");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("done");
   });
 
   test("the insert re-checks ownership inside its transaction", async () => {

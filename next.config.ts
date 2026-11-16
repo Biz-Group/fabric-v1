@@ -35,9 +35,40 @@ const clerkSources = clerkHost
   ? [`https://${clerkHost}`]
   : ["https://*.clerk.accounts.dev"];
 
-// Full allowlist, shipped as Report-Only first: violations show in the
-// browser console without breaking anything. Enforce once a few days of
-// normal use (sign-in, recording, audio playback, console) report nothing.
+// Where images, network calls and audio may come from. Enforced (step 1 of
+// D7, docs/security-hardening-task-list.md): an image or request to any other
+// host is blocked, which stops model output from leaking data to a URL even if
+// something renders it.
+const imgSrc = [
+  "img-src 'self' blob: data:",
+  "https://img.clerk.com",
+  `https://${convexCloudHost}`,
+  "https://storage.googleapis.com",
+].join(" ");
+const connectSrc = [
+  "connect-src 'self'",
+  ...clerkSources,
+  "https://clerk-telemetry.com",
+  // Clerk's bot protection (Turnstile) on sign-up. It's a per-instance Clerk
+  // setting, so prod may use it when dev doesn't: allowed regardless.
+  "https://challenges.cloudflare.com",
+  `https://${convexCloudHost}`,
+  `wss://${convexCloudHost}`,
+  `https://${convexSiteHost}`,
+  // Interviews: the conversation token flow connects to
+  // wss://livekit.rtc.elevenlabs.io.
+  "https://*.elevenlabs.io",
+  "wss://*.elevenlabs.io",
+  "https://storage.googleapis.com",
+].join(" ");
+// Stored read-aloud audio plays from a Convex storage URL (convex.cloud);
+// streamed audio and recordings come from the HTTP actions (convex.site).
+const mediaSrc = `media-src 'self' blob: data: https://${convexCloudHost} https://${convexSiteHost}`;
+
+// The full allowlist, still Report-Only for scripts, styles, workers and
+// forms: violations show in the browser console without breaking anything.
+// Enforce those (step 2) after a smoke test of sign-in, recording, audio
+// playback, the tenants console and MCP cards with the console open.
 // Without nonces, inline scripts need 'unsafe-inline'; the policy still
 // stops scripts and data flowing to any host not listed here.
 const reportOnlyCsp = [
@@ -47,27 +78,14 @@ const reportOnlyCsp = [
     ...(isDev ? ["'unsafe-eval'"] : []),
     ...clerkSources,
     "https://challenges.cloudflare.com",
+    // The ElevenLabs SDK loads its audio resampler worklet from here.
+    "https://cdn.jsdelivr.net",
   ].join(" "),
   "style-src 'self' 'unsafe-inline'",
-  [
-    "img-src 'self' blob: data:",
-    "https://img.clerk.com",
-    `https://${convexCloudHost}`,
-    "https://storage.googleapis.com",
-  ].join(" "),
+  imgSrc,
   "font-src 'self' data:",
-  [
-    "connect-src 'self'",
-    ...clerkSources,
-    "https://clerk-telemetry.com",
-    `https://${convexCloudHost}`,
-    `wss://${convexCloudHost}`,
-    `https://${convexSiteHost}`,
-    "https://*.elevenlabs.io",
-    "wss://*.elevenlabs.io",
-    "https://storage.googleapis.com",
-  ].join(" "),
-  `media-src 'self' blob: data: https://${convexSiteHost}`,
+  connectSrc,
+  mediaSrc,
   "worker-src 'self' blob:",
   "frame-src https://challenges.cloudflare.com",
   "object-src 'none'",
@@ -76,9 +94,16 @@ const reportOnlyCsp = [
   "frame-ancestors 'none'",
 ].join("; ");
 
-// Safe to enforce today: nothing frames the app, uses plugins, or rewrites
-// the document base URL.
-const enforcedCsp = "frame-ancestors 'none'; base-uri 'self'; object-src 'none'";
+// Enforced: nothing frames the app, uses plugins, or rewrites the document
+// base URL; and images, network calls and media are held to the allowlist.
+const enforcedCsp = [
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  imgSrc,
+  connectSrc,
+  mediaSrc,
+].join("; ");
 
 const securityHeaders = [
   { key: "Content-Security-Policy", value: enforcedCsp },

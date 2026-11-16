@@ -5,7 +5,7 @@ import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import schema from "../schema";
-import { relayStream } from "../askSpeech";
+import { relayStream, SPEECH_CLAIM_TTL_MS } from "../askSpeech";
 import { buildSpeechUsageEvent } from "../lib/aiUsageMeter";
 import { MAX_SPEECH_CHARS, speakableText } from "../lib/askSpeech";
 
@@ -234,6 +234,63 @@ describe("read aloud", () => {
     }));
     expect(rows.speech).toHaveLength(0);
     expect(rows.usage[0]).toMatchObject({ status: "failed", characters: 0, errorType: "http_429", httpStatus: 429 });
+  });
+
+  test("a replayed link pays for one generation, not one per request", async () => {
+    const s = await setup();
+    const { url } = await s.as(s.ana).action(api.askSpeech.readAloud, { messageId: s.messageId });
+    const path = url.slice(SITE.length);
+    // The first request holds the claim: convex-test can't run the relay's
+    // save once the handler has returned, so the claim stays held here.
+    expect((await s.t.fetch(path, { method: "GET" })).status).toBe(200);
+    const replays = await Promise.all(Array.from({ length: 5 }, () => s.t.fetch(path, { method: "GET" })));
+    expect(replays.map((r) => r.status)).toEqual([409, 409, 409, 409, 409]);
+    expect(tts).toHaveBeenCalledTimes(1);
+  });
+
+  test("parallel claims: exactly one generates", async () => {
+    const s = await setup();
+    const claims = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        s.t.mutation(internal.askSpeech.claimStream, {
+          messageId: s.messageId,
+          clerkOrgId: ORG,
+          membershipId: s.ana.membershipId,
+        }),
+      ),
+    );
+    expect(claims.filter((c) => c.kind === "generate")).toHaveLength(1);
+    expect(claims.filter((c) => c.kind === "busy")).toHaveLength(3);
+  });
+
+  test("a saved answer releases the claim and replays from storage", async () => {
+    const s = await setup();
+    const claim = { messageId: s.messageId, clerkOrgId: ORG, membershipId: s.ana.membershipId };
+    expect((await s.t.mutation(internal.askSpeech.claimStream, claim)).kind).toBe("generate");
+    await s.t.run(async (ctx) => {
+      const storageId = await ctx.storage.store(new Blob([new Uint8Array([9])], { type: "audio/mpeg" }));
+      await ctx.runMutation(internal.askSpeech.saveSpeech, { messageId: s.messageId, storageId, voiceId: "v", model: "m", characters: 27 });
+    });
+    expect((await s.t.mutation(internal.askSpeech.claimStream, claim)).kind).toBe("stored");
+    expect(await s.t.run((ctx) => ctx.db.query("askSpeechClaims").collect())).toEqual([]);
+  });
+
+  test("a failed generation frees the claim, and an abandoned one expires", async () => {
+    const s = await setup();
+    tts.mockResolvedValueOnce(new Response("quota", { status: 429 }));
+    expect((await s.listen(s.ana)).response?.status).toBe(502);
+    // Released on failure, so the next press can generate. (Status only:
+    // reading the body would run the relay's save outside convex-test.)
+    const { url } = await s.as(s.ana).action(api.askSpeech.readAloud, { messageId: s.messageId });
+    expect((await s.t.fetch(url.slice(SITE.length), { method: "GET" })).status).toBe(200);
+    expect(tts).toHaveBeenCalledTimes(2);
+    // That second request still holds its claim; once stale, it is re-taken.
+    await s.t.run(async (ctx) => {
+      const row = await ctx.db.query("askSpeechClaims").first();
+      await ctx.db.patch("askSpeechClaims", row!._id, { claimedAt: Date.now() - SPEECH_CLAIM_TTL_MS - 1 });
+    });
+    const claim = { messageId: s.messageId, clerkOrgId: ORG, membershipId: s.ana.membershipId };
+    expect((await s.t.mutation(internal.askSpeech.claimStream, claim)).kind).toBe("generate");
   });
 
   test("the audio goes with its thread", async () => {

@@ -589,7 +589,11 @@ export default defineSchema({
       v.literal("done"),
     ),
     collectSource: v.optional(
-      v.union(v.literal("conversations"), v.literal("memberships")),
+      v.union(
+        v.literal("conversations"),
+        v.literal("interviewSessions"),
+        v.literal("memberships"),
+      ),
     ),
     // Collect: a page cursor. Tables: the scrub pass's page cursor.
     cursor: v.union(v.string(), v.null()),
@@ -1849,6 +1853,43 @@ export default defineSchema({
   })
     .index("by_messageId", ["messageId"])
     .index("by_threadId", ["threadId"]),
+
+  // One row per interview Fabric authorised (docs/security-hardening-task-list.md
+  // Phase 3). The ElevenLabs agent only accepts sessions with a conversation
+  // token Fabric fetched for a signed-in contributor; the token's conversation
+  // id is recorded here, so an import can be bound to the member it was issued
+  // to. Also carries the per-member and per-org daily caps' "one open
+  // interview at a time" rule.
+  interviewSessions: defineTable({
+    clerkOrgId: v.string(),
+    userId: v.id("users"),
+    processId: v.id("processes"),
+    status: v.union(
+      v.literal("issued"),
+      v.literal("imported"),
+      v.literal("expired"),
+    ),
+    issuedAt: v.number(),
+    elevenlabsConversationId: v.optional(v.string()),
+  })
+    .index("by_clerkOrgId_and_userId_and_issuedAt", [
+      "clerkOrgId",
+      "userId",
+      "issuedAt",
+    ])
+    .index("by_elevenlabsConversationId", ["elevenlabsConversationId"]),
+
+  // One row while an answer's read-aloud audio is being generated, so parallel
+  // requests on the same stream link can't each pay ElevenLabs. Deleted when
+  // the audio is saved or generation fails; a row older than the TTS timeout
+  // is treated as abandoned and re-taken.
+  askSpeechClaims: defineTable({
+    messageId: v.id("askMessages"),
+    clerkOrgId: v.string(),
+    claimedAt: v.number(),
+  })
+    .index("by_messageId", ["messageId"])
+    .index("by_clerkOrgId", ["clerkOrgId"]),
 
   // A thumbs-down exchange the user chose to share with the Fabric team (D20).
   // A snapshot: no raw tool results, which never outlive the turn (FR-7.2).

@@ -10,7 +10,8 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { requireOrgMember, resolveOrgForAction } from "./lib/orgAuth";
+import { requireOrgContributor, requireOrgMember, resolveOrgForAction } from "./lib/orgAuth";
+import { flowHasWork, takeManualRun } from "./lib/manualRuns";
 import {
   isAIConfigured,
   isTokenLimitFinishReason,
@@ -581,6 +582,15 @@ function ownsGeneration(
   return flow !== null && flow.generationId === generationId;
 }
 
+/** A run in flight with a live heartbeat: a new request joins it instead. */
+function joinableGeneration(flow: Doc<"processFlows">, now: number): boolean {
+  return (
+    flow.generationId !== undefined &&
+    (flow.status === "generating" || flow.detailsStatus === "generating") &&
+    now - (flow.lastProgressAt ?? 0) < FLOW_GENERATION_STALE_MS
+  );
+}
+
 async function startFlowGenerationForOrg(
   ctx: MutationCtx,
   args: { processId: Id<"processes">; clerkOrgId: string },
@@ -602,15 +612,9 @@ async function startFlowGenerationForOrg(
   // two clicks would still burn two full pipelines of tokens, so the second
   // joins the first. A run whose heartbeat has gone stale may be superseded —
   // that is the escape hatch for a wedged generation.
-  if (
-    existing &&
-    existing.generationId !== undefined &&
-    (existing.status === "generating" ||
-      existing.detailsStatus === "generating") &&
-    now - (existing.lastProgressAt ?? 0) < FLOW_GENERATION_STALE_MS
-  ) {
+  if (existing && joinableGeneration(existing, now)) {
     return {
-      generationId: existing.generationId,
+      generationId: existing.generationId!,
       processFlowId: existing._id,
       joined: true,
     };
@@ -701,6 +705,54 @@ export const requestFlowGeneration = internalMutation({
         generationId: started.generationId,
       },
     );
+    return { scheduled: true, generationId: started.generationId };
+  },
+});
+
+/**
+ * The "Regenerate" button's path (D4). The caller's identity carries through
+ * from the action, so the role check, the "anything to redo?" check, the
+ * daily caps and the start are one transaction: a scripted loop can't slip
+ * runs in between checks.
+ */
+export const requestManualFlowGeneration = internalMutation({
+  args: { processId: v.id("processes"), force: v.boolean() },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ scheduled: boolean; generationId: string }> => {
+    const caller = await requireOrgContributor(ctx);
+    const process = await ctx.db.get(args.processId);
+    if (!process || process.clerkOrgId !== caller.orgId) {
+      throw new Error("Process not found in this organization");
+    }
+    const existing = await ctx.db
+      .query("processFlows")
+      .withIndex("by_clerkOrgId_and_processId", (q) =>
+        q.eq("clerkOrgId", caller.orgId).eq("processId", args.processId),
+      )
+      .first();
+    // Joining a run already in flight buys nothing, so it is never limited.
+    if (!existing || !joinableGeneration(existing, Date.now())) {
+      await takeManualRun(ctx, caller, {
+        kind: "flow",
+        processId: args.processId,
+        hasWork: await flowHasWork(ctx, existing, caller.orgId, args.processId),
+        force: args.force,
+      });
+    }
+    const started = await startFlowGenerationForOrg(ctx, {
+      processId: args.processId,
+      clerkOrgId: caller.orgId,
+    });
+    if (started.joined) {
+      return { scheduled: false, generationId: started.generationId };
+    }
+    await ctx.scheduler.runAfter(0, internal.processFlows.generateGraphInternal, {
+      processId: args.processId,
+      clerkOrgId: caller.orgId,
+      generationId: started.generationId,
+    });
     return { scheduled: true, generationId: started.generationId };
   },
 });
@@ -1933,22 +1985,21 @@ export const generateFlowInsightsInternal = internalAction({
 // ---------------------------------------------------------------------------
 
 export const generateProcessFlow = action({
-  args: { processId: v.id("processes") },
+  args: {
+    processId: v.id("processes"),
+    // Admins only: rerun a flow that is already up to date (D4).
+    force: v.optional(v.boolean()),
+  },
   handler: async (ctx, args): Promise<{ message: string | null }> => {
-    const { orgId } = await resolveOrgForAction(ctx);
-
-    // Assert caller is a contributor in this org AND the process belongs to
-    // this org before we burn any LLM tokens.
-    await ctx.runQuery(internal.postCall.requireOrgContributorInternal, {});
-    await ctx.runQuery(internal.processFlows.assertProcessInOrg, {
-      processId: args.processId,
-      clerkOrgId: orgId,
-    });
+    // Applies the closed-workspace gate; the mutation below checks the
+    // caller's role, the process, whether there is anything to redo and the
+    // daily caps, before any LLM tokens are spent.
+    await resolveOrgForAction(ctx);
 
     const started: { scheduled: boolean; generationId: string } =
-      await ctx.runMutation(internal.processFlows.requestFlowGeneration, {
+      await ctx.runMutation(internal.processFlows.requestManualFlowGeneration, {
         processId: args.processId,
-        clerkOrgId: orgId,
+        force: args.force ?? false,
       });
 
     // Two clicks must not buy two pipelines. The second joins the first rather

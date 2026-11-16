@@ -33,6 +33,16 @@ export function buildElevenLabsConversationUrl(
 }
 
 /**
+ * The WebRTC conversation-token endpoint. Called server-side with the API key,
+ * so the browser never holds a key and the agent can require authentication.
+ */
+export function buildElevenLabsConversationTokenUrl(agentId: string): URL {
+  const url = new URL("/v1/convai/conversation/token", ELEVENLABS_API_ORIGIN);
+  url.searchParams.set("agent_id", agentId);
+  return url;
+}
+
+/**
  * Bind an upstream response to the exact resource that was requested. When a
  * server-side agent ID is configured, also prevent importing conversations
  * from another agent that happens to be accessible with the same API key.

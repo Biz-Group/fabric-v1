@@ -1,5 +1,6 @@
 import type { SummaryArtifactV2 } from "../summaryV2";
 import { renderSummaryV2AsLegacyMarkdown } from "../summaryV2";
+import { csvCell } from "./csv";
 
 /**
  * Pure rendering for the workspace export (docs/client-offboarding-plan.md,
@@ -114,14 +115,6 @@ export function audioExtension(mimeType: string | undefined): string {
 }
 
 // ---- CSV -----------------------------------------------------------------------
-
-function csvCell(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  let text = String(value);
-  // A leading =, +, - or @ makes spreadsheets run the cell as a formula.
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
 
 export function toCsv(header: string[], rows: unknown[][]): string {
   return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";

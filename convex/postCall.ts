@@ -9,7 +9,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   requireOrgContributor,
   requireOrgMember,
@@ -32,6 +32,8 @@ import { summaryTitleFromAnalysis } from "./lib/conversationTitle";
 import { isWorkspaceClosed } from "./lib/workspaceStatus";
 import { startConversationPipelines } from "./lib/conversationPipelines";
 import { conversationFailureReasonValidator } from "./lib/conversationFailure";
+import { interviewBindingEnforcedFrom, markSessionImported } from "./lib/interviewLimits";
+import { userError } from "./lib/userError";
 import {
   assertElevenLabsConversationIdentity,
   buildElevenLabsConversationUrl,
@@ -220,6 +222,77 @@ async function elevenLabsConversationOwnedElsewhere(
   return imports.some((conversation) => conversation.clerkOrgId !== clerkOrgId);
 }
 
+async function sameOrgImport(
+  ctx: QueryCtx | MutationCtx,
+  elevenlabsConversationId: string,
+  clerkOrgId: string,
+): Promise<Doc<"conversations"> | null> {
+  const imports = await ctx.db
+    .query("conversations")
+    .withIndex("by_elevenlabsConversationId", (q) =>
+      q.eq("elevenlabsConversationId", elevenlabsConversationId),
+    )
+    .take(10);
+  return imports.find((conversation) => conversation.clerkOrgId === clerkOrgId) ?? null;
+}
+
+type ConversationStatus = Doc<"conversations">["status"];
+
+/**
+ * `created` is false when this org already had a row for the ElevenLabs
+ * conversation: the caller then records no usage and starts no pipeline.
+ */
+export type InsertConversationResult = {
+  conversationId: Id<"conversations">;
+  created: boolean;
+  processId: Id<"processes">;
+  status: ConversationStatus;
+};
+
+/** This org's row for an ElevenLabs conversation, if it has imported it. */
+export const sameOrgImportStatus = internalQuery({
+  args: { elevenlabsConversationId: v.string(), clerkOrgId: v.string() },
+  handler: async (ctx, args): Promise<ConversationStatus | null> =>
+    (await sameOrgImport(ctx, args.elevenlabsConversationId, args.clerkOrgId))
+      ?.status ?? null,
+});
+
+const UNBOUND_CONVERSATION_MESSAGE =
+  "This interview can't be imported: it wasn't started from Fabric by you.";
+
+/**
+ * Import binding (Phase 3, D2): an ElevenLabs conversation can only be
+ * imported by the member Fabric issued it to, or an admin of that workspace.
+ * Enforced for conversations that started at or after
+ * INTERVIEW_SESSIONS_ENFORCED_FROM; earlier ones (from before the switch-over,
+ * when the browser started sessions itself) import as before. While the
+ * variable is unset, a mismatch is only logged.
+ */
+function assertImportBinding(
+  data: { metadata?: { start_time_unix_secs?: unknown } },
+  elevenlabsConversationId: string,
+  issuedToCaller: boolean,
+) {
+  if (issuedToCaller) return;
+  const enforcedFrom = interviewBindingEnforcedFrom();
+  const startSecs = data.metadata?.start_time_unix_secs;
+  const startedAt = typeof startSecs === "number" ? startSecs * 1000 : null;
+  const enforced = enforcedFrom !== null && (startedAt === null || startedAt >= enforcedFrom);
+  console.warn("Interview import not issued to caller", {
+    elevenlabsConversationId,
+    enforced,
+  });
+  if (enforced) throw userError("INTERVIEW_NOT_ISSUED", UNBOUND_CONVERSATION_MESSAGE);
+}
+
+/** What the recording modal is told about an import that already exists. */
+function fetchStatusFor(status: ConversationStatus): "done" | "failed" | "timeout" {
+  if (status === "done") return "done";
+  if (status === "failed") return "failed";
+  // `processing` (or labelling, which agent imports never use): still settling.
+  return "timeout";
+}
+
 export const isElevenLabsConversationOwnedElsewhere = internalQuery({
   args: { elevenlabsConversationId: v.string(), clerkOrgId: v.string() },
   handler: async (ctx, args): Promise<boolean> =>
@@ -291,7 +364,7 @@ export const insertConversation = internalMutation({
     ),
     failureReason: v.optional(conversationFailureReasonValidator),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<InsertConversationResult> => {
     // Defensive: ensure the parent process belongs to the stamping org.
     const process = await ctx.db.get(args.processId);
     if (!process || process.clerkOrgId !== args.clerkOrgId) {
@@ -310,8 +383,47 @@ export const insertConversation = internalMutation({
       ) {
         throw new Error(FOREIGN_CONVERSATION_MESSAGE);
       }
+      // One row per ElevenLabs conversation per org. A resend returns the row
+      // already there and starts nothing, so a looped import can't buy repeat
+      // pipelines or inflate counts. The one exception: a row left
+      // `processing` by an import that timed out is completed by a later
+      // import that finished, keeping its original process and attribution.
+      const existing = await sameOrgImport(
+        ctx,
+        args.elevenlabsConversationId,
+        args.clerkOrgId,
+      );
+      await markSessionImported(ctx, args.clerkOrgId, args.elevenlabsConversationId);
+      if (existing) {
+        const completes =
+          existing.status === "processing" &&
+          (args.status === "done" || args.status === "failed");
+        if (!completes) {
+          return {
+            conversationId: existing._id,
+            created: false,
+            processId: existing.processId,
+            status: existing.status,
+          };
+        }
+        await ctx.db.patch("conversations", existing._id, {
+          transcript: args.transcript,
+          summary: args.summary,
+          title: args.title,
+          analysis: args.analysis,
+          durationSeconds: args.durationSeconds,
+          status: args.status,
+          failureReason: args.status === "failed" ? args.failureReason : undefined,
+        });
+        return {
+          conversationId: existing._id,
+          created: true,
+          processId: existing.processId,
+          status: args.status,
+        };
+      }
     }
-    return await ctx.db.insert("conversations", {
+    const conversationId = await ctx.db.insert("conversations", {
       processId: args.processId,
       clerkOrgId: args.clerkOrgId,
       elevenlabsConversationId: args.elevenlabsConversationId,
@@ -334,6 +446,12 @@ export const insertConversation = internalMutation({
       status: args.status,
       failureReason: args.status === "failed" ? args.failureReason : undefined,
     });
+    return {
+      conversationId,
+      created: true,
+      processId: args.processId,
+      status: args.status,
+    };
   },
 });
 
@@ -457,7 +575,10 @@ export const fetchConversation = action({
     subjectUserId: v.optional(v.id("users")),
     consentAttested: v.optional(v.boolean()),
   },
-  handler: async (ctx, args) => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ status: "done" | "failed" | "timeout" }> => {
     const { orgId } = await resolveOrgForAction(ctx);
     const elevenlabsConversationId = requireElevenLabsConversationId(
       args.elevenlabsConversationId,
@@ -496,11 +617,29 @@ export const fetchConversation = action({
     if (ownedElsewhere) {
       throw new Error(FOREIGN_CONVERSATION_MESSAGE);
     }
+    // Already imported here and settled: answer from the row, skipping the
+    // poll. A `processing` row falls through so this import can complete it.
+    const existingStatus: ConversationStatus | null = await ctx.runQuery(
+      internal.postCall.sameOrgImportStatus,
+      { elevenlabsConversationId, clerkOrgId: orgId },
+    );
+    if (existingStatus !== null && existingStatus !== "processing") {
+      return { status: fetchStatusFor(existingStatus) };
+    }
 
     const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
       throw new Error("ELEVENLABS_API_KEY is not configured");
     }
+
+    // Was this interview started through Fabric for this caller? Checked
+    // against the conversation's start time once ElevenLabs answers, before
+    // anything is stored (see assertImportBinding).
+    const issuedToCaller: boolean = await ctx.runQuery(
+      internal.interviewSessions.isIssuedToCaller,
+      { elevenlabsConversationId },
+    );
+    let bindingChecked = false;
 
     const maxRetries = 30;
     const pollIntervalMs = 2000;
@@ -522,7 +661,7 @@ export const fetchConversation = action({
         );
 
         if (consecutiveNetworkErrors >= maxNetworkErrors) {
-          await ctx.runMutation(internal.postCall.insertConversation, {
+          const settled: InsertConversationResult = await ctx.runMutation(internal.postCall.insertConversation, {
             processId: args.processId,
             clerkOrgId: orgId,
             elevenlabsConversationId,
@@ -533,7 +672,7 @@ export const fetchConversation = action({
             status: "failed",
             failureReason: "interview_fetch",
           });
-          return { status: "failed" as const };
+          return { status: fetchStatusFor(settled.status) };
         }
 
         await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -550,7 +689,7 @@ export const fetchConversation = action({
           await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
           continue;
         }
-        await ctx.runMutation(internal.postCall.insertConversation, {
+        const settled: InsertConversationResult = await ctx.runMutation(internal.postCall.insertConversation, {
           processId: args.processId,
           clerkOrgId: orgId,
           elevenlabsConversationId,
@@ -561,7 +700,7 @@ export const fetchConversation = action({
           status: "failed",
           failureReason: "interview_fetch",
         });
-        return { status: "failed" as const };
+        return { status: fetchStatusFor(settled.status) };
       }
 
       const data = await response.json();
@@ -570,6 +709,10 @@ export const fetchConversation = action({
         elevenlabsConversationId,
         process.env.ELEVENLABS_AGENT_ID,
       );
+      if (!bindingChecked) {
+        bindingChecked = true;
+        assertImportBinding(data, elevenlabsConversationId, issuedToCaller);
+      }
 
       if (data.status === "done") {
         const transcript = normalizeTranscript(data.transcript);
@@ -578,7 +721,7 @@ export const fetchConversation = action({
         const analysis = data.analysis ?? null;
         const durationSeconds = data.metadata?.call_duration_secs ?? undefined;
 
-        const conversationId = await ctx.runMutation(
+        const inserted: InsertConversationResult = await ctx.runMutation(
           internal.postCall.insertConversation,
           {
             processId: args.processId,
@@ -596,6 +739,9 @@ export const fetchConversation = action({
             status: "done",
           },
         );
+        // Another import of this conversation got there first: nothing to pay
+        // for or rebuild.
+        if (!inserted.created) return { status: fetchStatusFor(inserted.status) };
 
         // ElevenLabs itemises this conversation's bill in metadata.charging —
         // capture it now rather than estimating from duration later.
@@ -604,7 +750,7 @@ export const fetchConversation = action({
           {
             clerkOrgId: orgId,
             entityType: "conversation",
-            entityId: conversationId,
+            entityId: inserted.conversationId,
             entityLabel: attributionFields.contributorName,
           },
           {
@@ -615,13 +761,13 @@ export const fetchConversation = action({
 
         // The conversation is committed as done; both pipelines start from here,
         // independently of each other.
-        await startConversationPipelines(ctx, args.processId, orgId);
+        await startConversationPipelines(ctx, inserted.processId, orgId);
 
         return { status: "done" as const };
       }
 
       if (data.status === "failed") {
-        await ctx.runMutation(internal.postCall.insertConversation, {
+        const settled: InsertConversationResult = await ctx.runMutation(internal.postCall.insertConversation, {
           processId: args.processId,
           clerkOrgId: orgId,
           elevenlabsConversationId,
@@ -632,14 +778,14 @@ export const fetchConversation = action({
           status: "failed",
           failureReason: "interview_failed",
         });
-        return { status: "failed" as const };
+        return { status: fetchStatusFor(settled.status) };
       }
 
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
 
     // Max retries exceeded — insert as processing so frontend can detect via reactivity
-    await ctx.runMutation(internal.postCall.insertConversation, {
+    const settled: InsertConversationResult = await ctx.runMutation(internal.postCall.insertConversation, {
       processId: args.processId,
       clerkOrgId: orgId,
       elevenlabsConversationId,
@@ -650,7 +796,7 @@ export const fetchConversation = action({
       status: "processing",
     });
 
-    return { status: "timeout" as const };
+    return { status: fetchStatusFor(settled.status) };
   },
 });
 
@@ -909,7 +1055,7 @@ export const importConversation = internalAction({
     const analysis = data.analysis ?? null;
     const durationSeconds = data.metadata?.call_duration_secs ?? undefined;
 
-    const conversationId = await ctx.runMutation(
+    const inserted: InsertConversationResult = await ctx.runMutation(
       internal.postCall.insertConversation,
       {
         processId: args.processId,
@@ -927,13 +1073,16 @@ export const importConversation = internalAction({
         status: "done",
       },
     );
+    if (!inserted.created) {
+      return { status: fetchStatusFor(inserted.status), summary };
+    }
 
     await recordAgentConversationUsage(
       ctx,
       {
         clerkOrgId: args.clerkOrgId,
         entityType: "conversation",
-        entityId: conversationId,
+        entityId: inserted.conversationId,
         entityLabel: args.contributorName,
       },
       {
@@ -942,7 +1091,7 @@ export const importConversation = internalAction({
       },
     );
 
-    await startConversationPipelines(ctx, args.processId, args.clerkOrgId);
+    await startConversationPipelines(ctx, inserted.processId, args.clerkOrgId);
 
     return { status: "done" as const, summary };
   },

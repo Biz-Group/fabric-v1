@@ -44,6 +44,7 @@ import {
 import type { FlowEdge, FlowNode } from "../../../convex/lib/insightsDerivations";
 import type { StatusTone } from "@/features/status/status-meta";
 import { composeChangePlan } from "./change-plan";
+import { noImages } from "@/lib/markdown-no-images";
 import {
   CAUSE_BASIS_LABEL,
   DECISION_LABEL,
@@ -61,6 +62,7 @@ import {
 } from "./recommendation-meta";
 
 const markdownComponents: Components = {
+  ...noImages,
   h1: () => null, // The title is already the panel heading.
   h2: ({ children }) => (
     <SectionLabel render={<h4 />} className="mt-5 mb-2 text-foreground first:mt-0">

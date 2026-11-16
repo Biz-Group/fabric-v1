@@ -74,8 +74,15 @@ function append(buffer: SourceBuffer, chunk: Uint8Array): Promise<void> {
  * at the first chunk. Without MP3 streaming support, waits for the whole file.
  * Returns the object URL to revoke later.
  */
+/** The server is already generating this answer's audio for another request. */
+class SpeechBusyError extends Error {}
+
+const BUSY_RETRY_MS = 2_000;
+const BUSY_MAX_WAIT_MS = 150_000;
+
 async function streamInto(audio: HTMLAudioElement, url: string, onReady: () => void): Promise<string> {
   const response = await fetch(url);
+  if (response.status === 409) throw new SpeechBusyError();
   if (!response.ok || !response.body) throw new Error("Couldn't read this answer aloud.");
   const Source = streamingSource();
   if (!Source) {
@@ -167,13 +174,24 @@ export function ReadAloudButton({ messageId }: { messageId: Id<"askMessages"> })
     setPlayback("loading");
     const next = newAudio();
     try {
-      const source = await readAloud({ messageId });
-      audioRef.current = next;
-      if (source.kind === "stored") {
-        next.src = source.url;
-        await play(next);
-      } else {
-        objectUrlRef.current = await streamInto(next, source.url, () => void play(next));
+      // Another tab or request may already be generating this answer's audio;
+      // the server then answers 409, and the stored copy appears once it ends.
+      const deadline = Date.now() + BUSY_MAX_WAIT_MS;
+      for (;;) {
+        const source = await readAloud({ messageId });
+        audioRef.current = next;
+        if (source.kind === "stored") {
+          next.src = source.url;
+          await play(next);
+          break;
+        }
+        try {
+          objectUrlRef.current = await streamInto(next, source.url, () => void play(next));
+          break;
+        } catch (error) {
+          if (!(error instanceof SpeechBusyError) || Date.now() > deadline) throw error;
+          await new Promise((resolve) => setTimeout(resolve, BUSY_RETRY_MS));
+        }
       }
     } catch (error) {
       next.pause();

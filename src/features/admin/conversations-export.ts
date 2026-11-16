@@ -1,5 +1,6 @@
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "../../../convex/_generated/api";
+import { csvCell } from "../../../convex/lib/csv";
 
 type Page = FunctionReturnType<typeof api.conversations.listAllForOrg>["page"];
 type Row = Page[number];
@@ -21,12 +22,9 @@ const CSV_COLUMNS = [
   "summary",
 ] as const;
 
-function escape(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  const s = String(value);
-  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
+// Quotes, and neutralises formula injection: contributor, process and summary
+// text is member-controlled and this file is opened by admins in Excel.
+const escape = csvCell;
 
 function rowToCsv(r: Row): string {
   return [

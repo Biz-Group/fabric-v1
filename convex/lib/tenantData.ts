@@ -205,6 +205,22 @@ export const TENANT_DATA: Record<TableNames, TenantDataEntry> = {
     class: "operational",
     purge: "delete",
   },
+  askSpeechClaims: {
+    scope: "org",
+    orgIndex: "by_clerkOrgId",
+    class: "operational",
+    purge: "delete",
+  },
+  interviewSessions: {
+    scope: "org",
+    orgIndex: "by_clerkOrgId_and_userId_and_issuedAt",
+    class: "operational",
+    purge: "delete",
+    userIdFields: ["userId"],
+    // An interview that was never imported still exists at ElevenLabs; the
+    // purge's collect step queues it for deletion there too.
+    externalIdFields: [{ field: "elevenlabsConversationId", system: "elevenlabs" }],
+  },
 
   // ---- Generated outputs -----------------------------------------------------
   processFlows: {
@@ -438,6 +454,8 @@ export const ERASURE: Record<TableNames, "scan" | string | null> = {
   conversationDeletions: "scan",
   voiceUploadGrants: "scan",
   voiceUploadRateLimits: null,
+  askSpeechClaims: null,
+  interviewSessions: "scan",
   processFlows: "Process maps built from their interviews are cleared and rebuilt (D7).",
   processFlowNodeDetails: "Deleted with their process map.",
   recommendationRuns: null,
@@ -492,6 +510,8 @@ export const EXPORT_POLICY: Record<TableNames, true | string> = {
   conversationDeletions: true,
   voiceUploadGrants: "Short-lived upload credentials.",
   voiceUploadRateLimits: "Rate-limit counters.",
+  askSpeechClaims: "Short-lived processing locks.",
+  interviewSessions: "Interview start records; the interviews themselves are exported.",
   processFlows: true,
   processFlowNodeDetails: true,
   recommendationRuns: "Processing records for recommendation runs.",

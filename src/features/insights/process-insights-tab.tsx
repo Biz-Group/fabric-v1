@@ -30,6 +30,8 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingState, Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { useRegenerate } from "@/hooks/use-regenerate";
+import { describeError } from "@/lib/user-error-message";
 import {
   automationPotentialTone,
   confidenceTone,
@@ -1126,6 +1128,7 @@ export function ProcessInsightsTab({
     isActive ? { processId } : "skip",
   );
   const generateFlow = useAction(api.processFlows.generateProcessFlow);
+  const regenerate = useRegenerate();
   const [isGenerating, setIsGenerating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -1136,13 +1139,13 @@ export function ProcessInsightsTab({
     setIsGenerating(true);
     setActionError(null);
     try {
-      await generateFlow({ processId });
-    } catch {
-      setActionError("Failed to start flow generation. Please try again.");
+      await regenerate.run((force) => generateFlow({ processId, force }));
+    } catch (error) {
+      setActionError(describeError(error, "Failed to start flow generation. Please try again."));
     } finally {
       setIsGenerating(false);
     }
-  }, [canGenerate, generateFlow, hasCompletedConversations, processId]);
+  }, [canGenerate, generateFlow, hasCompletedConversations, processId, regenerate]);
 
   if (flow === undefined) return <LoadingInsights />;
 
@@ -1245,6 +1248,7 @@ export function ProcessInsightsTab({
   if (flow.nodes.length === 0) {
     return (
       <div className="space-y-4 p-4 md:p-6">
+        {regenerate.dialog}
         <EmptyState
           icon={Workflow}
           title="Flow has no mapped steps"
@@ -1301,6 +1305,7 @@ export function ProcessInsightsTab({
 
   return (
     <div className="min-h-full bg-muted/20">
+      {regenerate.dialog}
       <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
         {/* The tab is labelled by the process tab strip; this keeps the
             section headings below in a sensible outline. */}

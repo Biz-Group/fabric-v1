@@ -19,6 +19,7 @@ import {
   resolveOrgForAction,
 } from "./lib/orgAuth";
 import { authError } from "./lib/authErrors";
+import { canLabelSpeakers } from "./lib/speakerLabels";
 import { userError } from "./lib/userError";
 import {
   isAIConfigured,
@@ -1120,6 +1121,12 @@ export const submitSpeakerLabels = mutation({
     const caller = await requireOrgContributor(ctx);
     const conv = await ctx.db.get(args.conversationId);
     assertOrgOwns(caller, conv);
+    // Labels name who said what, and can tie a speaker to any member, so only
+    // the people who know the recording may set them: whoever submitted it,
+    // the person it was recorded on behalf of, or an admin.
+    if (!canLabelSpeakers(caller, conv)) {
+      throw authError("INSUFFICIENT_ROLE", "Insufficient permissions");
+    }
     const convMode = conv.inputMode ?? "agent";
     if (convMode !== "voiceRecord" && convMode !== "audioUpload") {
       throw new Error("Only voice recordings can be speaker-labeled");

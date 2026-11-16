@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 import { cn } from "@/lib/utils";
+import { noImages } from "@/lib/markdown-no-images";
 import {
   citationTarget,
   evidenceSummary,
@@ -160,7 +161,7 @@ export function HelpArticleDialog({ articleId, onClose }: { articleId: string | 
               <DialogDescription>{article.summary}</DialogDescription>
             </DialogHeader>
             <div className="text-sm leading-relaxed text-foreground [&_li]:my-1 [&_ol]:ml-5 [&_ol]:list-decimal [&_p]:my-2 [&_ul]:ml-5 [&_ul]:list-disc">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{article.body}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={noImages}>{article.body}</ReactMarkdown>
             </div>
           </>
         )}
@@ -185,6 +186,7 @@ export function AskAnswer({
 }) {
   const byOrdinal = new Map(citations.map((citation) => [citation.ordinal, citation]));
   const components: Components = {
+    ...noImages,
     a: ({ href, children }) => {
       if (href?.startsWith("cite:")) {
         const citation = byOrdinal.get(Number(href.slice(5)));

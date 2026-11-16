@@ -56,6 +56,7 @@ import type * as functions from "../functions.js";
 import type * as hierarchy from "../hierarchy.js";
 import type * as hierarchySummaryV2 from "../hierarchySummaryV2.js";
 import type * as http from "../http.js";
+import type * as interviewSessions from "../interviewSessions.js";
 import type * as invitations from "../invitations.js";
 import type * as lib_aiPricing from "../lib/aiPricing.js";
 import type * as lib_aiPromptSafety from "../lib/aiPromptSafety.js";
@@ -79,6 +80,7 @@ import type * as lib_conversationEvidenceV2 from "../lib/conversationEvidenceV2.
 import type * as lib_conversationFailure from "../lib/conversationFailure.js";
 import type * as lib_conversationPipelines from "../lib/conversationPipelines.js";
 import type * as lib_conversationTitle from "../lib/conversationTitle.js";
+import type * as lib_csv from "../lib/csv.js";
 import type * as lib_descriptionSafetyValidators from "../lib/descriptionSafetyValidators.js";
 import type * as lib_elevenLabsCharging from "../lib/elevenLabsCharging.js";
 import type * as lib_elevenLabsConversation from "../lib/elevenLabsConversation.js";
@@ -88,6 +90,8 @@ import type * as lib_flowQuality from "../lib/flowQuality.js";
 import type * as lib_flowStages from "../lib/flowStages.js";
 import type * as lib_hierarchyOverviewV2 from "../lib/hierarchyOverviewV2.js";
 import type * as lib_insightsDerivations from "../lib/insightsDerivations.js";
+import type * as lib_interviewLimits from "../lib/interviewLimits.js";
+import type * as lib_manualRuns from "../lib/manualRuns.js";
 import type * as lib_memberProfile from "../lib/memberProfile.js";
 import type * as lib_onboarding from "../lib/onboarding.js";
 import type * as lib_orgAuth from "../lib/orgAuth.js";
@@ -100,6 +104,7 @@ import type * as lib_recommendationScoring from "../lib/recommendationScoring.js
 import type * as lib_recommendationStage from "../lib/recommendationStage.js";
 import type * as lib_roles from "../lib/roles.js";
 import type * as lib_slugs from "../lib/slugs.js";
+import type * as lib_speakerLabels from "../lib/speakerLabels.js";
 import type * as lib_summaryEvaluation from "../lib/summaryEvaluation.js";
 import type * as lib_summaryV2Feature from "../lib/summaryV2Feature.js";
 import type * as lib_tenantData from "../lib/tenantData.js";
@@ -205,6 +210,7 @@ declare const fullApi: ApiFromModules<{
   hierarchy: typeof hierarchy;
   hierarchySummaryV2: typeof hierarchySummaryV2;
   http: typeof http;
+  interviewSessions: typeof interviewSessions;
   invitations: typeof invitations;
   "lib/aiPricing": typeof lib_aiPricing;
   "lib/aiPromptSafety": typeof lib_aiPromptSafety;
@@ -228,6 +234,7 @@ declare const fullApi: ApiFromModules<{
   "lib/conversationFailure": typeof lib_conversationFailure;
   "lib/conversationPipelines": typeof lib_conversationPipelines;
   "lib/conversationTitle": typeof lib_conversationTitle;
+  "lib/csv": typeof lib_csv;
   "lib/descriptionSafetyValidators": typeof lib_descriptionSafetyValidators;
   "lib/elevenLabsCharging": typeof lib_elevenLabsCharging;
   "lib/elevenLabsConversation": typeof lib_elevenLabsConversation;
@@ -237,6 +244,8 @@ declare const fullApi: ApiFromModules<{
   "lib/flowStages": typeof lib_flowStages;
   "lib/hierarchyOverviewV2": typeof lib_hierarchyOverviewV2;
   "lib/insightsDerivations": typeof lib_insightsDerivations;
+  "lib/interviewLimits": typeof lib_interviewLimits;
+  "lib/manualRuns": typeof lib_manualRuns;
   "lib/memberProfile": typeof lib_memberProfile;
   "lib/onboarding": typeof lib_onboarding;
   "lib/orgAuth": typeof lib_orgAuth;
@@ -249,6 +258,7 @@ declare const fullApi: ApiFromModules<{
   "lib/recommendationStage": typeof lib_recommendationStage;
   "lib/roles": typeof lib_roles;
   "lib/slugs": typeof lib_slugs;
+  "lib/speakerLabels": typeof lib_speakerLabels;
   "lib/summaryEvaluation": typeof lib_summaryEvaluation;
   "lib/summaryV2Feature": typeof lib_summaryV2Feature;
   "lib/tenantData": typeof lib_tenantData;

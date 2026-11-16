@@ -239,7 +239,7 @@ export const collectStep = internalMutation({
     if (!purge) return;
     const now = Date.now();
 
-    if (purge.collectSource !== "memberships") {
+    if (purge.collectSource === undefined || purge.collectSource === "conversations") {
       const page = await ctx.db
         .query("conversations")
         .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", purge.clerkOrgId))
@@ -252,7 +252,25 @@ export const collectStep = internalMutation({
         if (conv.subjectUserId) await addItem(ctx, purge, "person", conv.subjectUserId);
       }
       await ctx.db.patch(purge._id, {
-        collectSource: page.isDone ? "memberships" : "conversations",
+        collectSource: page.isDone ? "interviewSessions" : "conversations",
+        cursor: page.isDone ? null : page.continueCursor,
+        updatedAt: now,
+      });
+    } else if (purge.collectSource === "interviewSessions") {
+      // Interviews Fabric authorised but that were never imported still hold
+      // audio and a transcript at ElevenLabs. (Imported ones were queued above;
+      // addItem skips duplicates.)
+      const page = await ctx.db
+        .query("interviewSessions")
+        .withIndex("by_clerkOrgId_and_userId_and_issuedAt", (q) => q.eq("clerkOrgId", purge.clerkOrgId))
+        .paginate({ numItems: COLLECT_BATCH, cursor: purge.cursor });
+      for (const session of page.page) {
+        if (session.elevenlabsConversationId) {
+          await addItem(ctx, purge, "elevenlabsConversation", session.elevenlabsConversationId);
+        }
+      }
+      await ctx.db.patch(purge._id, {
+        collectSource: page.isDone ? "memberships" : "interviewSessions",
         cursor: page.isDone ? null : page.continueCursor,
         updatedAt: now,
       });

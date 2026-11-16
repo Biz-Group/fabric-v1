@@ -31,6 +31,19 @@ export function userErrorMessage(error: unknown): string | null {
 }
 
 /**
+ * A refusal saying a regenerate press had nothing to redo, and whether the
+ * caller (an admin) may force it anyway. Null for any other error.
+ */
+export function upToDateRefusal(error: unknown): { message: string; canForce: boolean } | null {
+  const data = errorData(error);
+  if (!data || data.code !== "NOTHING_TO_REGENERATE") return null;
+  return {
+    message: typeof data.userMessage === "string" ? data.userMessage : "This is already up to date.",
+    canForce: data.canForce === true,
+  };
+}
+
+/**
  * The text to show for a failed call: the message the function sent, else
  * the thrown message without Convex's request framing, else `fallback`. A
  * plain `Error` from a function reads "Server Error" in production, which

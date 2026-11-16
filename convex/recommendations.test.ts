@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
+import rateLimiterTest from "@convex-dev/rate-limiter/test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -176,15 +177,20 @@ async function seedOrg(ctx: MutationCtx, orgId = ORG) {
 }
 
 function harness() {
-  return convexTest(schema, modules);
+  const t = convexTest(schema, modules);
+  // regenerateRecommendations takes from the manual-run caps.
+  rateLimiterTest.register(t);
+  return t;
 }
 type Harness = ReturnType<typeof harness>;
 
-/** Starts a run as a contributor and drives the stage, the way the scheduler would. */
+/**
+ * Starts a run and drives the stage, the way the scheduler would. Uses the ops
+ * path, which bypasses the manual-run gate, so tests can re-run an up-to-date
+ * flow; the gate itself is tested in "manual re-runs" below.
+ */
 async function runRecommendations(t: Harness, processId: Id<"processes">) {
-  await t
-    .withIdentity(identity("contributor"))
-    .mutation(api.recommendations.regenerateRecommendations, { processId });
+  await t.mutation(internal.recommendations.rerunRecommendations, { clerkOrgId: ORG, processId });
   const run = await t.run((ctx) =>
     ctx.db.query("recommendationRuns").order("desc").first(),
   );
@@ -765,5 +771,121 @@ describe("tenant isolation for recommendations", () => {
     await expect(
       outsider.mutation(api.recommendations.regenerateRecommendations, { processId }),
     ).rejects.toThrow("not found");
+  });
+});
+
+describe("manual re-runs (D4)", () => {
+  /** The latest run, finished, so the next press doesn't simply join it. */
+  async function finishLatestRun(t: Harness, status: "ready" | "failed" = "ready") {
+    await t.run(async (ctx) => {
+      const run = await ctx.db.query("recommendationRuns").order("desc").first();
+      await ctx.db.patch(run!._id, { status });
+    });
+  }
+
+  test("recommendations: up to date refuses a contributor; an admin can force 3 times a day", async () => {
+    const t = harness();
+    const { processId } = await t.run((ctx) => seedOrg(ctx));
+    const contributor = t.withIdentity(identity("contributor"));
+    const admin = t.withIdentity(identity("admin"));
+
+    // The first run has work: there is none yet.
+    await contributor.mutation(api.recommendations.regenerateRecommendations, { processId });
+    // Pressing again while it runs joins it, at no cost.
+    expect(
+      await contributor.mutation(api.recommendations.regenerateRecommendations, { processId }),
+    ).toEqual({ message: "Recommendations are already being worked out." });
+    await finishLatestRun(t);
+
+    await expect(
+      contributor.mutation(api.recommendations.regenerateRecommendations, { processId }),
+    ).rejects.toThrow(/already up to date/);
+    await expect(
+      contributor.mutation(api.recommendations.regenerateRecommendations, { processId, force: true }),
+    ).rejects.toThrow(/Only an admin/);
+
+    for (let i = 0; i < 3; i++) {
+      await admin.mutation(api.recommendations.regenerateRecommendations, { processId, force: true });
+      await finishLatestRun(t);
+    }
+    await expect(
+      admin.mutation(api.recommendations.regenerateRecommendations, { processId, force: true }),
+    ).rejects.toThrow(/3 times today/);
+
+    // A failed run is always worth retrying, and isn't a forced run.
+    await finishLatestRun(t, "failed");
+    await contributor.mutation(api.recommendations.regenerateRecommendations, { processId });
+  });
+
+  test("the workspace gets 30 manual runs a day", async () => {
+    const t = harness();
+    const { processId } = await t.run((ctx) => seedOrg(ctx));
+    const contributor = t.withIdentity(identity("contributor"));
+    for (let i = 0; i < 30; i++) {
+      await contributor.mutation(api.recommendations.regenerateRecommendations, { processId });
+      await finishLatestRun(t, "failed");
+    }
+    await expect(
+      contributor.mutation(api.recommendations.regenerateRecommendations, { processId }),
+    ).rejects.toThrow(/Your workspace has reached today's limit for regenerating/);
+  });
+
+  test("flow: a current flow refuses a contributor; new contributions or a failure make it worth redoing", async () => {
+    const t = harness();
+    const { processId, processFlowId } = await t.run((ctx) => seedOrg(ctx));
+    // Make the seeded flow a current pipeline flow with nothing to redo.
+    await t.run((ctx) =>
+      ctx.db.patch(processFlowId, { generationVersion: "v3", generationId: "g0", detailsStatus: "ready" }),
+    );
+    const contributor = t.withIdentity(identity("contributor"));
+    const press = (force?: boolean) =>
+      contributor.mutation(internal.processFlows.requestManualFlowGeneration, { processId, force: force ?? false });
+
+    await expect(press()).rejects.toThrow(/already up to date with its contributions/);
+    await expect(press(true)).rejects.toThrow(/Only an admin/);
+
+    // A new finished contribution: the flow no longer reflects its inputs.
+    await t.run((ctx) =>
+      ctx.db.insert("conversations", { processId, contributorName: "Bea", status: "done", clerkOrgId: ORG }),
+    );
+    expect(await press()).toMatchObject({ scheduled: true });
+    // While that run is live, another press joins it.
+    expect(await press()).toMatchObject({ scheduled: false });
+
+    // Once it has finished and caught up, nothing to redo again...
+    await t.run((ctx) =>
+      ctx.db.patch(processFlowId, { status: "ready", detailsStatus: "ready", conversationCount: 2 }),
+    );
+    await expect(press()).rejects.toThrow(/already up to date/);
+    // ...until it fails.
+    await t.run((ctx) => ctx.db.patch(processFlowId, { status: "failed" }));
+    expect(await press()).toMatchObject({ scheduled: true });
+  });
+
+  test("flow: an admin can force a current flow, 3 times a day", async () => {
+    const t = harness();
+    const { processId, processFlowId } = await t.run((ctx) => seedOrg(ctx));
+    const current = { status: "ready" as const, generationVersion: "v3" as const, detailsStatus: "ready" as const };
+    await t.run((ctx) => ctx.db.patch(processFlowId, { ...current, generationId: "g0" }));
+    const admin = t.withIdentity(identity("admin"));
+    for (let i = 0; i < 3; i++) {
+      expect(
+        await admin.mutation(internal.processFlows.requestManualFlowGeneration, { processId, force: true }),
+      ).toMatchObject({ scheduled: true });
+      await t.run((ctx) => ctx.db.patch(processFlowId, current));
+    }
+    await expect(
+      admin.mutation(internal.processFlows.requestManualFlowGeneration, { processId, force: true }),
+    ).rejects.toThrow(/3 times today/);
+  });
+
+  test("viewers can't regenerate at all", async () => {
+    const t = harness();
+    const { processId } = await t.run((ctx) => seedOrg(ctx));
+    const viewer = t.withIdentity(identity("viewer"));
+    await expect(
+      viewer.mutation(internal.processFlows.requestManualFlowGeneration, { processId, force: false }),
+    ).rejects.toThrow();
+    await expect(viewer.mutation(api.recommendations.regenerateRecommendations, { processId })).rejects.toThrow();
   });
 });
