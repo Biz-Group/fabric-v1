@@ -32,6 +32,7 @@ import type * as askTools_helpCorpusBuild from "../askTools/helpCorpusBuild.js";
 import type * as askTools_hierarchy from "../askTools/hierarchy.js";
 import type * as askTools_overview from "../askTools/overview.js";
 import type * as askTools_participation from "../askTools/participation.js";
+import type * as askTools_recommendations from "../askTools/recommendations.js";
 import type * as askTools_registry from "../askTools/registry.js";
 import type * as askTools_results from "../askTools/results.js";
 import type * as askTools_scope from "../askTools/scope.js";
@@ -186,6 +187,7 @@ declare const fullApi: ApiFromModules<{
   "askTools/hierarchy": typeof askTools_hierarchy;
   "askTools/overview": typeof askTools_overview;
   "askTools/participation": typeof askTools_participation;
+  "askTools/recommendations": typeof askTools_recommendations;
   "askTools/registry": typeof askTools_registry;
   "askTools/results": typeof askTools_results;
   "askTools/scope": typeof askTools_scope;

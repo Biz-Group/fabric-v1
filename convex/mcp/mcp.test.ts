@@ -443,6 +443,72 @@ describe("HTTP", () => {
     });
   });
 
+  test("getRecommendations runs over the route with no arguments or a process, links to the Recommendations tab and is metered", async () => {
+    const t = setup();
+    const ids = await t.run(async (ctx: MutationCtx) => {
+      await seed(ctx);
+      const functionId = await ctx.db.insert("functions", { name: "Finance", sortOrder: 0, clerkOrgId: ORG_A });
+      const departmentId = await ctx.db.insert("departments", { name: "Payables", functionId, sortOrder: 0, clerkOrgId: ORG_A });
+      const processId = await ctx.db.insert("processes", { name: "Invoice approval", departmentId, sortOrder: 0, clerkOrgId: ORG_A });
+      await ctx.db.insert("processRecommendations", {
+        clerkOrgId: ORG_A,
+        processId,
+        source: "v2",
+        lifecycle: "active",
+        title: "Write down the approval limits",
+        nodeIds: [],
+        content: {
+          problem: "Approvals wait on the CFO.",
+          cause: "Limits are unwritten.",
+          causeBasis: "reported",
+          intervention: "standardise",
+          supportingInterventions: [],
+          proposedChange: "Publish one table of approval limits.",
+          pilot: { what: "Use it for a month.", measure: "Days waiting." },
+          openQuestions: [],
+          risks: [],
+          frequency: "weekly",
+        },
+        matchKey: "|standardise",
+        decisionStatus: "new",
+        createdAt: 0,
+        updatedAt: 0,
+      });
+      return { functionId, departmentId, processId };
+    });
+    const previousRoot = process.env.ROOT_DOMAIN;
+    process.env.ROOT_DOMAIN = "bizfabric.ai";
+    try {
+      const sign = await signerFor();
+      const token = await sign({ client_id: CLIENT }, ISSUER, "ana");
+      const callTool = async (args: Record<string, unknown>) =>
+        (
+          await (
+            await t.fetch("/mcp/alpha", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "getRecommendations", arguments: args } }),
+            })
+          ).json()
+        ).result;
+      const link = `https://alpha.bizfabric.ai/alpha?fn=${ids.functionId}&dept=${ids.departmentId}&proc=${ids.processId}&tab=recommendations`;
+      for (const args of [{}, { kind: "process", id: ids.processId }]) {
+        const result = await callTool(args);
+        expect(result.isError).toBe(false);
+        expect(result.content[0].text).toContain("Write down the approval limits");
+        expect(result.content[0].text).toContain(`Link: ${link}`);
+      }
+      const rows = await t.run(async (ctx) => await ctx.db.query("mcpCalls").collect());
+      expect(rows.map((row) => [row.tool, row.outcome])).toEqual([
+        ["getRecommendations", "ok"],
+        ["getRecommendations", "ok"],
+      ]);
+    } finally {
+      if (previousRoot === undefined) delete process.env.ROOT_DOMAIN;
+      else process.env.ROOT_DOMAIN = previousRoot;
+    }
+  });
+
   test("rate-limits a user's tool calls and says when to retry", async () => {
     const t = setup();
     await t.run(seed);

@@ -8,7 +8,7 @@ import {
 } from "../readModelHelpers";
 import { toLightweightSummaryListRow } from "../summaryV2";
 import { withSummaryV2ReadGate } from "../lib/summaryV2Feature";
-import type { HierarchyKind } from "./results";
+import { sources, type HierarchyKind } from "./results";
 
 /**
  * Optional scope for the aggregate tools. Strict tool schemas allow at most 16
@@ -279,4 +279,28 @@ export async function pendingWorkFor(
   processIds: ReadonlySet<Id<"processes">>,
 ): Promise<PendingWork> {
   return pendingWorkIn(await loadPendingRows(ctx, orgId), processIds);
+}
+
+/** Resolves an optional scope to its processes; null when the entity isn't the viewer's. */
+export async function scopedProcesses(
+  ctx: QueryCtx,
+  orgId: string,
+  hierarchy: OrgHierarchy,
+  kind: HierarchyKind | null,
+  id: string | null,
+): Promise<{ processes: Doc<"processes">[]; source: string; kind: HierarchyKind | "org"; id: string | null } | null> {
+  if (kind === null) return { processes: hierarchy.processes, source: sources.org(), kind: "org", id: null };
+  if (!id) return null;
+  const doc = await getOrgEntity(ctx, orgId, kind, id);
+  if (!doc) return null;
+  const processes =
+    kind === "process"
+      ? [doc as Doc<"processes">]
+      : processesInScope(
+          hierarchy,
+          kind === "department"
+            ? { kind, id: doc._id as Id<"departments"> }
+            : { kind, id: doc._id as Id<"functions"> },
+        );
+  return { processes, source: sources.entity(kind, doc._id), kind, id: doc._id };
 }

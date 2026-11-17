@@ -338,8 +338,11 @@ export function unionParameterCount(schema: JsonSchema): number {
  * Descriptions and the tool count itself cost nothing measurable.
  * `grammarUnitCount` approximates that, and the cap is the largest catalog
  * that compiled; one unit more failed. Re-measure before raising it.
+ * Re-measured 2026-11-17 on the dev Sonnet deployment: the 49-unit catalog
+ * compiles; adding any one-field tool (50) fails, a tool with no fields or a
+ * new enum value does not. The cap is 49, and the catalog sits on it.
  */
-export const MAX_GRAMMAR_UNITS = 50;
+export const MAX_GRAMMAR_UNITS = 49;
 
 export function grammarUnitCount(schema: JsonSchema): number {
   const visit = (node: JsonSchema, root: boolean): number => {

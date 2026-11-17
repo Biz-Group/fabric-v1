@@ -127,6 +127,17 @@ export function citationChecker(ctx: QueryCtx, orgId: string, role: Doc<"members
           .first();
         return flow?.nodes.some((node) => node.id === nodeId) ? "available" : "updated";
       }
+      case "recommendation": {
+        const process = await getOrgEntity(ctx, orgId, "process", parsed.sourceEntityId);
+        if (!process) return "unavailable";
+        // Recommendations regenerate with the flow: a superseded or deleted one
+        // links to the process's Recommendations tab instead.
+        const id = ctx.db.normalizeId("processRecommendations", source.slice(source.lastIndexOf("/") + 1));
+        const row = id ? await ctx.db.get(id) : null;
+        return row && row.clerkOrgId === orgId && row.processId === process._id && row.lifecycle !== "superseded"
+          ? "available"
+          : "updated";
+      }
       case "finding": {
         const doc = await getOrgEntity(ctx, orgId, parsed.sourceKind as HierarchyKind, parsed.sourceEntityId);
         if (!doc) return "unavailable";

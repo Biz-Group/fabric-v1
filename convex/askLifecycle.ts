@@ -133,7 +133,7 @@ export const clearCitedTextBatch = internalMutation({
       const pattern =
         args.sourceKind === "conversation"
           ? new RegExp(`^fabric:conversation/[^/]+/${args.sourceEntityId}(\\?|$)`)
-          : new RegExp(`/${args.sourceKind}/${args.sourceEntityId}(/|$)|^fabric:flow-node/${args.sourceEntityId}/`);
+          : new RegExp(`/${args.sourceKind}/${args.sourceEntityId}(/|$)|^fabric:(?:flow-node|recommendation)/${args.sourceEntityId}/`);
       const shared = await ctx.db
         .query("askSharedExchanges")
         .withIndex("by_clerkOrgId_and_userId", (q) => q.eq("clerkOrgId", args.clerkOrgId))

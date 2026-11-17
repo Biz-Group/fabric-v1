@@ -52,6 +52,7 @@ export function sourceKind(source: string): SourceKind | null {
     case "entity":
     case "overview":
     case "finding":
+    case "recommendation":
       return parsed.sourceKind as "function" | "department" | "process";
   }
 }

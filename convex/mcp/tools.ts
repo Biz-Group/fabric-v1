@@ -44,6 +44,13 @@ export const MCP_CONVERSATION_TOOL_NAMES = [
 
 export const WORKSPACE_TOOL_NAME = "getWorkspaceContents";
 
+/**
+ * MCP-only for now: AskFabric's strict tool grammar is full (one more field
+ * fails to compile on Foundry, measured 2026-11-17), so its catalog gets this
+ * tool only once room is made there.
+ */
+export const RECOMMENDATIONS_TOOL_NAME = "getRecommendations";
+
 /** MCP Apps show tools (Phase 5, B9): each renders a card in hosts that support it. */
 export const MCP_DISPLAY_TOOL_NAMES = ["showCards", "showFlowStep", "showChart"] as const;
 
@@ -52,7 +59,12 @@ export const CARDS_RESOURCE_URI = "ui://fabric/cards";
 export const CARDS_RESOURCE_MIME = "text/html;profile=mcp-app";
 
 /** Every always-on tool name, in `tools/list` order. */
-export const MCP_TOOL_NAMES = [WORKSPACE_TOOL_NAME, ...MCP_ASK_TOOL_NAMES, ...MCP_DISPLAY_TOOL_NAMES] as const;
+export const MCP_TOOL_NAMES = [
+  WORKSPACE_TOOL_NAME,
+  ...MCP_ASK_TOOL_NAMES,
+  RECOMMENDATIONS_TOOL_NAME,
+  ...MCP_DISPLAY_TOOL_NAMES,
+] as const;
 
 type ExecutorRef = FunctionReference<"query", "internal", { viewer: { tokenIdentifier: string; orgId: string } } & Record<string, unknown>, AskToolResult>;
 
@@ -132,6 +144,29 @@ const WORKSPACE_TOOL: McpTool = {
   executorRef: internal.mcp.workspace.getWorkspaceContents as unknown as ExecutorRef,
 };
 
+const RECOMMENDATIONS_SCHEMA: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    kind: {
+      type: "string",
+      enum: ["org", "function", "department", "process"],
+      description: "Limit to this entity kind, or \"org\" for the whole organization.",
+    },
+    id: { type: "string", description: "The entity id, or \"\" for the whole organization." },
+  },
+  required: ["kind", "id"],
+};
+
+const RECOMMENDATIONS_TOOL = (): McpTool => ({
+  name: RECOMMENDATIONS_TOOL_NAME,
+  description:
+    "Read Fabric's recommendations for improving the work, as the Recommendations tab shows them. For one process (kind \"process\"): every current recommendation in full: the problem, its cause, the proposed change, why a simpler change is not enough (technical ones), a pilot and how to measure it, value and effort with their reasons, decision status (new, shortlisted, in progress, done, dismissed), the steps it covers, open questions and risks. For a department, function or the whole organization: totals by kind of change and status, then the 25 highest-ranked that are not dismissed (value first, then lower effort, then evidence). Recommendations cover non-technical changes (remove a step, simplify, standardise, role or policy, training) and technical ones (workflow, integration, AI assist, agent); getProcessFlow and rankSignals show only the technical ones, as automation opportunities. Present them as Fabric's recommendations, with their status, and do not add vendor or product suggestions of your own.",
+  inputSchema: RECOMMENDATIONS_SCHEMA,
+  ...relaxSchema(RECOMMENDATIONS_SCHEMA),
+  executorRef: internal.askTools.recommendations.getRecommendations as unknown as ExecutorRef,
+});
+
 /**
  * The placeholder a field's description documents, if any. AskFabric's strict
  * tool use makes every field required, so optional inputs take placeholders
@@ -186,11 +221,12 @@ export function mcpTools({ conversationTools }: McpToolOptions): McpTool[] {
     if (!tool) throw new Error(`MCP tool ${name} is not in the AskFabric catalog`);
     return fromAskTool(tool);
   };
-  // Order: workspace tree, data tools, show tools, then the optional
+  // Order: workspace tree, data tools, recommendations, show tools, then the optional
   // conversation tools last, so the always-on prefix stays stable.
   return [
     WORKSPACE_TOOL,
     ...MCP_ASK_TOOL_NAMES.map(askTool),
+    RECOMMENDATIONS_TOOL(),
     ...DISPLAY_TOOLS(),
     ...(conversationTools ? MCP_CONVERSATION_TOOL_NAMES.map(askTool) : []),
   ];

@@ -1,17 +1,27 @@
 import { v } from "convex/values";
-import type { Doc, Id } from "../_generated/dataModel";
+import type { Doc } from "../_generated/dataModel";
 import { readableSummaryV2 } from "../lib/summaryV2Feature";
 import { deriveHandoffs, type FlowNode } from "../lib/insightsDerivations";
 import { isManualRework, normalizeKey } from "../lib/askNormalize";
 import type { SummaryArtifactV2 } from "../summaryV2";
 import { askToolQuery } from "./executor";
 import {
+  RECOMMENDATIONS_NOTE,
+  loadScopeRecommendations,
+  recommendationListBlock,
+  recommendationsForProcess,
+  scopeRecommendationsText,
+} from "./recommendations";
+import {
   conversationContributor,
   loadScopeEvidence,
   nodeContributors,
   type ScopeEvidence,
 } from "./evidence";
-import { getOrgEntity, loadHierarchy, processesInScope, scopeInput, scopeOf, type OrgHierarchy } from "./scope";
+import { loadHierarchy, scopeInput, scopeOf, scopedProcesses, type OrgHierarchy } from "./scope";
+
+// Moved to scope.ts; re-exported for the tools that import it from here.
+export { scopedProcesses };
 import {
   MAX_BUDGET_TOKENS,
   MAX_LIST_ITEMS,
@@ -36,6 +46,16 @@ export const SIGNALS = [
   "manualRework",
 ] as const;
 export type Signal = (typeof SIGNALS)[number];
+
+/**
+ * What rankSignals takes: the evidence signals above, plus Fabric's own
+ * recommendations. Those come from the Recommendations tab and keep their
+ * own ranking (value, then lower effort, then evidence), not the signal score.
+ * An enum value costs nothing in the strict grammar, where a new tool or field
+ * no longer fits (measured 2026-11-17).
+ */
+export const RANK_SIGNALS = [...SIGNALS, "recommendation"] as const;
+export type RankSignal = (typeof RANK_SIGNALS)[number];
 
 /** Sources cited per aggregate item (FR-1.8). */
 export const MAX_ITEM_SOURCES = 5;
@@ -343,30 +363,6 @@ export function gapSourcesFor(
   ];
 }
 
-/** Resolves an optional scope to its processes; null when the entity isn't the viewer's. */
-export async function scopedProcesses(
-  ctx: Parameters<typeof getOrgEntity>[0],
-  orgId: string,
-  hierarchy: OrgHierarchy,
-  kind: HierarchyKind | null,
-  id: string | null,
-): Promise<{ processes: Doc<"processes">[]; source: string; kind: HierarchyKind | "org"; id: string | null } | null> {
-  if (kind === null) return { processes: hierarchy.processes, source: sources.org(), kind: "org", id: null };
-  if (!id) return null;
-  const doc = await getOrgEntity(ctx, orgId, kind, id);
-  if (!doc) return null;
-  const processes =
-    kind === "process"
-      ? [doc as Doc<"processes">]
-      : processesInScope(
-          hierarchy,
-          kind === "department"
-            ? { kind, id: doc._id as Id<"departments"> }
-            : { kind, id: doc._id as Id<"functions"> },
-        );
-  return { processes, source: sources.entity(kind, doc._id), kind, id: doc._id };
-}
-
 /**
  * One full block for the item, then a short block per further source. The
  * evidence leads and the ranking follows in brackets, so the span Claude quotes
@@ -384,7 +380,7 @@ export function itemBlocks(item: SignalItem, rank: number): SearchResultBlock[] 
 }
 
 export const rankSignalsInput = {
-  signals: v.array(v.union(...SIGNALS.map((s) => v.literal(s)))),
+  signals: v.array(v.union(...RANK_SIGNALS.map((s) => v.literal(s)))),
   ...scopeInput,
   limit: v.number(),
 };
@@ -396,31 +392,51 @@ export const rankSignalsInput = {
 export const rankSignals = askToolQuery({
   input: rankSignalsInput,
   handler: async (ctx, viewer, input) => {
-    const wanted = new Set(input.signals.length ? input.signals : SIGNALS);
+    const wanted = new Set<RankSignal>(input.signals.length ? input.signals : SIGNALS);
     const hierarchy = await loadHierarchy(ctx, viewer.orgId);
     const { kind, id } = scopeOf(input);
     const scope = await scopedProcesses(ctx, viewer.orgId, hierarchy, kind, id);
     if (!scope) return NOT_FOUND;
+    const wantsRecommendations = wanted.has("recommendation");
+    // One process's recommendations on their own: each in full.
+    if (wantsRecommendations && wanted.size === 1 && scope.kind === "process") {
+      return await recommendationsForProcess(ctx, viewer.orgId, hierarchy, scope.processes[0]);
+    }
+    const evidenceSignals = new Set(SIGNALS.filter((signal) => wanted.has(signal)));
     const evidence = await loadScopeEvidence(ctx, viewer.orgId, scope.processes);
     const ranked = collectSignals(
-      wanted,
+      evidenceSignals,
       evidence,
-      wanted.has("gap") ? gapSourcesFor(hierarchy, scope.processes, scope.kind) : [],
+      evidenceSignals.has("gap") ? gapSourcesFor(hierarchy, scope.processes, scope.kind) : [],
     );
+    const recommendations = wantsRecommendations
+      ? await loadScopeRecommendations(ctx, viewer.orgId, scope.processes)
+      : null;
     const limit = Math.min(Math.max(Math.floor(input.limit > 0 ? input.limit : DEFAULT_ITEMS_PER_SIGNAL), 1), MAX_LIST_ITEMS);
 
-    const builder = new ResultBuilder(MAX_BUDGET_TOKENS, 300);
-    const order = SIGNALS.filter((signal) => wanted.has(signal));
+    // Room for the header and the summary, which grow by a totals line and a
+    // note when recommendations are included.
+    const builder = new ResultBuilder(MAX_BUDGET_TOKENS, recommendations ? 650 : 300);
+    const order = RANK_SIGNALS.filter((signal) => wanted.has(signal));
     const counts: Record<string, number> = {};
-    for (const signal of order) counts[signal] = ranked.get(signal)?.length ?? 0;
+    for (const signal of order) {
+      counts[signal] = signal === "recommendation" ? (recommendations?.open.length ?? 0) : (ranked.get(signal)?.length ?? 0);
+    }
     // Round-robin by rank, so every signal gets its strongest items before any
     // signal gets its weaker ones. An item that doesn't fit is skipped, not
     // the rest of the list: a later, shorter item may still fit.
     for (let rank = 0; rank < limit; rank++) {
       for (const signal of order) {
-        const item = ranked.get(signal)?.[rank];
-        if (!item) continue;
-        const blocks = itemBlocks(item, rank + 1);
+        let blocks: SearchResultBlock[];
+        if (signal === "recommendation") {
+          const row = recommendations?.open[rank];
+          if (!row) continue;
+          blocks = [recommendationListBlock(hierarchy, recommendations, row, `recommendation #${rank + 1}; Fabric's ranking: value, then lower effort, then evidence`)];
+        } else {
+          const item = ranked.get(signal)?.[rank];
+          if (!item) continue;
+          blocks = itemBlocks(item, rank + 1);
+        }
         const cost = blocks.reduce((sum, block) => sum + blockTokens(block), 0);
         if (cost > builder.remaining) {
           builder.markTruncated();
@@ -429,6 +445,8 @@ export const rankSignals = askToolQuery({
         for (const block of blocks) builder.add(block);
       }
     }
+    const scopeName = scope.kind === "org" ? "the organization" : `this ${scope.kind}`;
+    const evidenceOrder = order.filter((signal) => signal !== "recommendation");
     return builder.finish(
       {
         scope: scope.source,
@@ -436,8 +454,13 @@ export const rankSignals = askToolQuery({
         processesInScope: scope.processes.length,
         flowsRead: evidence.flows.length,
         contributionsRead: evidence.contributions.length,
-        ...(evidence.capped ? { readCapped: true } : {}),
+        ...(evidence.capped || recommendations?.capped ? { readCapped: true } : {}),
         ranking: "score = 3 × processes affected + 2 × distinct contributors + evidence weight (corroborated 3, single source 2, inferred 1)",
+        ...(recommendations
+          ? {
+              recommendations: RECOMMENDATIONS_NOTE,
+            }
+          : {}),
       },
       null,
       {
@@ -446,12 +469,21 @@ export const rankSignals = askToolQuery({
           title: "Signal ranking: scope and method",
           // Per-signal totals here, not only in metadata, so "17 handoffs" or
           // "no manual rework" can carry a citation (D52).
-          text: `Ranked across ${scope.processes.length} processes in scope, reading ${evidence.flows.length} process flows and ${evidence.contributions.length} contributions with extracted evidence. Found: ${order.map((signal) => `${counts[signal]} ${signal}`).join(", ")}. Up to ${limit} of each are listed. Score = 3 × processes affected + 2 × distinct contributors + evidence weight (corroborated 3, single source 2, inferred 1).`,
+          text: [
+            evidenceOrder.length
+              ? `Ranked across ${scope.processes.length} processes in scope, reading ${evidence.flows.length} process flows and ${evidence.contributions.length} contributions with extracted evidence. Found: ${evidenceOrder.map((signal) => `${counts[signal]} ${signal}`).join(", ")}. Up to ${limit} of each are listed. Score = 3 × processes affected + 2 × distinct contributors + evidence weight (corroborated 3, single source 2, inferred 1).`
+              : "",
+            recommendations
+              ? `${scopeRecommendationsText(recommendations, scopeName, scope.processes.length)} ${counts.recommendation} not dismissed; up to ${limit} are listed.`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" "),
         },
         whenEmpty: {
           source: scope.source,
           title: "Signal scan: nothing found",
-          text: `No ${order.join(", ")} signals found across ${scope.processes.length} processes in scope.`,
+          text: `No ${order.join(", ")} found across ${scope.processes.length} processes in scope.`,
         },
       },
     );

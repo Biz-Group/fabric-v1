@@ -33,6 +33,9 @@ export const sources = {
   members: (kind: HierarchyKind, entityId: string) =>
     `fabric:members/${kind}/${entityId}`,
   help: (articleId: string) => `fabric:help/${articleId}`,
+  /** One of a process's recommendations; it opens the Recommendations tab. */
+  recommendation: (processId: string, recommendationId: string) =>
+    `fabric:recommendation/${processId}/${recommendationId}`,
 } as const;
 
 export type FabricSourceType = keyof typeof sources;
@@ -79,6 +82,10 @@ const PATTERNS: Array<[RegExp, (m: RegExpMatchArray) => ParsedSource]> = [
   [
     new RegExp(`^fabric:members/${KIND}/${ID}$`),
     (m) => ({ type: "members", sourceKind: m[1] as HierarchyKind, sourceEntityId: m[2] }),
+  ],
+  [
+    new RegExp(`^fabric:recommendation/${ID}/${ID}$`),
+    (m) => ({ type: "recommendation", sourceKind: "process", sourceEntityId: m[1] }),
   ],
   [
     /^fabric:help\/([a-z0-9-]+)$/,

@@ -108,6 +108,10 @@ export function citationTarget(
       const base = pathQuery(citation.path, "process");
       return link(base && { ...base, tab: "flow", ...(updated ? {} : { node: last }) });
     }
+    case "recommendation": {
+      const base = pathQuery(citation.path, "process");
+      return link(base && { ...base, tab: "recommendations" });
+    }
     case "conversation":
     case "transcriptLine": {
       const base = pathQuery(citation.path, "process");

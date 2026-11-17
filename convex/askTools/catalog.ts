@@ -289,10 +289,10 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
   }),
   defineTool({
     name: "rankSignals",
-    description: `Rank signals across every process in scope in one call, grouped by signal: ${SIGNALS.join(", ")}. Each item shows its score (3 × processes affected + 2 × distinct contributors + evidence weight) and where it occurs. manualRework is a keyword heuristic. For organization-wide questions, read the function overviews first.`,
+    description: `Rank signals across every process in scope in one call, grouped by signal: ${SIGNALS.join(", ")}. Each item shows its score (3 × processes affected + 2 × distinct contributors + evidence weight) and where it occurs. manualRework is a keyword heuristic. "recommendation" lists Fabric's own recommendations from the Recommendations tab: non-technical changes (remove a step, simplify, standardise, role or policy, training) and technical ones (workflow, integration, AI assist, agent), with value, effort and decision status, ranked by Fabric (value, then lower effort) rather than by score; automationOpportunity covers only the technical ones. For one process's recommendations in full (cause, pilot, open questions, risks), pass only "recommendation" with that process. Present recommendations as Fabric's, with their status, and never add vendor or product suggestions of your own. For organization-wide questions, read the function overviews first.`,
     input: rankSignalsInput,
     inputDescriptions: {
-      signals: "1 to 7 signals to rank.",
+      signals: "1 to 8 signals to rank.",
       kind: "Limit to this entity kind, or \"org\" for the whole organization.",
       id: "The entity id, or \"\" for the whole organization.",
       limit: "Items per signal, at most 25; 0 for the default of 8.",
@@ -301,7 +301,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     executor: rankSignals,
     executorPath: "askTools/signals:rankSignals",
     output: "Ranked items per signal, each with its score inputs and up to 5 sources.",
-    citationSources: ["flowNode", "conversation", "finding", "entity", "org"],
+    citationSources: ["flowNode", "conversation", "finding", "entity", "org", "recommendation"],
     budgetTokens: MAX_BUDGET_TOKENS,
     telemetryName: "rankSignals",
     label: (input) =>
