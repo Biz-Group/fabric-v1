@@ -1,14 +1,15 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { Activity, AlertTriangle, Bot, Plug, Users } from "lucide-react";
+import type { FunctionReturnType } from "convex/server";
+import { Activity, AlertTriangle, Bot, Plug, SlidersHorizontal, Users } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { api } from "../../../../../convex/_generated/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,10 +17,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageTitle } from "@/components/ui/page-title";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatCard } from "@/features/admin/stat-card";
 import { formatRelativeTime } from "@/features/home/home-view-model";
-import { CopyField } from "@/features/mcp/connection-guide";
-import { CopilotStudioCard } from "@/features/mcp/copilot-studio-card";
+import { AccessNote, ClaudeSteps } from "@/features/mcp/connection-guide";
+import { CopilotStudioSteps, type RevealedSecret } from "@/features/mcp/copilot-studio-card";
 import { McpDailyBars } from "@/features/mcp/mcp-usage";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 import { utcRangeEndingToday } from "@/features/tenants-console/usage-format";
@@ -42,6 +44,14 @@ export default function AdminMcpPage() {
   const [accepted, setAccepted] = useState(false);
   const [confirmOff, setConfirmOff] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [readAccessOpen, setReadAccessOpen] = useState(false);
+  // Usage feeds both the dashboard and the Copilot Studio "used" tick, so it's queried once here.
+  const [range] = useState(() => utcRangeEndingToday(30));
+  const usage = useQuery(api.mcpUsage.workspaceUsage, settings?.enabled ? range : "skip");
+  const usedClientIds = useMemo(
+    () => (usage ? new Set(usage.totals.clients.filter((c) => c.calls > 0).map((c) => c.clientId)) : undefined),
+    [usage],
+  );
 
   const run = async (action: () => Promise<unknown>, done: string) => {
     setBusy(true);
@@ -110,57 +120,19 @@ export default function AdminMcpPage() {
 
       {settings.enabled && (
         <>
-          <WorkspaceUsage />
+          <WorkspaceUsage usage={usage} />
 
-          <div className="grid gap-6 xl:grid-cols-2">
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Connection</CardTitle>
-                  <CardDescription>
-                    Members add this URL to Claude or another MCP client and sign in with Fabric. Setup steps are on{" "}
-                    <Link href={routes.connectHref} className="underline underline-offset-2">
-                      Connect AI assistants
-                    </Link>
-                    .
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {settings.workspaceUrl && <CopyField label="Connection URL" value={settings.workspaceUrl} />}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>What assistants can read</CardTitle>
-                  <CardDescription>Overviews, process flows, signals, systems, coverage and Fabric help.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <label className="flex items-start gap-2 text-sm">
-                    <Checkbox
-                      checked={settings.conversationTools}
-                      disabled={busy}
-                      onCheckedChange={(checked) =>
-                        run(
-                          () => setConversationTools({ enabled: checked === true }),
-                          checked === true ? "Contributions are now available to assistants." : "Contributions are no longer available to assistants.",
-                        )
-                      }
-                      className="mt-0.5"
-                    />
-                    <span>
-                      Also individual contributions
-                      <span className="block text-xs text-muted-foreground">
-                        Transcripts and what each contributor said, including their names.
-                      </span>
-                    </span>
-                  </label>
-                </CardContent>
-              </Card>
-            </div>
-
-            <CopilotStudioCard />
-          </div>
+          <ConnectAssistantsCard
+            workspaceUrl={settings.workspaceUrl}
+            connectHref={routes.connectHref}
+            usedClientIds={usedClientIds}
+            action={
+              <Button variant="outline" size="sm" onClick={() => setReadAccessOpen(true)}>
+                <SlidersHorizontal data-icon="inline-start" aria-hidden />
+                What assistants can read
+              </Button>
+            }
+          />
         </>
       )}
 
@@ -208,6 +180,39 @@ export default function AdminMcpPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={readAccessOpen} onOpenChange={setReadAccessOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>What assistants can read</DialogTitle>
+            <DialogDescription>
+              Always: overviews, process flows, signals, systems, coverage and Fabric help, limited to what each member can see.
+            </DialogDescription>
+          </DialogHeader>
+          <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+            <Checkbox
+              checked={settings.conversationTools}
+              disabled={busy}
+              onCheckedChange={(checked) =>
+                run(
+                  () => setConversationTools({ enabled: checked === true }),
+                  checked === true ? "Contributions are now available to assistants." : "Contributions are no longer available to assistants.",
+                )
+              }
+              className="mt-0.5"
+            />
+            <span>
+              Also individual contributions
+              <span className="block text-xs text-muted-foreground">
+                Transcripts and what each contributor said, including their names.
+              </span>
+            </span>
+          </label>
+          <DialogFooter>
+            <Button onClick={() => setReadAccessOpen(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ConfirmDialog
         open={confirmOff}
         onOpenChange={setConfirmOff}
@@ -223,10 +228,76 @@ export default function AdminMcpPage() {
   );
 }
 
+/**
+ * How to connect each assistant, one tab each. Claude needs nothing from the
+ * admin, so its tab mirrors the member page; Copilot Studio is the guided
+ * credential setup. The one-time secret is held here, above the tabs, because
+ * an inactive tab panel unmounts.
+ */
+function ConnectAssistantsCard({
+  workspaceUrl,
+  connectHref,
+  usedClientIds,
+  action,
+}: {
+  workspaceUrl: string | null;
+  connectHref: string;
+  usedClientIds: ReadonlySet<string> | undefined;
+  /** Top-right of the card: the "What assistants can read" settings button. */
+  action?: ReactNode;
+}) {
+  const [tab, setTab] = useState<string>("claude");
+  const [secret, setSecret] = useState<RevealedSecret | null>(null);
+
+  // Warn before a reload or tab close loses a secret that's shown only once.
+  useEffect(() => {
+    if (!secret) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [secret]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Connect an assistant</CardTitle>
+        <CardDescription>Step-by-step setup for each assistant, with every value you need to copy.</CardDescription>
+        {action && <CardAction>{action}</CardAction>}
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <Tabs value={tab} onValueChange={(value) => setTab(String(value))} className="gap-5">
+          <TabsList>
+            <TabsTrigger value="claude">Claude</TabsTrigger>
+            <TabsTrigger value="copilot">Microsoft Copilot Studio</TabsTrigger>
+          </TabsList>
+          <TabsContent value="claude">
+            <ClaudeSteps
+              workspaceUrl={workspaceUrl}
+              intro={
+                <>
+                  Members do this themselves. They also find these steps under{" "}
+                  <Link href={connectHref} className="underline underline-offset-2">
+                    ? → Connect AI assistants
+                  </Link>
+                  .
+                </>
+              }
+            />
+          </TabsContent>
+          <TabsContent value="copilot">
+            <CopilotStudioSteps secret={secret} onSecret={setSecret} usedClientIds={usedClientIds} />
+          </TabsContent>
+        </Tabs>
+        <AccessNote />
+      </CardContent>
+    </Card>
+  );
+}
+
+type WorkspaceUsageData = FunctionReturnType<typeof api.mcpUsage.workspaceUsage>;
+
 /** Usage over the last 30 days (Phase 3): tiles, daily calls, members, assistants and tools. */
-function WorkspaceUsage() {
-  const [range] = useState(() => utcRangeEndingToday(30));
-  const usage = useQuery(api.mcpUsage.workspaceUsage, range);
+function WorkspaceUsage({ usage }: { usage: WorkspaceUsageData | undefined }) {
   const totals = usage?.totals;
 
   return (

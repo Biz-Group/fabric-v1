@@ -63,7 +63,7 @@ function ConnectContent() {
           back to the processes, flows and overviews they come from.
         </p>
       </div>
-      <ConnectionGuide workspaceUrl={setup.workspaceUrl} />
+      <ConnectionGuide workspaceUrl={setup.workspaceUrl} isAdmin={setup.isAdmin} adminMcpHref={routes.adminMcpHref} />
     </div>
   );
 }

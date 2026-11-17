@@ -1,116 +1,123 @@
 "use client";
 
-import { Check, Copy } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Bot, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import type { ReactNode } from "react";
+import { buttonVariants } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MenuPath, OpenAppLink, Step, StepHint, Steps, ValueRow, Values } from "@/features/mcp/setup-steps";
+
+/** Claude's own connector settings (support.claude.com, "Getting started with custom connectors"). */
+export const CLAUDE_CONNECTORS_URL = "https://claude.ai/customize/connectors";
+const EXAMPLE_QUESTION = "Using Fabric, where do our processes break down most often?";
 
 /**
- * Copies text. The Clipboard API exists only in secure contexts (https or
- * localhost), so local dev on http://*.lvh.me falls back to a hidden textarea
- * and execCommand. The textarea goes next to the button, so a dialog's focus
- * trap doesn't stop it being selected.
+ * Connecting Claude, for any member. One URL per workspace (M13). Shared by
+ * the member page and Admin → MCP, so the steps read the same in both places.
  */
-export async function copyText(text: string, near?: HTMLElement | null): Promise<boolean> {
-  if (window.isSecureContext && navigator.clipboard) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      // Fall through to the legacy path.
-    }
-  }
-  const area = document.createElement("textarea");
-  area.value = text;
-  area.setAttribute("readonly", "");
-  area.style.position = "fixed";
-  area.style.opacity = "0";
-  (near?.parentElement ?? document.body).appendChild(area);
-  area.select();
-  try {
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  } finally {
-    area.remove();
-  }
-}
-
-/** A read-only value with a copy button. `multiline` shows long text in full instead of truncating it. */
-export function CopyField({ label, value, hint, multiline = false }: { label: string; value: string; hint?: string; multiline?: boolean }) {
-  const [copied, setCopied] = useState(false);
+export function ClaudeSteps({ workspaceUrl, intro }: { workspaceUrl: string | null; intro?: ReactNode }) {
   return (
-    <div className="space-y-1">
-      <p className="text-sm font-medium">{label}</p>
-      <div className={multiline ? "flex items-start gap-2" : "flex items-center gap-2"}>
-        {multiline ? (
-          <p className="min-w-0 flex-1 rounded-md border bg-muted/40 px-3 py-2 text-xs leading-relaxed">{value}</p>
-        ) : (
-          <code className="min-w-0 flex-1 truncate rounded-md border bg-muted/40 px-3 py-2 font-mono text-xs">{value}</code>
-        )}
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          aria-label={`Copy ${label}`}
-          onClick={async (event) => {
-            if (await copyText(value, event.currentTarget)) {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            } else {
-              toast.error(`Couldn't copy the ${label.toLowerCase()}. Select it and copy it by hand.`);
-            }
-          }}
-        >
-          {copied ? <Check className="size-4" aria-hidden /> : <Copy className="size-4" aria-hidden />}
-        </Button>
-      </div>
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    <div className="space-y-5">
+      <GuideHeader intro={intro ?? "Each member connects for themselves. It takes a minute."}>
+        <OpenAppLink href={CLAUDE_CONNECTORS_URL}>Open Claude</OpenAppLink>
+      </GuideHeader>
+      <Steps>
+        <Step n={1} title="Copy your workspace's connection URL">
+          {workspaceUrl ? (
+            <Values>
+              <ValueRow label="Connection URL" value={workspaceUrl} />
+            </Values>
+          ) : (
+            <StepHint>This workspace has no connection URL yet. Contact Fabric support.</StepHint>
+          )}
+          <StepHint>It connects to this workspace only. In several workspaces? Add one connector for each.</StepHint>
+        </Step>
+        <Step n={2} title="Add it to Claude as a custom connector">
+          <MenuPath label="In Claude:" items={["Customize", "Connectors", "+ Add", "Add custom connector"]} />
+          <StepHint>
+            Name it <span className="font-medium text-foreground">Fabric</span>, paste the URL, then follow the prompts and
+            select Add. On Claude Team or Enterprise, an owner may need to add it under Organization settings first; you then
+            select Connect next to it.
+          </StepHint>
+        </Step>
+        <Step n={3} title="Sign in with your Fabric account">
+          <StepHint>Claude opens Fabric&rsquo;s sign-in page. Use the account you use for this workspace.</StepHint>
+        </Step>
+        <Step n={4} title="Ask about your organization">
+          <MenuPath label="In a chat:" items={["+", "Connectors", "Fabric on"]} />
+          <StepHint>Then try:</StepHint>
+          <Values>
+            <ValueRow label="Example question" value={EXAMPLE_QUESTION} />
+          </Values>
+        </Step>
+      </Steps>
     </div>
   );
 }
 
-/** The workspace's connection URL and how to add it. One URL per workspace (M13). */
-export function ConnectionGuide({ workspaceUrl }: { workspaceUrl: string | null }) {
+/** One line of context for a guide, with an "Open …" link on the right. */
+export function GuideHeader({ intro, children }: { intro: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p className="text-sm text-muted-foreground">{intro}</p>
+      {children}
+    </div>
+  );
+}
+
+/** What the assistant can see, said once under each guide. */
+export function AccessNote() {
+  return (
+    <p className="flex items-start gap-2 text-xs text-muted-foreground">
+      <ShieldCheck className="mt-px size-3.5 shrink-0" aria-hidden />
+      The assistant sees only what you can see in Fabric, and can&rsquo;t change anything. Signed in but refused? AI assistant
+      access is off for this workspace: ask your Fabric admin.
+    </p>
+  );
+}
+
+/** Help → Connect AI assistants (B6): the member's guide, one tab per assistant. */
+export function ConnectionGuide({
+  workspaceUrl,
+  isAdmin,
+  adminMcpHref,
+}: {
+  workspaceUrl: string | null;
+  isAdmin: boolean;
+  adminMcpHref: string;
+}) {
   return (
     <div className="space-y-5">
-      {workspaceUrl ? (
-        <CopyField
-          label="Connection URL"
-          value={workspaceUrl}
-          hint="Connects to this workspace only. If you belong to several Fabric workspaces, add one connector for each."
-        />
-      ) : (
-        <p className="text-sm text-muted-foreground">This workspace has no connection URL yet. Contact Fabric support.</p>
-      )}
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <section className="space-y-2 rounded-md border p-4">
-          <h3 className="text-sm font-semibold">Claude</h3>
-          <ol className="list-decimal space-y-1 pl-4 text-sm text-muted-foreground">
-            <li>Open Settings → Connectors → Add custom connector.</li>
-            <li>Name it &ldquo;Fabric&rdquo; and paste the URL above.</li>
-            <li>Click Connect and sign in with your Fabric account.</li>
-            <li>In a chat, switch Fabric on from the tools menu and ask about your organization.</li>
-          </ol>
-          <p className="text-xs text-muted-foreground">
-            On Claude Team and Enterprise, an owner may need to add the connector for the organization first.
-          </p>
-        </section>
-        <section className="space-y-2 rounded-md border p-4">
-          <h3 className="text-sm font-semibold">Microsoft Copilot Studio</h3>
-          <p className="text-sm text-muted-foreground">
-            A Copilot Studio agent maker adds Fabric as a Model Context Protocol tool, using credentials a Fabric admin
-            creates under Admin → MCP. You sign in with your Fabric account the first time the agent uses it.
-            Microsoft 365 Copilot (Teams and Office) is coming later.
-          </p>
-        </section>
-      </div>
-
-      <p className="text-xs text-muted-foreground">
-        The assistant sees only what you can see in Fabric. If it says it signed in but was refused, AI assistant access
-        is switched off for that workspace: ask your Fabric admin.
-      </p>
+      <Tabs defaultValue="claude" className="gap-5">
+        <TabsList>
+          <TabsTrigger value="claude">Claude</TabsTrigger>
+          <TabsTrigger value="copilot">Microsoft Copilot Studio</TabsTrigger>
+        </TabsList>
+        <TabsContent value="claude">
+          <ClaudeSteps workspaceUrl={workspaceUrl} />
+        </TabsContent>
+        <TabsContent value="copilot">
+          <div className="flex items-start gap-3 rounded-md border p-4">
+            <Bot className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Set up once per agent, by an agent maker</p>
+                <p className="text-sm text-muted-foreground">
+                  A Copilot Studio agent maker adds Fabric as a tool, using credentials from a Fabric admin. The first time
+                  the agent uses Fabric, it asks you to sign in with your Fabric account.
+                </p>
+              </div>
+              {isAdmin && (
+                <Link href={adminMcpHref} className={buttonVariants({ variant: "outline", size: "sm" })}>
+                  Set it up in Admin → MCP
+                </Link>
+              )}
+              <p className="text-xs text-muted-foreground">Microsoft 365 Copilot in Teams and Office is coming later.</p>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+      <AccessNote />
     </div>
   );
 }
