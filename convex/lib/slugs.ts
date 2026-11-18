@@ -28,6 +28,27 @@ export const RESERVED_TENANT_SLUGS: ReadonlySet<string> = new Set([
   "token",
   "oauth",
   "callback",
+  // Top-level app routes. A workspace host `<slug>.<root>/` is rewritten to
+  // `/<slug>`, and a static route outranks `[org]`, so a workspace with one of
+  // these names would get that page instead of its own workspace.
+  "privacy",
+  "terms",
+  "sign-in",
+  "sign-up",
+  "join-organization",
+  "tenants-console",
+  "site-not-found",
+  "opengraph-image",
+  // Public-site pages planned in docs/marketing-site-upgrade-plan.md
+  // (Phase 3); reserved ahead so no workspace takes the name first.
+  "security",
+  "contact",
+  "whats-new",
+  "pricing",
+  "pilot",
+  "how-it-works",
+  "use-cases",
+  "features",
 ]);
 
 export function isValidTenantSlug(slug: string): boolean {

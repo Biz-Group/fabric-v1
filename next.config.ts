@@ -34,6 +34,12 @@ const convexSiteHost =
 const clerkSources = clerkHost
   ? [`https://${clerkHost}`]
   : ["https://*.clerk.accounts.dev"];
+// Clerk Protect (bot detection): the script loads from the CDN and its probe
+// calls per-session `*.client.protect.clerk.com` hosts, including on non-443
+// ports (8443, 18443, 2082 and 992 seen on prod), hence `:*`. Blocking the
+// probe left Clerk without its bot signals on every sign-in page.
+const clerkProtectScript = "https://cdn.protect.clerk.com";
+const clerkProtectProbe = "https://*.client.protect.clerk.com:*";
 
 // Where images, network calls and audio may come from. Enforced (step 1 of
 // D7, docs/security-hardening-task-list.md): an image or request to any other
@@ -49,6 +55,7 @@ const connectSrc = [
   "connect-src 'self'",
   ...clerkSources,
   "https://clerk-telemetry.com",
+  clerkProtectProbe,
   // Clerk's bot protection (Turnstile) on sign-up. It's a per-instance Clerk
   // setting, so prod may use it when dev doesn't: allowed regardless.
   "https://challenges.cloudflare.com",
@@ -77,6 +84,7 @@ const reportOnlyCsp = [
     "script-src 'self' 'unsafe-inline'",
     ...(isDev ? ["'unsafe-eval'"] : []),
     ...clerkSources,
+    clerkProtectScript,
     "https://challenges.cloudflare.com",
     // The ElevenLabs SDK loads its audio resampler worklet from here.
     "https://cdn.jsdelivr.net",

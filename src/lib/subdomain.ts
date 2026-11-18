@@ -36,6 +36,19 @@ export function isTenantsConsoleHost(
   return hostname === `${TENANTS_CONSOLE_SUBDOMAIN}.${rootHostname}`;
 }
 
+/** True only for the public site's own hosts: the root domain and `www.`.
+ * Other hosts that aren't workspaces (previews, reserved subdomains, other
+ * domains) are not the public site. */
+export function isPublicSiteHost(
+  host: string | null | undefined,
+  rootDomain: string | null | undefined,
+): boolean {
+  const hostname = getHostname(host);
+  const rootHostname = getHostname(rootDomain);
+  if (!hostname || !rootHostname) return false;
+  return hostname === rootHostname || hostname === `www.${rootHostname}`;
+}
+
 export function getTenantSubdomain(
   host: string | null | undefined,
   rootDomain: string | null | undefined,

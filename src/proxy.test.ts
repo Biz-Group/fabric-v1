@@ -43,10 +43,13 @@ describe("public legal routes", () => {
   });
 
   it.each(["/privacy-settings", "/terms-admin", "/privacy/private"])(
-    "keeps adjacent apex route %s protected",
+    "treats adjacent apex route %s as a missing page, not a legal page",
     async (path) => {
-      await handler({ protect }, request("bizfabric.ai", path));
-      expect(protect).toHaveBeenCalledOnce();
+      const response = await handler({ protect }, request("bizfabric.ai", path));
+      expect(response?.headers.get("x-middleware-rewrite")).toBe(
+        "https://bizfabric.ai/site-not-found",
+      );
+      expect(protect).not.toHaveBeenCalled();
     },
   );
 
@@ -61,6 +64,80 @@ describe("public legal routes", () => {
     expect(protect).toHaveBeenCalledOnce();
     expect(response?.headers.get("x-middleware-rewrite")).toBe("https://tenants.bizfabric.ai/tenants-console");
   });
+});
+
+describe("public site routing", () => {
+  it.each([
+    "bizfabric.ai",
+    "www.bizfabric.ai",
+    "acme.bizfabric.ai",
+    "tenants.bizfabric.ai",
+  ])("answers /robots.txt on %s without auth or rewriting", async (host) => {
+    expect(await handler({ protect }, request(host, "/robots.txt"))).toBeUndefined();
+    expect(protect).not.toHaveBeenCalled();
+  });
+
+  it.each(["bizfabric.ai", "www.bizfabric.ai"])(
+    "serves the sitemap on %s",
+    async (host) => {
+      expect(await handler({ protect }, request(host, "/sitemap.xml"))).toBeUndefined();
+      expect(protect).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps a workspace's /sitemap.xml inside the workspace, behind sign-in", async () => {
+    const response = await handler({ protect }, request("acme.bizfabric.ai", "/sitemap.xml"));
+    expect(protect).toHaveBeenCalledOnce();
+    expect(response?.headers.get("x-middleware-rewrite")).toBe(
+      "https://acme.bizfabric.ai/acme/sitemap.xml",
+    );
+  });
+
+  it.each([
+    "/pricing?ref=ad",
+    "/biz-group",
+    "/biz-group/admin",
+    "/release-notes",
+    "/.well-known/oauth-authorization-server",
+  ])("serves a 404 for unknown public-site path %s", async (path) => {
+    const response = await handler({ protect }, request("www.bizfabric.ai", path));
+    expect(response?.headers.get("x-middleware-rewrite")).toBe(
+      "https://www.bizfabric.ai/site-not-found",
+    );
+    expect(response?.headers.get("location")).toBeNull();
+    expect(protect).not.toHaveBeenCalled();
+  });
+
+  it.each(["/api/anything", "/tenants-console", "/tenants-console/usage"])(
+    "keeps app route %s behind sign-in on the apex",
+    async (path) => {
+      const response = await handler({ protect }, request("www.bizfabric.ai", path));
+      expect(protect).toHaveBeenCalledOnce();
+      expect(response?.headers.get("x-middleware-rewrite") ?? null).toBeNull();
+    },
+  );
+
+  it.each(["fabric-git-branch.vercel.app", "mail.bizfabric.ai", "localhost:3000"])(
+    "keeps the sign-in gate, not the public 404, on non-public-site host %s",
+    async (host) => {
+      const response = await handler({ protect }, request(host, "/acme/admin"));
+      expect(protect).toHaveBeenCalledOnce();
+      expect(response?.headers.get("x-middleware-rewrite") ?? null).toBeNull();
+    },
+  );
+
+  it("keeps everything behind sign-in on a single-host deployment with no root domain", async () => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_ROOT_DOMAIN", "");
+    try {
+      const legacy = (await import("./proxy")).clerkProxy as unknown as ProxyHandler;
+      const response = await legacy({ protect }, request("localhost:3000", "/acme/admin"));
+      expect(protect).toHaveBeenCalledOnce();
+      expect(response?.headers.get("x-middleware-rewrite") ?? null).toBeNull();
+    } finally {
+      vi.stubEnv("NEXT_PUBLIC_ROOT_DOMAIN", "bizfabric.ai");
+    }
+  }, 30_000);
 });
 
 describe("MCP host (M11 Option B)", () => {

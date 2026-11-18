@@ -1,7 +1,11 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { mcpProxy, oauthSignInRedirect } from "@/lib/mcp-proxy";
-import { getTenantSubdomain, isTenantsConsoleHost } from "@/lib/subdomain";
+import {
+  getTenantSubdomain,
+  isPublicSiteHost,
+  isTenantsConsoleHost,
+} from "@/lib/subdomain";
 
 // Auth pages live only on tenant subdomains, never on apex. Apex is pure
 // marketing.
@@ -13,14 +17,30 @@ const isJoinOrganizationPath = createRouteMatcher([
 // Legal documents must stay readable before sign-in, on every site host.
 // Match only these routes so adjacent paths still follow tenant auth rules.
 const isLegalPath = createRouteMatcher(["/privacy", "/terms"]);
+// robots.txt is answered on every host by src/app/robots.ts, which allows the
+// public site and disallows workspace and console hosts, so it must not be
+// rewritten into a workspace or sent to sign-in.
+const isRobotsPath = createRouteMatcher(["/robots.txt"]);
 // `isPublicPath` is what middleware lets through without an auth.protect.
-// Legal pages bypass rewriting on every host. On the apex, the marketing
-// landing and its link-preview image are also public (every
-// page's og:image resolves to the apex via `metadataBase`, and crawlers have
-// no session). On a subdomain, only auth pages and the signup org-join
-// handoff are public — tenant `/` stays the workspace entrypoint and
+// Legal pages and robots.txt bypass rewriting on every host. On the apex, the
+// marketing landing, its sitemap and its link-preview image are also public
+// (every page's og:image resolves to the public site via `metadataBase`, and
+// crawlers have no session). On a subdomain, only auth pages and the signup
+// org-join handoff are public — tenant `/` stays the workspace entrypoint and
 // redirects signed-out users to `/sign-in`.
-const isApexPublicPath = createRouteMatcher(["/", "/opengraph-image(.*)"]);
+//
+// New marketing pages go here, in src/app/sitemap.ts and in
+// RESERVED_TENANT_SLUGS (docs/marketing-site-upgrade-plan.md D3, D3b).
+const isApexPublicPath = createRouteMatcher([
+  "/",
+  "/opengraph-image(.*)",
+  "/sitemap.xml",
+]);
+// App routes that can be reached on the apex and keep their sign-in gate.
+// Every other apex path is a public-site 404 rather than a sign-in redirect.
+const isApexAppPath = createRouteMatcher(["/api(.*)", "/tenants-console(.*)"]);
+// Rendered by src/app/site-not-found (a real 404, marked noindex).
+const SITE_NOT_FOUND_PATH = "/site-not-found";
 const isSubdomainPublicPath = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
@@ -32,7 +52,7 @@ const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "";
 
 export const clerkProxy = clerkMiddleware(
   async (auth, req) => {
-    if (isLegalPath(req)) return;
+    if (isLegalPath(req) || isRobotsPath(req)) return;
 
     const host = req.headers.get("host");
     const subdomain = getTenantSubdomain(host, ROOT_DOMAIN);
@@ -77,8 +97,26 @@ export const clerkProxy = clerkMiddleware(
         url.pathname = "/";
         return NextResponse.redirect(url);
       }
-      if (!isApexPublicPath(req)) await auth.protect();
-      return;
+      if (isApexPublicPath(req)) return;
+      // Keep the sign-in gate for app routes, for legacy single-host dev (no
+      // root domain: every route, the `[org]` workspace included, lives on
+      // one host), and for hosts that aren't the public site itself (Vercel
+      // previews, reserved subdomains), where `/<org>/…` paths still work.
+      if (
+        !ROOT_DOMAIN ||
+        isApexAppPath(req) ||
+        !isPublicSiteHost(host, ROOT_DOMAIN)
+      ) {
+        await auth.protect();
+        return;
+      }
+      // Anything else on the public site doesn't exist. Without this, the
+      // `[org]` route would catch it and send the visitor to sign-in, which
+      // lands back on `/` — every unknown URL looked like the homepage.
+      const url = req.nextUrl.clone();
+      url.pathname = SITE_NOT_FOUND_PATH;
+      url.search = "";
+      return NextResponse.rewrite(url);
     }
 
     // Subdomain request → rewrite internally to /<subdomain>/<path> so the

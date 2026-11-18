@@ -4,6 +4,7 @@ import Script from "next/script";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ui } from "@clerk/ui";
 import { ConvexClientProvider } from "@/components/providers/convex-client-provider";
+import { SITE_URL } from "@/lib/site-url";
 import { ServiceWorkerRegistration } from "@/components/providers/service-worker-registration";
 import { THEME_INITIALIZATION_SCRIPT } from "@/features/theming/theme-config";
 import { ThemeProvider } from "@/features/theming/theme-provider";
@@ -61,7 +62,7 @@ const developmentServiceWorkerCleanup = `
 `;
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://bizfabric.ai"),
+  metadataBase: new URL(SITE_URL),
   applicationName: "Fabric",
   // Pages set `title` to their own name; the template adds the product.
   title: { default: "Fabric", template: "%s | Fabric" },
