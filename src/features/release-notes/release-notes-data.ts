@@ -22,9 +22,9 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
     shortMonth: "Nov",
     monthNumber: "11",
     year: "2026",
-    headline: "Ask Fabric about how you work",
+    headline: "Ask about how you work, wherever you are",
     summary:
-      "AskFabric, in beta, answers questions about your organization from your workspace's contributions, overviews and process flows, with every claim linked to its source.",
+      "AskFabric, in beta, answers questions about your organization with every claim linked to its source, and Claude or Microsoft Copilot can now answer from Fabric too.",
     newFeatures: [
       {
         title: "AskFabric (beta)",
@@ -41,6 +41,31 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
         description:
           "Admin, then AskFabric, shows questions, active users and answer ratings for the workspace, never the questions or answers themselves.",
       },
+      {
+        title: "Fabric in Claude and Copilot",
+        description:
+          "Ask Claude or Microsoft Copilot about how your organization works, using only what you can see in Fabric. Admins switch on this add-on under Admin, then MCP, with step-by-step setup and a 30-day usage view.",
+      },
+      {
+        title: "Cards, charts and flow steps in answers",
+        description:
+          "Answers can end with cards for the processes they cover, a flow step with the steps around it, or a chart you can switch to a table. When a name matches several things, pick the one you meant.",
+      },
+      {
+        title: "Ask about this",
+        description:
+          "Start an AskFabric thread from any process, department or function page, with suggested questions, or choose Ask Fabric in Ctrl+K search.",
+      },
+      {
+        title: "Listen, copy and follow up",
+        description:
+          "Play an answer aloud, copy it with its sources, or ask one of up to three suggested follow-up questions in one click.",
+      },
+      {
+        title: "Move a contribution",
+        description:
+          "Admins can move a contribution recorded under the wrong process, see what will change first, and keep a record of the move on its transcript.",
+      },
     ],
     enhancements: [
       {
@@ -53,6 +78,26 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
         description:
           "Each person can ask 10 questions a day and each workspace 100, resetting at midnight Gulf time.",
       },
+      {
+        title: "A refreshed AskFabric",
+        description:
+          "Answers say what they drew on, sources are grouped by type, threads are grouped by day, and your daily allowance sits in the header. Long answers now say what is happening while you wait.",
+      },
+      {
+        title: "More AskFabric can answer",
+        description:
+          "Ask about a single flow step in full or about Fabric's recommendations. Admins can also ask who has contributed and which processes have no contributions yet.",
+      },
+      {
+        title: "Reasons for deletions",
+        description:
+          "Deleting a contribution now needs a reason, and admins can review a log of deleted contributions.",
+      },
+      {
+        title: "Small but noticeable fixes",
+        description:
+          "Overviews and flows no longer assume a contributor's gender, and replies you type during an AI interview now appear in the live transcript.",
+      },
     ],
   },
   {
@@ -63,8 +108,23 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
     year: "2026",
     headline: "Everyone in the right place",
     summary:
-      "Members now choose their department in each workspace, newcomers can take a short guided tour, and process flows capture how much work a process handles.",
+      "Recommendations replace Automations, members get a Home and their department in each workspace, and newcomers are guided through their first visit.",
     newFeatures: [
+      {
+        title: "Recommendations",
+        description:
+          "The Recommendations tab replaces Automations, suggesting changes to each process, technical or not, with change plans, build briefs and a place to record decisions.",
+      },
+      {
+        title: "Workspace Home",
+        description:
+          "Start from a Home page with your own interviews and recently opened processes. On a phone, Home and Browse make it easier to find your way.",
+      },
+      {
+        title: "Guided first steps",
+        description:
+          "New members are welcomed with the tour and a short walkthrough, and new admins get a Getting started checklist. Anyone can choose Show me around from the help menu.",
+      },
       {
         title: "Your department in each workspace",
         description:
@@ -91,6 +151,21 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
         title: "Process volume in flows",
         description:
           "When people mention how many requests or cases a process handles, voice notes and audio uploads now capture it for process flows.",
+      },
+      {
+        title: "Clearer findings",
+        description:
+          "Insights open with key findings, overviews lead with key facts and an On this page list, and confidence is capped when it rests on a single contributor.",
+      },
+      {
+        title: "Faster admin work",
+        description:
+          "Search every contribution in the workspace, change roles or remove several members at once, invite several people in one go, and restore your previous theme.",
+      },
+      {
+        title: "Smoother capture",
+        description:
+          "Uploads show their progress, meeting videos are accepted, microphone problems come with clearer guidance, and a searchable picker links speakers to members.",
       },
     ],
   },
