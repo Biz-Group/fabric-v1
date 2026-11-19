@@ -39,6 +39,7 @@ export function WorkspaceSignInForm({
   if (!ROOT_DOMAIN) return null;
 
   const inputId = `${id}-workspace`;
+  const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
 
   return (
@@ -72,10 +73,16 @@ export function WorkspaceSignInForm({
           autoCapitalize="none"
           spellCheck={false}
           aria-invalid={error ? true : undefined}
-          aria-describedby={error ? errorId : undefined}
+          aria-describedby={error ? `${errorId} ${hintId}` : hintId}
         />
         <span aria-hidden="true">.{ROOT_HOSTNAME}</span>
       </div>
+      {/* A wrong but well-formed name still reaches a sign-in page, and only
+          says "Workspace not found" after signing in, so say up front where
+          the name comes from. */}
+      <p id={hintId} className={styles.signInHint}>
+        Not sure? It’s in your invitation email, or ask your Fabric admin.
+      </p>
       {/* An alert is announced as it appears, without moving focus off the input. */}
       {error && (
         <p id={errorId} role="alert" className={styles.signInError}>

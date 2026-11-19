@@ -331,6 +331,13 @@
   line-height: 1.4;
 }
 
+.signInHint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
 /* Two classes deep to beat the `.site button { font: inherit }` reset. */
 .signInForm .signInSubmit {
   min-height: 2.75rem;
@@ -865,7 +872,7 @@ button.textLink {
 .journeySection {
   width: min(100%, 88rem);
   margin: 0 auto;
-  padding: 6rem 1rem 3rem;
+  padding: 6rem 1rem;
 }
 
 .sectionIntro,
@@ -1496,31 +1503,6 @@ button.textLink {
   color: var(--ink);
 }
 
-.capabilitiesSection {
-  width: min(100%, 88rem);
-  margin: 0 auto;
-  padding: 2rem 1rem 7rem;
-}
-
-.capabilityGrid {
-  display: grid;
-  border-top: 1px solid var(--line);
-}
-
-.capabilityCard {
-  display: grid;
-  border-bottom: 1px solid var(--line);
-  padding: 2rem 0;
-  gap: 1rem;
-}
-
-.capabilityCard > svg {
-  width: 1.35rem;
-  height: 1.35rem;
-  color: var(--moss);
-}
-
-.capabilityCard h3,
 .useCaseCard h3,
 .differenceGrid h3 {
   margin: 0;
@@ -1530,7 +1512,6 @@ button.textLink {
   line-height: 1.15;
 }
 
-.capabilityCard p,
 .useCaseCard p,
 .differenceGrid p {
   margin: 0;
@@ -1910,23 +1891,77 @@ button.textLink {
   display: grid;
   width: min(100%, 88rem);
   margin: 0 auto;
-  padding: 3rem 1rem;
-  gap: 1.1rem;
+  padding: 3.5rem 1rem 2.5rem;
+  gap: 2.5rem;
 }
 
-.footer p {
-  max-width: 28rem;
+.footerBrand {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+}
+
+.footerBrand p {
+  max-width: 24rem;
   margin: 0;
   color: var(--muted);
   font-family: var(--font-marketing-serif), serif;
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-style: italic;
   line-height: 1.5;
 }
 
-.footer > span {
+.footerNav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2rem;
+}
+
+.footerNav h2 {
+  margin: 0 0 0.9rem;
   color: var(--faint);
   font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.footerNav ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 0.65rem;
+  list-style: none;
+}
+
+.footerNav a {
+  color: var(--muted);
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+
+.footerNav a:hover {
+  color: var(--ink);
+}
+
+.footerNav a:focus-visible {
+  outline: 2px solid var(--moss-dark);
+  outline-offset: 4px;
+}
+
+.footerBase {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  padding-top: 1.5rem;
+  gap: 0.75rem 2rem;
+}
+
+.footerBase > span {
+  color: var(--faint);
+  font-size: 0.8rem;
 }
 
 @keyframes wordStream {
@@ -1971,7 +2006,6 @@ button.textLink {
   .hero,
   .problemInner,
   .journeySection,
-  .capabilitiesSection,
   .useCasesSection,
   .differenceIntro,
   .differenceGrid,
@@ -2219,20 +2253,6 @@ button.textLink {
     gap: 0.8rem;
   }
 
-  .capabilityGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .capabilityCard {
-    min-height: 20rem;
-    align-content: end;
-    padding: 2.5rem;
-  }
-
-  .capabilityCard:nth-child(odd) {
-    border-right: 1px solid var(--line);
-  }
-
   .organizationCopy {
     padding: 6rem 3rem 3rem;
   }
@@ -2269,9 +2289,11 @@ button.textLink {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  /* Top-aligned with no forced height: a fixed min-height with bottom
+     alignment left an empty band above every icon, and cards with longer
+     copy sat higher than their neighbours. */
   .differenceGrid article {
-    min-height: 17rem;
-    align-content: end;
+    align-content: start;
     padding: 2rem;
   }
 
@@ -2293,14 +2315,13 @@ button.textLink {
   }
 
   .footer {
-    grid-template-columns: auto 1fr auto;
-    align-items: end;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    align-items: start;
     gap: 3rem;
   }
 
-  .footer p {
-    justify-self: center;
-    text-align: center;
+  .footerBase {
+    grid-column: 1 / -1;
   }
 }
 
@@ -2309,7 +2330,6 @@ button.textLink {
   .hero,
   .problemInner,
   .journeySection,
-  .capabilitiesSection,
   .useCasesSection,
   .differenceIntro,
   .differenceGrid,
@@ -2327,8 +2347,11 @@ button.textLink {
     gap: clamp(3rem, 7vw, 7rem);
   }
 
+  /* A smaller size on a wider measure: three or four lines at 1440px rather
+     than five, so the actions sit well above the fold. */
   .heroCopy h1 {
-    font-size: clamp(4.6rem, 6.4vw, 6.7rem);
+    max-width: 14ch;
+    font-size: clamp(3.8rem, 4.9vw, 5.4rem);
   }
 
   .conversationCard {
@@ -2390,23 +2413,43 @@ button.textLink {
     border-bottom: 0;
   }
 
+  /* The stage copy runs across the top and the demo takes the full width
+     below it. Side by side, the demo had about 60% of the card and its text
+     shrank below reading size (plan item C3). */
   .journeyContent {
     display: grid;
-    min-height: 37rem;
-    grid-template-columns: minmax(15rem, 0.7fr) minmax(28rem, 1.3fr);
+    min-width: 0;
+    grid-template-rows: auto 1fr;
   }
 
   .journeyCopy {
-    display: flex;
+    display: grid;
     min-width: 0;
-    flex-direction: column;
-    justify-content: space-between;
-    border-right: 1px solid var(--line);
-    padding: 2.5rem;
+    min-height: 10.5rem;
+    grid-template-columns: minmax(0, 1fr) 16rem;
+    align-items: end;
+    border-bottom: 1px solid var(--line);
+    padding: 2rem 2.5rem;
+    gap: 3rem;
+  }
+
+  .journeyCopy > div:first-child {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+    align-items: end;
+    gap: 2.5rem;
+  }
+
+  .journeyCopy h3 {
+    font-size: clamp(2rem, 2.5vw, 2.45rem);
+  }
+
+  .journeyCopy p {
+    margin-top: 0;
   }
 
   .journeyPlayback {
-    margin-top: auto;
+    margin-top: 0;
   }
 
   .demoStage {
@@ -2429,20 +2472,6 @@ button.textLink {
     min-height: 33rem;
   }
 
-  .capabilityGrid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .capabilityCard {
-    min-height: 24rem;
-    border-right: 1px solid var(--line);
-    padding: 2rem;
-  }
-
-  .capabilityCard:last-child {
-    border-right: 0;
-  }
-
   .organizationSection {
     grid-template-columns: minmax(22rem, 0.82fr) minmax(30rem, 1.18fr);
     min-height: 48rem;
@@ -2463,7 +2492,6 @@ button.textLink {
 
   .differenceGrid article,
   .differenceGrid article:nth-child(odd) {
-    min-height: 21rem;
     border-right: 1px solid var(--line);
   }
 
@@ -4072,68 +4100,13 @@ button.textLink {
     row-gap: 0.35rem;
   }
 
+  /* The hero stays a miniature on wider screens; on a phone it is the whole
+     width, so its labels come up to 12px. The product demo's text sizes are
+     set for every width in the "Demo readability" block at the end. */
   .heroSourceHeading strong,
   .heroResultHeading strong,
-  .heroFabricEngine > div:last-child strong,
-  .workbenchTitleRow > span,
-  .workbenchTabs > span,
-  .workbenchTabs i,
-  .workbenchActions button,
-  .mockFilters > span,
-  .mockConversationRow > div > div > span,
-  .mockConversationRow p,
-  .mockAudioControls > span,
-  .mockPlaybackSection > p,
-  .mockTranscript p,
-  .summaryDemoToolbar button,
-  .summaryDemo article p,
-  .summaryDemo article li,
-  .summaryDemo cite,
-  .demoFlowBadges > span,
-  .demoFlowNode > p,
-  .demoFlowIndicator,
-  .flowConnector > span,
-  .processFlowSignals span,
-  .insightSectionCard > header > span,
-  .insightCandidate > div:first-child > span,
-  .insightCandidate > p,
-  .insightCandidate > div:last-child,
-  .recommendationList li > span,
-  .recommendationList small,
-  .recommendationList em,
-  .recommendationActions span,
-  .recommendationActions small,
-  .askHeader i,
-  .askAnswer > .askCoverage,
-  .askAnswer sup,
-  .askSources h5,
-  .askSources li,
-  .askSources li > span,
-  .askComposer p {
+  .heroFabricEngine > div:last-child strong {
     font-size: 0.75rem;
-  }
-
-  .mockConversationRow strong,
-  .summaryDemo blockquote,
-  .demoFlowNodeHeader strong,
-  .insightSectionCard h5,
-  .recommendationList strong,
-  .askQuestion,
-  .askAnswer > p {
-    font-size: 0.8125rem;
-  }
-
-  .mockPlaybackSection h5,
-  .summaryDemo h5,
-  .insightCandidate strong,
-  .askHeader h4 {
-    font-size: 0.875rem;
-  }
-
-  .recommendationList li > span,
-  .askSources li > span {
-    width: 1.35rem;
-    height: 1.35rem;
   }
 
   /* Five process tabs don't fit a phone: only the active one keeps its label. */
@@ -4292,6 +4265,94 @@ button.textLink {
   .flowBranches {
     width: min(100%, 27rem);
     gap: 1rem;
+  }
+}
+
+/*
+ * Demo readability, at every width. The product demo was drawn as a miniature
+ * (7–10px text) and only lifted to readable sizes on phones, which left the
+ * desktop demo illegible (plan item C3). Nothing in it drops below 12px now;
+ * the desktop layout gives it the full card width to make room. Kept last so
+ * it wins over the breakpoint blocks above.
+ */
+.workbenchBreadcrumb,
+.workbenchMetadata p,
+.workbenchTitleRow > span,
+.workbenchTabs > span,
+.workbenchTabs i,
+.workbenchActions button,
+.mockFilters > span,
+.mockConversationRow > div > div > span,
+.mockConversationRow p,
+.mockAudioControls > span,
+.mockPlaybackSection > p,
+.mockTranscript p,
+.summaryDemoToolbar button,
+.summaryDemo article p,
+.summaryDemo article li,
+.summaryDemo cite,
+.demoFlowBadges > span,
+.demoFlowNode > p,
+.demoFlowIndicator,
+.flowConnector > span,
+.processFlowSignals span,
+.insightSectionCard > header > span,
+.insightCandidate > div:first-child > span,
+.insightCandidate > p,
+.insightCandidate > div:last-child,
+.recommendationList li > span,
+.recommendationList small,
+.recommendationList em,
+.recommendationActions span,
+.recommendationActions small,
+.askHeader i,
+.askAnswer > .askCoverage,
+.askAnswer sup,
+.askSources h5,
+.askSources li,
+.askSources li > span,
+.askComposer p {
+  font-size: 0.75rem;
+}
+
+.mockConversationRow strong,
+.summaryDemo blockquote,
+.demoFlowNodeHeader strong,
+.insightSectionCard h5,
+.recommendationList strong,
+.askQuestion,
+.askAnswer > p {
+  font-size: 0.8125rem;
+}
+
+.mockPlaybackSection h5,
+.summaryDemo h5,
+.insightCandidate strong,
+.askHeader h4 {
+  font-size: 0.875rem;
+}
+
+.recommendationList li > span,
+.askSources li > span {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+/* The contributor avatar's initials. */
+.workbenchMetadata > span {
+  width: 1.65rem;
+  height: 1.65rem;
+  font-size: 0.6875rem;
+}
+
+@media (min-width: 64rem) {
+  /* Wider flow nodes for the larger text. */
+  .demoFlowNode {
+    width: min(100%, 15.5rem);
+  }
+
+  .flowBranches {
+    width: min(100%, 33rem);
   }
 }
 

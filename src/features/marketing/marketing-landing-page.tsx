@@ -4,11 +4,9 @@ import Link from "next/link";
 import {
   ArrowRight,
   AudioLines,
-  GitBranch,
   Lightbulb,
-  Network,
+  LockKeyhole,
   ShieldCheck,
-  Users,
 } from "lucide-react";
 
 import {
@@ -22,32 +20,20 @@ import { SignInMenu } from "@/features/marketing/workspace-sign-in";
 
 const BOOK_DEMO_URL = "https://forms.cloud.microsoft/r/s4Jc3zvXjK";
 
-const captureModes = [
-  {
-    icon: AudioLines,
-    title: "Capture the work in people’s own words.",
-    description:
-      "Use guided AI interviews, direct voice recordings, or existing audio. Fabric meets people where knowledge is easiest to share: conversation.",
-  },
-  {
-    icon: Users,
-    title: "Turn many perspectives into shared understanding.",
-    description:
-      "Fabric synthesizes what contributors say into readable process knowledge, while preserving the evidence and differences that matter.",
-  },
-  {
-    icon: GitBranch,
-    title: "See the process—not just the transcript.",
-    description:
-      "Automatically map actions, decisions, tools, waits, and handoffs into a clear picture of how work moves through the business.",
-  },
-  {
-    icon: Lightbulb,
-    title: "Find the next best place to improve.",
-    description:
-      "Reveal bottlenecks, fragile handoffs, key-person dependencies, and credible opportunities for automation or redesign.",
-  },
+const productLinks = [
+  { label: "How it works", href: "#how-it-works" },
+  { label: "Platform", href: "#platform" },
+  { label: "Use cases", href: "#use-cases" },
+  { label: "FAQ", href: "#faq" },
 ];
+
+/**
+ * External company links (Biz Group's site, LinkedIn, a contact address).
+ * Empty until confirmed addresses are supplied; the Company column then shows
+ * them under "Book a demo". Add Security, What's new and Contact pages here
+ * when Phase 3 builds them (docs/marketing-site-upgrade-plan.md).
+ */
+const companyLinks: ReadonlyArray<{ label: string; href: string }> = [];
 
 const useCases = [
   {
@@ -94,10 +80,10 @@ const differentiators = [
       "Summaries, process steps, and insights stay connected to the people and conversations behind them.",
   },
   {
-    icon: Network,
-    title: "Organizational by design",
+    icon: LockKeyhole,
+    title: "Permission-aware",
     description:
-      "Knowledge is structured from individual processes through departments and functions—not left in an unsearchable pile.",
+      "Everyone sees what their role allows. AskFabric and connected assistants answer only from what the person asking can see.",
   },
   {
     icon: Lightbulb,
@@ -280,21 +266,6 @@ export function MarketingLandingPage() {
         <ProductJourneyDemo />
       </section>
 
-      <section className={styles.capabilitiesSection}>
-        <div className={styles.capabilityGrid}>
-          {captureModes.map((item) => {
-            const Icon = item.icon;
-            return (
-              <article key={item.title} className={styles.capabilityCard}>
-                <Icon aria-hidden="true" />
-                <h3>{item.title}</h3>
-                <p>{item.description}</p>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
       <section id="platform" className={styles.organizationSection}>
         <div className={styles.organizationCopy}>
           <h2>One conversation can clarify an entire organization.</h2>
@@ -382,7 +353,7 @@ export function MarketingLandingPage() {
         </p>
       </section>
 
-      <section className={styles.faqSection}>
+      <section id="faq" className={styles.faqSection}>
         <div className={styles.faqIntro}>
           <h2>A few useful answers.</h2>
           <p>
@@ -416,20 +387,57 @@ export function MarketingLandingPage() {
       </section>
 
       <footer className={styles.footer}>
-        <a href="#top" className={styles.wordmark} aria-label="Back to top">
-          Fabric.
-        </a>
-        <p>
-          The fabric of the organization, woven from the voices of the people
-          who make it run.
-        </p>
-        <span>
-          &copy; {new Date().getFullYear()} Fabric. Built by Biz Group.
-        </span>
-        <nav className={styles.legalLinks} aria-label="Legal">
-          <Link href="/privacy">Privacy Policy</Link>
-          <Link href="/terms">Terms of Use</Link>
+        <div className={styles.footerBrand}>
+          <a href="#top" className={styles.wordmark} aria-label="Back to top">
+            Fabric.
+          </a>
+          <p>
+            The fabric of the organization, woven from the voices of the people
+            who make it run.
+          </p>
+        </div>
+
+        <nav className={styles.footerNav} aria-label="Footer">
+          <div>
+            <h2>Product</h2>
+            <ul>
+              {productLinks.map((link) => (
+                <li key={link.href}>
+                  <a href={link.href}>{link.label}</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h2>Company</h2>
+            <ul>
+              <li>
+                <a href={BOOK_DEMO_URL} target="_blank" rel="noopener noreferrer">
+                  Book a demo
+                  <span className={styles.srOnly}> (opens in a new tab)</span>
+                </a>
+              </li>
+              {companyLinks.map((link) => (
+                <li key={link.href}>
+                  <a href={link.href} target="_blank" rel="noopener noreferrer">
+                    {link.label}
+                    <span className={styles.srOnly}> (opens in a new tab)</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
         </nav>
+
+        <div className={styles.footerBase}>
+          <span>
+            &copy; {new Date().getFullYear()} Fabric. Built by Biz Group.
+          </span>
+          <nav className={styles.legalLinks} aria-label="Legal">
+            <Link href="/privacy">Privacy Policy</Link>
+            <Link href="/terms">Terms of Use</Link>
+          </nav>
+        </div>
       </footer>
     </main>
   );
