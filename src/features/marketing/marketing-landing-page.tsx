@@ -2,7 +2,6 @@ import type { CSSProperties } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  ArrowDown,
   ArrowRight,
   AudioLines,
   GitBranch,
@@ -16,6 +15,7 @@ import {
   HeroConversationDemo,
   MobileNavigation,
   ProductJourneyDemo,
+  TourVideoDialog,
 } from "@/features/marketing/marketing-landing-demos";
 import styles from "@/features/marketing/marketing-landing-page.module.css";
 import { SignInMenu } from "@/features/marketing/workspace-sign-in";
@@ -118,7 +118,9 @@ const organizationLayers = [
   { tier: "Process", name: "Accounts payable", detail: "7 conversations" },
   { tier: "Department", name: "Finance operations", detail: "8 processes" },
   { tier: "Function", name: "Finance", detail: "4 departments" },
-  { tier: "Organization", name: "Company-wide map", detail: "6 functions" },
+  // The product's top level is the Process Tree of functions; there is no
+  // separate company-wide map (the firm view was rolled back in October).
+  { tier: "Organization", name: "Process Tree", detail: "6 functions" },
 ];
 
 const faqs = [
@@ -138,9 +140,34 @@ const faqs = [
       "The people closest to the work. Contributors can speak with an AI interviewer, record a conversation directly, or upload existing audio so the organization can learn from their practical experience.",
   },
   {
+    question: "What do contributors need to do?",
+    answer:
+      "Open a process and talk. Fabric works in a current browser on a computer or a phone, with a microphone. The interviewer asks the follow-up questions, so nobody has to prepare a document. Someone can also record a conversation on a colleague’s behalf.",
+  },
+  {
+    question: "What does Fabric recommend?",
+    answer:
+      "Up to five changes for each process, from removing a step, simplifying, or training to a workflow, an integration, or an agent. They’re ranked by value and effort, and Fabric prefers the lighter change when two would work equally well. Each one comes with a change plan or a build brief you can copy.",
+  },
+  {
     question: "How does Fabric support transformation work?",
     answer:
       "It gives transformation teams an evidence-backed current-state view before solutions are selected—making it easier to identify high-value automation opportunities, fragile handoffs, duplicated work, and knowledge risk.",
+  },
+  {
+    question: "Can we ask Fabric questions directly?",
+    answer:
+      "Yes. AskFabric, now in beta, answers in plain language from your workspace’s evidence, never from general knowledge. Every claim links to the contribution, flow step, or finding it came from.",
+  },
+  {
+    question: "Does Fabric work with Claude or Copilot?",
+    answer:
+      "Yes, as an add-on. Fabric connects to Claude and Microsoft Copilot Studio through the Model Context Protocol (MCP), so people can ask how the organization works from inside those assistants. The connection is read-only, a workspace admin switches it on, and it shows each person only what they can already see in Fabric.",
+  },
+  {
+    question: "Who can see what?",
+    answer:
+      "Every member of a workspace has a role (viewer, contributor, or admin) that sets what they can see and do. AskFabric and connected assistants see only what the person asking can see. AskFabric conversations are private to the person who started them; admins can’t read them.",
   },
 ];
 
@@ -205,10 +232,7 @@ export function MarketingLandingPage() {
           </p>
           <div className={styles.heroActions}>
             <BookDemoButton />
-            <a href="#how-it-works" className={styles.textLink}>
-              See how Fabric works
-              <ArrowDown aria-hidden="true" />
-            </a>
+            <TourVideoDialog />
           </div>
         </div>
 
@@ -351,6 +375,11 @@ export function MarketingLandingPage() {
             );
           })}
         </div>
+        <p className={styles.differenceNote}>
+          <strong>Add-on</strong>
+          Use Fabric inside Claude and Microsoft Copilot Studio, so people can
+          ask how the organization works from the assistant they already use.
+        </p>
       </section>
 
       <section className={styles.faqSection}>

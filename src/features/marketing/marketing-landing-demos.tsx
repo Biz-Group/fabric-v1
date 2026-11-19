@@ -9,30 +9,34 @@ import {
   type ReactNode,
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { Dialog } from "@base-ui/react/dialog";
 import { Popover } from "@base-ui/react/popover";
 import { Tabs } from "@base-ui/react/tabs";
 import {
   AlertTriangle,
   ArrowRightLeft,
+  ArrowUp,
+  AtSign,
   BarChart3,
   Bot,
   ChevronDown,
+  ClipboardCopy,
   Clock,
   Copy,
   FileText,
   GitBranch,
-  KeyRound,
   Lightbulb,
   Menu,
   Mic,
   MoreHorizontal,
   Pause,
   Play,
+  PlayCircle,
   Share2,
   Sparkles,
   Square,
+  Upload,
   User,
-  Users,
   Wrench,
   X,
   Zap,
@@ -68,7 +72,14 @@ const stages = [
     title: "Improve",
     heading: "Find the change that is worth making.",
     description:
-      "Fabric connects operational signals to the evidence behind them, making improvement priorities easier to defend.",
+      "Fabric recommends up to five changes per process, from removing a step to building an agent. They're ranked by value and effort, and each one is tied to the evidence behind it.",
+  },
+  {
+    id: "ask",
+    title: "Ask",
+    heading: "Ask how the work really runs.",
+    description:
+      "AskFabric (beta) answers questions in plain language from your organization’s evidence and links every claim to its source.",
   },
 ] as const;
 
@@ -141,11 +152,13 @@ function waveformBarStyle(index: number): CSSProperties {
   } as CSSProperties;
 }
 
+// The three ways knowledge gets into Fabric, and only those: Fabric captures
+// audio, it doesn't import documents.
 const heroSources = [
   {
-    icon: Users,
+    icon: Bot,
     title: "Invoice approvals",
-    meta: "Uploaded recording",
+    meta: "AI interview",
     visual: "conversation",
     delay: "0s",
   },
@@ -157,10 +170,10 @@ const heroSources = [
     delay: "2s",
   },
   {
-    icon: FileText,
+    icon: Upload,
     title: "Month-end close",
-    meta: "Existing process notes",
-    visual: "document",
+    meta: "Uploaded recording",
+    visual: "upload",
     delay: "4s",
   },
 ] as const;
@@ -235,7 +248,7 @@ export function HeroConversationDemo() {
   return (
     <div className={styles.heroDemo}>
       <p className={styles.srOnly}>
-        Conversations, recordings, and existing process notes flow into Fabric.
+        AI interviews, voice notes, and uploaded recordings flow into Fabric.
         Fabric connects them into a shared summary, a living process flow, and
         clear improvement insights.
       </p>
@@ -277,9 +290,9 @@ export function HeroConversationDemo() {
                     ))}
                   </div>
                 )}
-                {source.visual === "document" && (
-                  <div className={styles.heroDocumentSignal}>
-                    <i /><i /><i />
+                {source.visual === "upload" && (
+                  <div className={styles.heroUploadSignal}>
+                    <i />
                   </div>
                 )}
               </article>
@@ -459,12 +472,16 @@ export function ProductJourneyDemo() {
               transition={{ duration: reduceMotion ? 0 : 0.3, ease: "easeOut" }}
             >
               {/* Deterministic product simulations: no API or service calls. */}
-              <FabricWorkbench stage={active.id}>
-                {active.id === "capture" && <CaptureStage />}
-                {active.id === "understand" && <UnderstandStage />}
-                {active.id === "map" && <MapStage />}
-                {active.id === "improve" && <ImproveStage />}
-              </FabricWorkbench>
+              {active.id === "ask" ? (
+                <AskStage />
+              ) : (
+                <FabricWorkbench stage={active.id}>
+                  {active.id === "capture" && <CaptureStage />}
+                  {active.id === "understand" && <UnderstandStage />}
+                  {active.id === "map" && <MapStage />}
+                  {active.id === "improve" && <ImproveStage />}
+                </FabricWorkbench>
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -473,21 +490,29 @@ export function ProductJourneyDemo() {
   );
 }
 
-function FabricWorkbench({ stage, children }: { stage: StageId; children: ReactNode }) {
-  const activeTab =
-    stage === "capture"
-      ? "Contributions"
-      : stage === "understand"
-        ? "Overview"
-        : stage === "map"
-          ? "Process Flow"
-          : "Insights";
+const workbenchTabForStage = {
+  capture: "Contributions",
+  understand: "Overview",
+  map: "Process Flow",
+  improve: "Recommendations",
+} as const satisfies Record<Exclude<StageId, "ask">, string>;
 
+function FabricWorkbench({
+  stage,
+  children,
+}: {
+  stage: Exclude<StageId, "ask">;
+  children: ReactNode;
+}) {
+  const activeTab = workbenchTabForStage[stage];
+
+  // The product's five process tabs, in its order.
   const tabs = [
     { label: "Overview", icon: FileText },
     { label: "Contributions", icon: Mic, count: 4 },
     { label: "Process Flow", icon: GitBranch },
     { label: "Insights", icon: BarChart3 },
+    { label: "Recommendations", icon: Lightbulb, count: 3 },
   ];
 
   return (
@@ -524,7 +549,8 @@ function FabricWorkbench({ stage, children }: { stage: StageId; children: ReactN
               key={tab.label}
               className={tab.label === activeTab ? styles.workbenchTabActive : undefined}
             >
-              <Icon /> {tab.label}
+              {/* On a phone only the active tab keeps its label, so all five fit. */}
+              <Icon /> <b>{tab.label}</b>
               {tab.count && <i>{tab.count}</i>}
             </span>
           );
@@ -733,59 +759,201 @@ function MapStage() {
   );
 }
 
-function MetricTile({ icon, label, value, detail }: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  detail: string;
-}) {
+/**
+ * Mirrors the product's Recommendations tab: up to five per process, each one
+ * kind of change (src/features/recommendations/recommendation-meta.ts), ranked
+ * by value and then effort, with the evidence count behind it.
+ */
+const demoRecommendations = [
+  {
+    title: "Check project codes on the request form",
+    kind: "Technical · Workflow",
+    value: "High",
+    effort: "Low",
+    evidence: "3 interviews",
+  },
+  {
+    title: "Standardise how approval thresholds are kept",
+    kind: "Standardise",
+    value: "Medium",
+    effort: "Low",
+    evidence: "2 interviews",
+  },
+  {
+    title: "Show requesters where to find the right code",
+    kind: "Training",
+    value: "Medium",
+    effort: "Low",
+    evidence: "2 interviews",
+  },
+] as const;
+
+function ImproveStage() {
+  const [top] = demoRecommendations;
+
   return (
-    <div className={styles.metricTile}>
-      <div>{icon}<span>{label}</span></div>
-      <strong>{value}</strong>
-      <p>{detail}</p>
+    <div className={styles.insightsDemo}>
+      <section className={styles.insightSectionCard}>
+        <header>
+          <h5><Lightbulb /> Ranked by value, then effort</h5>
+          <span>{demoRecommendations.length}</span>
+        </header>
+        <ol className={styles.recommendationList}>
+          {demoRecommendations.map((item, index) => (
+            <li key={item.title} className={index === 0 ? styles.recommendationSelected : undefined}>
+              <span aria-hidden="true">{index + 1}</span>
+              <div>
+                <strong>{item.title}</strong>
+                <small>{item.kind}</small>
+              </div>
+              <p>
+                <em>Value {item.value}</em>
+                <em>Effort {item.effort}</em>
+                <em>{item.evidence}</em>
+              </p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <div className={styles.insightCandidate}>
+        <div>
+          <strong>{top.title}</strong>
+          <span>Shortlisted</span>
+        </div>
+        <p>
+          Three contributors named missing or wrong project codes as the main
+          reason requests come back to Operations before Finance sees them.
+        </p>
+        <div>
+          <span><Lightbulb /> Pilot and measure</span>
+          Check codes on one team’s requests for four weeks, and count how many
+          still come back.
+        </div>
+      </div>
+
+      <div className={styles.recommendationActions}>
+        <span><ClipboardCopy /> Copy for Copilot Studio</span>
+        <small>A build brief for technical changes; non-technical ones get a change plan.</small>
+      </div>
     </div>
   );
 }
 
-function ImproveStage() {
+const askSources = [
+  { icon: GitBranch, kind: "Flow step", label: "Project code valid?" },
+  { icon: AlertTriangle, kind: "Finding", label: "Bottleneck in code validation" },
+  { icon: Mic, kind: "Contribution", label: "AI interview with Amira K." },
+] as const;
+
+/** AskFabric lives in its own page, not a process tab, so it gets its own frame. */
+function AskStage() {
   return (
-    <div className={styles.insightsDemo}>
-      <div className={styles.insightMetricGrid}>
-        <MetricTile icon={<Users />} label="Evidence" value="4" detail="completed contributions" />
-        <MetricTile icon={<GitBranch />} label="Mapped steps" value="5" detail="1 decision point" />
-        <MetricTile icon={<AlertTriangle />} label="Bottlenecks" value="1" detail="coding validation" />
-        <MetricTile icon={<Bot />} label="Automation" value="1" detail="high-potential candidate" />
+    <div className={`${styles.fabricWorkbench} ${styles.askWorkbench}`}>
+      <div className={styles.askHeader}>
+        <span><Sparkles /></span>
+        <h4>AskFabric</h4>
+        <i>Beta</i>
       </div>
-      <section className={styles.insightSectionCard}>
-        <header>
-          <h5><Bot /> Automation opportunities</h5>
-          <span>1</span>
-        </header>
-        <div className={styles.insightCandidate}>
-          <div>
-            <strong>Validate project codes before submission</strong>
-            <span>High potential</span>
-          </div>
+
+      <div className={styles.askBody}>
+        <p className={styles.askQuestion}>Where do purchase order approvals slow down?</p>
+
+        <div className={styles.askAnswer}>
           <p>
-            Three contributors identified missing or incorrect codes as the
-            main cause of returned requests and approval delay.
+            Most delays start before Finance sees the request. Requests with a
+            missing or wrong project code go back to Operations<sup>1</sup>, and
+            three contributors named this as the main reason requests are
+            returned<sup>2</sup>. Routing also depends on a threshold table that
+            one person keeps up to date<sup>3</sup>.
           </p>
-          <div>
-            <span><Lightbulb /> Suggested next step</span>
-            Add validation at the request form before the Finance handoff.
+          <p className={styles.askCoverage}>
+            Based on 1 process in Procurement, from 4 contributions.
+          </p>
+          <div className={styles.askSources}>
+            <h5>Sources</h5>
+            <ol>
+              {askSources.map((source, index) => {
+                const Icon = source.icon;
+                return (
+                  <li key={source.label}>
+                    <span>{index + 1}</span>
+                    <Icon />
+                    <b>{source.kind}</b> {source.label}
+                  </li>
+                );
+              })}
+            </ol>
           </div>
         </div>
-      </section>
-      <section className={styles.insightSectionCard}>
-        <header>
-          <h5><KeyRound /> Tribal knowledge risk</h5>
-          <span>1</span>
-        </header>
-        <div className={styles.insightRiskRow}>
-          Approval routing depends on a threshold table maintained by one team member.
-        </div>
-      </section>
+      </div>
+
+      <div className={styles.askComposer}>
+        <span><AtSign /></span>
+        <p>Ask about how work gets done…</p>
+        <span><ArrowUp /></span>
+      </div>
+    </div>
+  );
+}
+
+const TOUR_VIDEO_SRC = "/demo/fabric-tour.mp4";
+const TOUR_POSTER_SRC = "/demo/fabric-tour-poster.jpg";
+const TOUR_CAPTIONS_SRC = "/demo/fabric-tour.en.vtt";
+
+/**
+ * The captioned product tour onboarding also uses (tools/demo-video). The file
+ * is faststart, and `preload="none"` means nothing downloads until the dialog
+ * opens, so its size doesn't weigh on the landing page.
+ */
+export function TourVideoDialog() {
+  const rootRef = useRef<HTMLDivElement>(null);
+  // The modal must sit above the whole page, so it can't portal into the hero
+  // (its own stacking context put the hero demo on top of it). The page's
+  // `[data-public-page]` wrapper carries the marketing font variables; the
+  // popup takes the `.site` class for the colour tokens.
+  const portalRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    portalRef.current =
+      rootRef.current?.closest<HTMLElement>("[data-public-page]") ?? document.body;
+  }, []);
+
+  return (
+    <div ref={rootRef} className={styles.tourDialogRoot}>
+      <Dialog.Root>
+        <Dialog.Trigger className={styles.textLink}>
+          <PlayCircle aria-hidden="true" />
+          Watch the 2-minute tour
+        </Dialog.Trigger>
+        <Dialog.Portal container={portalRef}>
+          <Dialog.Backdrop className={styles.tourBackdrop} />
+          <Dialog.Popup className={`${styles.site} ${styles.tourPopup}`}>
+            <div className={styles.tourPopupHeader}>
+              <Dialog.Title>A two-minute tour of Fabric</Dialog.Title>
+              <Dialog.Close aria-label="Close the tour">
+                <X aria-hidden="true" />
+              </Dialog.Close>
+            </div>
+            <video
+              className={styles.tourVideo}
+              src={TOUR_VIDEO_SRC}
+              poster={TOUR_POSTER_SRC}
+              controls
+              autoPlay
+              playsInline
+              preload="none"
+            >
+              <track
+                kind="captions"
+                src={TOUR_CAPTIONS_SRC}
+                srcLang="en"
+                label="English"
+                default
+              />
+            </video>
+          </Dialog.Popup>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }
