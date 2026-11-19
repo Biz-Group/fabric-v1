@@ -28,12 +28,16 @@ const productLinks = [
 ];
 
 /**
- * External company links (Biz Group's site, LinkedIn, a contact address).
- * Empty until confirmed addresses are supplied; the Company column then shows
- * them under "Book a demo". Add Security, What's new and Contact pages here
- * when Phase 3 builds them (docs/marketing-site-upgrade-plan.md).
+ * Company column links, under "Book a demo". Web links open in a new tab; the
+ * mailto opens the visitor's mail app in place. Add Security, What's new and
+ * Contact pages here when Phase 3 builds them
+ * (docs/marketing-site-upgrade-plan.md).
  */
-const companyLinks: ReadonlyArray<{ label: string; href: string }> = [];
+const companyLinks: ReadonlyArray<{ label: string; href: string }> = [
+  { label: "Biz Group", href: "https://learningwithbiz.com" },
+  { label: "LinkedIn", href: "https://ae.linkedin.com/company/biz-group-fz-llc" },
+  { label: "info@bizgroup.ae", href: "mailto:info@bizgroup.ae" },
+];
 
 const useCases = [
   {
@@ -417,14 +421,20 @@ export function MarketingLandingPage() {
                   <span className={styles.srOnly}> (opens in a new tab)</span>
                 </a>
               </li>
-              {companyLinks.map((link) => (
-                <li key={link.href}>
-                  <a href={link.href} target="_blank" rel="noopener noreferrer">
-                    {link.label}
-                    <span className={styles.srOnly}> (opens in a new tab)</span>
-                  </a>
-                </li>
-              ))}
+              {companyLinks.map((link) =>
+                link.href.startsWith("mailto:") ? (
+                  <li key={link.href}>
+                    <a href={link.href}>{link.label}</a>
+                  </li>
+                ) : (
+                  <li key={link.href}>
+                    <a href={link.href} target="_blank" rel="noopener noreferrer">
+                      {link.label}
+                      <span className={styles.srOnly}> (opens in a new tab)</span>
+                    </a>
+                  </li>
+                ),
+              )}
             </ul>
           </div>
         </nav>
