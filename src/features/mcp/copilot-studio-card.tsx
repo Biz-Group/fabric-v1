@@ -227,7 +227,7 @@ export function CopilotStudioSteps({
 
         <Step n={5} title="Connect and try it" done={used} status={used ? "Used in the last 30 days" : undefined}>
           <MenuPath label="In Copilot Studio:" items={["Next", "Create a new connection", "Add to agent"]} />
-          <StepHint>Sign in with your Fabric account when asked, then ask the agent about your organization.</StepHint>
+          <StepHint>Sign in with your Fabric account when asked, then ask the agent about your organisation.</StepHint>
         </Step>
       </Steps>
 

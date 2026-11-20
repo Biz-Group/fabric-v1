@@ -36,7 +36,7 @@ const AGENT_ANALYSIS = {
       "step_connections",
       '[{"from":"identify-critical-roles","to":"determine-readiness"}]',
     ),
-    dependencies: envelope("dependencies", "Organization Development team"),
+    dependencies: envelope("dependencies", "Organisation Development team"),
     frequency: envelope("frequency", "quarterly"),
     // ElevenLabs' three ways of saying "nothing found", one per declared type.
     compliance_or_approvals: envelope("compliance_or_approvals", "null"),
@@ -51,7 +51,7 @@ describe("extractDataCollection", () => {
 
     expect(dc).not.toBeNull();
     expect(dc?.process_steps).toBe(PROCESS_STEPS);
-    expect(dc?.dependencies).toBe("Organization Development team");
+    expect(dc?.dependencies).toBe("Organisation Development team");
     expect(dc?.frequency).toBe("quarterly");
   });
 

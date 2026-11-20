@@ -76,7 +76,7 @@ describe("charts (FR-11.2, Phase 2E)", () => {
       ["Billing", [0, 1]],
     ]);
     expect(org?.rows[0].link).toMatchObject({ fn: ids.own.functionId, dept: ids.own.dispatch, proc: null });
-    expect(org?.scopeName).toBe("the organization");
+    expect(org?.scopeName).toBe("the organisation");
 
     const dept = await ana.query(api.askCharts.getChart, { chartId: "coverageByDepartment", scope: { kind: "department", id: ids.own.billing } });
     expect(dept?.rows.map((row) => row.label)).toEqual(["Billing"]);
@@ -141,7 +141,7 @@ describe("charts (FR-11.2, Phase 2E)", () => {
 
     const org = await show("coverageByDepartment", []);
     expect(org.part).toEqual({ type: "display", display: "chart", chartId: "coverageByDepartment", refs: [] });
-    expect(org.note).toContain("the whole organization");
+    expect(org.note).toContain("the whole organisation");
     expect(org.note).not.toMatch(/\d/);
 
     const scoped = await show("coverageByDepartment", [ids.own.functionId]);

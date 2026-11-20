@@ -446,7 +446,7 @@ export function ProfileOnboarding({ mode, askPlacement }: ProfileOnboardingProps
           </CardTitle>
           <CardDescription>
             {mode === "profile"
-              ? "Complete your profile to get started. This helps us personalize your experience."
+              ? "Complete your profile to get started. This helps us personalise your experience."
               : "Choose your function and department in this workspace."}
           </CardDescription>
         </CardHeader>

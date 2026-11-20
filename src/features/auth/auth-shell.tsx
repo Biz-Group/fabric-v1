@@ -70,7 +70,7 @@ function FabricHero({ className, organization }: FabricHeroProps) {
             initialsClassName="text-xl text-neutral-500"
           />
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-neutral-600">
-            Capture how your organization works through conversations. Build a living knowledge base, effortlessly.
+            Capture how your organisation works through conversations. Build a living knowledge base, effortlessly.
           </p>
         </div>
 

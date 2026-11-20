@@ -445,7 +445,7 @@ export const rankSignals = askToolQuery({
         for (const block of blocks) builder.add(block);
       }
     }
-    const scopeName = scope.kind === "org" ? "the organization" : `this ${scope.kind}`;
+    const scopeName = scope.kind === "org" ? "the organisation" : `this ${scope.kind}`;
     const evidenceOrder = order.filter((signal) => signal !== "recommendation");
     return builder.finish(
       {

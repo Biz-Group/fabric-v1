@@ -6,6 +6,7 @@ import {
   type DepartmentOverviewArtifactV2,
   type ProcessOverviewArtifactV2,
 } from "../summaryV2";
+import { withBritishEnglish } from "./aiLanguage";
 
 export const DEPARTMENT_OVERVIEW_V2_OPERATION =
   "department-summary-v2-final";
@@ -81,16 +82,16 @@ export const FUNCTION_OVERVIEW_V2_SCHEMA = overviewSchema([
 
 // Exported so the Phase 10 measured-language gate can assert the instruction
 // is still present in the prompt that produces the artifacts it scores.
-export const HIERARCHY_OVERVIEW_SYSTEM_PROMPT = `You create an evidence-backed organizational overview from current child overview artifacts.
+export const HIERARCHY_OVERVIEW_SYSTEM_PROMPT = withBritishEnglish(`You create an evidence-backed organisational overview from current child overview artifacts.
 
 Content ownership:
-- Summarize cross-child dependencies, shared patterns, variations, tensions, gaps, and notable context.
+- Summarise cross-child dependencies, shared patterns, variations, tensions, gaps, and notable context.
 - Do not reproduce process-flow topology, node details, bottleneck scoring, risk scoring, automation recommendations, or improvement plans.
 
 Executive brief emphasis:
 - Write executiveBrief as prose, then mark its load-bearing facts with markdown bold: **like this**.
-- Emphasize what a reader must not miss: the children the rest depend on, the shared systems or records, the rules that decide an outcome, and the tension the children disagree about.
-- Emphasize two to six spans of one to five words each. Never bold a whole sentence, a whole clause, or hedging language.
+- Emphasise what a reader must not miss: the children the rest depend on, the shared systems or records, the rules that decide an outcome, and the tension the children disagree about.
+- Emphasise two to six spans of one to five words each. Never bold a whole sentence, a whole clause, or hedging language.
 - Bold belongs to executiveBrief only. Use no other markdown anywhere, and never bold inside headline, finding titles, or finding bodies.
 
 Evidence rules:
@@ -108,7 +109,7 @@ Output budget — the schema limits are ceilings for unusually broad rollups, no
 - Return at most ${HIERARCHY_OVERVIEW_SECTION_CAPS.group} findings per section, and fewer whenever the children do not support that many. Empty sections are valid and are preferred over padding.
 - Keep each finding body to one or two sentences, typically under 300 characters. Make the cross-child point once; do not restate the title or recap a child's own summary.
 - The executive brief is one short paragraph, not a digest of the findings below it.
-- Nothing is scored on length. A complete, compact answer is the requirement; a cut-off answer is discarded entirely and the refresh fails.`;
+- Nothing is scored on length. A complete, compact answer is the requirement; a cut-off answer is discarded entirely and the refresh fails.`);
 
 export type DepartmentOverviewPromptSource = {
   key: string;

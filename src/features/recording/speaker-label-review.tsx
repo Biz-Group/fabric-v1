@@ -363,7 +363,7 @@ function SpeakerLabelEditor({
           ) : (
             <CheckCircle2 className="size-4" />
           )}
-          Save and Analyze
+          Save and Analyse
         </Button>
       </div>
     </div>

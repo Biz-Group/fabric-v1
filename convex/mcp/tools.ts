@@ -92,7 +92,7 @@ function displayTool(name: string, description: string, inputSchema: JsonSchema,
 const DISPLAY_TOOLS = (): McpTool[] => [
   displayTool(
     "showCards",
-    "Show functions, departments or processes as cards under your answer: name, where it sits, its overview headline and counts, with a link to open it in Fabric. Use it when naming a few specific parts of the organization the user may want to open. Returns a short text version too.",
+    "Show functions, departments or processes as cards under your answer: name, where it sits, its overview headline and counts, with a link to open it in Fabric. Use it when naming a few specific parts of the organisation the user may want to open. Returns a short text version too.",
     {
       type: "object",
       additionalProperties: false,
@@ -125,8 +125,8 @@ const DISPLAY_TOOLS = (): McpTool[] => [
       additionalProperties: false,
       properties: {
         chart: { type: "string", enum: CHART_IDS, description: "Which chart to show." },
-        kind: { type: "string", enum: ["org", "function", "department", "process"], description: "Limit to this entity kind, or \"org\" for the whole organization." },
-        id: { type: "string", description: "The entity id, or \"\" for the whole organization." },
+        kind: { type: "string", enum: ["org", "function", "department", "process"], description: "Limit to this entity kind, or \"org\" for the whole organisation." },
+        id: { type: "string", description: "The entity id, or \"\" for the whole organisation." },
       },
       required: ["chart", "kind", "id"],
     },
@@ -137,7 +137,7 @@ const DISPLAY_TOOLS = (): McpTool[] => [
 const WORKSPACE_TOOL: McpTool = {
   name: WORKSPACE_TOOL_NAME,
   description:
-    "List this organization's whole structure in one call: every function, its departments and their processes, with ids and, where available, each process's overview headline. Call it first, then pass the ids to the other tools. For a large organization, processes are summarised as counts per department; find them with searchHierarchy or browseHierarchy.",
+    "List this organisation's whole structure in one call: every function, its departments and their processes, with ids and, where available, each process's overview headline. Call it first, then pass the ids to the other tools. For a large organisation, processes are summarised as counts per department; find them with searchHierarchy or browseHierarchy.",
   inputSchema: { type: "object", additionalProperties: false, properties: {}, required: [] },
   publishedSchema: { type: "object", additionalProperties: false, properties: {}, required: [] },
   defaults: {},
@@ -151,9 +151,9 @@ const RECOMMENDATIONS_SCHEMA: JsonSchema = {
     kind: {
       type: "string",
       enum: ["org", "function", "department", "process"],
-      description: "Limit to this entity kind, or \"org\" for the whole organization.",
+      description: "Limit to this entity kind, or \"org\" for the whole organisation.",
     },
-    id: { type: "string", description: "The entity id, or \"\" for the whole organization." },
+    id: { type: "string", description: "The entity id, or \"\" for the whole organisation." },
   },
   required: ["kind", "id"],
 };
@@ -161,7 +161,7 @@ const RECOMMENDATIONS_SCHEMA: JsonSchema = {
 const RECOMMENDATIONS_TOOL = (): McpTool => ({
   name: RECOMMENDATIONS_TOOL_NAME,
   description:
-    "Read Fabric's recommendations for improving the work, as the Recommendations tab shows them. For one process (kind \"process\"): every current recommendation in full: the problem, its cause, the proposed change, why a simpler change is not enough (technical ones), a pilot and how to measure it, value and effort with their reasons, decision status (new, shortlisted, in progress, done, dismissed), the steps it covers, open questions and risks. For a department, function or the whole organization: totals by kind of change and status, then the 25 highest-ranked that are not dismissed (value first, then lower effort, then evidence). Recommendations cover non-technical changes (remove a step, simplify, standardise, role or policy, training) and technical ones (workflow, integration, AI assist, agent); getProcessFlow and rankSignals show only the technical ones, as automation opportunities. Present them as Fabric's recommendations, with their status, and do not add vendor or product suggestions of your own.",
+    "Read Fabric's recommendations for improving the work, as the Recommendations tab shows them. For one process (kind \"process\"): every current recommendation in full: the problem, its cause, the proposed change, why a simpler change is not enough (technical ones), a pilot and how to measure it, value and effort with their reasons, decision status (new, shortlisted, in progress, done, dismissed), the steps it covers, open questions and risks. For a department, function or the whole organisation: totals by kind of change and status, then the 25 highest-ranked that are not dismissed (value first, then lower effort, then evidence). Recommendations cover non-technical changes (remove a step, simplify, standardise, role or policy, training) and technical ones (workflow, integration, AI assist, agent); getProcessFlow and rankSignals show only the technical ones, as automation opportunities. Present them as Fabric's recommendations, with their status, and do not add vendor or product suggestions of your own.",
   inputSchema: RECOMMENDATIONS_SCHEMA,
   ...relaxSchema(RECOMMENDATIONS_SCHEMA),
   executorRef: internal.askTools.recommendations.getRecommendations as unknown as ExecutorRef,
@@ -218,7 +218,7 @@ export function mcpTools({ conversationTools }: McpToolOptions): McpTool[] {
   const byName = new Map(ASK_TOOLS.map((tool) => [tool.name as string, tool]));
   const askTool = (name: string) => {
     const tool = byName.get(name);
-    if (!tool) throw new Error(`MCP tool ${name} is not in the AskFabric catalog`);
+    if (!tool) throw new Error(`MCP tool ${name} is not in the AskFabric catalogue`);
     return fromAskTool(tool);
   };
   // Order: workspace tree, data tools, recommendations, show tools, then the optional

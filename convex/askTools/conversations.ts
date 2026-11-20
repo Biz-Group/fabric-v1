@@ -89,7 +89,7 @@ export const listConversations = askToolQuery({
     let scope: ReadonlySet<Id<"processes">> | null = null;
     let scopeSource = sources.org();
     // Shown as the count's title in the Sources list, so it reads as plain words.
-    let scopeName = "the organization";
+    let scopeName = "the organisation";
     if (input.processId || input.departmentId || input.functionId) {
       const hierarchy = await loadHierarchy(ctx, viewer.orgId);
       if (input.processId) {

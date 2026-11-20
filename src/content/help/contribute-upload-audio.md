@@ -19,7 +19,7 @@ If you already have a recording, such as an interview, a meeting or a voice memo
 
 1. Open the process.
 2. In the process header, select **Upload files**. On a phone, tap the **+** button (Add a contribution) and choose it there.
-3. Check your name and read the recording notice, which says the uploaded audio will be transcribed and stored to help document your organization's processes.
+3. Check your name and read the recording notice, which says the uploaded audio will be transcribed and stored to help document your organisation's processes.
 4. Select **Choose audio file** and pick your file.
 5. When it shows "Audio file ready", select **Upload and process**.
 

@@ -371,7 +371,7 @@ async function forScope(
   }
   if (recs.open.length > MAX_LIST_ITEMS) builder.markTruncated();
 
-  const scopeName = scope.kind === "org" ? "the organization" : `this ${scope.kind}`;
+  const scopeName = scope.kind === "org" ? "the organisation" : `this ${scope.kind}`;
   const summary = [
     scopeRecommendationsText(recs, scopeName, scope.processes.length),
     recs.open.length > 0

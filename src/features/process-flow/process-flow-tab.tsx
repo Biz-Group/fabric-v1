@@ -36,7 +36,7 @@ type ProcessFlowTabProps = {
 
 function formatGeneratedAt(epochMs: number | null | undefined) {
   if (!epochMs) return "Not generated";
-  return new Date(epochMs).toLocaleString("en-US", {
+  return new Date(epochMs).toLocaleString("en-GB", {
     month: "short",
     day: "numeric",
     hour: "numeric",

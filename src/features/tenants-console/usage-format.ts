@@ -20,7 +20,7 @@ export function formatUsd(microUsd: number): string {
   const usd = microUsd / MICRO_USD_PER_USD;
   if (usd === 0) return "$0.00";
   if (usd >= 1) {
-    return `$${usd.toLocaleString("en-US", {
+    return `$${usd.toLocaleString("en-GB", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
@@ -47,7 +47,7 @@ export function formatTokens(tokens: number): string {
   if (tokens === 0) return "0";
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(2)}M`;
   if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`;
-  return tokens.toLocaleString("en-US");
+  return tokens.toLocaleString("en-GB");
 }
 
 /** Voice/audio duration. Seconds are the stored unit; minutes are how it bills. */
@@ -60,7 +60,7 @@ export function formatDuration(seconds: number): string {
 }
 
 export function formatCount(value: number): string {
-  return Number.isFinite(value) ? value.toLocaleString("en-US") : "—";
+  return Number.isFinite(value) ? value.toLocaleString("en-GB") : "—";
 }
 
 /** Share of a total, guarding the empty-range case. */
@@ -75,7 +75,7 @@ export function formatShare(part: number, total: number): string {
 export function formatPeriod(period: string): string {
   const parsed = Date.parse(`${period}T00:00:00.000Z`);
   if (Number.isNaN(parsed)) return period;
-  return new Date(parsed).toLocaleDateString("en-US", {
+  return new Date(parsed).toLocaleDateString("en-GB", {
     month: "short",
     day: "numeric",
     timeZone: "UTC",
@@ -83,7 +83,7 @@ export function formatPeriod(period: string): string {
 }
 
 export function formatTimestamp(ms: number): string {
-  return new Date(ms).toLocaleString("en-US", {
+  return new Date(ms).toLocaleString("en-GB", {
     month: "short",
     day: "numeric",
     hour: "2-digit",

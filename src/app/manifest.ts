@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Fabric.",
     short_name: "Fabric",
     description:
-      "Capture how your organization works through conversations.",
+      "Capture how your organisation works through conversations.",
     start_url: "/",
     scope: "/",
     display: "standalone",

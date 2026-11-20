@@ -748,7 +748,7 @@ describe("speaker label submission", () => {
           ],
         },
       ),
-    ).rejects.toThrow(/not in this organization/);
+    ).rejects.toThrow(/not in this organisation/);
   });
 });
 

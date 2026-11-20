@@ -6,7 +6,7 @@ export const metadata = sitePageMetadata({
   path: "/features/askfabric",
   title: "AskFabric",
   description:
-    "Ask how your organization really works. AskFabric (beta) answers in plain language from your workspace's evidence, with every claim linked to its source.",
+    "Ask how your organisation really works. AskFabric (beta) answers in plain language from your workspace's evidence, with every claim linked to its source.",
 });
 
 export default function AskFabricFeature() {

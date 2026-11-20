@@ -342,7 +342,7 @@ export function AskConversation({
                   <AskThinkingMark still className="size-6 text-org-accent" />
                 </span>
                 <h2 className="text-lg font-semibold text-balance text-foreground">
-                  {about ? `Ask about ${about.name}` : "Ask about how your organization works"}
+                  {about ? `Ask about ${about.name}` : "Ask about how your organisation works"}
                   {/* Inline, so it wraps with the last word on a narrow screen. */}
                   <Badge variant="outline" className="ml-2 align-middle">
                     Beta

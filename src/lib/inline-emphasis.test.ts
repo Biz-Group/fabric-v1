@@ -38,7 +38,7 @@ describe("inline emphasis", () => {
   });
 
   it("is stateless across calls", () => {
-    const value = "**Vendor selection** is centralized.";
+    const value = "**Vendor selection** is centralised.";
     expect(splitEmphasisRuns(value)).toEqual(splitEmphasisRuns(value));
   });
 

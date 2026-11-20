@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 
 function formatDate(ts: number) {
-  return new Date(ts).toLocaleDateString("en-US", {
+  return new Date(ts).toLocaleDateString("en-GB", {
     month: "short",
     day: "numeric",
     year: "numeric",

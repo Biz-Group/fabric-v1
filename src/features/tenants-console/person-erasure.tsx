@@ -118,7 +118,7 @@ function EraseMemberDialog({
               <li>
                 {preview.otherWorkspaces > 0
                   ? `Their account stays: they're in ${preview.otherWorkspaces} other workspace(s).`
-                  : "Their account is deleted too, unless Clerk shows them in another organization."}
+                  : "Their account is deleted too, unless Clerk shows them in another organisation."}
               </li>
             </ul>
             <div className="space-y-1.5">
@@ -168,7 +168,7 @@ const ACCOUNT_LABEL: Record<string, string> = {
 };
 
 function formatDateTime(ts: number) {
-  return new Date(ts).toLocaleString("en-US", {
+  return new Date(ts).toLocaleString("en-GB", {
     month: "short",
     day: "numeric",
     year: "numeric",

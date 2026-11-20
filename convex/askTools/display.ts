@@ -212,7 +212,7 @@ async function chart({ ctx, viewer, refs: input, requested, allowed }: Grounded,
   }
   return {
     part: { type: "display", display: "chart", chartId, refs },
-    note: `Shown under your answer: a chart of ${data.title.toLowerCase()} for ${names[0] ?? "the whole organization"}, with a table view.`,
+    note: `Shown under your answer: a chart of ${data.title.toLowerCase()} for ${names[0] ?? "the whole organisation"}, with a table view.`,
   };
 }
 

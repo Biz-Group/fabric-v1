@@ -10,7 +10,7 @@ verifiedAgainst:
   - convex/lib/processEvidenceInvalidation.ts
   - src/features/admin/move-contribution-dialog.tsx
   - src/features/admin/conversation-transcript-dialog.tsx
-  - src/app/[org]/admin/conversations/page.tsx
+  - src/app/(app)/[org]/admin/conversations/page.tsx
   - src/features/conversations/conversations-tab.tsx
 ---
 

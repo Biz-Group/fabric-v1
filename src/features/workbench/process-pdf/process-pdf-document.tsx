@@ -38,7 +38,7 @@ import {
 
 function fmtDateTime(ms: number | null | undefined) {
   if (!ms) return "—";
-  return new Date(ms).toLocaleString("en-US", {
+  return new Date(ms).toLocaleString("en-GB", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -49,7 +49,7 @@ function fmtDateTime(ms: number | null | undefined) {
 
 function fmtDate(ms: number | null | undefined) {
   if (!ms) return "—";
-  return new Date(ms).toLocaleDateString("en-US", {
+  return new Date(ms).toLocaleDateString("en-GB", {
     month: "long",
     day: "numeric",
     year: "numeric",

@@ -114,7 +114,7 @@ export function SiteFooter() {
           Fabric.
         </a>
         <p>
-          The fabric of the organization, woven from the voices of the people
+          The fabric of the organisation, woven from the voices of the people
           who make it run.
         </p>
       </div>

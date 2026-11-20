@@ -260,7 +260,7 @@ export function UsageCostChart({
           </div>
           <div className="text-muted-foreground">
             {formatUsd(hovered.costMicroUsd)} ·{" "}
-            {hovered.callCount.toLocaleString("en-US")} calls
+            {hovered.callCount.toLocaleString("en-GB")} calls
           </div>
         </div>
       )}

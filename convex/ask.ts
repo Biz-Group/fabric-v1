@@ -64,6 +64,7 @@ import {
   parseFollowUps,
 } from "./askfabric/followUps";
 import { ASK_SYSTEM_PROMPT, ASK_SYSTEM_PROMPT_VERSION } from "./askfabric/systemPrompt";
+import { withBritishEnglish } from "./lib/aiLanguage";
 
 const unavailableReasonValidator = v.union(
   v.literal("switchOff"),
@@ -931,7 +932,7 @@ export async function executeTurn(ctx: ActionCtx, args: TurnArgs, options: TurnO
     try {
       const final = await meteredStream(ctx, attribution, meta(ASKFABRIC_OPERATIONS.title, 0), async () => {
         const result = await model.complete({
-          system: "You write titles for chat threads. Reply with a title of six words or fewer, nothing else.",
+          system: withBritishEnglish("You write titles for chat threads. Reply with a title of six words or fewer, nothing else."),
           user: `Question: ${context.question.slice(0, 1_000)}`,
           maxTokens: 30,
         });

@@ -55,7 +55,7 @@ async function resolveScope(
   if (kind === null) {
     return {
       kind: "org",
-      name: "the organization",
+      name: "the organisation",
       source: sources.org(),
       processes: hierarchy.processes,
       departments: hierarchy.departments,

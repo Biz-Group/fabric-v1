@@ -394,7 +394,7 @@ export const malformedSourceKeysFixture: SummaryV2ScenarioFixture = {
     { key: "C2", kind: "conversation", label: "Contributor B · Interview 2" },
   ],
   payload: {
-    headline: "Only resolvable source keys survive normalization",
+    headline: "Only resolvable source keys survive normalisation",
     executiveBrief:
       "This payload cites keys that were never supplied, repeats one that was, and mixes in values that are not strings at all.",
     scope: [
@@ -483,7 +483,7 @@ export const unevenRollupCoverageFixture: SummaryV2ScenarioFixture = {
     department: {
       headline: "Two of four processes are current",
       executiveBrief:
-        "Request intake and request approval are current and analyzed here. A third process is stale and a fourth failed to generate, so neither is represented in these findings.",
+        "Request intake and request approval are current and analysed here. A third process is stale and a fourth failed to generate, so neither is represented in these findings.",
       crossProcessDependencies: [
         finding(
           "Approval depends on intake completing",
@@ -495,7 +495,7 @@ export const unevenRollupCoverageFixture: SummaryV2ScenarioFixture = {
       sharedPatterns: [
         finding(
           "Both current processes use the shared request queue",
-          "The shared request queue is the system of record for both analyzed processes.",
+          "The shared request queue is the system of record for both analysed processes.",
           ["P1", "P2"],
           "corroborated",
         ),

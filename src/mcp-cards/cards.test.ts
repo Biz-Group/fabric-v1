@@ -88,7 +88,7 @@ describe("cards view", () => {
       kind: "chart",
       title: "Signals by process",
       type: "bar",
-      scopeName: "The organization",
+      scopeName: "The organisation",
       series: [
         { key: "friction", label: "Friction" },
         { key: "bottleneck", label: "Bottleneck" },

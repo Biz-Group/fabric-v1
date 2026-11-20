@@ -183,8 +183,8 @@ export async function closeTenantDeletedInClerk(
 
   const offboarding = {
     suspendedAt: now,
-    suspendedByName: "Clerk (organization deleted)",
-    reason: "The organization was deleted in the Clerk dashboard.",
+    suspendedByName: "Clerk (organisation deleted)",
+    reason: "The organisation was deleted in the Clerk dashboard.",
     purgeAfter: now + PURGE_GRACE_MS,
     origin: "clerkDeleted" as const,
   };
@@ -193,7 +193,7 @@ export async function closeTenantDeletedInClerk(
   } else {
     await ctx.db.insert("tenants", {
       clerkOrgId,
-      name: "Deleted organization",
+      name: "Deleted organisation",
       slug: `deleted-${clerkOrgId.toLowerCase().replace(/[^a-z0-9-]/g, "-")}`,
       allowedEmailDomains: [],
       status: "suspended",
@@ -206,7 +206,7 @@ export async function closeTenantDeletedInClerk(
   await ctx.db.insert("authAuditEvents", {
     clerkOrgId,
     action: "workspaceSuspended",
-    detail: `Organization deleted in Clerk. Purge after ${new Date(offboarding.purgeAfter).toISOString()}.`,
+    detail: `Organisation deleted in Clerk. Purge after ${new Date(offboarding.purgeAfter).toISOString()}.`,
     createdAt: now,
   });
 }
@@ -983,7 +983,7 @@ export const revokeTenantInvitation = action({
       },
     )) as ClerkInvitationResponse;
     if (result.organization_id !== tenant.clerkOrgId) {
-      throw new Error("Revoke returned a record for a different organization");
+      throw new Error("Revoke returned a record for a different organisation");
     }
 
     await ctx.runMutation(internal.users.markInvitationRevoked, {

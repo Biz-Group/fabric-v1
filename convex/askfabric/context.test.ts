@@ -96,7 +96,7 @@ describe("history and per-turn context (FR-2.7)", () => {
       "[Shown: 2 cards: A, F]",
     );
     expect(displayNote({ display: "chart", refs: [], chartId: "signalsByProcess" }, [])).toBe(
-      "[Shown: the signalsByProcess chart for the organization]",
+      "[Shown: the signalsByProcess chart for the organisation]",
     );
     expect(displayNote({ display: "flow", refs: refs("process", 1), nodeId: "n3" }, ["Payroll"])).toContain("step n3");
     // Nothing readable left: nothing to say.

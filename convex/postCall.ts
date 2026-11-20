@@ -51,6 +51,7 @@ import {
   serializeUntrustedEvidence,
   withUntrustedEvidenceBoundary,
 } from "./lib/aiPromptSafety";
+import { withBritishEnglish } from "./lib/aiLanguage";
 
 // Normalize ElevenLabs transcript to the shape our UI expects:
 // ElevenLabs returns { role: "agent"|"user", message: string, time_in_call_secs: number }
@@ -137,7 +138,7 @@ export const resolveContributorAttribution = internalQuery({
   handler: async (ctx, args): Promise<ResolvedAttribution> => {
     const caller = await requireOrgContributor(ctx);
     if (caller.orgId !== args.clerkOrgId) {
-      throw new Error("Organization mismatch");
+      throw new Error("Organisation mismatch");
     }
     const submitter = await ctx.db.get(caller.userId);
     const submitterName =
@@ -157,7 +158,7 @@ export const resolveContributorAttribution = internalQuery({
           (m) => m.clerkOrgId === caller.orgId && isActiveMembership(m),
         )
       ) {
-        throw new Error("Selected member is not in this organization");
+        throw new Error("Selected member is not in this organisation");
       }
       subjectUserId = subject._id;
       subjectName = sanitizeContributorName(subject.name) || "Anonymous";
@@ -180,7 +181,7 @@ export const resolveContributorAttribution = internalQuery({
 
     if (caller.role !== "admin") {
       throw new Error(
-        "Only organization admins can record on another person's behalf",
+        "Only organisation admins can record on another person's behalf",
       );
     }
     if (!args.consentAttested) {
@@ -368,7 +369,7 @@ export const insertConversation = internalMutation({
     // Defensive: ensure the parent process belongs to the stamping org.
     const process = await ctx.db.get(args.processId);
     if (!process || process.clerkOrgId !== args.clerkOrgId) {
-      throw new Error("Process not found in this organization");
+      throw new Error("Process not found in this organisation");
     }
     if (args.elevenlabsConversationId !== undefined) {
       requireElevenLabsConversationId(args.elevenlabsConversationId);
@@ -1227,7 +1228,7 @@ export const updateConversationAnalysis = internalMutation({
   handler: async (ctx, args) => {
     const conv = await ctx.db.get(args.conversationId);
     if (!conv || conv.clerkOrgId !== args.clerkOrgId) {
-      throw new Error("Conversation not found in this organization");
+      throw new Error("Conversation not found in this organisation");
     }
     await ctx.db.patch(args.conversationId, {
       transcript: args.transcript,
@@ -1249,7 +1250,7 @@ export const updateConversationAnalysis = internalMutation({
 
 const PROCESS_SUMMARY_MAX_TOKENS = 8192;
 
-const PROCESS_SUMMARY_SYSTEM_PROMPT = withUntrustedEvidenceBoundary(`You are an analyst synthesizing employee accounts of a single business process into a structured brief. The user-message JSON contains an existingSummary field and one conversation. If existingSummary is null, create the initial brief. Otherwise, integrate the conversation into that brief. Your output must use the following markdown format exactly:
+const PROCESS_SUMMARY_SYSTEM_PROMPT = withBritishEnglish(withUntrustedEvidenceBoundary(`You are an analyst synthesising employee accounts of a single business process into a structured brief. The user-message JSON contains an existingSummary field and one conversation. If existingSummary is null, create the initial brief. Otherwise, integrate the conversation into that brief. Your output must use the following markdown format exactly:
 
 ## Overview
 2-3 sentence executive summary of the process.
@@ -1272,7 +1273,7 @@ Rules:
 - If this is the first conversation, the Consensus and Tensions & Gaps sections can note that only one perspective exists so far.
 - When integrating new information into an existing summary, preserve existing citations and add new ones. Update sections as needed — move items from Notable Details to Consensus if a new contributor confirms them, or add new tensions if accounts conflict.
 - Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
-- Output ONLY the markdown sections above, nothing else.`);
+- Output ONLY the markdown sections above, nothing else.`));
 
 // The reduce output is a fixed five-section brief, so it does not grow with
 // the number of conversations the way the old concatenate-everything rebuild
@@ -1281,7 +1282,7 @@ Rules:
 const PROCESS_SUMMARY_REDUCE_MAX_TOKENS = 4096;
 const PROCESS_SUMMARY_REDUCE_TIMEOUT_MS = 150_000;
 
-const PROCESS_SUMMARY_REDUCE_SYSTEM_PROMPT = withUntrustedEvidenceBoundary(`You are an analyst merging structured records of individual employee accounts of a single business process into one brief. Each record was extracted from one contributor's interview and reports only what that contributor said. Your job is the cross-contributor work none of them could do: find agreement, find conflict, find gaps. Your output must use the following markdown format exactly:
+const PROCESS_SUMMARY_REDUCE_SYSTEM_PROMPT = withBritishEnglish(withUntrustedEvidenceBoundary(`You are an analyst merging structured records of individual employee accounts of a single business process into one brief. Each record was extracted from one contributor's interview and reports only what that contributor said. Your job is the cross-contributor work none of them could do: find agreement, find conflict, find gaps. Your output must use the following markdown format exactly:
 
 ## Overview
 2-3 sentence executive summary of the process.
@@ -1305,7 +1306,7 @@ Rules:
 - Treat each record's "Uncertainties" as evidence for Tensions & Gaps, not as fact.
 - Do not add steps, actors, or tools that appear in no record. A gap is a finding; filling it is an error.
 - Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
-- Output ONLY the markdown sections above, nothing else.`);
+- Output ONLY the markdown sections above, nothing else.`));
 
 /**
  * Every path that lands a new rolling summary does the same three things:
@@ -1385,7 +1386,7 @@ function transcriptEvidence(
 const CONVERSATION_MAP_MAX_TOKENS = 1_536;
 const CONVERSATION_MAP_TIMEOUT_MS = 120_000;
 
-const CONVERSATION_MAP_SYSTEM_PROMPT = withUntrustedEvidenceBoundary(`You are extracting ONE employee's account of a business process into a compact structured record. This record will later be merged with other employees' records to build a single process brief, so it must be faithful to this account alone — never generalize, never invent steps to fill gaps, never smooth over uncertainty.
+const CONVERSATION_MAP_SYSTEM_PROMPT = withBritishEnglish(withUntrustedEvidenceBoundary(`You are extracting ONE employee's account of a business process into a compact structured record. This record will later be merged with other employees' records to build a single process brief, so it must be faithful to this account alone — never generalise, never invent steps to fill gaps, never smooth over uncertainty.
 
 Your output must use the following markdown format exactly:
 
@@ -1410,7 +1411,7 @@ Rules:
 - Keep every section even when it is empty — write "None stated." rather than dropping it.
 - Do not compare this account to anyone else's; you cannot see them.
 - Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
-- Output ONLY the markdown sections above, nothing else.`);
+- Output ONLY the markdown sections above, nothing else.`));
 
 export const getConversationForSummaryInput = internalQuery({
   args: {
@@ -1439,7 +1440,7 @@ export const saveConversationSummaryInput = internalMutation({
   handler: async (ctx, args) => {
     const conv = await ctx.db.get(args.conversationId);
     if (!conv || conv.clerkOrgId !== args.clerkOrgId) {
-      throw new Error("Conversation not found in this organization");
+      throw new Error("Conversation not found in this organisation");
     }
     if (
       conv.status !== "done" ||
@@ -1654,7 +1655,7 @@ export const requestProcessSummaryRegen = internalMutation({
   handler: async (ctx, args) => {
     const process = await ctx.db.get(args.processId);
     if (!process || process.clerkOrgId !== args.clerkOrgId) {
-      throw new Error("Process not found in this organization");
+      throw new Error("Process not found in this organisation");
     }
 
     const now = Date.now();

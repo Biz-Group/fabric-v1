@@ -1,4 +1,5 @@
 import type { AIJsonSchema } from "./aiProvider";
+import { withBritishEnglish } from "./aiLanguage";
 
 /**
  * Prompts, schemas, and normalizers for staged process-flow generation.
@@ -131,8 +132,8 @@ const VALID_CONFIDENCE = new Set<string>(["high", "medium", "low"]);
 // Stage 1 — the graph
 // ---------------------------------------------------------------------------
 
-export const GRAPH_SYSTEM_PROMPT = `You are a process analyst converting business process documentation into the SKELETON of a flow diagram. You receive:
-1. A synthesized rolling summary written from conversation transcripts
+export const GRAPH_SYSTEM_PROMPT = withBritishEnglish(`You are a process analyst converting business process documentation into the SKELETON of a flow diagram. You receive:
+1. A synthesised rolling summary written from conversation transcripts
 2. Per-conversation structured data — some conversations have pre-extracted graph fragments (process_steps, step_connections, step_issues as JSON), while older conversations have only flat lists (steps_described, tools_mentioned)
 
 Your job is the shape of the process only: which steps exist, and how they connect. A later pass describes each step in detail, so do NOT write descriptions, actors, tools, pain points, or assessments here. Spend your output budget on getting the topology right.
@@ -169,7 +170,7 @@ Your job is the shape of the process only: which steps exist, and how they conne
 - criticalPath: ordered node IDs of the longest/most common path
 - totalEstimatedDuration: end-to-end duration if stated or inferable, otherwise omit
 
-Use the provided tool to return the graph.`;
+Use the provided tool to return the graph.`);
 
 const GRAPH_RESPONSE_SCHEMA: AIJsonSchema = {
   type: "object",
@@ -245,7 +246,7 @@ export function buildGraphAIRequest(userContent: string) {
 // Stage 2 — node details, one small batch at a time
 // ---------------------------------------------------------------------------
 
-export const NODE_DETAILS_SYSTEM_PROMPT = `You are a process analyst describing specific steps of a business process that has already been mapped. You receive the full process graph for context, the evidence gathered from contributor interviews, and a list of node IDs to describe.
+export const NODE_DETAILS_SYSTEM_PROMPT = withBritishEnglish(`You are a process analyst describing specific steps of a business process that has already been mapped. You receive the full process graph for context, the evidence gathered from contributor interviews, and a list of node IDs to describe.
 
 Describe ONLY the nodes you are asked about. The graph is already settled — do not propose new steps, rename steps, or change connections.
 
@@ -255,7 +256,7 @@ For each requested node provide:
 - tools: systems, forms, or documents used at this step
 - estimatedDuration: if stated or inferable, otherwise omit
 - painPoints: specific frustrations — quote contributors where possible
-- automationPotential: "high" if repetitive/manual/rule-based, "medium" if partially automatable, "low" if it requires human judgment, "none" if already automated
+- automationPotential: "high" if repetitive/manual/rule-based, "medium" if partially automatable, "low" if it requires human judgement, "none" if already automated
 - confidence: "high" if described by 2+ contributors, "medium" if described clearly by 1, "low" if inferred
 - isBottleneck: true if contributors mention delays, rework, waiting, or frustration here
 - isTribalKnowledge: true if only one contributor described this step and it seems undocumented
@@ -268,7 +269,7 @@ Rules:
 - Return one entry per requested node ID, and no entries for any other node.
 - Never infer anyone's gender. In descriptions and risks, refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
 
-Use the provided tool to return the details.`;
+Use the provided tool to return the details.`);
 
 const NODE_DETAILS_RESPONSE_SCHEMA: AIJsonSchema = {
   type: "object",

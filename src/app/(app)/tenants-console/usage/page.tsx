@@ -1,0 +1,171 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../../../../convex/_generated/api";
+import { LoadingScreen } from "@/components/ui/loading-screen";
+import { PageTitle } from "@/components/ui/page-title";
+import { useLastLoaded } from "@/hooks/use-last-loaded";
+import { UsageBreakdownTable } from "@/features/tenants-console/usage-breakdown-table";
+import { UsageCostChart } from "@/features/tenants-console/usage-cost-chart";
+import {
+  resolveUsageRange,
+  utcRangeEndingToday,
+} from "@/features/tenants-console/usage-format";
+import {
+  UsageCaveats,
+  UsageFilters,
+  UsageLedgerNote,
+  UsageStatTiles,
+  rangePreset,
+  toBreakdownRow,
+  type DeploymentFilter,
+  type RangeKey,
+} from "@/features/tenants-console/usage-shared";
+import { McpUsageOverview } from "@/features/tenants-console/mcp-usage-section";
+
+export default function UsageOverviewPage() {
+  const [range, setRange] = useState<RangeKey>("30d");
+  const [custom, setCustom] = useState(() => utcRangeEndingToday(30));
+  // Prod by default — dev usage is real but should never quietly inflate the
+  // production picture.
+  const [deployment, setDeployment] = useState<DeploymentFilter>("prod");
+
+  const availability = useQuery(api.aiUsage.usageDataRange, {});
+
+  const { from, to } = useMemo(
+    () => resolveUsageRange(rangePreset(range), custom, availability ?? null),
+    [range, custom, availability],
+  );
+
+  const liveData = useQuery(api.aiUsage.usageOverview, {
+    from,
+    to,
+    ...(deployment === "all" ? {} : { deployment }),
+  });
+  // A filter change reloads the query. Keep the last figures on screen until
+  // it lands, so the filters (and a half-typed custom date) stay mounted.
+  const data = useLastLoaded(liveData, liveData === undefined);
+  const refreshing = liveData === undefined && data !== undefined;
+
+  // Both charts read the same day series — the cumulative one folds it itself —
+  // so it is shaped once, above the loading gate to keep the hook order stable.
+  const chartPoints = useMemo(
+    () =>
+      (data?.byDay ?? []).map((day) => ({
+        period: String(day.period),
+        costMicroUsd: day.costMicroUsd,
+        callCount: day.callCount,
+      })),
+    [data],
+  );
+
+  if (data === undefined || availability === undefined) {
+    return <LoadingScreen message="Loading usage…" />;
+  }
+
+  return (
+    <div className="space-y-6" aria-busy={refreshing}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <PageTitle>Usage</PageTitle>
+          <p className="text-sm text-muted-foreground">
+            AI and voice spend across every tenant, {from} to {to} (UTC).
+            {refreshing && " Updating…"}
+          </p>
+        </div>
+        <UsageFilters
+          range={range}
+          onRangeChange={setRange}
+          custom={custom}
+          onCustomChange={setCustom}
+          availability={availability}
+          deployment={deployment}
+          onDeploymentChange={setDeployment}
+        />
+      </div>
+
+      <UsageCaveats
+        partial={data.partial}
+        missingPeriods={data.missingPeriods}
+        unpricedCount={data.totals.unpricedCount}
+      />
+
+      <UsageStatTiles totals={data.totals} />
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">Daily cost</h2>
+            <p className="text-xs text-muted-foreground">
+              List-rate cost per UTC day. Today is folded live from the ledger;
+              earlier days come from rollups.
+            </p>
+          </div>
+          <div className="mt-auto">
+            <UsageCostChart points={chartPoints} />
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">Cumulative cost</h2>
+            <p className="text-xs text-muted-foreground">
+              Running total across the selected range. The last point equals the
+              range total above.
+            </p>
+          </div>
+          <div className="mt-auto">
+            <UsageCostChart points={chartPoints} mode="cumulative" />
+          </div>
+        </section>
+      </div>
+
+      <UsageBreakdownTable
+        title="By tenant"
+        description="Highest spend first. Select a tenant for its per-call log."
+        labelHeader="Tenant"
+        totalCostMicroUsd={data.totals.costMicroUsd}
+        rows={data.byTenant.map((row) => {
+          const clerkOrgId = row.clerkOrgId as string;
+          const name = row.tenantName as string | undefined;
+          return toBreakdownRow(row, name ?? clerkOrgId, {
+            // An unresolvable name is itself information: the tenant was
+            // deleted, or the row came from a deployment on a different Clerk
+            // instance. Say so instead of showing a bare id.
+            sublabel: name ? clerkOrgId : `${clerkOrgId} · not in tenant registry`,
+            href: `/usage/${clerkOrgId}`,
+          });
+        })}
+      />
+
+      <UsageBreakdownTable
+        title="By action"
+        description="Which pipeline stage the spend went to."
+        labelHeader="Operation"
+        totalCostMicroUsd={data.totals.costMicroUsd}
+        rows={data.byOperation.map((row) =>
+          // No deployment column here: an operation runs on both deployments by
+          // definition, so the column would read "prod dev" on every row.
+          toBreakdownRow({ ...row, deployments: undefined }, row.operation as string),
+        )}
+      />
+
+      <UsageBreakdownTable
+        title="By model"
+        description="Provider and model actually billed."
+        labelHeader="Model"
+        totalCostMicroUsd={data.totals.costMicroUsd}
+        rows={data.byModel.map((row) =>
+          toBreakdownRow({ ...row, deployments: undefined }, row.model as string, {
+            sublabel: row.provider as string,
+          }),
+        )}
+      />
+
+      <McpUsageOverview from={from} to={to} />
+
+      <UsageLedgerNote />
+    </div>
+  );
+}

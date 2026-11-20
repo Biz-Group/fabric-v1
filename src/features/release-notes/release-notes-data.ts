@@ -24,12 +24,12 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
     year: "2026",
     headline: "Ask about how you work, wherever you are",
     summary:
-      "AskFabric, in beta, answers questions about your organization with every claim linked to its source, and Claude or Microsoft Copilot can now answer from Fabric too.",
+      "AskFabric, in beta, answers questions about your organisation with every claim linked to its source, and Claude or Microsoft Copilot can now answer from Fabric too.",
     newFeatures: [
       {
         title: "AskFabric (beta)",
         description:
-          "Ask about how your organization works in plain words, from the AskFabric page in the sidebar. Answers say how much of the organization they cover.",
+          "Ask about how your organisation works in plain words, from the AskFabric page in the sidebar. Answers say how much of the organisation they cover.",
       },
       {
         title: "Sources you can check",
@@ -44,7 +44,7 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
       {
         title: "Fabric in Claude and Copilot",
         description:
-          "Ask Claude or Microsoft Copilot about how your organization works, using only what you can see in Fabric. Admins switch on this add-on under Admin, then MCP, with step-by-step setup and a 30-day usage view.",
+          "Ask Claude or Microsoft Copilot about how your organisation works, using only what you can see in Fabric. Admins switch on this add-on under Admin, then MCP, with step-by-step setup and a 30-day usage view.",
       },
       {
         title: "Cards, charts and flow steps in answers",
@@ -241,12 +241,12 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
       {
         title: "Automation build briefs",
         description:
-          "Review analyzed automation opportunities and copy an evidence-grounded brief into Microsoft Copilot Studio.",
+          "Review analysed automation opportunities and copy an evidence-grounded brief into Microsoft Copilot Studio.",
       },
       {
         title: "Light, dark, and system themes",
         description:
-          "Choose an appearance that stays with the device while keeping workspace colors legible.",
+          "Choose an appearance that stays with the device while keeping workspace colours legible.",
       },
       {
         title: "Workspace usage metering",
@@ -310,7 +310,7 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
     year: "2026",
     headline: "A stronger foundation for growth",
     summary:
-      "Workspace creation, joining, and administration became easier to manage as Fabric prepared for more organizations and contributors.",
+      "Workspace creation, joining, and administration became easier to manage as Fabric prepared for more organisations and contributors.",
     newFeatures: [
       {
         title: "Tenant management console",
@@ -399,9 +399,9 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
     ],
     enhancements: [
       {
-        title: "Consistent workspace colors",
+        title: "Consistent workspace colours",
         description:
-          "Organization colors now carry across navigation, controls, conversations, flows, and insights.",
+          "Organisation colours now carry across navigation, controls, conversations, flows, and insights.",
       },
       {
         title: "Predictable hierarchy navigation",
@@ -443,12 +443,12 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
       {
         title: "Workspace accent themes",
         description:
-          "Create a theme from the organization logo or choose and approve a color manually.",
+          "Create a theme from the organisation logo or choose and approve a colour manually.",
       },
       {
         title: "Speaker-label review",
         description:
-          "Identify speakers in voice recordings before their conversation is analyzed.",
+          "Identify speakers in voice recordings before their conversation is analysed.",
       },
       {
         title: "Audio file uploads",
@@ -502,7 +502,7 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
       {
         title: "Interactive process-flow maps",
         description:
-          "Visualize steps, decisions, handoffs, tools, and issues found in conversations.",
+          "Visualise steps, decisions, handoffs, tools, and issues found in conversations.",
       },
       {
         title: "Workspace roles",
@@ -510,9 +510,9 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
           "Viewer, contributor, and admin roles control who can view, capture, edit, and manage content.",
       },
       {
-        title: "Protected organization workspaces",
+        title: "Protected organisation workspaces",
         description:
-          "Each organization has its own subdomain with guided joining and workspace switching.",
+          "Each organisation has its own subdomain with guided joining and workspace switching.",
       },
       {
         title: "Conversation administration",
@@ -549,10 +549,10 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
       {
         title: "More resilient workspace access",
         description:
-          "Routing, sign-in, tenant isolation, audio access, and organization activation are steadier.",
+          "Routing, sign-in, tenant isolation, audio access, and organisation activation are steadier.",
       },
       {
-        title: "Consistent organization branding",
+        title: "Consistent organisation branding",
         description:
           "Logos or initials now appear across sign-in, headers, and the workspace shell.",
       },
@@ -566,12 +566,12 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
     year: "2026",
     headline: "Fabric takes shape",
     summary:
-      "The first release established a secure workspace for capturing how an organization really works through conversation.",
+      "The first release established a secure workspace for capturing how an organisation really works through conversation.",
     newFeatures: [
       {
         title: "A clear process hierarchy",
         description:
-          "Organize company knowledge into functions, departments, and processes.",
+          "Organise company knowledge into functions, departments, and processes.",
       },
       {
         title: "Secure account setup",

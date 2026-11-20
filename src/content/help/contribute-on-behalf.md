@@ -23,7 +23,7 @@ Sometimes the person who knows a process cannot sit at the keyboard, for example
    - **A team member**: select the person from the list of workspace members.
    - **Someone else**: type their full name. Use this for people who do not have a Fabric account.
 3. Read the recording notice. Because you are recording on their behalf, show or read it to the person before you start, or before uploading their audio.
-4. Tick the confirmation that the person was shown the notice and consented to being recorded, transcribed and analyzed. The confirmation is stored against your account. You cannot continue without it.
+4. Tick the confirmation that the person was shown the notice and consented to being recorded, transcribed and analysed. The confirmation is stored against your account. You cannot continue without it.
 5. Continue as usual: start the interview, start recording, or choose the file.
 
 Everything else works the same as a normal contribution, including naming speakers for voice notes and uploads.

@@ -1,13 +1,13 @@
 ---
 id: fabric-mcp
 title: Connect AI assistants to Fabric (MCP)
-summary: Ask Claude or Microsoft Copilot about your organization using what you can see in Fabric; how admins switch it on, how members connect, and what the assistant can read.
+summary: Ask Claude or Microsoft Copilot about your organisation using what you can see in Fabric; how admins switch it on, how members connect, and what the assistant can read.
 audience: [viewer, contributor, admin]
 tags: [mcp, claude, copilot, ai assistants, connector, add-on]
 related: [askfabric, roles-and-permissions, admin-members-and-workspace]
 verifiedAgainst:
-  - src/app/[org]/admin/mcp/page.tsx
-  - src/app/[org]/connect/page.tsx
+  - src/app/(app)/[org]/admin/mcp/page.tsx
+  - src/app/(app)/[org]/connect/page.tsx
   - src/features/mcp/connection-guide.tsx
   - src/features/mcp/setup-steps.tsx
   - src/features/shell/help-menu.tsx
@@ -20,7 +20,7 @@ verifiedAgainst:
   - src/features/mcp/copilot-studio-card.tsx
 ---
 
-Fabric can connect to AI assistants such as Claude through the Model Context Protocol (MCP). The assistant can then answer questions about how your organization works, with links back to the Fabric pages its answer comes from.
+Fabric can connect to AI assistants such as Claude through the Model Context Protocol (MCP). The assistant can then answer questions about how your organisation works, with links back to the Fabric pages its answer comes from.
 
 ## Before you start
 
@@ -30,7 +30,7 @@ MCP is an add-on to your Fabric plan. Once Fabric has added it, a workspace admi
 
 Open the **?** menu and choose **Connect AI assistants**. It walks you through each assistant step by step, with every value ready to copy. Each workspace has its own connection URL; if you belong to several, add one connector for each.
 
-In Claude, go to **Customize**, then **Connectors**, then **Add custom connector**. Name it Fabric, paste the URL, follow the prompts, and sign in with your Fabric account when asked. In a chat, select **+**, then **Connectors**, and switch Fabric on. On Claude Team and Enterprise, an owner may need to add the connector for the organization first.
+In Claude, go to **Customize**, then **Connectors**, then **Add custom connector**. Name it Fabric, paste the URL, follow the prompts, and sign in with your Fabric account when asked. In a chat, select **+**, then **Connectors**, and switch Fabric on. On Claude Team and Enterprise, an owner may need to add the connector for the organisation first.
 
 Microsoft Copilot Studio is set up once per agent, by an agent maker working with a Fabric admin. On the **MCP** page, the **Microsoft Copilot Studio** tab under **Connect an assistant** takes five steps: create credentials, add Fabric as a **Model Context Protocol** tool, choose **OAuth 2.0**, then **Manual**, and paste in the values shown, paste Copilot Studio's callback URL back into Fabric, then connect. Sign-in fails until the callback URL is added. Microsoft 365 Copilot in Teams and Office is coming later.
 

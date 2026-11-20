@@ -81,7 +81,7 @@ function formatRelativeTime(epochMs: number | null | undefined) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(epochMs).toLocaleDateString("en-US", {
+  return new Date(epochMs).toLocaleDateString("en-GB", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -90,7 +90,7 @@ function formatRelativeTime(epochMs: number | null | undefined) {
 
 function formatAbsoluteTime(epochMs: number | null | undefined) {
   if (!epochMs) return undefined;
-  return new Date(epochMs).toLocaleString("en-US", {
+  return new Date(epochMs).toLocaleString("en-GB", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -147,7 +147,7 @@ function ProcessStatusBadge({
         render={
           <button
             type="button"
-            aria-label={`${meta.label}, jump to labeling`}
+            aria-label={`${meta.label}, jump to labelling`}
           />
         }
         className="cursor-pointer hover:border-warning focus-ring pointer-coarse:h-8 pointer-coarse:px-3"

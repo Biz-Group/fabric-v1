@@ -377,7 +377,7 @@ export const invite = action({
         }
         return { outcome, email };
       }
-      console.error("Failed to create Clerk organization invitation", error);
+      console.error("Failed to create Clerk organisation invitation", error);
       await ctx.runMutation(internal.users.releaseMembershipIntentClaim, {
         intentId: claim.intentId,
       });
@@ -495,7 +495,7 @@ export const revoke = action({
     // Defense-in-depth: refuse to confirm success if Clerk somehow returned a
     // record for a different org.
     if (result.organization_id !== orgId) {
-      throw new Error("Revoke returned a record for a different organization");
+      throw new Error("Revoke returned a record for a different organisation");
     }
 
     await ctx.runMutation(internal.users.markInvitationRevoked, {

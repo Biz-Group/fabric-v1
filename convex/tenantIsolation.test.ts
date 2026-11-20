@@ -558,7 +558,7 @@ describe("cross-tenant isolation", () => {
 
     await expect(
       t.withIdentity(strangerIdentity).query(api.functions.list),
-    ).rejects.toThrow(/Not a member of this organization/);
+    ).rejects.toThrow(/Not a member of this organisation/);
   });
 
   test("setMembershipRole across orgs throws", async () => {
@@ -1854,7 +1854,7 @@ describe("invitations — admin gating and org scoping", () => {
       t
         .withIdentity(identityForOrgA())
         .action(api.invitations.revoke, { invitationId: "orginv_1" }),
-    ).rejects.toThrow(/different organization/);
+    ).rejects.toThrow(/different organisation/);
   });
 });
 

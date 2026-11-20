@@ -220,7 +220,7 @@ describe("the AskFabric tool loop", () => {
     expect(outcome.status).toBe("complete");
     expect(outcome.parts.map((p) => p.type)).toEqual(["reasoning", "reasoning", "tool", "text"]);
     expect(outcome.parts[1]).toMatchObject({ type: "reasoning", text: "I'll check coverage first." });
-    expect(outcome.parts[2]).toMatchObject({ type: "tool", name: "getCoverage", status: "done", resultCount: 1, label: "Checking coverage across the organization" });
+    expect(outcome.parts[2]).toMatchObject({ type: "tool", name: "getCoverage", status: "done", resultCount: 1, label: "Checking coverage across the organisation" });
     // Repeated sources reuse their chip number (FR-5.1).
     expect(outcome.parts[3]).toEqual({ type: "text", text: "Coverage is 64%[[cite:1]] and Finance waits on approvals.[[cite:1]]" });
     expect(outcome.citations).toHaveLength(1);
@@ -357,7 +357,7 @@ describe("the AskFabric tool loop", () => {
     test("ends the turn when the viewer loses access", async () => {
       const h = harness([{ content: [coverageCall()] }], {
         runTool: async () => {
-          throw authError("REMOVED", "Not a member of this organization");
+          throw authError("REMOVED", "Not a member of this organisation");
         },
       });
       expect(await h.run()).toMatchObject({ status: "error", errorReason: "accessLost" });

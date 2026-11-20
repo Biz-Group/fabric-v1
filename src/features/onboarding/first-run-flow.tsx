@@ -91,7 +91,7 @@ export function FirstRunFlow({
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   const tourWatched = onboarding.tour.watched || watchedNow;
-  const orgName = organization?.name ?? "your organization";
+  const orgName = organization?.name ?? "your organisation";
 
   // On success the onboarding query reports `welcomed` and the workspace
   // page takes over, so only a failure needs handling here.

@@ -47,7 +47,7 @@ export function threadTime(at: number, now: number): string {
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d`;
   const sameYear = new Date(at).getFullYear() === new Date(now).getFullYear();
-  return new Date(at).toLocaleDateString("en-US", {
+  return new Date(at).toLocaleDateString("en-GB", {
     month: "short",
     day: "numeric",
     ...(sameYear ? {} : { year: "numeric" }),

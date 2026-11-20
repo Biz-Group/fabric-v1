@@ -23,7 +23,7 @@ You need a working microphone and a browser that can record audio, such as a cur
 1. Open the process you want to talk about.
 2. In the process header, select **Start AI interview**. On a phone, tap the **+** button (Add a contribution) and choose it there.
 3. Review your name, which comes from your Fabric profile.
-4. Read the recording notice. It says the interview will be recorded, transcribed and stored to help document your organization's processes. The dialog also asks you to focus on the steps, tools and handoffs, and to avoid sensitive information such as salaries, personal situations or negative comments about individuals.
+4. Read the recording notice. It says the interview will be recorded, transcribed and stored to help document your organisation's processes. The dialog also asks you to focus on the steps, tools and handoffs, and to avoid sensitive information such as salaries, personal situations or negative comments about individuals.
 5. Select **Start interview** and allow microphone access when your browser asks.
 
 The interviewer uses the process details and what is already captured about it to shape its questions.

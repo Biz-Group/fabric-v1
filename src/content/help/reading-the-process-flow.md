@@ -41,7 +41,7 @@ A summary bar shows the number of steps, the estimated total duration when known
 
 ## Controls
 
-- **Zoom in** and **Zoom out**, **Fit entire process**, and **Center selected step**.
+- **Zoom in** and **Zoom out**, **Fit entire process**, and **Centre selected step**.
 - **Horizontal layout** or **Vertical layout**.
 - **Process view** or **Owner lanes**, which groups steps by who does them. Steps with several actors sit in a Shared lane.
 - **Show minimap** or **Hide minimap**.

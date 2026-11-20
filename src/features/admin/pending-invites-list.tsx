@@ -41,7 +41,7 @@ const COLUMN_CLASS = {
 };
 
 function formatDate(ts: number) {
-  return new Date(ts).toLocaleDateString("en-US", {
+  return new Date(ts).toLocaleDateString("en-GB", {
     month: "short",
     day: "numeric",
     year: "numeric",

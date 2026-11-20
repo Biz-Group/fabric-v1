@@ -139,7 +139,7 @@ const SORT_ORDER_ITEMS: Record<SortOrder, string> = {
 };
 
 function formatDateTime(epochMs: number) {
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat("en-GB", {
     month: "short",
     day: "numeric",
     hour: "numeric",

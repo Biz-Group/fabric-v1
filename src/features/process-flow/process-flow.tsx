@@ -958,7 +958,7 @@ function ProcessFlowInner({
         variant="plain"
         className="flex-1"
         title="Generating process flow…"
-        description="Analyzing contributions and mapping the process structure"
+        description="Analysing contributions and mapping the process structure"
       />
     );
   }
@@ -1629,7 +1629,7 @@ function ViewportToolbar({
           <Scan aria-hidden />
         </ToolbarButton>
         <ToolbarButton
-          label="Center selected step"
+          label="Centre selected step"
           disabled={!selectedNodeId}
           onClick={onCenterSelected}
         >

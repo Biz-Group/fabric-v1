@@ -1,7 +1,7 @@
 ---
 id: askfabric
 title: Ask questions with AskFabric
-summary: Ask about how your organization works in plain words and get answers built from your workspace's evidence, with every claim linked to its source.
+summary: Ask about how your organisation works in plain words and get answers built from your workspace's evidence, with every claim linked to its source.
 audience: [viewer, contributor, admin]
 tags: [askfabric, questions, sources, threads, beta]
 related: [reading-the-overview, reading-the-process-flow, insights-and-recommendations, roles-and-permissions]
@@ -14,12 +14,12 @@ verifiedAgainst:
   - src/features/ask/ask-thread-list.tsx
   - src/features/ask/ask-feedback.tsx
   - src/features/ask/ask-answer-actions.tsx
-  - src/app/[org]/admin/askfabric/page.tsx
+  - src/app/(app)/[org]/admin/askfabric/page.tsx
   - convex/lib/askLimits.ts
   - convex/askfabric/systemPrompt.ts
 ---
 
-AskFabric answers questions about how your organization works from the contributions, overviews and process flows you can see in Fabric, and links every claim to its evidence.
+AskFabric answers questions about how your organisation works from the contributions, overviews and process flows you can see in Fabric, and links every claim to its evidence.
 
 ## Asking a question
 
@@ -34,7 +34,7 @@ Each claim carries a numbered source. Hover over it, or tap it on a phone, to re
 ## What it will and won't do
 
 - It answers only from your workspace's evidence and Fabric's help, never from general knowledge.
-- It says how much of the organization its answer covers.
+- It says how much of the organisation its answer covers.
 - Fabric holds no financial data, so "impact" is judged from the evidence: how many processes and people a problem affects.
 - It doesn't profile, rank or judge individual people, or recommend products or vendors.
 - It sees only what you can see.

@@ -68,7 +68,7 @@ export const askFabricContent: FeaturePageContent = {
   badge: "Beta",
   title: (
     <>
-      Ask how your organization <em>really works.</em>
+      Ask how your organisation <em>really works.</em>
     </>
   ),
   lede: "AskFabric answers questions in plain language from what your people have told Fabric, and links every claim to the evidence behind it.",
@@ -85,7 +85,7 @@ export const askFabricContent: FeaturePageContent = {
       icon: FileSearch,
       title: "Only your evidence",
       description:
-        "Answers come from your workspace’s contributions, overviews and process flows, never from general knowledge, and say how much of the organization they cover.",
+        "Answers come from your workspace’s contributions, overviews and process flows, never from general knowledge, and say how much of the organisation they cover.",
     },
     {
       icon: LockKeyhole,
@@ -127,7 +127,7 @@ export const askFabricContent: FeaturePageContent = {
           label: "It will",
           items: [
             "Answer from your workspace’s evidence and Fabric’s help",
-            "Say how much of the organization an answer covers",
+            "Say how much of the organisation an answer covers",
             "Judge impact by how many processes and people a problem affects",
             "Ask which one you meant when a name matches several",
           ],
@@ -145,7 +145,7 @@ export const askFabricContent: FeaturePageContent = {
     />
   ),
   closing: {
-    heading: "Ask your own organization a question.",
+    heading: "Ask your own organisation a question.",
     line: "See AskFabric answer from real evidence in a demo.",
   },
 };
@@ -275,7 +275,7 @@ export const assistantsContent: FeaturePageContent = {
       Ask Fabric from the assistant <em>you already use.</em>
     </>
   ),
-  lede: "Connect Claude or Microsoft Copilot Studio to Fabric, and people can ask how the organization works without leaving the assistant, with links back to the Fabric pages each answer comes from.",
+  lede: "Connect Claude or Microsoft Copilot Studio to Fabric, and people can ask how the organisation works without leaving the assistant, with links back to the Fabric pages each answer comes from.",
   visual: <AssistantPreview />,
   pointsHeading: "Connected, on your terms.",
   points: [
@@ -319,13 +319,13 @@ export const assistantsContent: FeaturePageContent = {
     {
       title: "Sign in and ask",
       description:
-        "Sign in with your Fabric account when asked, then ask about how the organization works. Answers link back to the Fabric pages they draw on.",
+        "Sign in with your Fabric account when asked, then ask about how the organisation works. Answers link back to the Fabric pages they draw on.",
     },
   ],
   extra: (
     <ListBand
       heading="What an assistant can read."
-      intro="The same organized knowledge your team sees in Fabric, limited to what the person asking can see."
+      intro="The same organised knowledge your team sees in Fabric, limited to what the person asking can see."
       groups={[
         {
           label: "Always",

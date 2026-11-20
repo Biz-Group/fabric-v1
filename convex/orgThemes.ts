@@ -5,7 +5,7 @@ import { authErrorCode } from "./lib/authErrors";
 import { userError } from "./lib/userError";
 import { buildOrgThemeTokens, clampRgb } from "./themeColors";
 
-const MANUAL_OVERRIDE_REASON = "Manual accent color selected by admin.";
+const MANUAL_OVERRIDE_REASON = "Manual accent colour selected by admin.";
 
 const NO_PREVIOUS_THEME = {
   previousAccentRgb: undefined,
@@ -23,7 +23,7 @@ async function getExistingTheme(ctx: QueryCtx | MutationCtx, clerkOrgId: string)
 }
 
 function cleanReason(reason: string): string {
-  return reason.trim().slice(0, 240) || "Logo color extraction failed.";
+  return reason.trim().slice(0, 240) || "Logo colour extraction failed.";
 }
 
 function hasRuntimeTokens(theme: Awaited<ReturnType<typeof getExistingTheme>>) {

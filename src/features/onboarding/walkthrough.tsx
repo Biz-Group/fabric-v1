@@ -106,8 +106,8 @@ export function ExploreSheet({
   const cards = [
     {
       icon: Layers,
-      title: "How Fabric is organized",
-      body: "Your organization is laid out as functions, then the departments inside them, then the processes each team runs. Browse them from the Browse tab.",
+      title: "How Fabric is organised",
+      body: "Your organisation is laid out as functions, then the departments inside them, then the processes each team runs. Browse them from the Browse tab.",
     },
     {
       icon: House,

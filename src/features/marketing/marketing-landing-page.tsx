@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  ArrowUpRight,
   AudioLines,
   Lightbulb,
   LockKeyhole,
@@ -20,6 +21,13 @@ import {
   SiteFooter,
   SiteHeader,
 } from "@/features/marketing/site-chrome";
+import { BIZ_GROUP_URL } from "@/features/marketing/site-links";
+
+const makerFacts = [
+  "30+ years in the region",
+  "Hundreds of organisations",
+  "UAE and Saudi Arabia",
+] as const;
 
 const useCases = [
   {
@@ -41,14 +49,14 @@ const useCases = [
     title: "Leadership and business resilience",
     description:
       "Expose where critical knowledge lives with one person, where teams disagree, and where the business is carrying invisible operational risk.",
-    outcome: "From intuition to a clearer view of organizational risk.",
+    outcome: "From intuition to a clearer view of organisational risk.",
   },
   {
     number: "04",
     title: "People, learning, and enablement",
     description:
       "Preserve practical know-how, accelerate onboarding, and give new joiners more than a folder of documents that no longer match reality.",
-    outcome: "From knowledge transfer events to living organizational memory.",
+    outcome: "From knowledge transfer events to living organisational memory.",
   },
 ];
 
@@ -92,7 +100,7 @@ const organizationLayers = [
   { tier: "Function", name: "Finance", detail: "4 departments" },
   // The product's top level is the Process Tree of functions; there is no
   // separate company-wide map (the firm view was rolled back in October).
-  { tier: "Organization", name: "Process Tree", detail: "6 functions" },
+  { tier: "Organisation", name: "Process Tree", detail: "6 functions" },
 ];
 
 const faqs = [
@@ -109,7 +117,7 @@ const faqs = [
   {
     question: "Who contributes to Fabric?",
     answer:
-      "The people closest to the work. Contributors can speak with an AI interviewer, record a conversation directly, or upload existing audio so the organization can learn from their practical experience.",
+      "The people closest to the work. Contributors can speak with an AI interviewer, record a conversation directly, or upload existing audio so the organisation can learn from their practical experience.",
   },
   {
     question: "What do contributors need to do?",
@@ -134,7 +142,7 @@ const faqs = [
   {
     question: "Does Fabric work with Claude or Copilot?",
     answer:
-      "Yes, as an add-on. Fabric connects to Claude and Microsoft Copilot Studio through the Model Context Protocol (MCP), so people can ask how the organization works from inside those assistants. The connection is read-only, a workspace admin switches it on, and it shows each person only what they can already see in Fabric.",
+      "Yes, as an add-on. Fabric connects to Claude and Microsoft Copilot Studio through the Model Context Protocol (MCP), so people can ask how the organisation works from inside those assistants. The connection is read-only, a workspace admin switches it on, and it shows each person only what they can already see in Fabric.",
   },
   {
     question: "Who can see what?",
@@ -179,7 +187,7 @@ export function MarketingLandingPage() {
           <div className={styles.problemCopy}>
             <p>
               The real process is rarely the one in the document. It lives in
-              conversations, judgment calls, workarounds, and the quiet
+              conversations, judgement calls, workarounds, and the quiet
               handoffs that keep work moving.
             </p>
             <p>
@@ -202,7 +210,7 @@ export function MarketingLandingPage() {
           <h2>From a conversation to a clearer way forward.</h2>
           <p>
             Fabric follows the knowledge all the way through—from the person
-            doing the work to the insight that helps the organization improve
+            doing the work to the insight that helps the organisation improve
             it.
           </p>
         </div>
@@ -211,7 +219,7 @@ export function MarketingLandingPage() {
 
       <section id="platform" className={styles.organizationSection}>
         <div className={styles.organizationCopy}>
-          <h2>One conversation can clarify an entire organization.</h2>
+          <h2>One conversation can clarify an entire organisation.</h2>
           <p>
             Fabric gives every piece of knowledge a place. Individual voices
             become process understanding, and process understanding becomes a
@@ -226,7 +234,7 @@ export function MarketingLandingPage() {
         <div className={styles.organizationMap}>
           <ol
             className={styles.orgStack}
-            aria-label="How the scope of one conversation widens, from a single conversation up to the whole organization"
+            aria-label="How the scope of one conversation widens, from a single conversation up to the whole organisation"
           >
             {organizationLayers.map((layer, index) => (
               <li
@@ -253,7 +261,7 @@ export function MarketingLandingPage() {
           <h2>Built for everyone responsible for making the business better.</h2>
           <p>
             The same operational truth can answer different questions across
-            the organization—without every team starting discovery again.
+            the organisation—without every team starting discovery again.
           </p>
         </div>
 
@@ -271,7 +279,35 @@ export function MarketingLandingPage() {
         </div>
       </section>
 
-      {/* TODO(marketing-proof): Add only approved customer logos, metrics, or testimonials here. */}
+      {/* TODO(marketing-proof): Add only approved customer logos, metrics, or
+          testimonials here (M8). Until then, the Biz Group band stands in. */}
+      <section
+        className={styles.makerBand}
+        aria-labelledby="maker-band-heading"
+      >
+        <div className={styles.makerBandInner}>
+          <div className={styles.makerCopy}>
+            <h2 id="maker-band-heading">Built by Biz Group.</h2>
+            <p>
+              Fabric comes from Biz Group, which has helped organisations across
+              the UAE, Saudi Arabia and the wider Middle East learn and work
+              better since 1993.
+            </p>
+            <a href={BIZ_GROUP_URL} target="_blank" rel="noopener noreferrer">
+              learningwithbiz.com
+              <span className={styles.srOnly}> (opens in a new tab)</span>
+              <ArrowUpRight aria-hidden="true" />
+            </a>
+          </div>
+          {/* Facts as stated on learningwithbiz.com (approved 2026-11-20).
+              No client names: on this site they would read as Fabric's. */}
+          <ul className={styles.makerFacts}>
+            {makerFacts.map((fact) => (
+              <li key={fact}>{fact}</li>
+            ))}
+          </ul>
+        </div>
+      </section>
 
       <section className={styles.differenceSection}>
         <div className={styles.differenceIntro}>
@@ -292,7 +328,7 @@ export function MarketingLandingPage() {
         <p className={styles.differenceNote}>
           <strong>Add-on</strong>
           Use Fabric inside Claude and Microsoft Copilot Studio, so people can
-          ask how the organization works from the assistant they already use.
+          ask how the organisation works from the assistant they already use.
           <Link href="/features/claude-and-copilot">
             How it works <ArrowRight aria-hidden="true" />
           </Link>
@@ -319,7 +355,7 @@ export function MarketingLandingPage() {
 
       <FinalCta
         heading="The people doing the work already know how your business runs."
-        line="Fabric helps the organization learn from them."
+        line="Fabric helps the organisation learn from them."
       />
 
       <SiteFooter />

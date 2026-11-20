@@ -72,7 +72,7 @@ async function resolveScope(
 ): Promise<Scope | null> {
   const scope = await scopedProcesses(ctx, orgId, hierarchy, ref?.kind ?? null, ref?.id ?? null);
   if (!scope) return null;
-  if (scope.kind === "org" || !scope.id) return { kind: "org", name: "the organization", processes: scope.processes, link: null };
+  if (scope.kind === "org" || !scope.id) return { kind: "org", name: "the organisation", processes: scope.processes, link: null };
   const doc =
     scope.kind === "function"
       ? hierarchy.functionById.get(scope.id as Id<"functions">)

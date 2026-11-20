@@ -101,7 +101,7 @@ describe("utc helpers", () => {
 
   test("period labels render in UTC, not the viewer's zone", () => {
     // A local-time render would shift the label by a day for negative offsets.
-    expect(formatPeriod("2026-08-04")).toBe("Aug 4");
+    expect(formatPeriod("2026-08-04")).toBe("4 Aug");
   });
 
   test("passes through an unparseable period rather than showing NaN", () => {

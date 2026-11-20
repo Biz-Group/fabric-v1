@@ -204,7 +204,7 @@ export function AskComposer({
           autoFocus={autoFocus}
           rows={1}
           maxLength={MAX_QUESTION_CHARS}
-          placeholder="Ask about how your organization works…"
+          placeholder="Ask about how your organisation works…"
           aria-label="Ask AskFabric"
           className={cn(
             FIELD,

@@ -36,7 +36,7 @@ export const OVERVIEW_STATE_META: Record<
   },
   refreshing: {
     label: "Refreshing",
-    description: "New evidence is being synthesized in the background.",
+    description: "New evidence is being synthesised in the background.",
   },
   partial: {
     label: "Partial coverage",

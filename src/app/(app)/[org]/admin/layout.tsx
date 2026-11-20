@@ -1,0 +1,119 @@
+"use client";
+
+import { useQuery } from "convex/react";
+import Link from "next/link";
+import { Bot, Home, MessageSquare, Palette, Sparkles, Users } from "lucide-react";
+import { api } from "../../../../../convex/_generated/api";
+import { buttonVariants } from "@/components/ui/button";
+import { PageTitle } from "@/components/ui/page-title";
+import { LoadingScreen } from "@/components/ui/loading-screen";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import {
+  WorkspaceAppShell,
+  type WorkspaceNavSection,
+} from "@/features/shell/process-app-shell";
+import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
+
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  // The workspace layout provisions the membership before mounting this, so
+  // null here means access was lost mid-visit; that layout takes over then.
+  const membership = useQuery(api.users.getMyMembership);
+  // Admin → AskFabric only where the feature is switched on, or switched on
+  // but misconfigured (so the page can say why). Never for a switched-off org.
+  const askFabric = useQuery(api.ask.getAvailability);
+  const showAskFabric = askFabric?.available === true || (askFabric?.reason != null && askFabric.reason !== "switchOff");
+  // Admin → MCP only where Fabric staff granted the MCP add-on (M6).
+  // Skipped for non-admins, whose call would be refused.
+  const mcp = useQuery(api.mcpSettings.adminSettings, membership?.role === "admin" ? {} : "skip");
+  const routes = useWorkspaceRoutes();
+
+  if (membership === undefined) {
+    return <LoadingScreen message="Loading admin…" />;
+  }
+
+  if (membership?.role !== "admin") {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 p-6 text-center">
+        <div>
+          <PageTitle>Admin access required</PageTitle>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            {membership
+              ? `Your current workspace role is ${membership.role}. `
+              : ""}
+            Ask a workspace admin to grant admin access.
+          </p>
+        </div>
+        <Link
+          href={routes.appHref}
+          className={buttonVariants({ variant: "outline" })}
+        >
+          Back to processes
+        </Link>
+      </div>
+    );
+  }
+
+  const adminNavSections: WorkspaceNavSection[] = [
+    {
+      label: "Manage",
+      items: [
+        {
+          href: routes.adminHref,
+          icon: Home,
+          label: "Overview",
+          active: routes.isActivePath("/admin", { exact: true }),
+        },
+        {
+          href: routes.adminUsersHref,
+          icon: Users,
+          label: "Members",
+          active: routes.isActivePath("/admin/users", { exact: true }),
+        },
+        {
+          href: routes.adminConversationsHref,
+          icon: MessageSquare,
+          label: "Contributions",
+          active: routes.isActivePath("/admin/conversations", { exact: true }),
+        },
+        {
+          href: routes.adminAskFabricHref,
+          icon: Sparkles,
+          label: "AskFabric",
+          active: routes.isActivePath("/admin/askfabric", { exact: true }),
+          visible: showAskFabric,
+        },
+        {
+          href: routes.adminMcpHref,
+          icon: Bot,
+          label: "MCP",
+          active: routes.isActivePath("/admin/mcp", { exact: true }),
+          visible: mcp?.granted === true,
+        },
+        {
+          href: routes.adminAppearanceHref,
+          icon: Palette,
+          label: "Branding",
+          active: routes.isActivePath("/admin/appearance", { exact: true }),
+        },
+      ],
+    },
+  ];
+
+  return (
+    <TooltipProvider>
+      <div className="h-dvh">
+        <WorkspaceAppShell
+          title="Admin"
+          navSections={adminNavSections}
+          mainClassName="overflow-auto"
+        >
+          <div className="min-w-0 flex-1 p-4 sm:p-6">{children}</div>
+        </WorkspaceAppShell>
+      </div>
+    </TooltipProvider>
+  );
+}

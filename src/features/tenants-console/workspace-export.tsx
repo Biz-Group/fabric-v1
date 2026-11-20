@@ -31,7 +31,7 @@ function formatBytes(bytes: number) {
 }
 
 function formatDateTime(ts: number) {
-  return new Date(ts).toLocaleString("en-US", {
+  return new Date(ts).toLocaleString("en-GB", {
     month: "short",
     day: "numeric",
     year: "numeric",

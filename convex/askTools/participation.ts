@@ -91,7 +91,7 @@ export const getParticipation = askToolQuery({
     const capped = scanned.length === MAX_PARTICIPATION_CONVERSATIONS || memberships.length === MAX_PARTICIPATION_MEMBERS;
     const placement =
       scope.kind === "org"
-        ? "all active members of the organization"
+        ? "all active members of the organisation"
         : "members placed in a department in scope (unplaced members are not counted)";
     const builder = new ResultBuilder(DEFAULT_BUDGET_TOKENS, 400);
     for (const process of scope.processes) {

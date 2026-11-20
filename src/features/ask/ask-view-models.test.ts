@@ -117,10 +117,10 @@ describe("thought trace (FR-2.15)", () => {
     expect(statusLine([reasoning("I'll read the overviews first. Then rank.", 0)], "streaming")).toBe(
       "I'll read the overviews first.",
     );
-    expect(statusLine([tool("Checking coverage across the organization", "running", 0)], "streaming")).toBe(
-      "Checking coverage across the organization…",
+    expect(statusLine([tool("Checking coverage across the organisation", "running", 0)], "streaming")).toBe(
+      "Checking coverage across the organisation…",
     );
-    expect(statusLine([tool("Checking coverage across the organization", "done", 0, 1)], "streaming")).toBe(
+    expect(statusLine([tool("Checking coverage across the organisation", "done", 0, 1)], "streaming")).toBe(
       "Reading what it found…",
     );
   });
@@ -257,7 +257,7 @@ describe("thread sections", () => {
     expect(threadTime(now - 17 * 60_000, now)).toBe("17m");
     expect(threadTime(now - 18 * 3_600_000, now)).toBe("18h");
     expect(threadTime(now - 3 * 86_400_000, now)).toBe("3d");
-    expect(threadTime(new Date(2026, 9, 12).getTime(), now)).toBe("Oct 12");
-    expect(threadTime(new Date(2025, 9, 12).getTime(), now)).toBe("Oct 12, 2025");
+    expect(threadTime(new Date(2026, 9, 12).getTime(), now)).toBe("12 Oct");
+    expect(threadTime(new Date(2025, 9, 12).getTime(), now)).toBe("12 Oct 2025");
   });
 });

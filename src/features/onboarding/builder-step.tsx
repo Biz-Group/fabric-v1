@@ -43,7 +43,7 @@ const COPY: Record<
 > = {
   function: {
     explainer:
-      "Functions are the top level of your organization, like Finance or Operations.",
+      "Functions are the top level of your organisation, like Finance or Operations.",
     label: "Function name",
     example: "e.g. Finance",
     button: "Add function",

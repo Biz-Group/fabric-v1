@@ -1,18 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import Script from "next/script";
-import { ClerkProvider } from "@clerk/nextjs";
-import { ui } from "@clerk/ui";
-import { ConvexClientProvider } from "@/components/providers/convex-client-provider";
 import { SITE_URL } from "@/lib/site-url";
 import { ServiceWorkerRegistration } from "@/components/providers/service-worker-registration";
 import { THEME_INITIALIZATION_SCRIPT } from "@/features/theming/theme-config";
-import { ThemeProvider } from "@/features/theming/theme-provider";
 import "./globals.css";
-
-const clerkTaskUrls = {
-  "choose-organization": "/join-organization",
-};
 
 const inter = Inter({
   variable: "--font-inter",
@@ -66,7 +58,7 @@ export const metadata: Metadata = {
   applicationName: "Fabric",
   // Pages set `title` to their own name; the template adds the product.
   title: { default: "Fabric", template: "%s | Fabric" },
-  description: "Capture how your organization works through conversations",
+  description: "Capture how your organisation works through conversations",
   appleWebApp: {
     capable: true,
     title: "Fabric",
@@ -109,7 +101,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="en-GB"
       data-theme="light"
       data-theme-preference="system"
       suppressHydrationWarning
@@ -129,11 +121,9 @@ export default function RootLayout({
             {developmentServiceWorkerCleanup}
           </Script>
         ) : null}
-        <ClerkProvider taskUrls={clerkTaskUrls} ui={ui}>
-          <ConvexClientProvider>
-            <ThemeProvider>{children}</ThemeProvider>
-          </ConvexClientProvider>
-        </ClerkProvider>
+        {/* Clerk, Convex and the app theme live in `(app)/layout.tsx`, so
+            the public site doesn't load them (marketing plan 4.5). */}
+        {children}
         <ServiceWorkerRegistration />
       </body>
     </html>

@@ -37,7 +37,7 @@ export function ContactPage() {
           <CalendarDays aria-hidden="true" />
           <h2>Book a demo</h2>
           <p>
-            Tell us about your organization and the work you want to
+            Tell us about your organisation and the work you want to
             understand, and we’ll arrange a time to show you Fabric.
           </p>
           <BookDemoButton />

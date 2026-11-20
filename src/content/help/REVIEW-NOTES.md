@@ -6,7 +6,7 @@ Add a `## <id>` section when an article needs re-checking, for example after a f
 
 ## General
 
-- Spelling: UI copy is predominantly US English ("organization", "analyze"). A few strings use British forms ("analysed" in the consent checkbox and the Insights/Automations notices). Articles use US spelling, except where quoting a UI label verbatim ("Automations were not analysed for this run").
+- Spelling: British English everywhere (organisation, analyse, colour, centre), UI copy and articles alike (2026-11-20). Labels quoted from other products keep their own spelling, for example Claude's **Customize** and Copilot Studio's "Authorization URL".
 - The PRD calls the second process tab "Conversations". The UI tab is **Contributions** (the admin page is also "Contributions"). Articles follow the UI.
 - The PRD says capture entry points are "AI Interview, Voice Record, Audio Upload". The UI labels are **Start AI interview**, **Record a voice note**, **Upload files**. Articles follow the UI.
 

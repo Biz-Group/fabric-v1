@@ -44,7 +44,7 @@ Each is one kind of change:
 Fabric prefers the lighter change when two would work equally well. The list is ranked by **Value**, then **Effort**, both worked out from the flow:
 
 - **Value** weighs how often the work happens, the problems and bottlenecks reported on those steps, and the roles involved. It shows **Unknown** when neither frequency nor problems were described.
-- **Effort** weighs the kind of change and, for technical changes, the systems involved and the steps that need human judgment.
+- **Effort** weighs the kind of change and, for technical changes, the systems involved and the steps that need human judgement.
 - **Evidence** shows how many interviews it rests on. One interview is one person's account; confirm it.
 
 Open one to see the problem and its steps, its cause, what to change, a small pilot and its measure, the people affected, and what isn't known.

@@ -122,7 +122,7 @@ async function lookupOrgViewer(
     return {
       ok: false,
       code: membership ? "REMOVED" : "NOT_MEMBER",
-      message: "Not a member of this organization",
+      message: "Not a member of this organisation",
     };
   }
 
@@ -182,7 +182,7 @@ export async function requireOrgMember(
   if (!identity) throw authError("NOT_AUTHENTICATED", "Not authenticated");
 
   const { orgId, orgSlug } = getActiveOrgClaims(identity);
-  if (!orgId) throw authError("NO_ACTIVE_ORG", "No active organization");
+  if (!orgId) throw authError("NO_ACTIVE_ORG", "No active organisation");
 
   const { user, membership } = await requireOrgViewer(ctx, {
     tokenIdentifier: identity.tokenIdentifier,
@@ -240,7 +240,7 @@ export async function resolveOrgForAction(
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw authError("NOT_AUTHENTICATED", "Not authenticated");
   const { orgId, orgSlug } = getActiveOrgClaims(identity);
-  if (!orgId) throw authError("NO_ACTIVE_ORG", "No active organization");
+  if (!orgId) throw authError("NO_ACTIVE_ORG", "No active organisation");
   // Internals called from actions check membership with their own lookups,
   // so the closed-workspace gate is applied once here for all of them.
   const closed: boolean = await ctx.runQuery(

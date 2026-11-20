@@ -66,7 +66,7 @@ export function WorkspaceStatusBadge({ status }: { status: TenantStatus }) {
 }
 
 function formatDateTime(ts: number) {
-  return new Date(ts).toLocaleString("en-US", {
+  return new Date(ts).toLocaleString("en-GB", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -276,11 +276,11 @@ export function ClosedWorkspaceCard({ tenant }: { tenant: TenantSummary }) {
         <CardTitle className="text-destructive">{title}</CardTitle>
         <CardDescription>
           {tenant.status === "suspended" && offboarding?.origin === "clerkDeleted"
-            ? "Its organization was deleted in the Clerk dashboard, so nobody can open it and it can't be reopened. Export the data if it's needed; it's deleted for good on the date below."
+            ? "Its organisation was deleted in the Clerk dashboard, so nobody can open it and it can't be reopened. Export the data if it's needed; it's deleted for good on the date below."
             : tenant.status === "suspended"
             ? "Nobody can open it, Biz Group staff included. Reopening restores access as it was, except for revoked invitations."
             : tenant.status === "deleted"
-              ? "The organization no longer exists in Clerk, so nobody can open it. Its data in Fabric is still here."
+              ? "The organisation no longer exists in Clerk, so nobody can open it. Its data in Fabric is still here."
               : "It can't be reopened."}
         </CardDescription>
       </CardHeader>
@@ -401,7 +401,7 @@ function PurgeNowDialog({
             For when the client has asked for deletion before the 30 days are
             up. Every interview, recording, process map, summary and member
             record is deleted, along with the copies at ElevenLabs and the
-            Clerk organization. This can&apos;t be undone, so export first if
+            Clerk organisation. This can&apos;t be undone, so export first if
             anyone needs the data.
           </DialogDescription>
         </DialogHeader>
@@ -506,7 +506,7 @@ function PurgeStatus({ tenantId }: { tenantId: Id<"tenants"> }) {
           {purge.elevenlabs.skipped > 0 && `, ${purge.elevenlabs.skipped} skipped (not production)`}
           {purge.elevenlabs.failed > 0 && `, ${purge.elevenlabs.failed} failed`}
         </dd>
-        <dt className="text-muted-foreground">Clerk organization</dt>
+        <dt className="text-muted-foreground">Clerk organisation</dt>
         <dd>{CLERK_ORG_LABEL[purge.clerkOrg]}</dd>
         <dt className="text-muted-foreground">People</dt>
         <dd>

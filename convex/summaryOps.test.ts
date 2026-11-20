@@ -380,7 +380,7 @@ describe("summary ops reporting", () => {
       });
       await ctx.db.insert("processes", {
         departmentId: seeded.departmentId,
-        name: "Never summarized",
+        name: "Never summarised",
         sortOrder: 3,
         clerkOrgId: ORG,
       });

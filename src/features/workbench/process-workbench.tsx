@@ -1348,7 +1348,7 @@ export function ProcessWorkbench() {
     if (!deepLinkToastDue) return;
     toast("New here?", {
       id: "show-me-around",
-      description: "Take a quick look at how this workspace is organized.",
+      description: "Take a quick look at how this workspace is organised.",
       duration: 15_000,
       action: { label: "Show me around", onClick: startTour },
     });
@@ -1525,7 +1525,7 @@ export function ProcessWorkbench() {
             titleAs="p"
             icon={Building2}
             title="No functions yet"
-            description="Organizational functions will appear here."
+            description="Organisational functions will appear here."
             action={
               canEdit ? (
                 <Button
@@ -2146,7 +2146,7 @@ export function ProcessWorkbench() {
       ? "An at-a-glance view of the departments and work in this function."
       : mobilePreview?.type === "department"
         ? "An at-a-glance view of the processes inside this department."
-        : "The current process overview, synthesized from its contributions.";
+        : "The current process overview, synthesised from its contributions.";
   const mobilePreviewNavigateLabel =
     mobilePreview?.type === "function"
       ? "View departments"

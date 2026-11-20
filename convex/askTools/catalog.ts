@@ -75,14 +75,14 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     telemetryName: "browseHierarchy",
     label: (input) =>
       input.kind === "root"
-        ? "Listing the organization's functions"
+        ? "Listing the organisation's functions"
         : input.kind === "function"
           ? "Listing the departments in a function"
           : "Listing the processes in a department",
   }),
   defineTool({
     name: "getOverview",
-    description: `Read the AI overviews of 1 to ${MAX_OVERVIEW_IDS} entities of one kind: headline, brief, freshness, coverage, pending contributions and findings with their evidence level. For organization-wide questions, read every function's overview in one call before ranking signals. With several ids, findings are shortened to title and evidence.`,
+    description: `Read the AI overviews of 1 to ${MAX_OVERVIEW_IDS} entities of one kind: headline, brief, freshness, coverage, pending contributions and findings with their evidence level. For organisation-wide questions, read every function's overview in one call before ranking signals. With several ids, findings are shortened to title and evidence.`,
     input: getOverviewInput,
     inputDescriptions: {
       kind: "The kind of every id.",
@@ -120,7 +120,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
   defineTool({
     name: "listConversations",
     description:
-      "List completed contributions (interviews, voice notes and uploaded files), newest first, in the whole organization or under one process, department or function. Shows title, contributor, type, recorded date and duration.",
+      "List completed contributions (interviews, voice notes and uploaded files), newest first, in the whole organisation or under one process, department or function. Shows title, contributor, type, recorded date and duration.",
     input: listConversationsInput,
     inputDescriptions: {
       processId: "Limit to this process, or \"\".",
@@ -182,11 +182,11 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
   defineTool({
     name: "getCoverage",
     description:
-      "How much of the organization (kind 'org') or of one entity has been interviewed: processes with and without completed contributions, unique contributors, pending contributions, and stale or missing overviews. Use it to state coverage on every organization-wide answer.",
+      "How much of the organisation (kind 'org') or of one entity has been interviewed: processes with and without completed contributions, unique contributors, pending contributions, and stale or missing overviews. Use it to state coverage on every organisation-wide answer.",
     input: getCoverageInput,
     inputDescriptions: {
-      kind: "The entity kind, or \"org\" for the whole organization.",
-      id: "The entity id, or \"\" for the whole organization.",
+      kind: "The entity kind, or \"org\" for the whole organisation.",
+      id: "The entity id, or \"\" for the whole organisation.",
     },
     access: "member",
     executor: getCoverage,
@@ -196,17 +196,17 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     budgetTokens: DEFAULT_BUDGET_TOKENS,
     telemetryName: "getCoverage",
     label: (input) =>
-      input.kind === "org" ? "Checking coverage across the organization" : `Checking coverage of a ${input.kind}`,
+      input.kind === "org" ? "Checking coverage across the organisation" : `Checking coverage of a ${input.kind}`,
   }),
   defineTool({
     name: "whatsNew",
     description:
-      "What changed since a date: contributions recorded since then, and overviews and process flows regenerated since then, newest first. For the whole organization (kind 'org') or one entity.",
+      "What changed since a date: contributions recorded since then, and overviews and process flows regenerated since then, newest first. For the whole organisation (kind 'org') or one entity.",
     input: whatsNewInput,
     inputDescriptions: {
       since: "The date to look from, YYYY-MM-DD.",
-      kind: "The entity kind, or \"org\" for the whole organization.",
-      id: "The entity id, or \"\" for the whole organization.",
+      kind: "The entity kind, or \"org\" for the whole organisation.",
+      id: "The entity id, or \"\" for the whole organisation.",
       cursor: cursorDescription,
     },
     access: "member",
@@ -275,7 +275,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
   defineTool({
     name: "searchFabricHelp",
     description:
-      "Search Fabric's product help: how to contribute, roles, reading overviews and flows, reports, admin tasks. Use it for any question about how Fabric works rather than about this organization's data.",
+      "Search Fabric's product help: how to contribute, roles, reading overviews and flows, reports, admin tasks. Use it for any question about how Fabric works rather than about this organisation's data.",
     input: searchFabricHelpInput,
     inputDescriptions: { query: "What the user wants to know how to do or understand." },
     access: "member",
@@ -289,12 +289,12 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
   }),
   defineTool({
     name: "rankSignals",
-    description: `Rank signals across every process in scope in one call, grouped by signal: ${SIGNALS.join(", ")}. Each item shows its score (3 × processes affected + 2 × distinct contributors + evidence weight) and where it occurs. manualRework is a keyword heuristic. "recommendation" lists Fabric's own recommendations from the Recommendations tab: non-technical changes (remove a step, simplify, standardise, role or policy, training) and technical ones (workflow, integration, AI assist, agent), with value, effort and decision status, ranked by Fabric (value, then lower effort) rather than by score; automationOpportunity covers only the technical ones. For one process's recommendations in full (cause, pilot, open questions, risks), pass only "recommendation" with that process. Present recommendations as Fabric's, with their status, and never add vendor or product suggestions of your own. For organization-wide questions, read the function overviews first.`,
+    description: `Rank signals across every process in scope in one call, grouped by signal: ${SIGNALS.join(", ")}. Each item shows its score (3 × processes affected + 2 × distinct contributors + evidence weight) and where it occurs. manualRework is a keyword heuristic. "recommendation" lists Fabric's own recommendations from the Recommendations tab: non-technical changes (remove a step, simplify, standardise, role or policy, training) and technical ones (workflow, integration, AI assist, agent), with value, effort and decision status, ranked by Fabric (value, then lower effort) rather than by score; automationOpportunity covers only the technical ones. For one process's recommendations in full (cause, pilot, open questions, risks), pass only "recommendation" with that process. Present recommendations as Fabric's, with their status, and never add vendor or product suggestions of your own. For organisation-wide questions, read the function overviews first.`,
     input: rankSignalsInput,
     inputDescriptions: {
       signals: "1 to 8 signals to rank.",
-      kind: "Limit to this entity kind, or \"org\" for the whole organization.",
-      id: "The entity id, or \"\" for the whole organization.",
+      kind: "Limit to this entity kind, or \"org\" for the whole organisation.",
+      id: "The entity id, or \"\" for the whole organisation.",
       limit: "Items per signal, at most 25; 0 for the default of 8.",
     },
     access: "member",
@@ -305,16 +305,16 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     budgetTokens: MAX_BUDGET_TOKENS,
     telemetryName: "rankSignals",
     label: (input) =>
-      `Ranking ${input.signals.join(", ")} across ${input.kind === "org" ? "the organization" : `a ${input.kind}`}`,
+      `Ranking ${input.signals.join(", ")} across ${input.kind === "org" ? "the organisation" : `a ${input.kind}`}`,
   }),
   defineTool({
     name: "listSystems",
     description:
-      "List the systems and tools mentioned across the organization or one entity, ranked by evidenced friction: the processes and steps using each, mentions, pain points, manual re-keying and automation potential. Report evidence only; never recommend vendors or products.",
+      "List the systems and tools mentioned across the organisation or one entity, ranked by evidenced friction: the processes and steps using each, mentions, pain points, manual re-keying and automation potential. Report evidence only; never recommend vendors or products.",
     input: scopeInput,
     inputDescriptions: {
-      kind: "Limit to this entity kind, or \"org\" for the whole organization.",
-      id: "The entity id, or \"\" for the whole organization.",
+      kind: "Limit to this entity kind, or \"org\" for the whole organisation.",
+      id: "The entity id, or \"\" for the whole organisation.",
     },
     access: "member",
     executor: listSystems,
@@ -324,7 +324,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     budgetTokens: MAX_BUDGET_TOKENS,
     telemetryName: "listSystems",
     label: (input) =>
-      `Listing the systems used across ${input.kind === "org" ? "the organization" : `a ${input.kind}`}`,
+      `Listing the systems used across ${input.kind === "org" ? "the organisation" : `a ${input.kind}`}`,
   }),
   defineTool({
     name: "findSimilarWork",
@@ -332,8 +332,8 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
       "Find possible duplication across processes: the same system on a similar step, the same handoff, or the same friction reported in several processes. Results are candidates to confirm, not conclusions; work described in different words is not detected.",
     input: scopeInput,
     inputDescriptions: {
-      kind: "Limit to this entity kind, or \"org\" for the whole organization.",
-      id: "The entity id, or \"\" for the whole organization.",
+      kind: "Limit to this entity kind, or \"org\" for the whole organisation.",
+      id: "The entity id, or \"\" for the whole organisation.",
     },
     access: "member",
     executor: findSimilarWork,
@@ -343,7 +343,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     budgetTokens: MAX_BUDGET_TOKENS,
     telemetryName: "findSimilarWork",
     label: (input) =>
-      `Looking for duplicated work across ${input.kind === "org" ? "the organization" : `a ${input.kind}`}`,
+      `Looking for duplicated work across ${input.kind === "org" ? "the organisation" : `a ${input.kind}`}`,
   }),
   defineTool({
     name: "getFlowNode",
@@ -369,8 +369,8 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
       "Admins only: who has contributed in a scope (names with contribution counts per process) and which members haven't, for planning interviews. Other roles get not found; use getCoverage for counts instead. A factual list, never a judgement of anyone.",
     input: getParticipationInput,
     inputDescriptions: {
-      kind: "Limit to this entity kind, or \"org\" for the whole organization.",
-      id: "The entity id, or \"\" for the whole organization.",
+      kind: "Limit to this entity kind, or \"org\" for the whole organisation.",
+      id: "The entity id, or \"\" for the whole organisation.",
     },
     access: "admin",
     executor: getParticipation,
@@ -380,7 +380,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
     budgetTokens: DEFAULT_BUDGET_TOKENS,
     telemetryName: "getParticipation",
     label: (input) =>
-      `Checking who has contributed across ${input.kind === "org" ? "the organization" : `a ${input.kind}`}`,
+      `Checking who has contributed across ${input.kind === "org" ? "the organisation" : `a ${input.kind}`}`,
   }),
   // The display tool (D56): appended, so the cached tool prefix only grows.
   defineTool({
@@ -391,7 +391,7 @@ export const ASK_TOOLS: readonly RegisteredAskTool[] = [
       `- "choices": when the name the user used matches several entities, 2 to ${MAX_CHOICES} of them as buttons, best match first. Write one short sentence asking which they mean, then call this, and don't answer yet: their choice comes back as their next message.`,
       '- "contribute": a card for adding a contribution to one process (Start AI interview, Record a voice note, Upload files), when your answer is about that process and its evidence is thin. Pass that one process in refs. It shows only to members who can contribute.',
       `- "flow": one step of a process flow with the steps directly before and after it, when your answer is about a specific step and what happens around it (its handoffs, what feeds it, where it leads). Pass the process in refs and the step's id, as getProcessFlow or getFlowNode gave it, in nodeId.`,
-      '- Charts, each counted live for one scope: pass one function, department or process id in refs, or none for the whole organization. Use one only when your answer compares the counts it shows, and still state and cite the counts in your text:',
+      '- Charts, each counted live for one scope: pass one function, department or process id in refs, or none for the whole organisation. Use one only when your answer compares the counts it shows, and still state and cite the counts in your text:',
       '  - "signalsByProcess": friction, bottleneck and handoff items per process, as rankSignals counts them, most first.',
       '  - "contributionsOverTime": completed contributions per week, by recorded date.',
       '  - "coverageByDepartment": processes with and without contributions, per department.',

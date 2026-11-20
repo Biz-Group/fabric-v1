@@ -499,7 +499,7 @@ export const finishVendors = internalMutation({
         status: "needsRetry",
         lastError:
           purge.clerkOrg === "failed"
-            ? (purge.lastError ?? "The Clerk organization could not be deleted.")
+            ? (purge.lastError ?? "The Clerk organisation could not be deleted.")
             : `Some deletions outside Fabric failed (${failed?.error ?? "see items"}).`,
         updatedAt: Date.now(),
       });
@@ -521,7 +521,7 @@ async function deleteClerkOrg(clerkOrgId: string): Promise<{ result: "deleted" |
     return { result: "deleted" };
   } catch (error) {
     if (error instanceof ClerkApiError && error.status === 404) return { result: "alreadyGone" };
-    return { result: "failed", error: `Clerk organization: ${message(error)}` };
+    return { result: "failed", error: `Clerk organisation: ${message(error)}` };
   }
 }
 

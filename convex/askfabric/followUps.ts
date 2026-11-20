@@ -1,3 +1,4 @@
+import { withBritishEnglish } from "../lib/aiLanguage";
 /**
  * Suggested follow-up questions under the latest answer. One short call after
  * the answer is stored, so it never slows the answer or touches its prompt.
@@ -13,9 +14,9 @@ const MAX_LENGTH = 120;
 const MIN_LENGTH = 8;
 
 export const FOLLOW_UP_SYSTEM_PROMPT =
-  "You suggest follow-up questions for AskFabric, which answers questions about how an organization works from " +
+  withBritishEnglish("You suggest follow-up questions for AskFabric, which answers questions about how an organisation works from " +
   "its interviews (called contributions), processes, process flows, departments and functions. " +
-  `Reply with exactly ${FOLLOW_UP_COUNT} questions, one per line, and nothing else.`;
+  `Reply with exactly ${FOLLOW_UP_COUNT} questions, one per line, and nothing else.`);
 
 export type FollowUpInput = {
   question: string;

@@ -12,6 +12,7 @@ import {
   isAIConfigured,
 } from "./lib/aiProvider";
 import { meteredCompletion } from "./lib/aiUsageMeter";
+import { withBritishEnglish } from "./lib/aiLanguage";
 
 // ---------------------------------------------------------------------------
 // Staleness propagation — internal mutations, always called from an org-scoped
@@ -173,7 +174,7 @@ export const getFunction = internalQuery({
 // of output, reached through the cascade rather than a direct request.
 const CASCADE_SUMMARY_MAX_TOKENS = 8192;
 
-const DEPARTMENT_SUMMARY_SYSTEM_PROMPT = `You are an analyst synthesizing process-level summaries for an organizational department into a structured brief. Your output must use the following markdown format exactly:
+const DEPARTMENT_SUMMARY_SYSTEM_PROMPT = withBritishEnglish(`You are an analyst synthesising process-level summaries for an organisational department into a structured brief. Your output must use the following markdown format exactly:
 
 ## Overview
 Executive summary of how this department operates (2-3 sentences).
@@ -195,7 +196,7 @@ Rules:
 - Write in clear, concise prose within each section.
 - If there is only one process, note that a fuller picture will emerge as more processes are documented.
 - Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
-- Output ONLY the markdown sections above, nothing else.`;
+- Output ONLY the markdown sections above, nothing else.`);
 
 export const generateDepartmentSummaryInternal = internalAction({
   args: {
@@ -270,7 +271,7 @@ export const generateDepartmentSummaryInternal = internalAction({
         console.error(error.message);
         return {
           summary: null,
-          message: "Too much content to summarize in one pass.",
+          message: "Too much content to summarise in one pass.",
         };
       }
       return { summary: null, message: "Failed to generate summary." };

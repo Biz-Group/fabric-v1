@@ -59,6 +59,7 @@ import {
   conversationFailureReasonValidator,
   failureReasonFrom,
 } from "./lib/conversationFailure";
+import { withBritishEnglish } from "./lib/aiLanguage";
 
 type TranscriptMessage = {
   role: string;
@@ -153,7 +154,7 @@ const speakerLabelValidator = v.object({
   userId: v.optional(v.id("users")),
 });
 
-const VOICE_RECORDING_ANALYSIS_PROMPT = withUntrustedEvidenceBoundary(`You are analyzing a diarized voice recording about one business process. The transcript messages include confirmed speaker names when available.
+const VOICE_RECORDING_ANALYSIS_PROMPT = withBritishEnglish(withUntrustedEvidenceBoundary(`You are analysing a diarised voice recording about one business process. The transcript messages include confirmed speaker names when available.
 
 Return ONLY a valid JSON object with this exact shape:
 {
@@ -183,7 +184,7 @@ Rules:
 - Preserve named speakers as actors when the transcript makes their role in the process clear.
 - process_steps, step_connections, and step_issues must be strings containing valid JSON arrays.
 - Use stable kebab-case ids for steps so downstream process-flow generation can merge them.
-- If the transcript is vague, keep fields sparse and mark booleans false where appropriate.`);
+- If the transcript is vague, keep fields sparse and mark booleans false where appropriate.`));
 
 function appendToken(current: string, token: string): string {
   if (!current) return token;
@@ -437,7 +438,7 @@ export function parseAnalysisResponse(
   const finishReason = result.finishReason;
   if (isTokenLimitFinishReason(finishReason)) {
     throw new Error(
-      `Voice recording analysis hit the AI response token limit (finish_reason: ${finishReason}). The recording may be too long to analyze in a single pass.`,
+      `Voice recording analysis hit the AI response token limit (finish_reason: ${finishReason}). The recording may be too long to analyse in a single pass.`,
     );
   }
 
@@ -945,7 +946,7 @@ export const processVoiceRecording = action({
     );
     if (!hasGrant) {
       throw audioUploadError(
-        "Audio upload authorization is invalid or expired.",
+        "Audio upload authorisation is invalid or expired.",
       );
     }
 
@@ -1032,7 +1033,7 @@ export const finishVoiceRecording = internalMutation({
   handler: async (ctx, args) => {
     const conv = await ctx.db.get(args.conversationId);
     if (!conv || conv.clerkOrgId !== args.clerkOrgId) {
-      throw new Error("Conversation not found in this organization");
+      throw new Error("Conversation not found in this organisation");
     }
     await ctx.db.patch(args.conversationId, {
       transcript: args.transcript,
@@ -1058,7 +1059,7 @@ export const markVoiceRecordingNeedsSpeakerLabels = internalMutation({
   handler: async (ctx, args) => {
     const conv = await ctx.db.get(args.conversationId);
     if (!conv || conv.clerkOrgId !== args.clerkOrgId) {
-      throw new Error("Conversation not found in this organization");
+      throw new Error("Conversation not found in this organisation");
     }
     await ctx.db.patch(args.conversationId, {
       transcript: args.transcript,
@@ -1129,7 +1130,7 @@ export const submitSpeakerLabels = mutation({
     }
     const convMode = conv.inputMode ?? "agent";
     if (convMode !== "voiceRecord" && convMode !== "audioUpload") {
-      throw new Error("Only voice recordings can be speaker-labeled");
+      throw new Error("Only voice recordings can be speaker-labelled");
     }
     if (conv.status !== "needs_speaker_labels") {
       throw new Error("This recording is not waiting for speaker labels");
@@ -1177,7 +1178,7 @@ export const submitSpeakerLabels = mutation({
             (m) => m.clerkOrgId === caller.orgId && isActiveMembership(m),
           )
         ) {
-          throw new Error("Selected member is not in this organization");
+          throw new Error("Selected member is not in this organisation");
         }
       }
       labelBySpeakerId.set(

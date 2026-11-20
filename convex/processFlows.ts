@@ -367,7 +367,7 @@ export const getFlowGenerationData = internalQuery({
   handler: async (ctx, args) => {
     const process = await ctx.db.get(args.processId);
     if (!process || process.clerkOrgId !== args.clerkOrgId) {
-      throw new Error("Process not found in this organization");
+      throw new Error("Process not found in this organisation");
     }
     const rollingSummary = process.rollingSummary ?? null;
     const summarySourceSnapshot = process.summaryV2
@@ -724,7 +724,7 @@ export const requestManualFlowGeneration = internalMutation({
     const caller = await requireOrgContributor(ctx);
     const process = await ctx.db.get(args.processId);
     if (!process || process.clerkOrgId !== caller.orgId) {
-      throw new Error("Process not found in this organization");
+      throw new Error("Process not found in this organisation");
     }
     const existing = await ctx.db
       .query("processFlows")
@@ -1193,7 +1193,7 @@ export const reapStuckFlowGenerations = internalMutation({
       // usable and the row lands on partial/failed instead of generating
       // forever.
       if (pending.length === 0 || attempts >= MAX_RESUME_ATTEMPTS) {
-        console.warn("Finalizing a flow stuck in the detail stage", {
+        console.warn("Finalising a flow stuck in the detail stage", {
           processId: flow.processId,
           resumeAttempts: attempts,
           pendingRemaining: pending.length,

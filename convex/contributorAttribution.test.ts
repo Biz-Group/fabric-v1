@@ -172,14 +172,14 @@ describe("resolveContributorAttribution", () => {
         subjectUserId: subjectId,
         consentAttested: true,
       }),
-    ).rejects.toThrow(/Only organization admins/);
+    ).rejects.toThrow(/Only organisation admins/);
 
     await expect(
       resolve(t, identity("carol", "Carol Contributor"), {
         contributorName: "Jane Doe",
         consentAttested: true,
       }),
-    ).rejects.toThrow(/Only organization admins/);
+    ).rejects.toThrow(/Only organisation admins/);
   });
 
   test("rejects an on-behalf submission with no consent attestation", async () => {
@@ -209,7 +209,7 @@ describe("resolveContributorAttribution", () => {
         subjectUserId: outsiderId,
         consentAttested: true,
       }),
-    ).rejects.toThrow(/not in this organization/);
+    ).rejects.toThrow(/not in this organisation/);
   });
 
   test("rejects a caller whose active org differs from the target org", async () => {
@@ -218,7 +218,7 @@ describe("resolveContributorAttribution", () => {
 
     await expect(
       resolve(t, identity("otherorg", "Olivia Outsider", ORG_B)),
-    ).rejects.toThrow(/Not a member of this organization|Organization mismatch/);
+    ).rejects.toThrow(/Not a member of this organisation|Organisation mismatch/);
   });
 
   test("rejects a name that sanitizes away to nothing", async () => {

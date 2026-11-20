@@ -200,7 +200,7 @@ export async function requestDepartmentSummaryV2ForOrg(
     if (!isSummaryV2EnabledForOrg(args.clerkOrgId)) throw new Error("SUMMARY_V2 is disabled");
     const department = await ctx.db.get(args.departmentId);
     if (!department || department.clerkOrgId !== args.clerkOrgId) {
-      throw new Error("Department not found in this organization");
+      throw new Error("Department not found in this organisation");
     }
     if (
       !args.forceRefresh &&
@@ -271,7 +271,7 @@ export async function requestFunctionSummaryV2ForOrg(
     if (!isSummaryV2EnabledForOrg(args.clerkOrgId)) throw new Error("SUMMARY_V2 is disabled");
     const fn = await ctx.db.get(args.functionId);
     if (!fn || fn.clerkOrgId !== args.clerkOrgId) {
-      throw new Error("Function not found in this organization");
+      throw new Error("Function not found in this organisation");
     }
     if (
       !args.forceRefresh &&

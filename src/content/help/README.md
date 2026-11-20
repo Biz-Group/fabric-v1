@@ -1,10 +1,10 @@
-# Fabric help center content
+# Fabric help centre content
 
 Each article is a Markdown file named `<id>.md` with YAML frontmatter. Cite an article as `fabric:help/<id>`. `REVIEW-NOTES.md` lists any article with open items; such articles are excluded from AskFabric until resolved.
 
 | id | Title | Audience | Summary |
 |---|---|---|---|
-| what-is-fabric | What Fabric does and how it is organized | viewer, contributor, admin | Fabric turns conversations about work into overviews, flows, insights and recommendations, organized as Function, Department and Process. |
+| what-is-fabric | What Fabric does and how it is organised | viewer, contributor, admin | Fabric turns conversations about work into overviews, flows, insights and recommendations, organised as Function, Department and Process. |
 | roles-and-permissions | Roles and permissions | viewer, contributor, admin | What viewers, contributors and admins can each see and do in a Fabric workspace. |
 | navigating-fabric | Finding your way around the workspace | viewer, contributor, admin | Sidebar, Process Tree, search with Ctrl+K or Cmd+K, process tabs and shareable links. |
 | contribute-ai-interview | Share what you know in an AI interview | contributor, admin | Start a spoken interview with the AI interviewer about a process, then end it and let Fabric process it. |
@@ -17,7 +17,7 @@ Each article is a Markdown file named `<id>.md` with YAML frontmatter. Cite an a
 | reading-the-process-flow | Reading the Process Flow | viewer, contributor, admin | Reading the diagram, opening step details, spotlights, map controls and keyboard use. |
 | insights-and-recommendations | Using Insights and Recommendations | viewer, contributor, admin | Find where a process needs attention, and decide what to change — technical or not — with a plan or brief to copy. |
 | pdf-report | Download a process report as a PDF | viewer, contributor, admin | Download a PDF with overview, flow steps and insights, or export a single contribution. |
-| admin-members-and-workspace | Admin: members, contributions and branding | admin | Invite members, manage roles, review and retry contributions, export CSV, and set the workspace accent color. |
+| admin-members-and-workspace | Admin: members, contributions and branding | admin | Invite members, manage roles, review and retry contributions, export CSV, and set the workspace accent colour. |
 | move-contribution | Move a contribution to another process | admin | Admins can move a finished contribution recorded under the wrong process to any other process in the workspace. |
-| askfabric | Ask questions with AskFabric | viewer, contributor, admin | Ask about how your organization works and get sourced answers; private threads, daily beta limits, rating and sharing, and the admin view. |
-| fabric-mcp | Connect AI assistants to Fabric (MCP) | viewer, contributor, admin | Ask Claude or Microsoft Copilot about your organization using what you can see in Fabric; admins switch it on, members connect with one URL per workspace. |
+| askfabric | Ask questions with AskFabric | viewer, contributor, admin | Ask about how your organisation works and get sourced answers; private threads, daily beta limits, rating and sharing, and the admin view. |
+| fabric-mcp | Connect AI assistants to Fabric (MCP) | viewer, contributor, admin | Ask Claude or Microsoft Copilot about your organisation using what you can see in Fabric; admins switch it on, members connect with one URL per workspace. |

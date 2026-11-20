@@ -54,7 +54,7 @@ const SIGNAL_TOPIC = {
 const FRICTION_PROMPT = "What's consistently slowing us down or creating friction across the business?";
 const MOVES_PROMPT = "What would be the three most impactful moves we could make, based on the evidence?";
 const SYSTEMS_PROMPT = "Which systems cause the most friction, and what would a replacement need to fix?";
-const COVERAGE_PROMPT = "How much of the organization has been interviewed so far, and where are the gaps?";
+const COVERAGE_PROMPT = "How much of the organisation has been interviewed so far, and where are the gaps?";
 
 /**
  * Help prompts for an org with no completed contributions yet, written so each
@@ -64,7 +64,7 @@ function helpPrompts(role: Role): Suggestion[] {
   const prompts =
     role === "viewer"
       ? [
-          "What does Fabric do, and how is it organized?",
+          "What does Fabric do, and how is it organised?",
           "What can I see and do as a viewer?",
           "How do I read a process flow?",
           "How do I find my way around the workspace?",

@@ -176,7 +176,7 @@ export function walkthroughSteps({
       id: "tree",
       anchor: "tree",
       title: "Your Process Tree",
-      body: "This is your organization's Process Tree: functions, then departments, then the processes inside them.",
+      body: "This is your organisation's Process Tree: functions, then departments, then the processes inside them.",
     },
   ];
 

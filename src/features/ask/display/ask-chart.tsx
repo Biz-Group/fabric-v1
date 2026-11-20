@@ -107,7 +107,8 @@ export function AskChart({ part, answeredAt }: { part: AskDisplayPart; answeredA
     const link = data.rows[index]?.link;
     return link ? chartLinkHref(link, appHref) : null;
   };
-  const scope = data.scopeName === "the organization" ? "Whole organization" : data.scopeName;
+  // Older Convex deployments still send the US spelling.
+  const scope = /^the organi[sz]ation$/.test(data.scopeName) ? "Whole organisation" : data.scopeName;
   return (
     <section aria-label={`Chart: ${data.title}, ${scope}`} className="rounded-lg border bg-background p-3">
       <div className="mb-2 flex items-start justify-between gap-2">

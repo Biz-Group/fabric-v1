@@ -114,7 +114,7 @@ export async function extractLogoAccentRgb(imageUrl: string): Promise<ExtractedR
   canvas.height = height;
 
   const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) throw new Error("Logo color extraction is unavailable.");
+  if (!context) throw new Error("Logo colour extraction is unavailable.");
 
   context.clearRect(0, 0, width, height);
   context.drawImage(image, 0, 0, width, height);

@@ -1482,7 +1482,7 @@ export function RecordingModal({
                     <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
                       Upload an existing recording, such as an interview,
                       a meeting or a voice memo: {AUDIO_UPLOAD_FORMATS_LABEL},
-                      up to 100 MB. We&apos;ll transcribe and analyze it the
+                      up to 100 MB. We&apos;ll transcribe and analyse it the
                       same way as a live recording.
                     </p>
                   </div>
@@ -1941,7 +1941,7 @@ export function RecordingModal({
                 <ShimmeringText
                   text={
                     isStoredAudio
-                      ? "Transcribing and analyzing…"
+                      ? "Transcribing and analysing…"
                       : "Processing your interview…"
                   }
                   className="text-sm text-muted-foreground"
@@ -1987,21 +1987,21 @@ export function RecordingModal({
               <DialogDescription>
                 {postCallResult?.status === "done"
                   ? mode === "audioUpload"
-                    ? "Your recording has been transcribed, analyzed, and added to this process's contributions."
+                    ? "Your recording has been transcribed, analysed, and added to this process's contributions."
                     : mode === "voiceRecord"
-                      ? "Your voice note has been transcribed, analyzed, and added to this process's contributions."
+                      ? "Your voice note has been transcribed, analysed, and added to this process's contributions."
                       : "Your interview has been saved and will appear in this process's contributions."
                   : postCallResult?.status === "timeout" ||
                       postCallResult?.status === "processing"
                     ? mode === "audioUpload"
-                      ? "The recording is being transcribed and analyzed. It will appear automatically once ready."
+                      ? "The recording is being transcribed and analysed. It will appear automatically once ready."
                       : mode === "voiceRecord"
-                        ? "The voice note is being transcribed and analyzed. It will appear automatically once ready."
+                        ? "The voice note is being transcribed and analysed. It will appear automatically once ready."
                         : "The interview is still being processed. It will appear automatically once ready."
                     : isFailedStoredAudio
                       ? canRetryProcessing
-                        ? "Your recording was saved, but we couldn't transcribe or analyze it. Retry now, or discard it."
-                        : "Your recording was saved, but we couldn't transcribe or analyze it. It stays in this process marked as failed, and an admin can retry it."
+                        ? "Your recording was saved, but we couldn't transcribe or analyse it. Retry now, or discard it."
+                        : "Your recording was saved, but we couldn't transcribe or analyse it. It stays in this process marked as failed, and an admin can retry it."
                       : "Something went wrong while processing the recording. Please try again."}
               </DialogDescription>
             </DialogHeader>

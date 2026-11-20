@@ -1,6 +1,7 @@
 import type { AIJsonSchema } from "./aiProvider";
 import { withUntrustedEvidenceBoundary } from "./aiPromptSafety";
 import type { FlowNodeCategory, FlowNodeDetail } from "./flowStages";
+import { withBritishEnglish } from "./aiLanguage";
 
 /**
  * Prompt, schema, input and normalizer for the recommendation stage.
@@ -135,7 +136,7 @@ export type GeneratedRecommendation = {
   buildsOnIndex?: number;
 };
 
-const V9_SYSTEM_PROMPT = withUntrustedEvidenceBoundary(`You are an operations improvement adviser reviewing a fully mapped business process. You receive every step with what employees said about it in interviews, how the steps connect, how often the process runs, and any recommendations already made for this process.
+const V9_SYSTEM_PROMPT = withBritishEnglish(withUntrustedEvidenceBoundary(`You are an operations improvement adviser reviewing a fully mapped business process. You receive every step with what employees said about it in interviews, how the steps connect, how often the process runs, and any recommendations already made for this process.
 
 Your job is to recommend the changes the process owner should consider. Diagnose before you prescribe: say what the problem is and why it happens, then choose the least complex change that would fix it.
 
@@ -187,9 +188,9 @@ Each step is marked as rule-based, partly rule-based, needing human judgement, o
 - Return between 0 and ${MAX_RECOMMENDATIONS} recommendations, most important first, none overlapping. If the evidence does not justify any change, return an empty list — that is a valid answer.
 - A recommendation listed under "Dismissed" was rejected by the organisation. Do not propose it again unless the evidence has clearly changed; if you do, give its id as previousRecommendationId.
 
-Think it through first. Then call the return_process_recommendations tool exactly once with your answer — never answer in text.`);
+Think it through first. Then call the return_process_recommendations tool exactly once with your answer — never answer in text.`));
 
-const V10_SYSTEM_PROMPT = withUntrustedEvidenceBoundary(`You are an operations improvement adviser reviewing a business process mapped from employee interviews. You receive every step with what contributors said about it, how the steps connect, how often the process runs, and any recommendations already made for this process. The map is only as complete as the interviews behind it: most steps are described by one contributor, and existing tools, controls and volumes are often missing. That is normal, not a reason to hold back: recommend what the evidence supports and put what would need confirming under openQuestions.
+const V10_SYSTEM_PROMPT = withBritishEnglish(withUntrustedEvidenceBoundary(`You are an operations improvement adviser reviewing a business process mapped from employee interviews. You receive every step with what contributors said about it, how the steps connect, how often the process runs, and any recommendations already made for this process. The map is only as complete as the interviews behind it: most steps are described by one contributor, and existing tools, controls and volumes are often missing. That is normal, not a reason to hold back: recommend what the evidence supports and put what would need confirming under openQuestions.
 
 Your job is to recommend the changes the process owner should consider. Diagnose before you prescribe: say what the problem is and why it happens. Then compare the changes that could fix it and choose the one that best removes the cause. Prefer the least burdensome option among those that would get a comparable result, counting the effort to set it up, the work it adds every day, and how reliably it holds. A change that leaves most of the problem in place is not simpler, only smaller.
 
@@ -247,7 +248,7 @@ Recommend changes where contributors described a problem, and where frequent wor
 - Return between 0 and ${MAX_RECOMMENDATIONS} recommendations, most important first. Return an empty list only when no contributor described a problem and no frequent work is done by hand — then it is a valid answer.
 - A recommendation listed under "Dismissed" was rejected by the organisation. Do not propose it again unless the evidence has clearly changed; if you do, give its id as previousRecommendationId.
 
-Think it through first. Then call the return_process_recommendations tool exactly once with your answer — never answer in text.`);
+Think it through first. Then call the return_process_recommendations tool exactly once with your answer — never answer in text.`));
 
 const SYSTEM_PROMPTS: Record<RecommendationPromptVariant, string> = {
   v9: V9_SYSTEM_PROMPT,

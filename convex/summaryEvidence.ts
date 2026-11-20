@@ -69,7 +69,7 @@ export const saveConversationSummaryEvidenceV2 = internalMutation({
   handler: async (ctx, args) => {
     const conversation = await ctx.db.get(args.conversationId);
     if (!conversation || conversation.clerkOrgId !== args.clerkOrgId) {
-      throw new Error("Conversation not found in this organization");
+      throw new Error("Conversation not found in this organisation");
     }
     if (
       conversation.status !== "done" ||
@@ -100,7 +100,7 @@ export const markConversationEvidenceFailureV2 = internalMutation({
   handler: async (ctx, args) => {
     const conversation = await ctx.db.get(args.conversationId);
     if (!conversation || conversation.clerkOrgId !== args.clerkOrgId) {
-      throw new Error("Conversation not found in this organization");
+      throw new Error("Conversation not found in this organisation");
     }
     if (
       conversation.status !== "done" ||
@@ -349,7 +349,7 @@ export async function requestProcessEvidenceRefreshForOrg(
 ) {
     const process = await ctx.db.get(args.processId);
     if (!process || process.clerkOrgId !== args.clerkOrgId) {
-      throw new Error("Process not found in this organization");
+      throw new Error("Process not found in this organisation");
     }
 
     const now = Date.now();

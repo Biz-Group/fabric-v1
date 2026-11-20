@@ -12,7 +12,7 @@ verifiedAgainst:
   - src/features/workbench/process-header.tsx
   - src/features/recording/recording-modal.tsx
   - src/features/conversations/conversation-log.tsx
-  - src/app/[org]/admin/layout.tsx
+  - src/app/(app)/[org]/admin/layout.tsx
   - convex/postCall.ts
   - convex/voiceRecordings.ts
   - convex/functions.ts
@@ -49,7 +49,7 @@ An admin can do everything a contributor can, plus:
 - Retry contributions that failed processing, delete contributions, and move finished contributions to another process.
 - Export contributions as a CSV file.
 - Record on behalf of someone else.
-- Approve the workspace's accent color.
+- Approve the workspace's accent colour.
 
 ## Good to know
 

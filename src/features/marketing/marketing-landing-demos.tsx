@@ -53,14 +53,14 @@ const stages = [
     title: "Capture",
     heading: "Start with a natural conversation.",
     description:
-      "People share the practical details, judgment calls, and exceptions that a blank document never asks for.",
+      "People share the practical details, judgement calls, and exceptions that a blank document never asks for.",
   },
   {
     id: "understand",
     title: "Understand",
     heading: "Turn many voices into shared knowledge.",
     description:
-      "Fabric organizes the evidence into a readable brief while keeping contributor context close at hand.",
+      "Fabric organises the evidence into a readable brief while keeping contributor context close at hand.",
   },
   {
     id: "map",
@@ -81,7 +81,7 @@ const stages = [
     title: "Ask",
     heading: "Ask how the work really runs.",
     description:
-      "AskFabric (beta) answers questions in plain language from your organization’s evidence and links every claim to its source.",
+      "AskFabric (beta) answers questions in plain language from your organisation’s evidence and links every claim to its source.",
   },
 ] as const;
 

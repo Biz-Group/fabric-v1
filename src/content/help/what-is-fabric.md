@@ -1,7 +1,7 @@
 ---
 id: what-is-fabric
-title: What Fabric does and how it is organized
-summary: Fabric turns conversations about everyday work into process overviews, flow diagrams, insights and automation briefs, organized as Function, Department and Process.
+title: What Fabric does and how it is organised
+summary: Fabric turns conversations about everyday work into process overviews, flow diagrams, insights and automation briefs, organised as Function, Department and Process.
 audience: [viewer, contributor, admin]
 tags: [overview, getting-started, hierarchy]
 related: [roles-and-permissions, navigating-fabric, contribute-ai-interview, reading-the-overview]
@@ -23,7 +23,7 @@ On any process, a contributor can share what they know in one of three ways:
 - Record a voice note in the browser.
 - Upload existing audio files, such as a meeting recording or voice memo.
 
-Fabric transcribes the audio, analyzes it, and keeps the result as a contribution on that process.
+Fabric transcribes the audio, analyses it, and keeps the result as a contribution on that process.
 
 ## What Fabric builds from it
 
@@ -39,7 +39,7 @@ Departments and functions get their own overviews that roll up the processes ben
 
 ## The Function, Department, Process hierarchy
 
-Your organization's work is arranged in three levels, shown in the Process Tree:
+Your organisation's work is arranged in three levels, shown in the Process Tree:
 
 - **Functions** are the broad areas of the business, such as Finance or Operations.
 - **Departments** are the teams inside a function.

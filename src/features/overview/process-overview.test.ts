@@ -330,7 +330,7 @@ describe("ProcessOverviewContent", () => {
 
     expect(html.match(/animate-spin/g)).toHaveLength(1);
     expect(html).toContain("3 of 4 complete");
-    expect(html).not.toContain("New evidence is being synthesized");
+    expect(html).not.toContain("New evidence is being synthesised");
     expect(html).not.toContain(">Refreshing</button>");
   });
 

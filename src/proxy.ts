@@ -66,7 +66,7 @@ export const clerkProxy = clerkMiddleware(
     // Platform tenant-management console (tenants.<root>) — Biz Group staff
     // only. Auth pages render directly; the org-join handoff is meaningless
     // here (there's no tenant org), so it bounces to `/`, and everything else
-    // is rewritten into the `src/app/tenants-console` tree behind auth.
+    // is rewritten into the `src/app/(app)/tenants-console` tree behind auth.
     // Authorization (super-admin) is enforced by the console layout + every
     // Convex function it calls; middleware only guarantees authentication.
     if (isTenantsConsoleHost(host, ROOT_DOMAIN)) {
@@ -126,7 +126,7 @@ export const clerkProxy = clerkMiddleware(
     }
 
     // Subdomain request → rewrite internally to /<subdomain>/<path> so the
-    // Next.js `src/app/[org]/...` tree resolves. Auth pages and the signup
+    // Next.js `src/app/(app)/[org]/...` tree resolves. Auth pages and the signup
     // org-join handoff are NOT rewritten — they live at top-level routes and
     // render directly on each subdomain.
     if (isAuthPath(req) || isJoinOrganizationPath(req)) return;

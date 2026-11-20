@@ -185,7 +185,7 @@ describe("org theme workflow", () => {
     expect(runtimeAfterApproval?.status).toBe("override");
     expect(approvedState?.activeSource).toBe("manual");
     expect(approvedState?.candidateSource).toBeUndefined();
-    expect(approvedState?.overrideReason).toBe("Manual accent color selected by admin.");
+    expect(approvedState?.overrideReason).toBe("Manual accent colour selected by admin.");
   });
 
   test("reset removes active and candidate runtime tokens", async () => {
@@ -271,7 +271,7 @@ describe("restoring the previous theme", () => {
     const swappedBack = await admin.query(api.orgThemes.getThemeAdminState);
     expect(swappedBack?.status).toBe("override");
     expect(swappedBack?.activeLightTokens).toEqual(magenta.lightTokens);
-    expect(swappedBack?.overrideReason).toBe("Manual accent color selected by admin.");
+    expect(swappedBack?.overrideReason).toBe("Manual accent colour selected by admin.");
     expect(swappedBack?.previousLightTokens).toEqual(blue.lightTokens);
   });
 

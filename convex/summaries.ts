@@ -43,6 +43,7 @@ import {
   requestFunctionSummaryV2ForOrg,
 } from "./hierarchySummaryV2";
 import { isUsableHierarchyChild } from "./lib/hierarchyOverviewV2";
+import { withBritishEnglish } from "./lib/aiLanguage";
 
 const SUMMARY_PIPELINE_STALE_MS = 10 * 60_000;
 
@@ -616,7 +617,7 @@ export const forceRefresh = mutation({
 // AITruncationError branches below.
 const ROLLUP_SUMMARY_MAX_TOKENS = 8192;
 
-const DEPARTMENT_SUMMARY_SYSTEM_PROMPT = `You are an analyst synthesizing process-level summaries for an organizational department into a structured brief. Your output must use the following markdown format exactly:
+const DEPARTMENT_SUMMARY_SYSTEM_PROMPT = withBritishEnglish(`You are an analyst synthesising process-level summaries for an organisational department into a structured brief. Your output must use the following markdown format exactly:
 
 ## Overview
 Executive summary of how this department operates (2-3 sentences).
@@ -638,21 +639,21 @@ Rules:
 - Write in clear, concise prose within each section.
 - If there is only one process, note that a fuller picture will emerge as more processes are documented.
 - Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
-- Output ONLY the markdown sections above, nothing else.`;
+- Output ONLY the markdown sections above, nothing else.`);
 
-const FUNCTION_SUMMARY_SYSTEM_PROMPT = `You are an analyst synthesizing department-level summaries for an organizational function into a structured brief. Your output must use the following markdown format exactly:
+const FUNCTION_SUMMARY_SYSTEM_PROMPT = withBritishEnglish(`You are an analyst synthesising department-level summaries for an organisational function into a structured brief. Your output must use the following markdown format exactly:
 
 ## Overview
 High-level summary of how this function operates as a whole (2-3 sentences).
 
 ## Cross-Department Patterns
-How departments relate — shared dependencies, organizational handoffs. Cite the source department using [Dept name] format — e.g., "Both [Payroll] and [Treasury] depend on the same HRIS data feed."
+How departments relate — shared dependencies, organisational handoffs. Cite the source department using [Dept name] format — e.g., "Both [Payroll] and [Treasury] depend on the same HRIS data feed."
 
 ## Strategic Themes
 Recurring patterns across departments — common tooling, shared constraints, workforce themes. Cite which departments share each theme.
 
 ## Tensions & Gaps
-Cross-departmental contradictions or organizational blind spots. Be specific about which departments are affected.
+Cross-departmental contradictions or organisational blind spots. Be specific about which departments are affected.
 
 ## Notable Details
 Department-specific findings worth escalating to the function level. Cite the source department.
@@ -662,7 +663,7 @@ Rules:
 - Write in clear, concise prose within each section.
 - If there is only one department, note that a fuller picture will emerge as more departments are documented.
 - Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
-- Output ONLY the markdown sections above, nothing else.`;
+- Output ONLY the markdown sections above, nothing else.`);
 
 // --- Summary Generation Actions ---
 
@@ -775,7 +776,7 @@ export const generateDepartmentSummary = action({
         return {
           summary: null,
           message:
-            "This department has too much content to summarize in one pass. Try again, or summarize fewer processes.",
+            "This department has too much content to summarise in one pass. Try again, or summarise fewer processes.",
         };
       }
       return {
@@ -939,7 +940,7 @@ export const generateFunctionSummary = action({
         return {
           summary: null,
           message:
-            "This function has too much content to summarize in one pass. Try again, or summarize fewer departments.",
+            "This function has too much content to summarise in one pass. Try again, or summarise fewer departments.",
         };
       }
       return {

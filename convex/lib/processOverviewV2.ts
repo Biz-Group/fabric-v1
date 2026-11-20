@@ -7,6 +7,7 @@ import {
   type SummaryChunkOutputV2,
   type SummaryFinding,
 } from "../summaryV2";
+import { withBritishEnglish } from "./aiLanguage";
 
 export const PROCESS_OVERVIEW_V2_TOOL_NAME = "return_process_overview";
 export const PROCESS_OVERVIEW_V2_CHUNK_OPERATION =
@@ -84,7 +85,7 @@ export const PROCESS_OVERVIEW_V2_SCHEMA: AIJsonSchema = {
 
 // Exported so the Phase 10 measured-language gate can assert the instruction
 // is still present in the prompt that produces the artifacts it scores.
-export const PROCESS_OVERVIEW_SYSTEM_PROMPT = `You create an evidence-backed overview of a business process from employee interview evidence.
+export const PROCESS_OVERVIEW_SYSTEM_PROMPT = withBritishEnglish(`You create an evidence-backed overview of a business process from employee interview evidence.
 
 Content ownership:
 - Overview explains what the process covers, who runs it, and how much the accounts agree.
@@ -100,8 +101,8 @@ The scope section carries the orientation facts the flow graph cannot state at p
 
 Executive brief emphasis:
 - Write executiveBrief as prose, then mark its load-bearing facts with markdown bold: **like this**.
-- Emphasize what a reader must not miss: the systems or records the work runs on, the owning roles, the thresholds and rules that decide an outcome, and the tension the accounts disagree about.
-- Emphasize two to six spans of one to five words each. Never bold a whole sentence, a whole clause, or hedging language.
+- Emphasise what a reader must not miss: the systems or records the work runs on, the owning roles, the thresholds and rules that decide an outcome, and the tension the accounts disagree about.
+- Emphasise two to six spans of one to five words each. Never bold a whole sentence, a whole clause, or hedging language.
 - Bold belongs to executiveBrief only. Use no other markdown anywhere, and never bold inside headline, finding titles, or finding bodies.
 
 Evidence rules:
@@ -113,7 +114,7 @@ Evidence rules:
 - Never claim measured frequency, throughput, conformance, rework rate, or timing. This is reported interview knowledge, not event-log analysis.
 - Do not invent actors, tools, steps, dependencies, or certainty.
 - Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
-- Return only the required tool call.`;
+- Return only the required tool call.`);
 
 export type ProcessSourceInput = {
   key: string;

@@ -1,16 +1,16 @@
 ---
 id: admin-members-and-workspace
 title: Admin: members, contributions and branding
-summary: How workspace admins invite members, manage roles, review and retry contributions, export data, and set the workspace accent color.
+summary: How workspace admins invite members, manage roles, review and retry contributions, export data, and set the workspace accent colour.
 audience: [admin]
 tags: [admin, members, invitations, contributions, branding]
 related: [roles-and-permissions, after-you-contribute, contribute-on-behalf, navigating-fabric]
 verifiedAgainst:
-  - src/app/[org]/admin/layout.tsx
-  - src/app/[org]/admin/admin-overview-page.tsx
-  - src/app/[org]/admin/users/page.tsx
-  - src/app/[org]/admin/conversations/page.tsx
-  - src/app/[org]/admin/appearance/page.tsx
+  - src/app/(app)/[org]/admin/layout.tsx
+  - src/app/(app)/[org]/admin/admin-overview-page.tsx
+  - src/app/(app)/[org]/admin/users/page.tsx
+  - src/app/(app)/[org]/admin/conversations/page.tsx
+  - src/app/(app)/[org]/admin/appearance/page.tsx
   - src/features/admin/invite-member-dialog.tsx
   - src/features/admin/parse-invite-emails.ts
   - src/features/admin/pending-invites-list.tsx
@@ -47,12 +47,12 @@ From a row's menu you can **View transcript**, **Label speakers** (when it needs
 
 ## Branding
 
-Use Branding to give the workspace an accent color:
+Use Branding to give the workspace an accent colour:
 
-1. Select **Generate** to create a candidate from the workspace logo, or choose a color yourself and **Save candidate**.
+1. Select **Generate** to create a candidate from the workspace logo, or choose a colour yourself and **Save candidate**.
 2. Check the preview.
 3. Select **Approve** to apply it to the whole workspace, or **Reject**.
 
-**Reset neutral** removes the accent, and **Restore previous** brings back an earlier approved one. If there is no workspace logo, you can still choose a color manually.
+**Reset neutral** removes the accent, and **Restore previous** brings back an earlier approved one. If there is no workspace logo, you can still choose a colour manually.
 
 Each person also picks their own Light, Dark or System appearance with the theme button in the header. That choice is personal to their device.

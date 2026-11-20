@@ -18,7 +18,7 @@ A voice note records audio in your browser with no AI interviewer. Use it to des
 
 1. Open the process.
 2. In the process header, select **Record a voice note**. On a phone, tap the **+** button (Add a contribution) and choose it there.
-3. Check your name and read the recording notice, which says the recording will be transcribed and stored to help document your organization's processes.
+3. Check your name and read the recording notice, which says the recording will be transcribed and stored to help document your organisation's processes.
 4. Select **Start recording** and allow microphone access when your browser asks.
 5. Speak through the steps, tools, handoffs and exceptions. A timer shows how long you have been recording.
 6. Select **Stop recording**.
@@ -30,7 +30,7 @@ Your recording is not saved until you submit it. If you close the window while r
 
 After you submit, the audio uploads and a progress percentage shows. Keep the tab open until the upload finishes. Fabric then transcribes the recording and identifies the different speakers.
 
-Voice notes always go through a speaker step: you name each speaker before Fabric analyzes the content. See "Label speakers before analysis".
+Voice notes always go through a speaker step: you name each speaker before Fabric analyses the content. See "Label speakers before analysis".
 
 Once analysis finishes, the voice note appears on the Contributions tab and the dialog says "Voice note saved". Long recordings can take a few minutes, and you can close the window while Fabric works.
 

@@ -48,7 +48,7 @@ function formatDuration(seconds: number | null | undefined): string {
 }
 
 function formatDateTime(ts: number): string {
-  return new Date(ts).toLocaleString("en-US", {
+  return new Date(ts).toLocaleString("en-GB", {
     month: "short",
     day: "numeric",
     year: "numeric",

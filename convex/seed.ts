@@ -335,13 +335,13 @@ export const seed = internalMutation({
         {
           role: "user",
           content:
-            "That comes from the Employee Relations team. They update the log, but sometimes there's a lag of a few days. I've asked if we can get a real-time feed but it hasn't been prioritized yet.",
+            "That comes from the Employee Relations team. They update the log, but sometimes there's a lag of a few days. I've asked if we can get a real-time feed but it hasn't been prioritised yet.",
           time_in_call_secs: 95,
         },
         {
           role: "ai",
           content:
-            "Let me summarize what I've heard. You pull salary data from Workday on the 15th, validate it against compensation bands, flag outliers for the Payroll Manager, and then cross-reference terminations manually — which is a 2-3 hour rework each month because of lag in the HR termination log. Does that capture it?",
+            "Let me summarise what I've heard. You pull salary data from Workday on the 15th, validate it against compensation bands, flag outliers for the Payroll Manager, and then cross-reference terminations manually — which is a 2-3 hour rework each month because of lag in the HR termination log. Does that capture it?",
           time_in_call_secs: 115,
         },
         {
@@ -437,7 +437,7 @@ export const seed = internalMutation({
         {
           role: "ai",
           content:
-            "So to summarize: you take the approved payroll file, format it for HSBC BACS using a macro, verify banking details for new starters, coordinate with Treasury for funding confirmation, and then submit. The main dependency is Treasury's funding confirmation, and the risk is unverified banking details for new hires. Sound right?",
+            "So to summarise: you take the approved payroll file, format it for HSBC BACS using a macro, verify banking details for new starters, coordinate with Treasury for funding confirmation, and then submit. The main dependency is Treasury's funding confirmation, and the risk is unverified banking details for new hires. Sound right?",
           time_in_call_secs: 95,
         },
         {

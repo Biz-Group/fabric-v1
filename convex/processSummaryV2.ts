@@ -147,7 +147,7 @@ export const requestProcessSummaryV2 = internalMutation({
     }
     const process = await ctx.db.get(args.processId);
     if (!process || process.clerkOrgId !== args.clerkOrgId) {
-      throw new Error("Process not found in this organization");
+      throw new Error("Process not found in this organisation");
     }
 
     const now = Date.now();

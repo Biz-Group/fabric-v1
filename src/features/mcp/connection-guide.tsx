@@ -43,7 +43,7 @@ export function ClaudeSteps({ workspaceUrl, intro }: { workspaceUrl: string | nu
         <Step n={3} title="Sign in with your Fabric account">
           <StepHint>Claude opens Fabric&rsquo;s sign-in page. Use the account you use for this workspace.</StepHint>
         </Step>
-        <Step n={4} title="Ask about your organization">
+        <Step n={4} title="Ask about your organisation">
           <MenuPath label="In a chat:" items={["+", "Connectors", "Fabric on"]} />
           <StepHint>Then try:</StepHint>
           <Values>

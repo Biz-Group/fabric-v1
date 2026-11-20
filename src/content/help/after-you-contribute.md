@@ -21,8 +21,8 @@ Once you finish a contribution, Fabric does the rest on its own. You do not need
 
 ## The stages
 
-1. **Processing**: Fabric is transcribing and analyzing. Long recordings can take a few minutes. You can close the dialog and carry on, and the contribution appears on the process's Contributions tab when it is ready.
-2. **Needs labels** (voice notes and uploads only): Fabric is waiting for someone to name the speakers before it analyzes anything. See "Label speakers before analysis".
+1. **Processing**: Fabric is transcribing and analysing. Long recordings can take a few minutes. You can close the dialog and carry on, and the contribution appears on the process's Contributions tab when it is ready.
+2. **Needs labels** (voice notes and uploads only): Fabric is waiting for someone to name the speakers before it analyses anything. See "Label speakers before analysis".
 3. **Completed**: processing finished and the contribution is part of the evidence. This does not mean it covers the whole process.
 4. **Failed**: something stopped processing.
 

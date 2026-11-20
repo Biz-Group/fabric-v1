@@ -33,7 +33,7 @@ const ANSWER: ScriptedStep[] = [
       {
         type: "text",
         text: "Half the processes have contributions.",
-        citations: [{ type: "search_result_location", source: "fabric:entity/org", title: "Coverage — the organization", cited_text: "1 of 2 processes" }],
+        citations: [{ type: "search_result_location", source: "fabric:entity/org", title: "Coverage — the organisation", cited_text: "1 of 2 processes" }],
       },
     ],
   },
@@ -298,7 +298,7 @@ describe("runTurn", () => {
         sourceKind: "org",
         availability: "available",
         path: { fn: null, dept: null, proc: null },
-        title: "Coverage — the organization",
+        title: "Coverage — the organisation",
         citedText: "1 of 2 processes",
       },
     ]);

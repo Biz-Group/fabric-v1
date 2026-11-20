@@ -294,7 +294,7 @@ export const reinstateWorkspace = mutation({
     if (tenant.offboarding?.origin === "clerkDeleted") {
       throw userError(
         "CLERK_ORG_DELETED",
-        "This organization was deleted in Clerk, so the workspace can't be reopened. Export its data if it's needed.",
+        "This organisation was deleted in Clerk, so the workspace can't be reopened. Export its data if it's needed.",
       );
     }
     const now = Date.now();

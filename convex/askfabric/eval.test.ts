@@ -38,7 +38,7 @@ const answer = (text: string): ScriptedStep[] => [
       {
         type: "text",
         text,
-        citations: [{ type: "search_result_location", source: "fabric:entity/org", title: "Coverage — the organization", cited_text: "1 of 1 processes" }],
+        citations: [{ type: "search_result_location", source: "fabric:entity/org", title: "Coverage — the organisation", cited_text: "1 of 1 processes" }],
       },
     ],
   },

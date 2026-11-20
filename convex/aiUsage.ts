@@ -716,7 +716,7 @@ export const forwardPendingUsage = internalAction({
             ? "Nothing is serving this path. Check USAGE_SINK_URL against the " +
               "sink's 'HTTP Actions URL' in its dashboard: it must be " +
               ".convex.site (not .convex.cloud) AND must include the region " +
-              "segment for a regionalized deployment (e.g. " +
+              "segment for a regionalised deployment (e.g. " +
               "<deployment>.eu-west-1.convex.site). A missing region resolves " +
               "to a different host that returns a bare 404."
             : response.status === 401
