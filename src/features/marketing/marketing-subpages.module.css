@@ -1,0 +1,631 @@
+/*
+ * The marketing subpages (feature pages and /contact). They sit inside the
+ * landing page's `.site` wrapper, so the colour tokens, header, footer, closing
+ * band and "why" grid come from marketing-landing-page.module.css. This file
+ * only adds what those pages have and the landing page doesn't.
+ *
+ * `.site a { font: inherit }` in the landing styles outranks a single class on
+ * a link, so link type sizes are set on the link's parent here.
+ */
+
+.featureHero,
+.stepsSection,
+.listBand,
+.relatedSection,
+.contactHero,
+.contactGrid,
+.contactSignIn {
+  --gutter: 1rem;
+  width: min(100%, 88rem);
+  margin: 0 auto;
+  padding-right: var(--gutter);
+  padding-left: var(--gutter);
+}
+
+/* A rule across the top that lines up with the content, not the padding. */
+.listBand,
+.relatedSection,
+.contactSignIn {
+  background: linear-gradient(var(--line), var(--line)) top center / calc(100% - 2 * var(--gutter)) 1px no-repeat;
+}
+
+/* ---- Hero ---------------------------------------------------------------- */
+
+.featureHero {
+  display: grid;
+  padding-top: clamp(3rem, 9vw, 5.5rem);
+  padding-bottom: 4rem;
+  gap: 3rem;
+}
+
+.eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0 0 1.25rem;
+  color: var(--moss-dark);
+  font-size: 0.8rem;
+  font-weight: 650;
+  gap: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.eyebrow span {
+  border: 1px solid var(--moss);
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+}
+
+.featureHeroCopy h1,
+.contactHero h1 {
+  max-width: 16ch;
+  margin: 0;
+  font-size: clamp(2.6rem, 10vw, 4.8rem);
+  font-weight: 620;
+  letter-spacing: -0.068em;
+  line-height: 0.96;
+  text-wrap: balance;
+}
+
+.featureHeroCopy h1 em,
+.contactHero h1 em {
+  font-family: var(--font-marketing-serif), serif;
+  font-weight: 400;
+  letter-spacing: -0.05em;
+}
+
+.featureHeroCopy > p,
+.contactHero > p {
+  max-width: 40rem;
+  margin: 1.5rem 0 0;
+  color: var(--muted);
+  font-size: clamp(1.05rem, 4vw, 1.25rem);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.contactHero > p a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.featureActions {
+  display: grid;
+  max-width: 28rem;
+  margin-top: 2rem;
+  gap: 0.75rem;
+}
+
+/* The demo still, framed like the landing page's journey demo. */
+.featureVisual {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 1.4rem;
+  background: var(--paper);
+  box-shadow: 0 30px 80px rgba(17, 22, 28, 0.08);
+}
+
+/* The still has no tab strip above it, so it needs no top rule. */
+.featureVisual > div {
+  border-top: 0;
+}
+
+/* The journey demo keeps every stage the same height so it doesn't jump as it
+   rotates; a single still should be as tall as its content. */
+.featureVisual > div > div,
+.featureVisual > div > div > div {
+  min-height: 0;
+}
+
+/* ---- How it works -------------------------------------------------------- */
+
+.stepsSection {
+  display: grid;
+  padding-top: 6rem;
+  padding-bottom: 5rem;
+  gap: 3rem;
+}
+
+.stepsSection h2,
+.listBandIntro h2,
+.contactSignIn h2 {
+  max-width: 16ch;
+  margin: 0;
+  font-size: clamp(2.3rem, 9vw, 4.4rem);
+  font-weight: 550;
+  letter-spacing: -0.065em;
+  line-height: 0.98;
+  text-wrap: balance;
+}
+
+.stepList {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--ink);
+  list-style: none;
+}
+
+.stepList li {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+  border-bottom: 1px solid var(--line);
+  padding: 1.75rem 0;
+  gap: 1rem;
+}
+
+.stepList li > span {
+  color: var(--moss);
+  font-family: var(--font-marketing-serif), serif;
+  font-size: 1.4rem;
+  font-style: italic;
+  line-height: 1.2;
+}
+
+.stepList h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+}
+
+.stepList p {
+  max-width: 40rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.98rem;
+  line-height: 1.6;
+}
+
+/* ---- List band ----------------------------------------------------------- */
+
+.listBand {
+  display: grid;
+  padding-top: 5rem;
+  padding-bottom: 5rem;
+  gap: 2.5rem;
+}
+
+.listBandIntro {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.listBandIntro p {
+  max-width: 34rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.listBandGroups {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.listBandGroups > div {
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--paper);
+  padding: 1.5rem;
+}
+
+.listBandGroups h3 {
+  margin: 0 0 1rem;
+  color: var(--faint);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.listBandGroups ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 0.7rem;
+  list-style: none;
+}
+
+.listBandGroups li {
+  position: relative;
+  padding-left: 1.25rem;
+  font-size: 0.98rem;
+  line-height: 1.45;
+}
+
+.listBandGroups li::before {
+  position: absolute;
+  top: 0.6em;
+  left: 0;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--moss);
+  content: "";
+}
+
+/* ---- More of Fabric ------------------------------------------------------ */
+
+.relatedSection {
+  display: grid;
+  padding-top: 3.5rem;
+  padding-bottom: 4.5rem;
+  gap: 1.25rem;
+}
+
+.relatedSection h2 {
+  margin: 0;
+  color: var(--faint);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.relatedSection ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 0.75rem;
+  list-style: none;
+}
+
+.relatedSection li {
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.relatedSection a {
+  display: flex;
+  min-height: 3.75rem;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--paper);
+  padding: 0.75rem 1.25rem;
+  color: var(--ink);
+  gap: 1rem;
+  text-decoration: none;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.relatedSection a:hover {
+  border-color: var(--moss);
+  transform: translateY(-2px);
+}
+
+.relatedSection a:focus-visible {
+  outline: 3px solid rgba(101, 114, 91, 0.38);
+  outline-offset: 3px;
+}
+
+.relatedSection svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: none;
+  color: var(--moss);
+}
+
+/* ---- Assistant still (Claude & Copilot page) ----------------------------- */
+
+.assistantPreview {
+  display: grid;
+  align-content: start;
+  background:
+    linear-gradient(rgba(17, 22, 28, 0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 22, 28, 0.026) 1px, transparent 1px),
+    #f1f0ea;
+  background-size: 1.5rem 1.5rem;
+  padding: 0.75rem;
+}
+
+.assistantHeader,
+.assistantBody {
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.assistantHeader {
+  display: flex;
+  align-items: center;
+  border-bottom: 0;
+  border-radius: 1rem 1rem 0 0;
+  padding: 0.85rem 1rem;
+  gap: 0.6rem;
+}
+
+.assistantHeader > span {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.assistantHeader svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.assistantHeader strong {
+  font-size: 0.95rem;
+  font-weight: 620;
+}
+
+.assistantHeader i {
+  margin-left: auto;
+  border-radius: 999px;
+  background: var(--moss-pale);
+  padding: 0.2rem 0.6rem;
+  color: var(--moss-dark);
+  font-size: 0.75rem;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.assistantBody {
+  display: grid;
+  border-radius: 0 0 1rem 1rem;
+  padding: 1.25rem 1rem 1.5rem;
+  gap: 1rem;
+}
+
+.assistantQuestion {
+  max-width: 85%;
+  justify-self: end;
+  margin: 0;
+  border-radius: 1rem 1rem 0.25rem 1rem;
+  background: var(--ink);
+  padding: 0.75rem 1rem;
+  color: var(--paper);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.assistantTool {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  gap: 0.45rem;
+}
+
+.assistantTool svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: none;
+  color: var(--moss);
+}
+
+.assistantAnswer p {
+  max-width: 40rem;
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.assistantAnswer ul {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 1rem 0 0;
+  padding: 0;
+  gap: 0.5rem;
+  list-style: none;
+}
+
+.assistantAnswer li {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  color: var(--moss-dark);
+  font-size: 0.8rem;
+  font-weight: 600;
+  gap: 0.35rem;
+}
+
+.assistantAnswer li svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+/* ---- Contact ------------------------------------------------------------- */
+
+.contactHero {
+  padding-top: clamp(3rem, 9vw, 5.5rem);
+  padding-bottom: 3rem;
+}
+
+.contactGrid {
+  display: grid;
+  padding-bottom: 4rem;
+  gap: 1rem;
+}
+
+.contactGrid article {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  background: var(--paper);
+  padding: 1.75rem 1.5rem;
+  gap: 0.9rem;
+}
+
+.contactGrid article > svg {
+  width: 1.3rem;
+  height: 1.3rem;
+  color: var(--moss);
+}
+
+.contactGrid h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 620;
+  letter-spacing: -0.03em;
+}
+
+.contactGrid p {
+  margin: 0 0 0.4rem;
+  color: var(--muted);
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+/* The demo button fills its card on phones, as in the hero. */
+.contactGrid article > a[data-book-demo] {
+  margin-top: auto;
+}
+
+.contactEmail {
+  font-size: 1.1rem;
+  font-weight: 620;
+}
+
+.contactEmail a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--moss);
+  text-underline-offset: 0.25em;
+  overflow-wrap: anywhere;
+}
+
+.contactEmail a:focus-visible,
+.contactHero > p a:focus-visible {
+  outline: 3px solid rgba(101, 114, 91, 0.38);
+  outline-offset: 3px;
+}
+
+.contactSignIn {
+  display: grid;
+  padding-top: 4rem;
+  padding-bottom: 5rem;
+  gap: 2rem;
+}
+
+.contactSignIn h2 {
+  font-size: clamp(2rem, 7vw, 3.2rem);
+}
+
+.contactSignIn p {
+  max-width: 30rem;
+  margin: 1rem 0 0;
+  color: var(--muted);
+  font-size: 1.02rem;
+  line-height: 1.6;
+}
+
+.contactSignIn form {
+  width: 100%;
+  max-width: 26rem;
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  background: var(--paper);
+  padding: 1.5rem;
+}
+
+/* ---- Breakpoints (the landing page's: 36, 48 and 64rem) ------------------ */
+
+@media (min-width: 36rem) {
+  .featureHero,
+  .stepsSection,
+  .listBand,
+  .relatedSection,
+  .contactHero,
+  .contactGrid,
+  .contactSignIn {
+    --gutter: 1.5rem;
+  }
+
+  .featureActions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem 1.5rem;
+  }
+
+  .featureActions > a:first-child,
+  .contactGrid article > a[data-book-demo] {
+    width: auto;
+  }
+
+  .assistantPreview {
+    padding: 1.5rem;
+  }
+}
+
+@media (min-width: 48rem) {
+  .listBand {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    align-items: start;
+    gap: 4rem;
+  }
+
+  .listBandGroups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .relatedSection ul {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .contactGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .contactSignIn {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 26rem);
+    align-items: start;
+    gap: 4rem;
+  }
+
+  .assistantPreview {
+    padding: 2.5rem;
+  }
+}
+
+@media (min-width: 64rem) {
+  .featureHero,
+  .stepsSection,
+  .listBand,
+  .relatedSection,
+  .contactHero,
+  .contactGrid,
+  .contactSignIn {
+    --gutter: 2rem;
+  }
+
+  .stepsSection {
+    grid-template-columns: minmax(16rem, 0.65fr) minmax(0, 1.35fr);
+    align-items: start;
+    gap: 5rem;
+  }
+
+  .assistantPreview {
+    padding: 3rem 4rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .relatedSection a {
+    transition: none;
+  }
+
+  .relatedSection a:hover {
+    transform: none;
+  }
+}

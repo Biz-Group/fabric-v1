@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 
+import { featurePageLinks } from "@/features/marketing/site-links";
 import { siteUrl } from "@/lib/site-url";
 
 /**
@@ -12,5 +13,13 @@ import { siteUrl } from "@/lib/site-url";
  * when that flag comes off.
  */
 export default function sitemap(): MetadataRoute.Sitemap {
-  return [{ url: siteUrl("/"), changeFrequency: "monthly", priority: 1 }];
+  return [
+    { url: siteUrl("/"), changeFrequency: "monthly", priority: 1 },
+    ...featurePageLinks.map((link) => ({
+      url: siteUrl(link.href),
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
+    })),
+    { url: siteUrl("/contact"), changeFrequency: "yearly", priority: 0.5 },
+  ];
 }

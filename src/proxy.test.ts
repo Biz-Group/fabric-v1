@@ -1,6 +1,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
+import { featurePageLinks } from "@/features/marketing/site-links";
+
 // Exercise the real route matcher and proxy callback without contacting Clerk.
 vi.mock("@clerk/nextjs/server", async (importOriginal) => {
   const original = await importOriginal<typeof import("@clerk/nextjs/server")>();
@@ -93,8 +95,41 @@ describe("public site routing", () => {
     );
   });
 
+  // Every page the site links to, so a new page can't ship without its
+  // allowlist entry.
+  const marketingPages = [
+    "/contact",
+    ...featurePageLinks.map((link) => link.href),
+  ];
+
+  it.each(
+    marketingPages.flatMap((path) => [
+      ["bizfabric.ai", path],
+      ["www.bizfabric.ai", path],
+    ]),
+  )("serves marketing page %s%s without auth or rewriting", async (host, path) => {
+    expect(await handler({ protect }, request(host, path))).toBeUndefined();
+    expect(protect).not.toHaveBeenCalled();
+  });
+
+  it.each(marketingPages)(
+    "keeps a workspace's %s inside the workspace, behind sign-in",
+    async (path) => {
+      const response = await handler({ protect }, request("acme.bizfabric.ai", path));
+      expect(protect).toHaveBeenCalledOnce();
+      expect(response?.headers.get("x-middleware-rewrite")).toBe(
+        `https://acme.bizfabric.ai/acme${path}`,
+      );
+    },
+  );
+
   it.each([
     "/pricing?ref=ad",
+    "/features",
+    "/features/unknown",
+    "/contact/sales",
+    "/security",
+    "/whats-new",
     "/biz-group",
     "/biz-group/admin",
     "/release-notes",

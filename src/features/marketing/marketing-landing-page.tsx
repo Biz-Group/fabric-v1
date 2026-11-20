@@ -1,5 +1,4 @@
 import type { CSSProperties } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -11,33 +10,16 @@ import {
 
 import {
   HeroConversationDemo,
-  MobileNavigation,
   ProductJourneyDemo,
   TourVideoDialog,
 } from "@/features/marketing/marketing-landing-demos";
 import styles from "@/features/marketing/marketing-landing-page.module.css";
-import { SignInMenu } from "@/features/marketing/workspace-sign-in";
-
-const BOOK_DEMO_URL = "https://forms.cloud.microsoft/r/s4Jc3zvXjK";
-
-const productLinks = [
-  { label: "How it works", href: "#how-it-works" },
-  { label: "Platform", href: "#platform" },
-  { label: "Use cases", href: "#use-cases" },
-  { label: "FAQ", href: "#faq" },
-];
-
-/**
- * Company column links, under "Book a demo". Web links open in a new tab; the
- * mailto opens the visitor's mail app in place. Add Security, What's new and
- * Contact pages here when Phase 3 builds them
- * (docs/marketing-site-upgrade-plan.md).
- */
-const companyLinks: ReadonlyArray<{ label: string; href: string }> = [
-  { label: "Biz Group", href: "https://learningwithbiz.com" },
-  { label: "LinkedIn", href: "https://ae.linkedin.com/company/biz-group-fz-llc" },
-  { label: "info@bizgroup.ae", href: "mailto:info@bizgroup.ae" },
-];
+import {
+  BookDemoButton,
+  FinalCta,
+  SiteFooter,
+  SiteHeader,
+} from "@/features/marketing/site-chrome";
 
 const useCases = [
   {
@@ -161,53 +143,10 @@ const faqs = [
   },
 ];
 
-function BookDemoButton({ inverted = false }: { inverted?: boolean }) {
-  return (
-    <a
-      href={BOOK_DEMO_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={inverted ? styles.demoButtonInverted : styles.demoButton}
-      data-book-demo
-    >
-      Book a demo
-      <span className={styles.srOnly}> (opens in a new tab)</span>
-      <ArrowRight aria-hidden="true" />
-    </a>
-  );
-}
-
 export function MarketingLandingPage() {
   return (
     <main className={styles.site}>
-      <header className={styles.navigation}>
-        <div className={styles.navigationInner}>
-          <a href="#top" className={styles.wordmark} aria-label="Fabric home">
-            {/* Decorative: the anchor's aria-label already names the link. */}
-            <Image
-              src="/pwa/fabric-icon-512.png"
-              alt=""
-              width={64}
-              height={64}
-              priority
-              className={styles.wordmarkBadge}
-            />
-            Fabric.
-          </a>
-
-          <nav className={styles.desktopNavigation} aria-label="Main navigation">
-            <a href="#how-it-works">How it works</a>
-            <a href="#platform">Platform</a>
-            <a href="#use-cases">Use cases</a>
-          </nav>
-
-          <div className={styles.navigationActions}>
-            <SignInMenu />
-            <BookDemoButton />
-            <MobileNavigation />
-          </div>
-        </div>
-      </header>
+      <SiteHeader homeHref="#top" />
 
       <section id="top" className={styles.hero}>
         <div className={styles.heroCopy}>
@@ -354,6 +293,9 @@ export function MarketingLandingPage() {
           <strong>Add-on</strong>
           Use Fabric inside Claude and Microsoft Copilot Studio, so people can
           ask how the organization works from the assistant they already use.
+          <Link href="/features/claude-and-copilot">
+            How it works <ArrowRight aria-hidden="true" />
+          </Link>
         </p>
       </section>
 
@@ -375,80 +317,12 @@ export function MarketingLandingPage() {
         </div>
       </section>
 
-      <section className={styles.finalCta}>
-        <div className={styles.finalCtaRings} aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
-        <div className={styles.finalCtaContent}>
-          <h2>
-            The people doing the work already know how your business runs.
-          </h2>
-          <p>Fabric helps the organization learn from them.</p>
-          <BookDemoButton inverted />
-        </div>
-      </section>
+      <FinalCta
+        heading="The people doing the work already know how your business runs."
+        line="Fabric helps the organization learn from them."
+      />
 
-      <footer className={styles.footer}>
-        <div className={styles.footerBrand}>
-          <a href="#top" className={styles.wordmark} aria-label="Back to top">
-            Fabric.
-          </a>
-          <p>
-            The fabric of the organization, woven from the voices of the people
-            who make it run.
-          </p>
-        </div>
-
-        <nav className={styles.footerNav} aria-label="Footer">
-          <div>
-            <h2>Product</h2>
-            <ul>
-              {productLinks.map((link) => (
-                <li key={link.href}>
-                  <a href={link.href}>{link.label}</a>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <h2>Company</h2>
-            <ul>
-              <li>
-                <a href={BOOK_DEMO_URL} target="_blank" rel="noopener noreferrer">
-                  Book a demo
-                  <span className={styles.srOnly}> (opens in a new tab)</span>
-                </a>
-              </li>
-              {companyLinks.map((link) =>
-                link.href.startsWith("mailto:") ? (
-                  <li key={link.href}>
-                    <a href={link.href}>{link.label}</a>
-                  </li>
-                ) : (
-                  <li key={link.href}>
-                    <a href={link.href} target="_blank" rel="noopener noreferrer">
-                      {link.label}
-                      <span className={styles.srOnly}> (opens in a new tab)</span>
-                    </a>
-                  </li>
-                ),
-              )}
-            </ul>
-          </div>
-        </nav>
-
-        <div className={styles.footerBase}>
-          <span>
-            &copy; {new Date().getFullYear()} Fabric. Built by Biz Group.
-          </span>
-          <nav className={styles.legalLinks} aria-label="Legal">
-            <Link href="/privacy">Privacy Policy</Link>
-            <Link href="/terms">Terms of Use</Link>
-          </nav>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

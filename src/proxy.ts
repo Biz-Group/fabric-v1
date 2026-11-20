@@ -35,6 +35,12 @@ const isApexPublicPath = createRouteMatcher([
   "/",
   "/opengraph-image(.*)",
   "/sitemap.xml",
+  // Marketing subpages (src/app/(site)). Exact paths, so `/features` itself
+  // and anything unlisted under it stay a 404.
+  "/contact",
+  "/features/askfabric",
+  "/features/recommendations",
+  "/features/claude-and-copilot",
 ]);
 // App routes that can be reached on the apex and keep their sign-in gate.
 // Every other apex path is a public-site 404 rather than a sign-in redirect.

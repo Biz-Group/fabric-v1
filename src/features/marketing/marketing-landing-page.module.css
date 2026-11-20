@@ -1742,6 +1742,28 @@ button.textLink {
   gap: 0.35rem 0.75rem;
 }
 
+/* Two classes deep to beat the `.site a { font: inherit }` reset. */
+.differenceNote a {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink);
+  font-weight: 620;
+  gap: 0.3rem;
+  text-decoration: underline;
+  text-decoration-color: var(--moss);
+  text-underline-offset: 0.2em;
+}
+
+.differenceNote a svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.differenceNote a:focus-visible {
+  outline: 3px solid rgba(101, 114, 91, 0.38);
+  outline-offset: 3px;
+}
+
 .differenceNote strong {
   border: 1px solid var(--moss);
   border-radius: 999px;

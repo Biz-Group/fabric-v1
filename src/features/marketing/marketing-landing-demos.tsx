@@ -8,6 +8,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Popover } from "@base-ui/react/popover";
@@ -43,6 +44,7 @@ import {
 } from "lucide-react";
 
 import styles from "@/features/marketing/marketing-landing-page.module.css";
+import { landingSectionLinks } from "@/features/marketing/site-links";
 import { WorkspaceSignInForm } from "@/features/marketing/workspace-sign-in";
 
 const stages = [
@@ -112,15 +114,11 @@ export function MobileNavigation() {
               aria-label="Navigation"
             >
               <nav aria-label="Mobile navigation" className={styles.mobileNavigationPanel}>
-                <a href="#how-it-works" onClick={() => setOpen(false)}>
-                  How it works
-                </a>
-                <a href="#platform" onClick={() => setOpen(false)}>
-                  Platform
-                </a>
-                <a href="#use-cases" onClick={() => setOpen(false)}>
-                  Use cases
-                </a>
+                {landingSectionLinks.map((link) => (
+                  <Link key={link.href} href={link.href} onClick={() => setOpen(false)}>
+                    {link.label}
+                  </Link>
+                ))}
                 <div className={styles.mobileSignIn}>
                   <WorkspaceSignInForm />
                 </div>
@@ -894,6 +892,36 @@ function AskStage() {
         <span><ArrowUp /></span>
       </div>
     </div>
+  );
+}
+
+/**
+ * A single demo stage, still, for the feature pages: the same frame and type
+ * sizes as the landing page's journey demo, without the tabs or rotation.
+ */
+function StillDemo({ children }: { children: ReactNode }) {
+  return (
+    <div className={styles.demoStage}>
+      <div className={styles.demoStageInner}>{children}</div>
+    </div>
+  );
+}
+
+export function AskPreview() {
+  return (
+    <StillDemo>
+      <AskStage />
+    </StillDemo>
+  );
+}
+
+export function RecommendationsPreview() {
+  return (
+    <StillDemo>
+      <FabricWorkbench stage="improve">
+        <ImproveStage />
+      </FabricWorkbench>
+    </StillDemo>
   );
 }
 
