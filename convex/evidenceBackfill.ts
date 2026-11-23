@@ -244,11 +244,23 @@ async function backfillSteps(
   report: EvidenceBackfillReport,
 ): Promise<void> {
   const conversations = keysInOrder.map((keys) => ({ contributorKeys: keys }));
-  const recompute = (detail: FlowNodeDetail, label: string): FlowNodeDetail | null => {
-    const confidence = evidenceConfidence(detail.confidence, detail.sources, conversations);
+  const recompute = (
+    detail: FlowNodeDetail,
+    label: string,
+    category: string | undefined,
+  ): FlowNodeDetail | null => {
+    const confidence = evidenceConfidence(
+      detail.confidence,
+      detail.sources,
+      conversations,
+      category,
+    );
     if (confidence === detail.confidence) return null;
     bump(report.totals.stepConfidenceChanges, `${detail.confidence} -> ${confidence}`);
-    report.steps.push(`"${label}": ${detail.confidence} -> ${confidence}`);
+    // A drop to low means no source resolved; show the sources so the
+    // reviewer can judge whether the rule or the stored sources are wrong.
+    const why = confidence === "low" ? ` (sources: ${JSON.stringify(detail.sources)})` : "";
+    report.steps.push(`"${label}": ${detail.confidence} -> ${confidence}${why}`);
     return { ...detail, confidence };
   };
 
@@ -257,7 +269,7 @@ async function backfillSteps(
     let changed = false;
     const nodes = flow.nodes.map((node) => {
       const { id, label, category, ...detail } = node;
-      const next = recompute(detail as FlowNodeDetail, label);
+      const next = recompute(detail as FlowNodeDetail, label, category);
       if (!next) return node;
       changed = true;
       return { id, label, category, ...next };
@@ -266,7 +278,7 @@ async function backfillSteps(
     return;
   }
 
-  const labels = new Map(flow.nodes.map((node) => [node.id, node.label]));
+  const nodesById = new Map(flow.nodes.map((node) => [node.id, node]));
   const rows = await ctx.db
     .query("processFlowNodeDetails")
     .withIndex(
@@ -281,7 +293,8 @@ async function backfillSteps(
   for (const row of rows) {
     // Placeholder rows (not yet described) carry no real confidence.
     if (row.status !== "ready" || !row.detail) continue;
-    const next = recompute(row.detail, labels.get(row.nodeId) ?? row.nodeId);
+    const node = nodesById.get(row.nodeId);
+    const next = recompute(row.detail, node?.label ?? row.nodeId, node?.category);
     if (next && !dryRun) await ctx.db.patch(row._id, { detail: next });
   }
 }

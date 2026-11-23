@@ -487,13 +487,19 @@ export function evidenceConfidence(
   modelConfidence: FlowConfidence,
   sources: readonly string[],
   conversationsInOrder: ReadonlyArray<{ contributorKeys: readonly string[] }>,
+  category?: string,
 ): FlowConfidence {
   if (modelConfidence === "low") return "low";
   const { contributors } = resolveSourceRefs(
     sources,
     conversationsInOrder.map((conversation) => conversation.contributorKeys),
   );
-  if (contributors.size === 0) return "low";
+  if (contributors.size === 0) {
+    // A start or end marker ("Process Complete") is structure, not a step
+    // anyone describes, so missing sources say nothing about its evidence.
+    // Calling it low would raise a "weak evidence" finding about nothing.
+    return category === "start" || category === "end" ? "medium" : "low";
+  }
   return contributors.size >= 2 ? "high" : "medium";
 }
 
@@ -501,6 +507,7 @@ export function evidenceConfidence(
 export function applyEvidenceConfidence(
   details: Map<string, FlowNodeDetail>,
   conversationsInOrder: ReadonlyArray<{ contributorKeys: readonly string[] }>,
+  categoryByNodeId: ReadonlyMap<string, string> = new Map(),
 ): Map<string, FlowNodeDetail> {
   for (const [nodeId, detail] of details) {
     details.set(nodeId, {
@@ -509,6 +516,7 @@ export function applyEvidenceConfidence(
         detail.confidence,
         detail.sources,
         conversationsInOrder,
+        categoryByNodeId.get(nodeId),
       ),
     });
   }

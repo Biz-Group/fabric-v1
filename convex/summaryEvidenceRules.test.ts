@@ -163,6 +163,22 @@ describe("consensus holds only agreement", () => {
   });
 });
 
+describe("nothing is dropped when Notable is full", () => {
+  test("moved findings stay even past Notable's cap", () => {
+    const fullNotable = Array.from({ length: 8 }, (_, i) =>
+      finding(`Notable ${i}`, ["C3"]),
+    );
+    const artifact = normalizeProcessOverviewArtifactV2(
+      payload({
+        consensus: [finding("Said by one", ["C1", "C2"])],
+        notable: fullNotable,
+      }),
+      context(),
+    )!;
+    expect(artifact.notable.map((f) => f.title)).toContain("Said by one");
+  });
+});
+
 describe("reapplying the rules to a stored overview", () => {
   test("downgrades, moves and recounts without touching provenance", () => {
     const stored = normalizeProcessOverviewArtifactV2(

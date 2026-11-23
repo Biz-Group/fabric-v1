@@ -118,7 +118,8 @@ if (command === "export") {
   const drifted = [];
   for (const [name, content] of Object.entries(files)) {
     const stored = await readFile(path.join(SNAPSHOT_DIR, name), "utf8").catch(() => null);
-    if (stored !== content) drifted.push(name);
+    // Git may check the snapshot out with CRLF line endings on Windows.
+    if (stored?.replace(/\r\n/g, "\n") !== content) drifted.push(name);
   }
   if (drifted.length > 0) {
     console.error(

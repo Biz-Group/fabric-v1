@@ -174,7 +174,10 @@ describe("evidence backfill", () => {
     });
     expect(report!.overview.join("\n")).toContain("corroborated -> single_source");
     expect(report!.overview.join("\n")).toContain("moved to notable");
-    expect(report!.steps).toEqual(['"Triage": high -> medium', '"Guess": medium -> low']);
+    expect(report!.steps).toEqual([
+      '"Triage": high -> medium',
+      '"Guess": medium -> low (sources: ["Somebody"])',
+    ]);
     expect(report!.recommendations.join("\n")).toContain("value high -> medium");
     expect(report!.recommendations.join("\n")).toContain("a colleague routes every ticket");
     expect(report!.totals).toMatchObject({

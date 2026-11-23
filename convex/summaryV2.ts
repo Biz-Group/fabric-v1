@@ -1002,7 +1002,7 @@ export function normalizeProcessOverviewArtifactV2(
   const { consensus, notable } =
     options.moveConsensus === false
       ? { consensus: normalizedConsensus, notable: normalizedNotable }
-      : moveUncorroboratedConsensus(normalizedConsensus, normalizedNotable, caps.group);
+      : moveUncorroboratedConsensus(normalizedConsensus, normalizedNotable);
   return {
     schemaVersion: "v2",
     sourceMode: "interview_evidence",
@@ -1038,13 +1038,13 @@ export function normalizeProcessOverviewArtifactV2(
  * 23 Nov 2026). A consensus finding with one person behind it moves to Notable,
  * where it is still shown and still sourced. Its id changes with its section,
  * so a deep link to the old id opens the overview without scrolling to it.
- * Notable's own findings keep their place; when the cap is reached, the moved
- * findings are the ones left out.
+ * Notable's own findings keep their place and moved ones follow them. Nothing
+ * is dropped: Notable's cap bounds what the model writes, and a moved finding
+ * was already written, so Notable may hold up to both sections' caps.
  */
 export function moveUncorroboratedConsensus(
   consensus: readonly SummaryFinding[],
   notable: readonly SummaryFinding[],
-  notableCap: number,
 ): { consensus: SummaryFinding[]; notable: SummaryFinding[] } {
   const kept: SummaryFinding[] = [];
   const merged: SummaryFinding[] = [...notable];
@@ -1055,7 +1055,7 @@ export function moveUncorroboratedConsensus(
       continue;
     }
     const key = findingDedupeKey(finding);
-    if (seen.has(key) || merged.length >= notableCap) continue;
+    if (seen.has(key)) continue;
     seen.add(key);
     merged.push({
       ...finding,
@@ -1095,7 +1095,6 @@ export function reapplyProcessEvidenceRules(
   const { consensus, notable } = moveUncorroboratedConsensus(
     artifact.consensus.map(recount),
     artifact.notable.map(recount),
-    PROCESS_OVERVIEW_SECTION_CAPS.group,
   );
   return {
     ...artifact,

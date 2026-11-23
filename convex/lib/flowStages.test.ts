@@ -34,6 +34,12 @@ describe("evidenceConfidence", () => {
     );
   });
 
+  test("a start or end marker with no sources is not weak evidence", () => {
+    expect(evidenceConfidence("high", [], conversations, "end")).toBe("medium");
+    expect(evidenceConfidence("high", [], conversations, "start")).toBe("medium");
+    expect(evidenceConfidence("high", [], conversations, "action")).toBe("low");
+  });
+
   test("a group recording with two labelled speakers is two people", () => {
     expect(
       evidenceConfidence("medium", ["Workshop, Conv. 1"], [

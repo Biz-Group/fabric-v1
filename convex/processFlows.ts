@@ -1938,6 +1938,7 @@ export const generateNodeDetailsBatchInternal = internalAction({
             batch.nodeIds,
           ),
           data.conversations,
+          new Map(batch.graph.nodes.map((node) => [node.id, node.category])),
         );
       } catch (e) {
         console.error("Failed to parse node detail JSON:", {
