@@ -14,7 +14,8 @@ import {
   RECOMMENDATIONS_SYSTEM_PROMPT,
   recommendationsPromptVersion,
   RECOMMENDATIONS_TIMEOUT_MS,
-  scrubContributorNames,
+  scrubPersonalNames,
+  scrubRecommendationNames,
   toAutomationOpportunity,
 } from "./recommendationStage";
 
@@ -423,15 +424,15 @@ describe("contributor names", () => {
       },
       KNOWN,
     );
-    const { recommendations, replacements } = scrubContributorNames(
+    const { recommendations, replacements } = scrubPersonalNames(
       [rec],
       ["Alice Smith", "Bob"],
     );
     expect(recommendations[0].problem).toBe(
-      "a contributor checks every row; a contributor says it takes a day.",
+      "a colleague checks every row; a colleague says it takes a day.",
     );
     // "Bob" is under three letters as a part, but matches as a full name.
-    expect(recommendations[0].pilot.what).toBe("Ask a contributor to try it");
+    expect(recommendations[0].pilot.what).toBe("Ask a colleague to try it");
     expect(replacements).toBe(4);
   });
 
@@ -444,10 +445,92 @@ describe("contributor names", () => {
       },
       KNOWN,
     );
-    const { recommendations } = scrubContributorNames([rec], ["Will Jones"]);
+    const { recommendations } = scrubPersonalNames([rec], ["Will Jones"]);
     expect(recommendations[0].problem).toBe(
-      "The team will check it. a contributor decides.",
+      "The team will check it. a colleague decides.",
     );
+  });
+});
+
+describe("scrubRecommendationNames (task 1.8)", () => {
+  const recWith = (problem: string) =>
+    normalizeRecommendations({ recommendations: [{ ...wellFormed, problem }] }, KNOWN);
+
+  test("a member named in the input is scrubbed even if they never contributed", () => {
+    const result = scrubRecommendationNames(
+      recWith("Minor tweaks go to Eleanor Price; Eleanor decides."),
+      {
+        contributorNames: ["Alice Smith"],
+        knownPeopleNames: ["Eleanor Price", "Mark Ellis"],
+        inputText: "Who: Project manager, Eleanor Price",
+        actorNames: ["Project manager", "Eleanor Price"],
+      },
+    );
+    expect(result.recommendations[0].problem).toBe(
+      "Minor tweaks go to a colleague; a colleague decides.",
+    );
+    expect(result.unknownNamesKept).toBe(0);
+  });
+
+  test("a member the input never mentions is left alone, so ordinary words survive", () => {
+    const result = scrubRecommendationNames(recWith("Mark the ticket as pending."), {
+      contributorNames: [],
+      knownPeopleNames: ["Mark Ellis"],
+      inputText: "Who: Support team",
+      actorNames: ["Support team"],
+    });
+    expect(result.recommendations[0].problem).toBe("Mark the ticket as pending.");
+  });
+
+  test("a step label that contains a member's name part does not name them", () => {
+    const result = scrubRecommendationNames(
+      recWith("Agree Price thresholds, then Mark Ticket Pending as resolved."),
+      {
+        contributorNames: [],
+        knownPeopleNames: ["Eleanor Price", "Mark Ellis"],
+        inputText: "### agree-price — Agree Price (action)\n### mark — Mark Ticket Pending (action)\nWho: Finance team",
+        actorNames: ["Finance team"],
+      },
+    );
+    expect(result.recommendations[0].problem).toBe(
+      "Agree Price thresholds, then Mark Ticket Pending as resolved.",
+    );
+    expect(result.replacements).toBe(0);
+  });
+
+  test("a first name that is a step's actor is scrubbed", () => {
+    const result = scrubRecommendationNames(
+      recWith("Minor tweaks go to Eleanor."),
+      {
+        contributorNames: [],
+        knownPeopleNames: ["Eleanor Price"],
+        inputText: "Who: Project manager, Eleanor",
+        actorNames: ["Project manager", "Eleanor"],
+      },
+    );
+    expect(result.recommendations[0].problem).toBe("Minor tweaks go to a colleague.");
+  });
+
+  test("a labelled speaker is a known person", () => {
+    const result = scrubRecommendationNames(recWith("Ravi Shah approves it."), {
+      contributorNames: [],
+      knownPeopleNames: ["Ravi Shah"],
+      inputText: "Who: Ravi Shah",
+      actorNames: ["Ravi Shah"],
+    });
+    expect(result.recommendations[0].problem).toBe("a colleague approves it.");
+  });
+
+  test("a person Fabric does not know is counted for review, not guessed at", () => {
+    const result = scrubRecommendationNames(recWith("Send it to Dana Lopez first."), {
+      contributorNames: [],
+      knownPeopleNames: [],
+      inputText: "Who: Dana Lopez",
+      actorNames: ["Dana Lopez", "Axonify Canada", "Support team"],
+    });
+    expect(result.recommendations[0].problem).toBe("Send it to Dana Lopez first.");
+    // "Axonify Canada" looks like a name but is not in the output.
+    expect(result.unknownNamesKept).toBe(1);
   });
 });
 

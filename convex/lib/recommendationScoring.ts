@@ -1,3 +1,4 @@
+import { resolveSourceRefs } from "./contributorIdentity";
 import type { FlowNodeCategory, FlowNodeDetail } from "./flowStages";
 import {
   isTechnicalIntervention,
@@ -26,25 +27,76 @@ export type ScoringNode = {
   detail: FlowNodeDetail | null;
 };
 
-const CONVERSATION_REF = /Conv\.\s*(\d+)/g;
-
 /**
- * Distinct interviews and contributors behind a set of steps, read from node
- * sources ("Name, Conv. N"). Counted, not labelled high/medium/low, because the
+ * Distinct contributions and people behind a set of steps. The `Conv. N`
+ * references in node sources are resolved against the contributions the flow
+ * was built from (`keysInOrder`, each contribution's `contributorKeys`, in the
+ * flow's evidence order); the names the model wrote beside them are ignored.
+ * Counting those names put "5 contributors" on a process four people had
+ * spoken about (task 1.4). Counted, not labelled high/medium/low, because the
  * count is the honest version: most processes rest on one interview.
  */
-export function deriveEvidence(nodes: readonly ScoringNode[]): Evidence {
-  const interviews = new Set<string>();
-  const contributors = new Set<string>();
+export function deriveEvidence(
+  nodes: readonly ScoringNode[],
+  keysInOrder: ReadonlyArray<readonly string[]>,
+): Evidence {
+  const { conversations, contributors } = resolveSourceRefs(
+    nodes.flatMap((node) => node.detail?.sources ?? []),
+    keysInOrder,
+  );
+  return { interviews: conversations.size, contributors: contributors.size };
+}
+
+const STOP_WORDS = new Set(
+  "a an the of to for and or in on at by is are be it this that with which from as not when if into its their there through".split(
+    " ",
+  ),
+);
+
+function contentWords(text: string): Set<string> {
+  return new Set(
+    (text.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}-]*/gu) ?? []).filter(
+      (word) => word.length > 1 && !STOP_WORDS.has(word),
+    ),
+  );
+}
+
+/**
+ * Whether two reported problems are the same complaint in different words:
+ * half or more of the shorter one's content words appear in the other. On the
+ * review's real pairs, rewordings scored 0.50 and 0.67 and different problems
+ * 0.00. Very short texts merge only when identical, since a two-word overlap
+ * proves nothing.
+ */
+export function sameProblem(a: string, b: string): boolean {
+  const wordsA = contentWords(a);
+  const wordsB = contentWords(b);
+  const shorter = Math.min(wordsA.size, wordsB.size);
+  if (shorter === 0) return false;
+  if (shorter < 3) {
+    return [...wordsA].sort().join(" ") === [...wordsB].sort().join(" ");
+  }
+  let shared = 0;
+  for (const word of wordsA) if (wordsB.has(word)) shared += 1;
+  return shared / shorter >= 0.5;
+}
+
+/**
+ * The distinct problems on a set of steps, near-identical ones merged across
+ * steps, so one complaint reworded or repeated on three steps counts once
+ * (task 1.6). Each group keeps its first wording.
+ */
+export function distinctProblems(nodes: readonly ScoringNode[]): string[] {
+  const kept: string[] = [];
   for (const node of nodes) {
-    for (const source of node.detail?.sources ?? []) {
-      const refs = [...source.matchAll(CONVERSATION_REF)].map((m) => m[1]);
-      for (const ref of refs) interviews.add(ref);
-      const name = source.split(/,\s*Conv\./)[0]?.trim();
-      if (name) contributors.add(name.toLowerCase());
+    for (const raw of node.detail?.painPoints ?? []) {
+      const problem = raw.trim();
+      if (!problem) continue;
+      if (kept.some((existing) => sameProblem(existing, problem))) continue;
+      kept.push(problem);
     }
   }
-  return { interviews: interviews.size, contributors: contributors.size };
+  return kept;
 }
 
 /** Distinct roles on the covered steps, first spelling kept. */
@@ -84,21 +136,25 @@ function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-/** Frequency × friction × reach. `unknown` rather than a guess when there is neither frequency nor friction. */
+/**
+ * Frequency × friction × reach. `unknown` rather than a guess when there is
+ * neither frequency nor friction. Capped at medium while one person is the only
+ * evidence or nobody said how often the work happens (task 1.6): "high value"
+ * is the first thing an executive reads, and one interview with no frequency
+ * cannot carry it.
+ */
 export function scoreValue(input: {
   frequency: RecommendationFrequency;
   covered: readonly ScoringNode[];
   evidence: Evidence;
   peopleAffected: readonly string[];
 }): Score {
-  const painPoints = new Set<string>();
+  const problems = distinctProblems(input.covered);
   let bottlenecks = 0;
   for (const node of input.covered) {
-    for (const point of node.detail?.painPoints ?? []) {
-      painPoints.add(point.trim().toLowerCase());
-    }
     if (node.detail?.isBottleneck) bottlenecks += 1;
   }
+  const painPoints = { size: problems.length };
   const friction = painPoints.size + bottlenecks;
   const frictionPoints = friction === 0 ? 0 : friction <= 2 ? 1 : friction <= 4 ? 2 : 3;
 
@@ -122,9 +178,15 @@ export function scoreValue(input: {
   }
 
   const total = (frequencyPoints ?? 1.5) + frictionPoints + reachPoints;
-  const level: ScoreLevel = total >= 7 ? "high" : total >= 5 ? "medium" : "low";
+  const scored: ScoreLevel = total >= 7 ? "high" : total >= 5 ? "medium" : "low";
+  const onePerson = input.evidence.contributors <= 1;
+  const capped =
+    scored === "high" && (onePerson || frequencyPoints === null);
+  const level: ScoreLevel = capped ? "medium" : scored;
   const reasons = [FREQUENCY_REASON[input.frequency], frictionReason];
   if (reach > 0) reasons.push(`${plural(reach, "role")} involved`);
+  // Say why it stopped at medium. The frequency reason is already listed.
+  if (capped && onePerson) reasons.push("One contributor so far");
   return { level, reasons };
 }
 
@@ -208,10 +270,12 @@ export function computeRecommendationScores(input: {
   frequency: RecommendationFrequency;
   nodeIds: readonly string[];
   nodes: readonly ScoringNode[];
+  /** Each contribution's `contributorKeys`, in the flow's evidence order. */
+  contributorKeysInOrder: ReadonlyArray<readonly string[]>;
 }) {
   const wanted = new Set(input.nodeIds);
   const covered = input.nodes.filter((node) => wanted.has(node.id));
-  const evidence = deriveEvidence(covered);
+  const evidence = deriveEvidence(covered, input.contributorKeysInOrder);
   const peopleAffected = derivePeopleAffected(covered);
   return {
     value: scoreValue({

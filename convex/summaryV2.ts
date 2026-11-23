@@ -262,7 +262,15 @@ export const summaryFindingValidator = v.object({
   title: v.string(),
   body: v.string(),
   evidenceLevel: summaryEvidenceLevelValidator,
+  /** Contributions cited, one per source. */
   supportCount: v.number(),
+  /**
+   * Distinct people behind the cited contributions (a group recording counts
+   * each labelled speaker). Absent on findings written before 23 Nov 2026, and
+   * on department and function findings, whose sources are processes, not
+   * people. `corroborated` on a process finding means this is two or more.
+   */
+  contributorCount: v.optional(v.number()),
   sources: v.array(summarySourceRefValidator),
 });
 
@@ -610,11 +618,61 @@ export type SummaryOverviewResponse = {
 
 export type SummarySourceKeyMap = Readonly<Record<string, SummarySourceRef>>;
 
+/** Conversation id → the people that contribution stands for (`contributorKeys`). */
+export type ContributorKeysByConversationId = Readonly<
+  Record<string, readonly string[]>
+>;
+
 export type SummaryNormalizationContext = {
   sourceByKey: SummarySourceKeyMap;
   coverage: SummaryCoverage;
   provenance: SummaryProvenance;
+  /**
+   * Who each cited contribution stands for. Without it (or for a contribution
+   * missing from it), a contribution counts as the person its label names.
+   */
+  contributorKeysByConversationId?: ContributorKeysByConversationId;
 };
+
+/**
+ * Distinct people behind a finding's contribution sources, or undefined when it
+ * cites none (department and function findings cite processes).
+ */
+export function findingContributorCount(
+  sources: readonly SummarySourceRef[],
+  keysByConversationId?: ContributorKeysByConversationId,
+): number | undefined {
+  const people = new Set<string>();
+  let conversations = 0;
+  for (const source of sources) {
+    if (source.kind !== "conversation") continue;
+    conversations += 1;
+    const keys = keysByConversationId?.[source.conversationId];
+    if (keys && keys.length > 0) {
+      for (const key of keys) people.add(key);
+    } else {
+      people.add(`name:${normalizedSemanticText(source.label)}`);
+    }
+  }
+  return conversations === 0 ? undefined : people.size;
+}
+
+/**
+ * The evidence level a finding's sources support. A process finding is
+ * corroborated only when two or more distinct people stand behind it — two
+ * interviews with one person are one account (decision 23 Nov 2026, task 1.2).
+ * A department or function finding cites processes, and two processes are
+ * still two independent children.
+ */
+export function supportedEvidenceLevel(
+  requested: SummaryEvidenceLevel,
+  sources: readonly SummarySourceRef[],
+  contributorCount: number | undefined,
+): SummaryEvidenceLevel {
+  if (requested === "inferred_gap") return "inferred_gap";
+  const support = contributorCount ?? sources.length;
+  return support >= 2 ? "corroborated" : "single_source";
+}
 
 /** Plain-text field: emphasis the prompt forbade here is dropped, not shown. */
 function normalizePlainInlineText(
@@ -742,11 +800,32 @@ export function isExplicitMissingEvidenceFinding(
   return EXPLICIT_GAP_PATTERN.test(`${title} ${body}`);
 }
 
+/** Stable finding id; the section is part of it, so a moved finding gets a new one. */
+function findingId(
+  sectionKey: string,
+  title: string,
+  sources: readonly SummarySourceRef[],
+): string {
+  const identity = `${sectionKey}|${normalizedSemanticText(title)}|${sources
+    .map(sourceIdentity)
+    .sort()
+    .join("|")}`;
+  return `${sectionKey}-${stableHash(identity)}`;
+}
+
+function findingDedupeKey(finding: SummaryFinding): string {
+  return `${normalizedSemanticText(finding.title)}|${finding.sources
+    .map(sourceIdentity)
+    .sort()
+    .join("|")}`;
+}
+
 function normalizeFinding(
   rawValue: unknown,
   sourceByKey: SummarySourceKeyMap,
   sectionKey: string,
   bodyChars: number,
+  keysByConversationId?: ContributorKeysByConversationId,
 ): SummaryFinding | null {
   const raw = asRecord(rawValue);
   if (!raw) return null;
@@ -776,31 +855,31 @@ function normalizeFinding(
     }
   }
 
-  const evidenceLevel: SummaryEvidenceLevel =
-    requestedEvidenceLevel === "inferred_gap"
-      ? "inferred_gap"
-      : sources.length >= 2
-        ? "corroborated"
-        : "single_source";
-  const identity = `${sectionKey}|${normalizedSemanticText(title)}|${sources
-    .map(sourceIdentity)
-    .sort()
-    .join("|")}`;
+  const contributorCount = findingContributorCount(
+    sources,
+    keysByConversationId,
+  );
+  const evidenceLevel = supportedEvidenceLevel(
+    requestedEvidenceLevel,
+    sources,
+    contributorCount,
+  );
   return {
     // IDs are derived after source resolution so duplicate or unstable IDs
     // returned by a model can never leak into UI keys or persistence.
-    id: `${sectionKey}-${stableHash(identity)}`,
+    id: findingId(sectionKey, title, sources),
     title,
     body,
     evidenceLevel,
     supportCount: sources.length,
+    ...(contributorCount === undefined ? {} : { contributorCount }),
     sources,
   };
 }
 
 function normalizeFindingGroup(
   value: unknown,
-  sourceByKey: SummarySourceKeyMap,
+  context: SummaryNormalizationContext,
   sectionKey: string,
   caps: OverviewSectionCaps,
 ): SummaryFinding[] {
@@ -810,15 +889,13 @@ function normalizeFindingGroup(
   for (const raw of value) {
     const finding = normalizeFinding(
       raw,
-      sourceByKey,
+      context.sourceByKey,
       sectionKey,
       caps.bodyChars,
+      context.contributorKeysByConversationId,
     );
     if (!finding) continue;
-    const dedupeKey = `${normalizedSemanticText(finding.title)}|${finding.sources
-      .map(sourceIdentity)
-      .sort()
-      .join("|")}`;
+    const dedupeKey = findingDedupeKey(finding);
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
     findings.push(finding);
@@ -842,14 +919,13 @@ function normalizeCoverage(value: SummaryCoverage): SummaryCoverage | null {
     totalEligibleSources,
     Math.max(0, Math.floor(value.includedSources)),
   );
+  // Not capped at includedSources: a group recording is one contribution
+  // from several people (decision P1-D5, 23 Nov 2026).
   const uniqueContributors =
     value.uniqueContributors === undefined
       ? undefined
       : Number.isFinite(value.uniqueContributors)
-        ? Math.min(
-            includedSources,
-            Math.max(0, Math.floor(value.uniqueContributors)),
-          )
+        ? Math.max(0, Math.floor(value.uniqueContributors))
         : undefined;
   return {
     includedSources,
@@ -909,10 +985,24 @@ function normalizeArtifactBase(
 export function normalizeProcessOverviewArtifactV2(
   value: unknown,
   context: SummaryNormalizationContext,
+  options: {
+    /**
+     * False for a chunk: it sees only part of the evidence, so a consensus
+     * point one chunk holds from one person may be agreed in another. Only the
+     * final artefact, which sees every source, moves them (task 1.3).
+     */
+    moveConsensus?: boolean;
+  } = {},
 ): ProcessOverviewArtifactV2 | null {
   const caps = PROCESS_OVERVIEW_SECTION_CAPS;
   const base = normalizeArtifactBase(value, context, caps);
   if (!base) return null;
+  const normalizedConsensus = normalizeFindingGroup(base.raw.consensus, context, "consensus", caps);
+  const normalizedNotable = normalizeFindingGroup(base.raw.notable, context, "notable", caps);
+  const { consensus, notable } =
+    options.moveConsensus === false
+      ? { consensus: normalizedConsensus, notable: normalizedNotable }
+      : moveUncorroboratedConsensus(normalizedConsensus, normalizedNotable, caps.group);
   return {
     schemaVersion: "v2",
     sourceMode: "interview_evidence",
@@ -920,36 +1010,104 @@ export function normalizeProcessOverviewArtifactV2(
     executiveBrief: base.executiveBrief,
     scope: normalizeFindingGroup(
       base.raw.scope,
-      context.sourceByKey,
+      context,
       "scope",
       caps,
     ),
-    consensus: normalizeFindingGroup(
-      base.raw.consensus,
-      context.sourceByKey,
-      "consensus",
-      caps,
-    ),
+    consensus,
     variations: normalizeFindingGroup(
       base.raw.variations,
-      context.sourceByKey,
+      context,
       "variation",
       caps,
     ),
     gaps: normalizeFindingGroup(
       base.raw.gaps,
-      context.sourceByKey,
+      context,
       "gap",
       caps,
     ),
-    notable: normalizeFindingGroup(
-      base.raw.notable,
-      context.sourceByKey,
-      "notable",
-      caps,
-    ),
+    notable,
     coverage: base.coverage,
     provenance: base.provenance,
+  };
+}
+
+/**
+ * Consensus holds only agreement between two or more people (decision P1-D1,
+ * 23 Nov 2026). A consensus finding with one person behind it moves to Notable,
+ * where it is still shown and still sourced. Its id changes with its section,
+ * so a deep link to the old id opens the overview without scrolling to it.
+ * Notable's own findings keep their place; when the cap is reached, the moved
+ * findings are the ones left out.
+ */
+export function moveUncorroboratedConsensus(
+  consensus: readonly SummaryFinding[],
+  notable: readonly SummaryFinding[],
+  notableCap: number,
+): { consensus: SummaryFinding[]; notable: SummaryFinding[] } {
+  const kept: SummaryFinding[] = [];
+  const merged: SummaryFinding[] = [...notable];
+  const seen = new Set(notable.map(findingDedupeKey));
+  for (const finding of consensus) {
+    if (finding.evidenceLevel === "corroborated") {
+      kept.push(finding);
+      continue;
+    }
+    const key = findingDedupeKey(finding);
+    if (seen.has(key) || merged.length >= notableCap) continue;
+    seen.add(key);
+    merged.push({
+      ...finding,
+      id: findingId("notable", finding.title, finding.sources),
+    });
+  }
+  return { consensus: kept, notable: merged };
+}
+
+/**
+ * Re-applies the evidence rules to a stored process overview without calling a
+ * model: each finding's contributor count and level from its stored sources,
+ * then the Consensus move. Used by the backfill (task 1.9). Leaves provenance
+ * and coverage untouched apart from the contributor count, so the overview is
+ * not treated as new and nothing is regenerated.
+ */
+export function reapplyProcessEvidenceRules(
+  artifact: ProcessOverviewArtifactV2,
+  keysByConversationId: ContributorKeysByConversationId,
+  uniqueContributors?: number,
+): ProcessOverviewArtifactV2 {
+  const recount = (finding: SummaryFinding): SummaryFinding => {
+    const contributorCount = findingContributorCount(
+      finding.sources,
+      keysByConversationId,
+    );
+    return {
+      ...finding,
+      evidenceLevel: supportedEvidenceLevel(
+        finding.evidenceLevel,
+        finding.sources,
+        contributorCount,
+      ),
+      ...(contributorCount === undefined ? {} : { contributorCount }),
+    };
+  };
+  const { consensus, notable } = moveUncorroboratedConsensus(
+    artifact.consensus.map(recount),
+    artifact.notable.map(recount),
+    PROCESS_OVERVIEW_SECTION_CAPS.group,
+  );
+  return {
+    ...artifact,
+    scope: artifact.scope.map(recount),
+    consensus,
+    variations: artifact.variations.map(recount),
+    gaps: artifact.gaps.map(recount),
+    notable,
+    coverage:
+      uniqueContributors === undefined
+        ? artifact.coverage
+        : { ...artifact.coverage, uniqueContributors },
   };
 }
 
@@ -967,31 +1125,31 @@ export function normalizeDepartmentOverviewArtifactV2(
     executiveBrief: base.executiveBrief,
     crossProcessDependencies: normalizeFindingGroup(
       base.raw.crossProcessDependencies,
-      context.sourceByKey,
+      context,
       "cross-process-dependency",
       caps,
     ),
     sharedPatterns: normalizeFindingGroup(
       base.raw.sharedPatterns,
-      context.sourceByKey,
+      context,
       "shared-pattern",
       caps,
     ),
     variationsAndTensions: normalizeFindingGroup(
       base.raw.variationsAndTensions,
-      context.sourceByKey,
+      context,
       "variation-and-tension",
       caps,
     ),
     gaps: normalizeFindingGroup(
       base.raw.gaps,
-      context.sourceByKey,
+      context,
       "gap",
       caps,
     ),
     notable: normalizeFindingGroup(
       base.raw.notable,
-      context.sourceByKey,
+      context,
       "notable",
       caps,
     ),
@@ -1014,31 +1172,31 @@ export function normalizeFunctionOverviewArtifactV2(
     executiveBrief: base.executiveBrief,
     crossDepartmentDependencies: normalizeFindingGroup(
       base.raw.crossDepartmentDependencies,
-      context.sourceByKey,
+      context,
       "cross-department-dependency",
       caps,
     ),
     strategicPatterns: normalizeFindingGroup(
       base.raw.strategicPatterns,
-      context.sourceByKey,
+      context,
       "strategic-pattern",
       caps,
     ),
     variationsAndTensions: normalizeFindingGroup(
       base.raw.variationsAndTensions,
-      context.sourceByKey,
+      context,
       "variation-and-tension",
       caps,
     ),
     gaps: normalizeFindingGroup(
       base.raw.gaps,
-      context.sourceByKey,
+      context,
       "gap",
       caps,
     ),
     notable: normalizeFindingGroup(
       base.raw.notable,
-      context.sourceByKey,
+      context,
       "notable",
       caps,
     ),

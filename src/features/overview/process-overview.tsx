@@ -505,7 +505,11 @@ export function ProcessOverviewContent({
                 <FindingRows
                   findings={structuredArtifact.consensus}
                   onOpenConversation={onOpenConversation}
-                  emptyText="No agreement across contributions has been established yet."
+                  emptyText={
+                    (structuredArtifact.coverage.uniqueContributors ?? 0) < 2
+                      ? "Agreement needs accounts from two or more contributors."
+                      : "No agreement between contributors has been established yet."
+                  }
                 />
               </div>
               <div>

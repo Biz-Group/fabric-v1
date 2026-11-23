@@ -204,6 +204,23 @@ describe("deriveKeyFindings", () => {
     ]);
   });
 
+  test("never names the start or end step as a handoff hotspot", () => {
+    // The review's case: every branch finishes at the end step, so it sat at
+    // four handoffs without work bouncing there.
+    const result = findingsOf(
+      flowOf(
+        [
+          node({ id: "a", actors: ["Clerk"] }),
+          node({ id: "b", actors: ["Manager"] }),
+          node({ id: "c", actors: ["Finance"] }),
+          node({ id: "end", label: "Ticket Resolved", category: "end", actors: ["Client"] }),
+        ],
+        [edge("a", "end"), edge("b", "end"), edge("c", "end")],
+      ),
+    );
+    expect(result).toEqual({ state: "none_reported" });
+  });
+
   test("caps the summary and keeps the priority order", () => {
     const result = findingsOf(
       flowOf(

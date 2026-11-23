@@ -266,6 +266,7 @@ function toPdfFinding(finding: SummaryFinding): PdfFinding {
     evidenceLabel: evidenceStrengthLabel(
       finding.evidenceLevel,
       finding.supportCount,
+      finding.contributorCount,
     ),
     sources: finding.sources.map((source) => source.label),
   };

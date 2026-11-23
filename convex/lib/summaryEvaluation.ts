@@ -13,7 +13,9 @@
  */
 
 import {
+  findingContributorCount,
   isExplicitMissingEvidenceFinding,
+  supportedEvidenceLevel,
   stripEmphasisMarkers,
   type SummaryArtifactV2,
   type SummaryCoverage,
@@ -98,7 +100,8 @@ export type SourceValidityViolation = {
     | "support_count_mismatch"
     | "evidence_level_mismatch"
     | "gap_not_phrased_as_missing_evidence"
-    | "duplicate_source_in_finding";
+    | "duplicate_source_in_finding"
+    | "consensus_not_corroborated";
   section: string;
   findingId: string;
   findingTitle: string;
@@ -203,15 +206,33 @@ export function scoreSourceValidity(
       supportedFactualFindings += 1;
     }
 
-    const expectedLevel =
-      finding.sources.length >= 2 ? "corroborated" : "single_source";
+    // Same rule as the normaliser, re-derived here from the artifact alone:
+    // a process finding needs two distinct people. Without a stored
+    // contributorCount (older artifacts), distinct source labels stand in.
+    const people = finding.contributorCount ?? findingContributorCount(finding.sources);
+    const expectedLevel = supportedEvidenceLevel(
+      finding.evidenceLevel,
+      finding.sources,
+      people,
+    );
     if (finding.evidenceLevel !== expectedLevel) {
       violations.push({
         code: "evidence_level_mismatch",
         section,
         findingId: finding.id,
         findingTitle: finding.title,
-        detail: `${finding.evidenceLevel} with ${finding.sources.length} sources`,
+        detail: `${finding.evidenceLevel} with ${finding.sources.length} sources and ${people ?? finding.sources.length} contributors`,
+      });
+    }
+
+    // Judged on the people behind it, not on the stored label.
+    if (section === "consensus" && expectedLevel !== "corroborated") {
+      violations.push({
+        code: "consensus_not_corroborated",
+        section,
+        findingId: finding.id,
+        findingTitle: finding.title,
+        detail: "a consensus finding needs two or more contributors",
       });
     }
   }

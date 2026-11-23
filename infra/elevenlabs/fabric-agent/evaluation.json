@@ -1,0 +1,82 @@
+{
+  "criteria": [
+    {
+      "analysis_schedule": {
+        "messaging": {
+          "idle_secs": 900,
+          "mode": "after_idle"
+        },
+        "session": {
+          "delay_secs": null,
+          "mode": "on_session_end"
+        }
+      },
+      "check_match": "all",
+      "checks": [],
+      "conversation_goal_prompt": "Did the contributor describe specific steps in their process?",
+      "create_agent_issue_on_failure": false,
+      "id": "described_specific_steps",
+      "llm": null,
+      "llm_billed": false,
+      "max_score": 100,
+      "name": "described_specific_steps",
+      "scope": "conversation",
+      "score_instructions": null,
+      "scoring_mode": "binary",
+      "type": "prompt",
+      "use_knowledge_base": false
+    },
+    {
+      "analysis_schedule": {
+        "messaging": {
+          "idle_secs": 900,
+          "mode": "after_idle"
+        },
+        "session": {
+          "delay_secs": null,
+          "mode": "on_session_end"
+        }
+      },
+      "check_match": "all",
+      "checks": [],
+      "conversation_goal_prompt": "Did the contributor mention tools or systems they use?",
+      "create_agent_issue_on_failure": false,
+      "id": "mentioned_tools_or_systems",
+      "llm": null,
+      "llm_billed": false,
+      "max_score": 100,
+      "name": "mentioned_tools_or_systems",
+      "scope": "conversation",
+      "score_instructions": null,
+      "scoring_mode": "binary",
+      "type": "prompt",
+      "use_knowledge_base": false
+    },
+    {
+      "analysis_schedule": {
+        "messaging": {
+          "idle_secs": 900,
+          "mode": "after_idle"
+        },
+        "session": {
+          "delay_secs": null,
+          "mode": "on_session_end"
+        }
+      },
+      "check_match": "all",
+      "checks": [],
+      "conversation_goal_prompt": "Did the contributor identify dependencies on other people or teams?",
+      "create_agent_issue_on_failure": false,
+      "id": "identified_dependencies",
+      "llm": null,
+      "llm_billed": false,
+      "max_score": 100,
+      "name": "identified_dependencies",
+      "scope": "conversation",
+      "score_instructions": null,
+      "scoring_mode": "binary",
+      "type": "prompt",
+      "use_knowledge_base": false
+    }
+  ]
+}

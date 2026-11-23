@@ -117,12 +117,32 @@ export function describedNodes<T extends { id: string; detailStatus?: string }>(
   return nodes.filter(isNodeDescribed);
 }
 
+/**
+ * One spelling per actor, so "Support Team", "support team." and "Support"
+ * compare equal: case, punctuation, spacing and a trailing "team" or "teams"
+ * are ignored.
+ */
+export function normalizeActorName(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s+teams?$/u, "");
+}
+
+/**
+ * Work changes hands only when no one at the earlier step is also at the next
+ * (decision P1-D6, 23 Nov 2026). Before, any difference in the actor lists
+ * counted, so "Support team" → "Support team, Lead" was a handoff.
+ */
 function actorsChanged(source: FlowNode, target: FlowNode) {
-  const sourceActors = uniqueStrings(source.actors).map(normalizeText);
-  const targetActors = uniqueStrings(target.actors).map(normalizeText);
-  if (sourceActors.length === 0 || targetActors.length === 0) return false;
-  if (sourceActors.length !== targetActors.length) return true;
-  return sourceActors.some((actor) => !targetActors.includes(actor));
+  const sourceActors = new Set(
+    source.actors.map(normalizeActorName).filter(Boolean),
+  );
+  const targetActors = target.actors.map(normalizeActorName).filter(Boolean);
+  if (sourceActors.size === 0 || targetActors.length === 0) return false;
+  return !targetActors.some((actor) => sourceActors.has(actor));
 }
 
 export function deriveHandoffs(nodes: FlowNode[], edges: FlowEdge[]) {
@@ -409,8 +429,15 @@ export function deriveKeyFindings(
       });
     }
   }
+  // The start and end of a process are where every path begins and finishes,
+  // so they collect handoffs by position, not because work bounces there.
   const hotspot = [...handoffsByNode.values()]
-    .filter((entry) => entry.count >= 2)
+    .filter(
+      (entry) =>
+        entry.count >= 2 &&
+        entry.node.category !== "start" &&
+        entry.node.category !== "end",
+    )
     .sort(
       (a, b) => b.count - a.count || a.node.label.localeCompare(b.node.label),
     )[0];

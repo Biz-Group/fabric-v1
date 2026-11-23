@@ -1,0 +1,43 @@
+{
+  "language": "en",
+  "llm": "claude-haiku-5-5",
+  "maxDurationSeconds": 6000,
+  "maxTokens": -1,
+  "name": "Fabric",
+  "temperature": 0,
+  "tools": [
+    "end_call",
+    "language_detection",
+    "skip_turn"
+  ],
+  "ttsModel": "eleven_v4_turbo",
+  "turn": {
+    "initial_wait_time": null,
+    "interruption_ignore_term_languages": [],
+    "interruption_ignore_terms": [],
+    "merge_with_default_ignore_terms": false,
+    "mode": "turn",
+    "noisy_environment_detection": false,
+    "noisy_environment_message": "Uhh ... sorry, I'm picking up some noise in the background. Could you move somewhere quieter?",
+    "retranscribe_on_turn_timeout": false,
+    "silence_end_call_timeout": -1,
+    "soft_timeout_config": {
+      "additional_soft_timeout_messages": [],
+      "disable_until_first_user_message": false,
+      "llm_generated_message_prompt_override": null,
+      "max_soft_timeouts_per_generation": 1,
+      "message": "Hhmmmm...yeah.",
+      "pause_after_filler": false,
+      "randomize_fillers": false,
+      "timeout_seconds": -1,
+      "use_llm_generated_message": false
+    },
+    "speculative_turn": true,
+    "spelling_patience": "auto",
+    "transcribe_on_disabled_interruptions": false,
+    "turn_eagerness": "normal",
+    "turn_model": "turn_v3",
+    "turn_timeout": 7
+  },
+  "voiceId": "l4Coq6695JDX9xtLqXDE"
+}

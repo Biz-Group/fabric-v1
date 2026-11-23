@@ -19,7 +19,9 @@ import {
 } from "./lib/aiProvider";
 import { meteredCompletion } from "./lib/aiUsageMeter";
 import { extractDataCollection } from "./lib/conversationAnalysis";
+import { contributorKeysFor } from "./lib/contributorIdentity";
 import {
+  applyEvidenceConfidence,
   buildGraphAIRequest,
   buildNodeDetailsAIRequest,
   deriveFlowInsights,
@@ -404,13 +406,16 @@ export const getFlowGenerationData = internalQuery({
       });
     }
 
-    const doneConversations = doneRows
-      .slice(0, MAX_CONVERSATIONS_PER_FLOW)
-      .map((c) => ({
-        contributorName: c.contributorName,
-        analysis: (c.analysis ?? null) as Record<string, unknown> | null,
-        creationTime: c._creationTime,
-      }));
+    const usedRows = doneRows.slice(0, MAX_CONVERSATIONS_PER_FLOW);
+    // Who each contribution stands for, so step confidence can count people
+    // from the `Conv. N` references (contributorIdentity.ts).
+    const keyLists = contributorKeysFor(usedRows);
+    const doneConversations = usedRows.map((c, index) => ({
+      contributorName: c.contributorName,
+      analysis: (c.analysis ?? null) as Record<string, unknown> | null,
+      creationTime: c._creationTime,
+      contributorKeys: keyLists[index],
+    }));
 
     return {
       rollingSummary,
@@ -1862,6 +1867,7 @@ export const generateNodeDetailsBatchInternal = internalAction({
         contributorName: string;
         analysis: Record<string, unknown> | null;
         creationTime: number;
+        contributorKeys: string[];
       }>;
     } = await ctx.runQuery(internal.processFlows.getFlowGenerationData, {
       processId: args.processId,
@@ -1926,9 +1932,12 @@ export const generateNodeDetailsBatchInternal = internalAction({
     let details = new Map<string, FlowNodeDetail>();
     if (payload !== null && !(typeof payload === "string" && !payload.trim())) {
       try {
-        details = normalizeNodeDetailsResponse(
-          completion.toolInput ?? parseFlowResponsePayload(payload),
-          batch.nodeIds,
+        details = applyEvidenceConfidence(
+          normalizeNodeDetailsResponse(
+            completion.toolInput ?? parseFlowResponsePayload(payload),
+            batch.nodeIds,
+          ),
+          data.conversations,
         );
       } catch (e) {
         console.error("Failed to parse node detail JSON:", {
