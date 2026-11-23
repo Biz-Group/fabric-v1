@@ -77,6 +77,32 @@
       "scoring_mode": "binary",
       "type": "prompt",
       "use_knowledge_base": false
+    },
+    {
+      "analysis_schedule": {
+        "messaging": {
+          "idle_secs": 900,
+          "mode": "after_idle"
+        },
+        "session": {
+          "delay_secs": null,
+          "mode": "on_session_end"
+        }
+      },
+      "check_match": "all",
+      "checks": [],
+      "conversation_goal_prompt": "Did the contributor say how often the process runs and roughly how many cases it handles? An estimate counts.",
+      "create_agent_issue_on_failure": false,
+      "id": "described_frequency_and_volume",
+      "llm": null,
+      "llm_billed": false,
+      "max_score": 100,
+      "name": "described_frequency_and_volume",
+      "scope": "conversation",
+      "score_instructions": null,
+      "scoring_mode": "binary",
+      "type": "prompt",
+      "use_knowledge_base": false
     }
   ]
 }

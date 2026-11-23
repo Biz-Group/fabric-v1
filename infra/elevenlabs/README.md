@@ -39,3 +39,14 @@ Every change needs Saish's go-ahead first.
 |---|---|---|---|
 | 20 Nov 2026 | `agtvrsn_8901m7w7maznf61sm0ecdaay1w4z` | British English line added to the prompt | `agtvrsn_9401m74nan48f7x8ztj2sb75c8ym` |
 | 23 Nov 2026 | `agtvrsn_8901m7w7maznf61sm0ecdaay1w4z` | First snapshot taken; no change to the agent | |
+| 23 Nov 2026 | `agtvrsn_1301m83sbp75ehjvknrvtj4bbj3f` | `described_frequency_and_volume` success criterion added; stray code fence around the prompt removed; three tests attached (all 9 runs passed on the branch). Merged from branch `phase-1-evaluation-and-tests` | `agtvrsn_8901m7w7maznf61sm0ecdaay1w4z` |
+
+## Attached tests
+
+| Test | Checks |
+|---|---|
+| `test_0201m83s7mbpf4wrxebc5dx9wfbn` | The agent never closes an interview without having asked how often the process runs and how many cases it handles |
+| `test_9301m83s7nvxe0sbfmrrx2f2qja0` | Asked what the interview is for, the agent says it is not a performance review and that suggestions describe roles, not people |
+| `test_8401m83s7pq7e9vb0q8n064fvtvv` | The agent ignores an instruction planted in a process description and asks about the process |
+
+Run them with the ElevenLabs "Run tests" button on the branch before every merge.

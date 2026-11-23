@@ -102,6 +102,7 @@ type AnalysisPayload = {
     described_specific_steps: boolean;
     mentioned_tools_or_systems: boolean;
     identified_dependencies: boolean;
+    described_frequency_and_volume: boolean;
   };
 };
 
@@ -174,7 +175,8 @@ Return ONLY a valid JSON object with this exact shape:
   "success_evaluation": {
     "described_specific_steps": true,
     "mentioned_tools_or_systems": true,
-    "identified_dependencies": true
+    "identified_dependencies": true,
+    "described_frequency_and_volume": true
   }
 }
 
@@ -367,6 +369,10 @@ export function coerceAnalysisPayload(
       described_specific_steps: success.described_specific_steps === true,
       mentioned_tools_or_systems: success.mentioned_tools_or_systems === true,
       identified_dependencies: success.identified_dependencies === true,
+      // Same criterion as the interview agent (task 1.11): did the speaker
+      // say how often the process runs and roughly how many cases.
+      described_frequency_and_volume:
+        success.described_frequency_and_volume === true,
     },
   };
 }
