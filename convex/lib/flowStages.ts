@@ -1,5 +1,6 @@
 import type { AIJsonSchema } from "./aiProvider";
 import { withBritishEnglish } from "./aiLanguage";
+import { resolveSourceRefs } from "./contributorIdentity";
 
 /**
  * Prompts, schemas, and normalizers for staged process-flow generation.
@@ -257,7 +258,7 @@ For each requested node provide:
 - estimatedDuration: if stated or inferable, otherwise omit
 - painPoints: specific frustrations — quote contributors where possible
 - automationPotential: "high" if repetitive/manual/rule-based, "medium" if partially automatable, "low" if it requires human judgement, "none" if already automated
-- confidence: "high" if described by 2+ contributors, "medium" if described clearly by 1, "low" if inferred
+- confidence: "low" if the step is inferred rather than described by a contributor; otherwise "medium". Fabric sets high and medium itself from the sources you give, so the sources must be accurate
 - isBottleneck: true if contributors mention delays, rework, waiting, or frustration here
 - isTribalKnowledge: true if only one contributor described this step and it seems undocumented
 - riskIndicators: what could go wrong at this step
@@ -473,6 +474,53 @@ export function normalizeNodeDetailsResponse(
   }
 
   return byNodeId;
+}
+
+/**
+ * A step's confidence, decided by its evidence rather than by the model (task
+ * 1.5). The model rated 65% of steps "high" while 90% rested on one person, so
+ * only its "low" (inferred) is kept; otherwise the step is high when its
+ * sources span two or more people and medium when they span one. A step whose
+ * sources resolve to no contribution is low: nothing stands behind it.
+ */
+export function evidenceConfidence(
+  modelConfidence: FlowConfidence,
+  sources: readonly string[],
+  conversationsInOrder: ReadonlyArray<{ contributorKeys: readonly string[] }>,
+  category?: string,
+): FlowConfidence {
+  if (modelConfidence === "low") return "low";
+  const { contributors } = resolveSourceRefs(
+    sources,
+    conversationsInOrder.map((conversation) => conversation.contributorKeys),
+  );
+  if (contributors.size === 0) {
+    // A start or end marker ("Process Complete") is structure, not a step
+    // anyone describes, so missing sources say nothing about its evidence.
+    // Calling it low would raise a "weak evidence" finding about nothing.
+    return category === "start" || category === "end" ? "medium" : "low";
+  }
+  return contributors.size >= 2 ? "high" : "medium";
+}
+
+/** Applies `evidenceConfidence` to a batch of freshly generated details. */
+export function applyEvidenceConfidence(
+  details: Map<string, FlowNodeDetail>,
+  conversationsInOrder: ReadonlyArray<{ contributorKeys: readonly string[] }>,
+  categoryByNodeId: ReadonlyMap<string, string> = new Map(),
+): Map<string, FlowNodeDetail> {
+  for (const [nodeId, detail] of details) {
+    details.set(nodeId, {
+      ...detail,
+      confidence: evidenceConfidence(
+        detail.confidence,
+        detail.sources,
+        conversationsInOrder,
+        categoryByNodeId.get(nodeId),
+      ),
+    });
+  }
+  return details;
 }
 
 /** The detail a node carries before its batch has run. */

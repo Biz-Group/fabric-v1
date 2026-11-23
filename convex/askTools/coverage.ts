@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
+import { contributorKeysFor } from "../lib/contributorIdentity";
 import { conversationTitle } from "../lib/conversationTitle";
 import { askToolQuery } from "./executor";
 import {
@@ -131,9 +132,10 @@ export const getCoverage = askToolQuery({
     const contributors = new Set<string>();
     for (const row of done) {
       doneByProcess.set(row.processId, (doneByProcess.get(row.processId) ?? 0) + 1);
-      contributors.add(
-        row.subjectUserId ?? row.userId ?? `name:${row.contributorName.trim().toLocaleLowerCase()}`,
-      );
+    }
+    // One rule for "who", shared with overviews, flows and recommendations.
+    for (const keys of contributorKeysFor(done)) {
+      for (const key of keys) contributors.add(key);
     }
     const interviewed = scope.processes.filter((p) => doneByProcess.has(p._id));
     const notInterviewed = scope.processes.filter((p) => !doneByProcess.has(p._id));

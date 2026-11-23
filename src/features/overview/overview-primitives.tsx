@@ -52,6 +52,7 @@ export type OverviewFinding = {
   body: string;
   evidenceLevel: EvidenceLevel;
   supportCount: number;
+  contributorCount?: number;
   sources: OverviewSource[];
 };
 
@@ -382,9 +383,11 @@ export function OverviewLead({
 function EvidenceStrength({
   level,
   supportCount,
+  contributorCount,
 }: {
   level: EvidenceLevel;
   supportCount: number;
+  contributorCount?: number;
 }) {
   return (
     <span
@@ -394,7 +397,7 @@ function EvidenceStrength({
       )}
     >
       <ShieldCheck className="size-3" aria-hidden="true" />
-      {evidenceStrengthLabel(level, supportCount)}
+      {evidenceStrengthLabel(level, supportCount, contributorCount)}
     </span>
   );
 }
@@ -547,6 +550,7 @@ export function FindingRows({
             <EvidenceStrength
               level={finding.evidenceLevel}
               supportCount={finding.supportCount}
+              contributorCount={finding.contributorCount}
             />
           </div>
           <p className="mt-2 max-w-3xl text-sm leading-7 text-foreground/80">

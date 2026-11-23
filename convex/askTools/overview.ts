@@ -72,7 +72,12 @@ function pendingPhrase(work: PendingWork): string {
 }
 
 function evidencePhrase(finding: Finding): string {
-  return `evidence: ${finding.evidenceLevel}, ${finding.supportCount} supporting contribution${finding.supportCount === 1 ? "" : "s"}`;
+  const contributions = `${finding.supportCount} supporting contribution${finding.supportCount === 1 ? "" : "s"}`;
+  const people =
+    finding.contributorCount === undefined
+      ? ""
+      : ` from ${finding.contributorCount} contributor${finding.contributorCount === 1 ? "" : "s"}`;
+  return `evidence: ${finding.evidenceLevel}, ${contributions}${people}`;
 }
 
 /**

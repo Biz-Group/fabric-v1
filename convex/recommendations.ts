@@ -25,6 +25,7 @@ import {
 import { meteredCompletion, type UsageAttribution } from "./lib/aiUsageMeter";
 import { takeManualRun } from "./lib/manualRuns";
 import { extractDataCollection } from "./lib/conversationAnalysis";
+import { contributorKeysFor } from "./lib/contributorIdentity";
 import {
   INSIGHTS_RATE_LIMIT_RETRY_DELAYS_MS,
   SOFT_MAX_NODES,
@@ -179,7 +180,7 @@ async function getRun(
     .unique();
 }
 
-async function storedRecommendations(
+export async function storedRecommendations(
   ctx: { db: QueryCtx["db"] },
   clerkOrgId: string,
   processId: Id<"processes">,
@@ -459,6 +460,8 @@ export async function loadRecommendationInput(
     contributorNames: [
       ...new Set(conversations.map((c) => c.contributorName)),
     ],
+    // Same order as "Conv. N" in step sources, for counting people (task 1.4).
+    contributorKeysInOrder: contributorKeysFor(conversations),
   };
 }
 
@@ -888,6 +891,7 @@ export const generateRecommendationsInternal = internalAction({
           frequency: rec.frequency,
           nodeIds: rec.nodeIds,
           nodes: input.nodes,
+          contributorKeysInOrder: input.contributorKeysInOrder,
         }),
         matchKey: recommendationMatchKey(rec.nodeIds, rec.intervention),
         previousRecommendationId: rec.previousRecommendationId,

@@ -1,0 +1,227 @@
+{
+  "compliance_or_approvals": {
+    "allowed_values": null,
+    "allowed_values_dynamic_variable": "",
+    "analysis_schedule": {
+      "messaging": {
+        "idle_secs": 900,
+        "mode": "after_idle"
+      },
+      "session": {
+        "delay_secs": null,
+        "mode": "on_session_end"
+      }
+    },
+    "constant_value": "",
+    "description": "List any approval gates, sign-offs, or compliance checks mentioned. Format: 'check — who approves'. Return null if none.",
+    "dynamic_variable": "",
+    "enum": null,
+    "is_omitted": false,
+    "is_system_provided": false,
+    "llm": null,
+    "llm_billed": false,
+    "name": "compliance_or_approvals",
+    "non_sensitive_value": null,
+    "type": "string"
+  },
+  "dependencies": {
+    "allowed_values": null,
+    "allowed_values_dynamic_variable": "",
+    "analysis_schedule": {
+      "messaging": {
+        "idle_secs": 900,
+        "mode": "after_idle"
+      },
+      "session": {
+        "delay_secs": null,
+        "mode": "on_session_end"
+      }
+    },
+    "constant_value": "",
+    "description": "People, teams, or external parties the contributor depends on",
+    "dynamic_variable": "",
+    "enum": null,
+    "is_omitted": false,
+    "is_system_provided": false,
+    "llm": null,
+    "llm_billed": false,
+    "name": "dependencies",
+    "non_sensitive_value": null,
+    "type": "string"
+  },
+  "edge_cases": {
+    "allowed_values": null,
+    "allowed_values_dynamic_variable": "",
+    "analysis_schedule": {
+      "messaging": {
+        "idle_secs": 900,
+        "mode": "after_idle"
+      },
+      "session": {
+        "delay_secs": null,
+        "mode": "on_session_end"
+      }
+    },
+    "constant_value": "",
+    "description": "Edge cases, exceptions, or \"when things go wrong\" scenarios described",
+    "dynamic_variable": "",
+    "enum": null,
+    "is_omitted": false,
+    "is_system_provided": false,
+    "llm": null,
+    "llm_billed": false,
+    "name": "edge_cases",
+    "non_sensitive_value": null,
+    "type": "string"
+  },
+  "frequency": {
+    "allowed_values": null,
+    "allowed_values_dynamic_variable": "",
+    "analysis_schedule": {
+      "messaging": {
+        "idle_secs": 900,
+        "mode": "after_idle"
+      },
+      "session": {
+        "delay_secs": null,
+        "mode": "on_session_end"
+      }
+    },
+    "constant_value": "",
+    "description": "How often the process runs (e.g., \"weekly\", \"monthly\", \"daily\")",
+    "dynamic_variable": "",
+    "enum": null,
+    "is_omitted": false,
+    "is_system_provided": false,
+    "llm": null,
+    "llm_billed": false,
+    "name": "frequency",
+    "non_sensitive_value": null,
+    "type": "string"
+  },
+  "process_steps": {
+    "allowed_values": null,
+    "allowed_values_dynamic_variable": "",
+    "analysis_schedule": {
+      "messaging": {
+        "idle_secs": 900,
+        "mode": "after_idle"
+      },
+      "session": {
+        "delay_secs": null,
+        "mode": "on_session_end"
+      }
+    },
+    "constant_value": "",
+    "description": "Extract the process steps described by the contributor as a JSON array.\nEach step is an object with these fields:\n- id: short kebab-case identifier (e.g. 'pull-workday-data')\n- name: step name as described\n- type: one of 'action', 'decision', 'handoff', 'wait'\n  - 'action': a task someone performs\n  - 'decision': a point where the process branches based on a condition\n  - 'handoff': where responsibility transfers to another person or team\n  - 'wait': where the process blocks on an external dependency\n- actor: who performs this step (name or role)\n- tools: array of tools/systems used at this step (empty array if none)\n- duration: estimated time if mentioned, or null\n\nExample output:\n[\n  {\\\"id\\\": \\\"pull-data\\\", \\\"name\\\": \\\"Pull employee data from Workday\\\", \\\"type\\\": \\\"action\\\", \\\"actor\\\": \\\"Payroll Analyst\\\", \\\"tools\\\": [\\\"Workday HRIS\\\"], \\\"duration\\\": \\\"2 hours\\\"},\n  {\\\"id\\\": \\\"validate-bands\\\", \\\"name\\\": \\\"Validate against compensation bands\\\", \\\"type\\\": \\\"action\\\", \\\"actor\\\": \\\"Payroll Analyst\\\", \\\"tools\\\": [\\\"Excel\\\", \\\"Internal Wiki\\\"], \\\"duration\\\": \\\"1 day\\\"},\n  {\\\"id\\\": \\\"check-exceptions\\\", \\\"name\\\": \\\"Check for terminated employees\\\", \\\"type\\\": \\\"decision\\\", \\\"actor\\\": \\\"Payroll Analyst\\\", \\\"tools\\\": [], \\\"duration\\\": null},\n  {\\\"id\\\": \\\"escalate-hr\\\", \\\"name\\\": \\\"Send to HR for confirmation\\\", \\\"type\\\": \\\"handoff\\\", \\\"actor\\\": \\\"Payroll Analyst\\\", \\\"tools\\\": [\\\"Email\\\"], \\\"duration\\\": null},\n  {\\\"id\\\": \\\"wait-hr\\\", \\\"name\\\": \\\"Wait for HR response\\\", \\\"type\\\": \\\"wait\\\", \\\"actor\\\": \\\"HR team\\\", \\\"tools\\\": [], \\\"duration\\\": \\\"1-2 days\\\"}\n]\n\nReturn valid JSON only. If no clear steps were described, return an empty array [].",
+    "dynamic_variable": "",
+    "enum": null,
+    "is_omitted": false,
+    "is_system_provided": false,
+    "llm": null,
+    "llm_billed": false,
+    "name": "process_steps",
+    "non_sensitive_value": null,
+    "type": "string"
+  },
+  "step_connections": {
+    "allowed_values": null,
+    "allowed_values_dynamic_variable": "",
+    "analysis_schedule": {
+      "messaging": {
+        "idle_secs": 900,
+        "mode": "after_idle"
+      },
+      "session": {
+        "delay_secs": null,
+        "mode": "on_session_end"
+      }
+    },
+    "constant_value": "",
+    "description": "Extract how the process steps connect to each other as a JSON array.\nEach connection is an object with:\n- from: the id of the source step (matching an id from process_steps)\n- to: the id of the target step\n- condition: if this is a conditional branch, the condition text (e.g. 'If exceptions found'). null for normal sequential flow.\n\nExample output:\n[\n  {\\\"from\\\": \\\"pull-data\\\", \\\"to\\\": \\\"validate-bands\\\", \\\"condition\\\": null},\n  {\\\"from\\\": \\\"validate-bands\\\", \\\"to\\\": \\\"check-exceptions\\\", \\\"condition\\\": null},\n  {\\\"from\\\": \\\"check-exceptions\\\", \\\"to\\\": \\\"escalate-hr\\\", \\\"condition\\\": \\\"Exceptions found\\\"},\n  {\\\"from\\\": \\\"check-exceptions\\\", \\\"to\\\": \\\"calculate-amounts\\\", \\\"condition\\\": \\\"No exceptions\\\"},\n  {\\\"from\\\": \\\"escalate-hr\\\", \\\"to\\\": \\\"wait-hr\\\", \\\"condition\\\": null}\n]\n\nReturn valid JSON only. If steps are purely sequential with no branches, still include each connection. Return empty array [] if connections cannot be determined.",
+    "dynamic_variable": "",
+    "enum": null,
+    "is_omitted": false,
+    "is_system_provided": false,
+    "llm": null,
+    "llm_billed": false,
+    "name": "step_connections",
+    "non_sensitive_value": null,
+    "type": "string"
+  },
+  "step_issues": {
+    "allowed_values": null,
+    "allowed_values_dynamic_variable": "",
+    "analysis_schedule": {
+      "messaging": {
+        "idle_secs": 900,
+        "mode": "after_idle"
+      },
+      "session": {
+        "delay_secs": null,
+        "mode": "on_session_end"
+      }
+    },
+    "constant_value": "",
+    "description": "For each step where the contributor expressed a problem, delay, frustration, or workaround, extract a JSON array of issue objects.\nEach issue has:\n- step_id: matching an id from process_steps\n- pain_point: the specific frustration or problem described, or null\n- is_bottleneck: true if the contributor described this step as slow, delayed, blocking, or error-prone\n- bottleneck_reason: why it's a bottleneck, or null\n- workaround: any unofficial shortcut or trick the contributor uses at this step, or null\n\nExample output:\n[\n  {\\\"step_id\\\": \\\"validate-bands\\\", \\\"pain_point\\\": \\\"Manually checking 400 rows every month\\\", \\\"is_bottleneck\\\": true, \\\"bottleneck_reason\\\": \\\"Takes a full day of manual work\\\", \\\"workaround\\\": null},\n  {\\\"step_id\\\": \\\"wait-hr\\\", \\\"pain_point\\\": \\\"HR slow to respond near quarter-end\\\", \\\"is_bottleneck\\\": true, \\\"bottleneck_reason\\\": \\\"1-2 day block on external team\\\", \\\"workaround\\\": \\\"Sometimes calls HR directly instead of emailing\\\"}\n]\n\nReturn valid JSON only. Return empty array [] if no issues were raised.",
+    "dynamic_variable": "",
+    "enum": null,
+    "is_omitted": false,
+    "is_system_provided": false,
+    "llm": null,
+    "llm_billed": false,
+    "name": "step_issues",
+    "non_sensitive_value": null,
+    "type": "string"
+  },
+  "total_process_duration": {
+    "allowed_values": null,
+    "allowed_values_dynamic_variable": "",
+    "analysis_schedule": {
+      "messaging": {
+        "idle_secs": 900,
+        "mode": "after_idle"
+      },
+      "session": {
+        "delay_secs": null,
+        "mode": "on_session_end"
+      }
+    },
+    "constant_value": "",
+    "description": "If the contributor mentioned how long the entire process takes end-to-end, extract that estimate. Examples: 'about a week', '5-7 business days'. Return null if not mentioned.",
+    "dynamic_variable": "",
+    "enum": null,
+    "is_omitted": false,
+    "is_system_provided": false,
+    "llm": null,
+    "llm_billed": false,
+    "name": "total_process_duration",
+    "non_sensitive_value": null,
+    "type": "string"
+  },
+  "volume": {
+    "allowed_values": null,
+    "allowed_values_dynamic_variable": "",
+    "analysis_schedule": {
+      "messaging": {
+        "idle_secs": 900,
+        "mode": "after_idle"
+      },
+      "session": {
+        "delay_secs": null,
+        "mode": "on_session_end"
+      }
+    },
+    "constant_value": "",
+    "description": "Roughly how many times, cases or items the process handles, per run or per period (e.g. '40 requests a month', 'every employee, about 3,000, once a year'). Null if not mentioned.",
+    "dynamic_variable": "",
+    "enum": null,
+    "is_omitted": false,
+    "is_system_provided": false,
+    "llm": null,
+    "llm_billed": false,
+    "name": "volume",
+    "non_sensitive_value": null,
+    "type": "string"
+  }
+}

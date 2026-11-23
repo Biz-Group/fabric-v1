@@ -328,6 +328,7 @@ describe("voice recording helpers", () => {
           described_specific_steps: true,
           mentioned_tools_or_systems: true,
           identified_dependencies: true,
+          described_frequency_and_volume: true,
         },
       },
       "Fallback",
@@ -343,6 +344,7 @@ describe("voice recording helpers", () => {
     expect(analysis.data_collection.dependencies).toBe("HRIS export");
     expect(analysis.data_collection.volume).toBe("Around 40 requests a month");
     expect(analysis.success_evaluation.identified_dependencies).toBe(true);
+    expect(analysis.success_evaluation.described_frequency_and_volume).toBe(true);
   });
 
   test("parses a well-formed analysis response into a payload", () => {

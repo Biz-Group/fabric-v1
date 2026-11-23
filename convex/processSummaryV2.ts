@@ -26,6 +26,7 @@ import {
   type ProcessEvidencePromptSource,
   updateSnapshotHashState,
 } from "./lib/processOverviewV2";
+import { contributorKeysFor } from "./lib/contributorIdentity";
 import { hashTranscript } from "./lib/transcriptHash";
 import {
   isConversationEvidenceV2Current,
@@ -543,6 +544,7 @@ export const getProcessChunkInput = internalQuery({
     if (!chunk?.sourceInputs) return null;
 
     const sources: ProcessEvidencePromptSource[] = [];
+    const sourceRows: Doc<"conversations">[] = [];
     for (const input of chunk.sourceInputs) {
       const conversation = await ctx.db.get(input.conversationId);
       const evidence = conversation?.processSummaryEvidenceV2;
@@ -557,7 +559,11 @@ export const getProcessChunkInput = internalQuery({
         return { status: "source_changed" as const };
       }
       sources.push({ ...input, evidence });
+      sourceRows.push(conversation);
     }
+    const keyLists = contributorKeysFor(sourceRows);
+    const contributorKeysByConversationId: Record<string, string[]> =
+      Object.fromEntries(sourceRows.map((row, index) => [row._id, keyLists[index]]));
     return {
       status: "ready" as const,
       processId,
@@ -565,9 +571,57 @@ export const getProcessChunkInput = internalQuery({
       clerkOrgId: run.clerkOrgId,
       sourceSnapshot: run.sourceSnapshot,
       sources,
+      contributorKeysByConversationId,
     };
   },
 });
+
+/**
+ * Who each contribution in a run stands for, across every chunk, for the final
+ * pass's evidence levels. Bounded by the run's own source list.
+ */
+export const getRunContributorKeys = internalQuery({
+  args: { runId: v.id("summaryRuns"), generationId: v.string() },
+  handler: async (ctx, args): Promise<Record<string, string[]> | null> => {
+    const run = await ctx.db.get(args.runId);
+    if (!run || run.generationId !== args.generationId) return null;
+    const rows = new Map<string, Doc<"conversations">>();
+    const chunks = ctx.db
+      .query("summaryChunks")
+      .withIndex("by_clerkOrgId_and_summaryRunId_and_chunkIndex", (q) =>
+        q.eq("clerkOrgId", run.clerkOrgId).eq("summaryRunId", run._id),
+      );
+    for await (const chunk of chunks) {
+      for (const input of chunk.sourceInputs ?? []) {
+        if (rows.has(input.conversationId)) continue;
+        const conversation = await ctx.db.get(input.conversationId);
+        if (!conversation || conversation.clerkOrgId !== run.clerkOrgId) continue;
+        rows.set(input.conversationId, conversation);
+      }
+    }
+    const ordered = [...rows.values()];
+    const keyLists = contributorKeysFor(ordered);
+    return Object.fromEntries(ordered.map((row, index) => [row._id, keyLists[index]]));
+  },
+});
+
+/** Distinct people across the contributions, by the shared identity rule. */
+function uniqueContributorsFor(
+  conversationIds: readonly string[],
+  keysByConversationId: Readonly<Record<string, readonly string[]>>,
+  labelFor: (conversationId: string) => string,
+): number {
+  const people = new Set<string>();
+  for (const id of conversationIds) {
+    const keys = keysByConversationId[id];
+    if (keys && keys.length > 0) {
+      for (const key of keys) people.add(key);
+    } else {
+      people.add(`label:${labelFor(id)}`);
+    }
+  }
+  return people.size;
+}
 
 function sourceMap(sources: ProcessEvidencePromptSource[]): SummarySourceKeyMap {
   return Object.fromEntries(
@@ -585,11 +639,17 @@ function sourceMap(sources: ProcessEvidencePromptSource[]): SummarySourceKeyMap 
 function coverageFor(
   sources: ProcessEvidencePromptSource[],
   totalEligibleSources: number,
+  keysByConversationId: Readonly<Record<string, readonly string[]>>,
 ): SummaryCoverage {
+  const labels = new Map(sources.map((s) => [s.conversationId, s.label]));
   return {
     includedSources: sources.length,
     totalEligibleSources,
-    uniqueContributors: new Set(sources.map((source) => source.label)).size,
+    uniqueContributors: uniqueContributorsFor(
+      sources.map((source) => source.conversationId),
+      keysByConversationId,
+      (id) => labels.get(id) ?? id,
+    ),
     complete: sources.length === totalEligibleSources,
   };
 }
@@ -637,7 +697,12 @@ export const generateProcessChunk = internalAction({
       );
       const artifact = normalizeProcessOverviewArtifactV2(completion.toolInput, {
         sourceByKey: sourceMap(input.sources),
-        coverage: coverageFor(input.sources, input.sources.length),
+        coverage: coverageFor(
+          input.sources,
+          input.sources.length,
+          input.contributorKeysByConversationId,
+        ),
+        contributorKeysByConversationId: input.contributorKeysByConversationId,
         provenance: {
           sourceSnapshotHash: `${input.sourceSnapshot.hash}:chunk:${args.chunkIndex}`,
           generatedAt: Date.now(),
@@ -645,7 +710,7 @@ export const generateProcessChunk = internalAction({
           provider: completion.provider,
           model: completion.model,
         },
-      });
+      }, { moveConsensus: false });
       if (!artifact) throw new Error("invalid_output");
       await ctx.runMutation(internal.processSummaryV2.saveProcessChunk, {
         ...args,
@@ -1030,12 +1095,22 @@ export const generateProcessFinal = internalAction({
           },
         ]),
       );
+      const contributorKeysByConversationId: Record<string, string[]> =
+        (await ctx.runQuery(internal.processSummaryV2.getRunContributorKeys, {
+          runId: args.runId,
+          generationId: args.generationId,
+        })) ?? {};
+      const labelByConversationId = new Map<string, string>(
+        allSourceInputs.map((source) => [source.conversationId, source.label]),
+      );
       const coverage: SummaryCoverage = {
         includedSources: loaded.sourceSnapshot.includedSources,
         totalEligibleSources: loaded.sourceSnapshot.totalEligibleSources,
-        uniqueContributors: new Set(
-          allSourceInputs.map((source) => source.label),
-        ).size,
+        uniqueContributors: uniqueContributorsFor(
+          allSourceInputs.map((source) => source.conversationId),
+          contributorKeysByConversationId,
+          (id) => labelByConversationId.get(id) ?? id,
+        ),
         complete:
           loaded.sourceSnapshot.includedSources ===
           loaded.sourceSnapshot.totalEligibleSources,
@@ -1043,6 +1118,7 @@ export const generateProcessFinal = internalAction({
       const artifact = normalizeProcessOverviewArtifactV2(completion.toolInput, {
         sourceByKey,
         coverage,
+        contributorKeysByConversationId,
         provenance: {
           sourceSnapshotHash: loaded.sourceSnapshot.hash,
           generatedAt: Date.now(),

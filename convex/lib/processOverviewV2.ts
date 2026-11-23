@@ -107,7 +107,8 @@ Executive brief emphasis:
 
 Evidence rules:
 - Every factual finding must cite one or more supplied source keys.
-- Use corroborated only when at least two distinct contributors support the finding.
+- Use corroborated only when at least two distinct contributors support the finding. Two contributions from the same person are one contributor.
+- Put a finding in consensus only when two or more distinct contributors support it. A point from one contributor belongs in notable.
 - Use single_source for a finding reported by one contributor.
 - Use inferred_gap only for explicitly missing, unknown, unclear, or unconfirmed knowledge; it may have no source key.
 - Preserve contradictions and variations instead of choosing a canonical account.

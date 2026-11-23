@@ -48,14 +48,27 @@ export const OVERVIEW_STATE_META: Record<
   },
 };
 
+/**
+ * `contributorCount` is the number of distinct people (process findings since
+ * 23 Nov 2026); without it the label falls back to sources, which is what
+ * department and function findings cite.
+ */
 export function evidenceStrengthLabel(
   level: EvidenceLevel,
   supportCount: number,
+  contributorCount?: number,
 ): string {
+  if (level === "inferred_gap") return "Evidence gap";
+  if (contributorCount !== undefined) {
+    const people = `${contributorCount} ${contributorCount === 1 ? "contributor" : "contributors"}`;
+    if (level === "corroborated") return `Corroborated · ${people}`;
+    return supportCount > 1
+      ? `Single source · ${people}, ${supportCount} contributions`
+      : "Single source";
+  }
   if (level === "corroborated") {
     return `Corroborated · ${supportCount} ${supportCount === 1 ? "source" : "sources"}`;
   }
-  if (level === "inferred_gap") return "Evidence gap";
   return "Single source";
 }
 

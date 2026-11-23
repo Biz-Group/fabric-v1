@@ -1,0 +1,1 @@
+Hi {{contributor_name}}. Let's talk about how {{process_name}} works. Just a quick reminder — we're here to discuss the process, steps, and tools involved, avoiding sensitive or confidential details. Sounds good?

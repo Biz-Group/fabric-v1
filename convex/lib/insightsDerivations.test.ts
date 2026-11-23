@@ -7,6 +7,7 @@ import {
   deriveHandoffs,
   deriveToolUsage,
   isNodeDescribed,
+  normalizeActorName,
   type FlowNode,
   type ProcessFlow,
 } from "./insightsDerivations";
@@ -55,6 +56,41 @@ const pending = node({
   detailStatus: "pending",
 });
 const failed = node({ id: "broken", label: "Broken", detailStatus: "failed" });
+
+describe("handoffs need a change of hands", () => {
+  const edge = (source: string, target: string) => ({
+    id: `${source}-${target}`,
+    source,
+    target,
+    type: "sequential" as const,
+    isHappyPath: true,
+  });
+
+  test("adding someone to the same team is not a handoff", () => {
+    const nodes = [
+      node({ id: "a", actors: ["Support team"] }),
+      node({ id: "b", actors: ["Support Team", "Lead"] }),
+    ];
+    expect(deriveHandoffs(nodes, [edge("a", "b")])).toEqual([]);
+  });
+
+  test("spelling variants of one actor are one actor", () => {
+    expect(normalizeActorName("Support Teams.")).toBe(normalizeActorName("support"));
+    const nodes = [
+      node({ id: "a", actors: ["Bizgroup support team"] }),
+      node({ id: "b", actors: ["Bizgroup Support"] }),
+    ];
+    expect(deriveHandoffs(nodes, [edge("a", "b")])).toEqual([]);
+  });
+
+  test("a step done by entirely different people is a handoff", () => {
+    const nodes = [
+      node({ id: "a", actors: ["Support team"] }),
+      node({ id: "b", actors: ["Axonify Canada"] }),
+    ];
+    expect(deriveHandoffs(nodes, [edge("a", "b")])).toHaveLength(1);
+  });
+});
 
 describe("isNodeDescribed", () => {
   test("only a ready node counts as described", () => {
