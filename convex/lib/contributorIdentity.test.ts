@@ -121,6 +121,12 @@ describe("resolveSourceRefs", () => {
     expect(resolved.contributors.size).toBe(0);
   });
 
+  test("'Conversation N' written out is the same reference", () => {
+    const resolved = resolveSourceRefs(["Alice, Conversation 3", "Ben, Conv. 3"], conversations);
+    expect([...resolved.conversations]).toEqual([3]);
+    expect(resolved.contributors.size).toBe(1);
+  });
+
   test("one source string can carry several references", () => {
     const resolved = resolveSourceRefs(["Alice, Conv. 1; Ben, Conv. 3"], conversations);
     expect(resolved.conversations.size).toBe(2);

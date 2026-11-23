@@ -120,7 +120,9 @@ export function countDistinctContributors(
   return new Set(contributorKeysFor(rows).flat()).size;
 }
 
-const CONVERSATION_REF = /Conv\.\s*(\d+)/g;
+// "Conv. 2" as the prompt asks, and "Conversation 2", which some stored flows
+// carry (found in the prod dry run, 23 Nov 2026).
+const CONVERSATION_REF = /Conv(?:\.|ersation)\s*(\d+)/gi;
 
 export type ResolvedSources = {
   /** 1-based `Conv. N` positions that resolved to a contribution. */
