@@ -13,6 +13,8 @@ verifiedAgainst:
   - src/features/process-flow/process-flow-edges.tsx
   - src/features/process-flow/flow-spotlight.ts
   - src/features/process-flow/flow-view-preferences.ts
+  - convex/lib/flowStages.ts
+  - convex/lib/insightsDerivations.ts
   - docs/prd.md
 ---
 
@@ -33,11 +35,11 @@ Two banners are worth knowing:
 
 Each box is a step, labelled as a Start, End, Action, Decision, Handoff or Wait. Lines show what leads to what, with labels on branches. Conditional, parallel, fallback and normal connections look different. Steps may carry a **Bottleneck** or **Tribal Knowledge** tag.
 
-Select a step to open its details panel. It can show the description, actors, tools and systems, estimated duration, automation potential, confidence, pain points, risk indicators and sources. Confidence reads High (confirmed by multiple sources), Medium (single clear source) or Low (inferred or vague). Source entries open the original contribution, and the connected steps listed there are clickable. If a step could not be described, contributors and admins can choose **Retry this step**.
+Select a step to open its details panel. It can show the description, actors, tools and systems, estimated duration, automation potential, confidence, pain points, risk indicators and sources. Confidence reads High (two or more people), Medium (one person's account) or Low (inferred, vague or unsourced). Source entries open the original contribution, and the connected steps listed there are clickable. If a step could not be described, contributors and admins can choose **Retry this step**.
 
 ## Spotlights
 
-A summary bar shows the number of steps, the estimated total duration when known, and four buttons: **Bottlenecks**, **Handoffs**, **Automatable steps** and **Tools**. Select one to highlight the matching steps, and select it again to clear it. **Open Insights** takes you to the Insights tab.
+A summary bar shows the number of steps, the estimated total duration when known, and four buttons: **Bottlenecks**, **Handoffs**, **Automatable steps** and **Tools**. Select one to highlight the matching steps, and select it again to clear it. A handoff is where work passes between steps that share no actor. **Open Insights** takes you to the Insights tab.
 
 ## Controls
 

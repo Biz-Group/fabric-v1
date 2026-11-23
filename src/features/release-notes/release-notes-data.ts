@@ -94,6 +94,11 @@ export const monthlyReleaseNotes: MonthlyReleaseNote[] = [
           "Deleting a contribution now needs a reason, and admins can review a log of deleted contributions.",
       },
       {
+        title: "Evidence labels that count people",
+        description:
+          "\"Corroborated\", agreements, step confidence and recommendation value now count the people behind them, not the number of contributions. One person interviewed twice is one account, and that is worth confirming with someone else.",
+      },
+      {
         title: "Small but noticeable fixes",
         description:
           "Overviews and flows no longer assume a contributor's gender, and replies you type during an AI interview now appear in the live transcript.",

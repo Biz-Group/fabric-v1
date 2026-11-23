@@ -3,6 +3,7 @@ import type { QueryCtx } from "../_generated/server";
 import { readProcessFlow } from "../processFlows";
 import { describedNodes, type FlowNode, type ProcessFlow } from "../lib/insightsDerivations";
 import { normalizeKey } from "../lib/askNormalize";
+import { contributorKeysFor } from "../lib/contributorIdentity";
 
 /**
  * Stored pipeline outputs for a set of processes, the only input to the
@@ -30,6 +31,12 @@ export type ScopeEvidence = {
   processById: Map<Id<"processes">, Doc<"processes">>;
   flows: Array<{ process: Doc<"processes">; flow: ProcessFlow; nodes: FlowNode[] }>;
   contributions: Array<{ conversation: Doc<"conversations">; evidence: ConversationEvidence }>;
+  /**
+   * The people each read contribution stands for (`contributorKeysFor` over
+   * every contribution read), to count a finding's sources as people.
+   * Absent where a caller builds the evidence by hand.
+   */
+  contributorKeysById?: Map<Id<"conversations">, string[]>;
   capped: boolean;
 };
 
@@ -82,7 +89,9 @@ export async function loadScopeEvidence(
       ? [{ conversation, evidence: conversation.processSummaryEvidenceV2 }]
       : [],
   );
-  return { processById, flows, contributions, capped };
+  const keys = contributorKeysFor(rows);
+  const contributorKeysById = new Map(rows.map((row, i) => [row._id, keys[i]]));
+  return { processById, flows, contributions, contributorKeysById, capped };
 }
 
 /**

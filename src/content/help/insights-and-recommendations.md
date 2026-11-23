@@ -23,11 +23,11 @@ Insights shows where a process needs attention. Recommendations says what to cha
 
 It appears once the flow's steps are described. Without a flow, contributors and admins can generate one.
 
-- **Key findings** come first: the places to look at first, each with a button such as **Show in flow** or **Open Recommendations**.
+- **Key findings** come first, each with a button such as **Show in flow** or **Open Recommendations**.
 - **Metric tiles** count Evidence (contributions used), Mapped Steps, Handoffs, Tools, Decisions, Bottlenecks, Automations and Low Confidence.
 - **Detail sections** go deeper, from Handoffs and Automation Opportunities to Tribal Knowledge Risk and Evidence Coverage.
 
-An empty Key findings reflects what contributors described, not proof of no issues. Watch for these notices:
+Empty Key findings reflect what contributors described, not proof of no issues. Watch for these notices:
 
 - **Some steps could not be described**: the counts are a minimum. Use **Regenerate**.
 - **Insights may be based on stale flow data**: use **Refresh**.
@@ -43,11 +43,11 @@ Each is one kind of change:
 
 Fabric prefers the lighter change when two would work equally well. The list is ranked by **Value**, then **Effort**, both worked out from the flow:
 
-- **Value** weighs how often the work happens, the problems and bottlenecks reported on those steps, and the roles involved. It shows **Unknown** when neither frequency nor problems were described.
+- **Value** weighs how often the work happens, the problems and bottlenecks reported on those steps, and the roles involved. It shows **Unknown** when neither frequency nor problems were described. One person's account, or an unknown frequency, caps it at **Medium**.
 - **Effort** weighs the kind of change and, for technical changes, the systems involved and the steps that need human judgement.
-- **Evidence** shows how many interviews it rests on. One interview is one person's account; confirm it.
+- **Evidence** counts the contributions and the people behind them. One person's account is worth confirming.
 
-Open one to see the problem and its steps, its cause, what to change, a small pilot and its measure, the people affected, and what isn't known.
+Open one to see the problem, its cause, what to change, a small pilot and its measure, who is affected, and what isn't known.
 
 ## Change plans and build briefs
 

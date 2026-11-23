@@ -55,9 +55,9 @@ const AUTOMATION_LABELS = {
 } as const;
 
 const CONFIDENCE_LABELS = {
-  high: "High — confirmed by multiple sources",
-  medium: "Medium — single clear source",
-  low: "Low — inferred or vague",
+  high: "High — described by two or more people",
+  medium: "Medium — one person's account",
+  low: "Low — inferred, vague or unsourced",
 } as const;
 
 export function ProcessFlowDetailPanel({

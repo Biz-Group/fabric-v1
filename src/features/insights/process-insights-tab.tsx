@@ -125,12 +125,12 @@ const CONFIDENCE_LABELS: Record<
 > = {
   high: {
     label: "High",
-    detail: "confirmed",
+    detail: "two or more people",
     className: STATUS_TONE_CHIP[confidenceTone.high],
   },
   medium: {
     label: "Medium",
-    detail: "single clear source",
+    detail: "one person's account",
     className: STATUS_TONE_CHIP[confidenceTone.medium],
   },
   low: {

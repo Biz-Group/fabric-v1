@@ -25,7 +25,10 @@ import {
 import { meteredCompletion, type UsageAttribution } from "./lib/aiUsageMeter";
 import { takeManualRun } from "./lib/manualRuns";
 import { extractDataCollection } from "./lib/conversationAnalysis";
-import { contributorKeysFor } from "./lib/contributorIdentity";
+import {
+  contributorKeysFor,
+  type ContributorIdentityRow,
+} from "./lib/contributorIdentity";
 import {
   INSIGHTS_RATE_LIMIT_RETRY_DELAYS_MS,
   SOFT_MAX_NODES,
@@ -460,9 +463,37 @@ export async function loadRecommendationInput(
     contributorNames: [
       ...new Set(conversations.map((c) => c.contributorName)),
     ],
-    // Same order as "Conv. N" in step sources, for counting people (task 1.4).
-    contributorKeysInOrder: contributorKeysFor(conversations),
+    contributorKeysInOrder: recommendationContributorKeys(
+      conversations,
+      flow.conversationCount,
+    ),
   };
+}
+
+/** Stands for "a person", when the flow's numbering no longer says which. */
+const UNIDENTIFIED_CONTRIBUTOR = "unidentified";
+
+/**
+ * Each contribution's people, in the order of "Conv. N" in step sources, for
+ * counting people (task 1.4). The numbering is the done contributions when
+ * the flow was built. A contribution added, moved or deleted since then
+ * shifts it, which happens when recommendations are rerun on a flow that is
+ * behind. Then each referenced contribution still counts, but they are
+ * claimed as one person: under-claiming caps value at medium until the flow
+ * is regenerated, which reruns recommendations with true numbering.
+ * Count equality misses one removed and one added between runs; the backfill
+ * uses the same test.
+ */
+export function recommendationContributorKeys(
+  conversations: ReadonlyArray<ContributorIdentityRow>,
+  flowConversationCount: number,
+): string[][] {
+  if (conversations.length === flowConversationCount) {
+    return contributorKeysFor(conversations);
+  }
+  return Array.from({ length: flowConversationCount }, () => [
+    UNIDENTIFIED_CONTRIBUTOR,
+  ]);
 }
 
 export type RecommendationInput = Awaited<

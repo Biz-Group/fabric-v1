@@ -137,6 +137,36 @@ function nodeRef(processId: string, processName: string, node: FlowNode, text: s
 }
 
 /**
+ * The people behind a gap finding, as keys that merge across overviews: the
+ * same person's gap in a process and its department counts once.
+ *
+ * Its source contributions, resolved to people (task 1.1), so one person
+ * interviewed twice is one, not two by label. Where a source contribution was
+ * not read (the read cap), the finding's own `contributorCount`; without that
+ * (findings written before Phase 1, or a department finding resting on
+ * processes), distinct source labels, then the support count.
+ */
+export function gapContributors(
+  docId: string,
+  finding: SummaryArtifactV2["gaps"][number],
+  keysById: ReadonlyMap<string, readonly string[]> | undefined,
+): string[] {
+  const conversationIds = finding.sources.flatMap((s) =>
+    s.kind === "conversation" && s.conversationId ? [s.conversationId as string] : [],
+  );
+  if (keysById && conversationIds.length > 0 && conversationIds.every((id) => keysById.has(id))) {
+    return [...new Set(conversationIds.flatMap((id) => keysById.get(id)!))];
+  }
+  const placeholders = (count: number) =>
+    Array.from({ length: count }, (_, i) => `${docId}:${finding.id}:${i}`);
+  if (finding.contributorCount !== undefined) return placeholders(finding.contributorCount);
+  const labels = finding.sources
+    .filter((s) => s.kind === "conversation")
+    .map((s) => normalizeKey(s.label));
+  return labels.length ? labels : placeholders(finding.supportCount);
+}
+
+/**
  * The deterministic signal pass (FR-1.14): merges items by exact normalised
  * text, then ranks by `3 × processes + 2 × contributors + evidence weight`,
  * ties broken by name.
@@ -263,20 +293,13 @@ export function collectSignals(
     for (const { kind, doc, processIds, departmentProcessIds } of gapSources) {
       const artifact = readableSummaryV2(doc.clerkOrgId, doc.summaryV2) as SummaryArtifactV2 | undefined;
       for (const finding of artifact?.gaps ?? []) {
-        const contributors = finding.sources
-          .filter((s) => s.kind === "conversation")
-          .map((s) => normalizeKey(s.label));
         c.add(
           "gap",
           finding.title,
           { source: sources.finding(kind, doc._id, finding.id), processName: doc.name, text: `${finding.title}. ${finding.body}` },
           {
             processIds: affectedProcesses(finding.sources, processIds, departmentProcessIds),
-            // Findings name their source contributions; without names, the
-            // support count is the best measure of how many people said it.
-            contributors: contributors.length
-              ? contributors
-              : Array.from({ length: finding.supportCount }, (_, i) => `${doc._id}:${i}`),
+            contributors: gapContributors(doc._id, finding, evidence.contributorKeysById),
             weight: EVIDENCE_WEIGHT[finding.evidenceLevel],
           },
         );
