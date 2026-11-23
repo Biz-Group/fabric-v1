@@ -40,7 +40,7 @@ import {
   readRecommendationsPayload,
   RECOMMENDATIONS_MAX_ASKS,
   RECOMMENDATIONS_PROMPT_VERSION,
-  scrubRecommendationNames,
+  scrubContributorNames,
   toAutomationOpportunity,
   type ExistingRecommendationSummary,
   type RecommendationInputContext,
@@ -368,38 +368,6 @@ function contextValue(value: unknown): string | undefined {
  * out the stored recommendations, for a preview or a fresh backfill that should
  * not be anchored to what an earlier prompt produced. Dismissals always go in.
  */
-/** Members read for the name check. Removed members are included: a former colleague's name is still personal. */
-const MAX_MEMBER_NAMES = 2_000;
-const DEFAULT_SPEAKER_LABEL = /^speaker\s*\d+$/i;
-
-/**
- * The names of every person the workspace knows: its members (current and
- * former), and the labelled speakers on this process's contributions.
- * Contributor names travel separately as `contributorNames`.
- */
-async function knownPeopleNames(
-  ctx: { db: QueryCtx["db"] },
-  clerkOrgId: string,
-  conversations: ReadonlyArray<Doc<"conversations">>,
-): Promise<string[]> {
-  const names = new Set<string>();
-  const members = await ctx.db
-    .query("memberships")
-    .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", clerkOrgId))
-    .take(MAX_MEMBER_NAMES);
-  for (const member of members) {
-    const name = member.name?.trim();
-    if (name) names.add(name);
-  }
-  for (const conversation of conversations) {
-    for (const label of conversation.speakerLabels ?? []) {
-      const name = label.displayName.trim();
-      if (name && !DEFAULT_SPEAKER_LABEL.test(name)) names.add(name);
-    }
-  }
-  return [...names];
-}
-
 export async function loadRecommendationInput(
   ctx: { db: QueryCtx["db"] },
   args: {
@@ -494,8 +462,6 @@ export async function loadRecommendationInput(
     ],
     // Same order as "Conv. N" in step sources, for counting people (task 1.4).
     contributorKeysInOrder: contributorKeysFor(conversations),
-    // Everyone the workspace knows by name, for the name check (task 1.8).
-    knownPeopleNames: await knownPeopleNames(ctx, args.clerkOrgId, conversations),
   };
 }
 
@@ -818,8 +784,9 @@ export const generateRecommendationsInternal = internalAction({
     );
     if (!owns) return;
 
-    const userContent = buildRecommendationsUserContent(input);
-    const request = buildRecommendationsAIRequest(userContent);
+    const request = buildRecommendationsAIRequest(
+      buildRecommendationsUserContent(input),
+    );
     let completion: AICompletion;
     let payload: { recommendations: unknown[] } | null;
     try {
@@ -889,19 +856,14 @@ export const generateRecommendationsInternal = internalAction({
       proposed: describeFollowOnProposals(payload),
       kept: normalized.filter((rec) => rec.buildsOnIndex !== undefined).length,
     });
-    const { recommendations, replacements, unknownNamesKept } =
-      scrubRecommendationNames(normalized, {
-        contributorNames: input.contributorNames,
-        knownPeopleNames: input.knownPeopleNames,
-        inputText: userContent,
-        actorNames: input.nodes.flatMap((node) => node.detail?.actors ?? []),
-      });
-    if (replacements > 0 || unknownNamesKept > 0) {
-      // Counts only: the names themselves never go to the log.
-      console.warn("Personal names in recommendation text", {
+    const { recommendations, replacements } = scrubContributorNames(
+      normalized,
+      input.contributorNames,
+    );
+    if (replacements > 0) {
+      console.warn("Contributor names removed from recommendation text", {
         processId: input.processId,
         replacements,
-        unknownNamesKept,
       });
     }
 

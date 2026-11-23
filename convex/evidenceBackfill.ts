@@ -15,13 +15,6 @@ import {
 } from "./lib/flowStages";
 import { computeRecommendationScores } from "./lib/recommendationScoring";
 import {
-  buildRecommendationsUserContent,
-  fullNamesIn,
-  peopleNamedIn,
-  scrubPersonalNames,
-  type GeneratedRecommendation,
-} from "./lib/recommendationStage";
-import {
   getFlow,
   loadRecommendationInput,
   storedRecommendations,
@@ -39,7 +32,7 @@ import {
  *   1. Process overviews: evidence level and contributor count per finding,
  *      and one-person consensus findings moved to Notable.
  *   2. Flow steps: confidence from the people behind each step.
- *   3. Recommendations: scores recomputed, known people's names scrubbed, and
+ *   3. Recommendations: scores recomputed (their text untouched), and
  *      the automation opportunities dual-written on the flow kept in step.
  *
  * Nothing here marks anything stale or schedules anything: overview
@@ -81,7 +74,6 @@ export type BackfillTotals = {
   stepConfidenceChanges: Record<string, number>;
   valueChanges: Record<string, number>;
   recommendationsWithNoResolvableEvidence: number;
-  recommendationsWithNamesReplaced: number;
   flowOpportunitiesChanged: number;
   processesSkippedForStaleFlow: number;
 };
@@ -93,7 +85,6 @@ function emptyTotals(): BackfillTotals {
     stepConfidenceChanges: {},
     valueChanges: {},
     recommendationsWithNoResolvableEvidence: 0,
-    recommendationsWithNamesReplaced: 0,
     flowOpportunitiesChanged: 0,
     processesSkippedForStaleFlow: 0,
   };
@@ -111,7 +102,6 @@ function addTotals(into: BackfillTotals, from: BackfillTotals): void {
   }
   into.findingsMovedToNotable += from.findingsMovedToNotable;
   into.recommendationsWithNoResolvableEvidence += from.recommendationsWithNoResolvableEvidence;
-  into.recommendationsWithNamesReplaced += from.recommendationsWithNamesReplaced;
   into.flowOpportunitiesChanged += from.flowOpportunitiesChanged;
   into.processesSkippedForStaleFlow += from.processesSkippedForStaleFlow;
 }
@@ -299,40 +289,11 @@ async function backfillSteps(
   }
 }
 
-/** A stored row as the scrub's input shape; only its text fields matter. */
-function asGenerated(row: Doc<"processRecommendations">): GeneratedRecommendation {
-  const content = row.content!;
-  return {
-    title: row.title,
-    problem: content.problem,
-    cause: content.cause,
-    causeBasis: content.causeBasis,
-    intervention: content.intervention,
-    supportingInterventions: content.supportingInterventions,
-    proposedChange: content.proposedChange,
-    whyNotSimpler: content.whyNotSimpler,
-    nodeIds: row.nodeIds,
-    pilot: content.pilot,
-    openQuestions: content.openQuestions,
-    risks: content.risks,
-    frequency: content.frequency,
-  };
-}
-
-function textDiff(before: GeneratedRecommendation, after: GeneratedRecommendation): string[] {
-  const changes: string[] = [];
-  const fields = ["title", "problem", "cause", "proposedChange", "whyNotSimpler"] as const;
-  for (const field of fields) {
-    if ((before[field] ?? "") !== (after[field] ?? "")) {
-      changes.push(`${field}: "${before[field]}" -> "${after[field]}"`);
-    }
-  }
-  if (!sameJson(before.pilot, after.pilot)) changes.push(`pilot: ${JSON.stringify(after.pilot)}`);
-  if (!sameJson(before.openQuestions, after.openQuestions)) changes.push(`openQuestions: ${JSON.stringify(after.openQuestions)}`);
-  if (!sameJson(before.risks, after.risks)) changes.push(`risks: ${JSON.stringify(after.risks)}`);
-  return changes;
-}
-
+/**
+ * Rescores stored recommendations. Their text is never touched: names stay
+ * as they are today (Saish, 23 Nov 2026), because who does the work is what
+ * makes a recommendation actionable.
+ */
 async function backfillRecommendations(
   ctx: MutationCtx,
   process: Doc<"processes">,
@@ -353,28 +314,9 @@ async function backfillRecommendations(
     flow,
     includeExisting: false,
   });
-  // Known people the input names, plus any whose full name the stored text
-  // already carries (a full name is specific enough to match on its own).
-  const storedText = JSON.stringify(rows.map((row) => [row.title, row.content]));
-  const names = [
-    ...new Set([
-      ...input.contributorNames,
-      ...peopleNamedIn(
-        input.knownPeopleNames,
-        buildRecommendationsUserContent(input),
-        input.nodes.flatMap((node) => node.detail?.actors ?? []),
-      ),
-      ...fullNamesIn(input.knownPeopleNames, storedText),
-    ]),
-  ];
-
-  const updatedById = new Map<string, { before: Doc<"processRecommendations">; title: string; contributors: number; rationale: string; prerequisites: string[] }>();
+  // Contributors per row after rescoring, for the flow's opportunity copy.
+  const contributorsById = new Map<string, { row: Doc<"processRecommendations">; contributors: number }>();
   for (const row of rows) {
-    const before = asGenerated(row);
-    const {
-      recommendations: [after],
-    } = scrubPersonalNames([before], names);
-    const textChanges = textDiff(before, after);
     const scores = keysInOrder
       ? computeRecommendationScores({
           intervention: row.content!.intervention,
@@ -384,49 +326,18 @@ async function backfillRecommendations(
           contributorKeysInOrder: keysInOrder,
         })
       : row.scores!;
-    const scoreChanged = !sameJson(scores, row.scores);
-    if (!scoreChanged && textChanges.length === 0) {
-      updatedById.set(row._id, { before: row, title: row.title, contributors: row.scores!.evidence.contributors, rationale: row.content!.proposedChange, prerequisites: row.content!.openQuestions });
-      continue;
+    contributorsById.set(row._id, { row, contributors: scores.evidence.contributors });
+    if (sameJson(scores, row.scores)) continue;
+    if (scores.value.level !== row.scores!.value.level) {
+      bump(report.totals.valueChanges, `${row.scores!.value.level} -> ${scores.value.level}`);
     }
-    if (textChanges.length > 0) report.totals.recommendationsWithNamesReplaced += 1;
-    if (scoreChanged) {
-      if (scores.value.level !== row.scores!.value.level) {
-        bump(report.totals.valueChanges, `${row.scores!.value.level} -> ${scores.value.level}`);
-      }
-      if (scores.evidence.interviews === 0) {
-        report.totals.recommendationsWithNoResolvableEvidence += 1;
-      }
-      report.recommendations.push(
-        `"${row.title}": value ${row.scores!.value.level} -> ${scores.value.level}; evidence ${row.scores!.evidence.interviews}/${row.scores!.evidence.contributors} -> ${scores.evidence.interviews}/${scores.evidence.contributors} (contributions/contributors)`,
-      );
+    if (scores.evidence.interviews === 0) {
+      report.totals.recommendationsWithNoResolvableEvidence += 1;
     }
-    for (const change of textChanges) {
-      report.recommendations.push(`"${row.title}" name scrub, ${change}`);
-    }
-    updatedById.set(row._id, {
-      before: row,
-      title: after.title,
-      contributors: scores.evidence.contributors,
-      rationale: after.proposedChange,
-      prerequisites: after.openQuestions,
-    });
-    if (!dryRun) {
-      await ctx.db.patch(row._id, {
-        title: after.title,
-        content: {
-          ...row.content!,
-          problem: after.problem,
-          cause: after.cause,
-          proposedChange: after.proposedChange,
-          whyNotSimpler: after.whyNotSimpler,
-          pilot: after.pilot,
-          openQuestions: after.openQuestions,
-          risks: after.risks,
-        },
-        scores,
-      });
-    }
+    report.recommendations.push(
+      `"${row.title}": value ${row.scores!.value.level} -> ${scores.value.level}; evidence ${row.scores!.evidence.interviews}/${row.scores!.evidence.contributors} -> ${scores.evidence.interviews}/${scores.evidence.contributors} (contributions/contributors)`,
+    );
+    if (!dryRun) await ctx.db.patch(row._id, { scores });
   }
 
   // The flow's automation opportunities are a copy of the technical
@@ -435,9 +346,9 @@ async function backfillRecommendations(
   if (opportunities.length === 0 || flow.insights.automationOpportunitiesSource !== "ai") return;
   const key = (title: string, nodeIds: readonly string[]) => `${title}|${[...nodeIds].sort().join(",")}`;
   const byOriginal = new Map(
-    [...updatedById.values()]
-      .filter((entry) => entry.before.lifecycle === "active")
-      .map((entry) => [key(entry.before.title, entry.before.nodeIds), entry]),
+    [...contributorsById.values()]
+      .filter((entry) => entry.row.lifecycle === "active")
+      .map((entry) => [key(entry.row.title, entry.row.nodeIds), entry]),
   );
   let changed = false;
   const nextOpportunities = opportunities.map((opportunity) => {
@@ -446,13 +357,7 @@ async function backfillRecommendations(
     const contributors = entry.contributors;
     const confidence: typeof opportunity.confidence =
       contributors >= 2 ? "high" : contributors === 1 ? "medium" : "low";
-    const next = {
-      ...opportunity,
-      title: entry.title,
-      rationale: entry.rationale,
-      prerequisites: entry.prerequisites,
-      confidence,
-    };
+    const next = { ...opportunity, confidence };
     if (!sameJson(next, opportunity)) {
       changed = true;
       report.totals.flowOpportunitiesChanged += 1;

@@ -179,13 +179,11 @@ describe("evidence backfill", () => {
       '"Guess": medium -> low (sources: ["Somebody"])',
     ]);
     expect(report!.recommendations.join("\n")).toContain("value high -> medium");
-    expect(report!.recommendations.join("\n")).toContain("a colleague routes every ticket");
     expect(report!.totals).toMatchObject({
       findingLevelChanges: { "corroborated -> single_source": 1 },
       findingsMovedToNotable: 1,
       stepConfidenceChanges: { "high -> medium": 1, "medium -> low": 1 },
       valueChanges: { "high -> medium": 1 },
-      recommendationsWithNamesReplaced: 1,
       flowOpportunitiesChanged: 1,
     });
 
@@ -224,7 +222,8 @@ describe("evidence backfill", () => {
     expect(rec!.decisionStatus).toBe("shortlisted");
     expect(rec!.scores!.value.level).toBe("medium");
     expect(rec!.scores!.evidence).toEqual({ interviews: 2, contributors: 1 });
-    expect(rec!.content!.problem).toBe("a colleague routes every ticket by hand.");
+    // Names stay as they are today (Saish, 23 Nov 2026): text is untouched.
+    expect(rec!.content!.problem).toBe("Eleanor Price routes every ticket by hand.");
 
     expect(scheduled).toEqual([]);
 

@@ -831,128 +831,39 @@ export function toAutomationOpportunity(rec: {
 }
 
 // ---------------------------------------------------------------------------
-// Personal-name check
+// Contributor-name check
 // ---------------------------------------------------------------------------
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** A whole-word, case-sensitive match for a name or name part. */
-function namePattern(name: string): RegExp {
-  return new RegExp(`(?<![\\p{L}])${escapeRegExp(name)}(?![\\p{L}])`, "gu");
-}
-
-function nameParts(fullNames: readonly string[]): string[] {
-  return [
+/**
+ * Replaces contributor names the model repeated anyway with "a contributor".
+ *
+ * Names are stripped from the input, but actors and free-text answers can still
+ * carry them. Full names go first so "Alice Smith" does not become
+ * "a contributor Smith". Single name parts are matched case-sensitively and only
+ * when three letters or longer, so "Will" in "Will Jones" is caught but the
+ * word "will" is not.
+ */
+export function scrubContributorNames(
+  recommendations: GeneratedRecommendation[],
+  contributorNames: readonly string[],
+): { recommendations: GeneratedRecommendation[]; replacements: number } {
+  const fullNames = [
+    ...new Set(contributorNames.map((name) => name.trim()).filter(Boolean)),
+  ];
+  const parts = [
     ...new Set(
       fullNames
         .flatMap((name) => name.split(/\s+/))
         .filter((part) => part.length >= 3 && /^\p{Lu}/u.test(part)),
     ),
   ];
-}
-
-/**
- * The known people a run can actually name: those whose full name appears
- * anywhere in the run's input, or one of whose name parts is one of the steps'
- * actors (as a whole actor, or a word of one). Parts are matched against actors
- * only: the rest of the input is full of Title Case step labels and
- * sentence-initial words, so a member surnamed Price would otherwise be
- * "named" by a step called "Agree Price", and a member called Mark by
- * "Mark Ticket Pending" — and their names scrubbed out of ordinary words.
- */
-export function peopleNamedIn(
-  names: readonly string[],
-  inputText: string,
-  actorNames: readonly string[] = [],
-): string[] {
-  const fullNames = [...new Set(names.map((name) => name.trim()).filter(Boolean))];
-  const actorText = actorNames.join("\n");
-  return fullNames.filter(
-    (name) =>
-      namePattern(name).test(inputText) ||
-      nameParts([name]).some((part) => namePattern(part).test(actorText)),
-  );
-}
-
-/**
- * Known people whose full name (two or more words) appears in `text`. A full
- * name is specific enough to match without the input naming the person too.
- */
-export function fullNamesIn(names: readonly string[], text: string): string[] {
-  return [...new Set(names.map((name) => name.trim()))].filter(
-    (name) => /\s/.test(name) && namePattern(name).test(text),
-  );
-}
-
-/**
- * The name check every recommendation run applies before publishing.
- *
- * Contributors are always scrubbed. Other known people (members and labelled
- * speakers) are scrubbed when the run's input names them. Then, as a review
- * signal only, it counts step actors that look like a person's name (two or
- * three capitalised words) and still appear in the output: those are people
- * Fabric does not know about, which this check cannot remove. The names
- * themselves are never logged.
- */
-export function scrubRecommendationNames(
-  recommendations: GeneratedRecommendation[],
-  people: {
-    contributorNames: readonly string[];
-    knownPeopleNames: readonly string[];
-    inputText: string;
-    actorNames: readonly string[];
-  },
-): {
-  recommendations: GeneratedRecommendation[];
-  replacements: number;
-  unknownNamesKept: number;
-} {
-  const names = [
-    ...new Set([
-      ...people.contributorNames,
-      ...peopleNamedIn(
-        people.knownPeopleNames,
-        people.inputText,
-        people.actorNames,
-      ),
-      ...fullNamesIn(people.knownPeopleNames, JSON.stringify(recommendations)),
-    ]),
-  ];
-  const scrubbed = scrubPersonalNames(recommendations, names);
-  const known = new Set(names.map((name) => name.trim()));
-  const personLike = /^\p{Lu}[\p{L}'-]+(?: \p{Lu}[\p{L}'-]+){1,2}$/u;
-  const outputText = JSON.stringify(scrubbed.recommendations);
-  const unknownNamesKept = [...new Set(people.actorNames.map((a) => a.trim()))]
-    .filter((actor) => personLike.test(actor) && !known.has(actor))
-    .filter((actor) => namePattern(actor).test(outputText)).length;
-  return { ...scrubbed, unknownNamesKept };
-}
-
-/**
- * Replaces the names of known people the model repeated anyway with
- * "a colleague" (task 1.8). Known people are the workspace's members,
- * contributors and labelled speakers; the caller narrows them with
- * `peopleNamedIn`. A name Fabric does not hold (a colleague who is not a member)
- * still gets through, which the caller logs.
- *
- * Names are stripped from the input, but actors and free-text answers can still
- * carry them. Full names go first so "Alice Smith" does not become
- * "a colleague Smith". Single name parts are matched case-sensitively and only
- * when three letters or longer, so "Will" in "Will Jones" is caught but the
- * word "will" is not.
- */
-export function scrubPersonalNames(
-  recommendations: GeneratedRecommendation[],
-  knownNames: readonly string[],
-): { recommendations: GeneratedRecommendation[]; replacements: number } {
-  const fullNames = [
-    ...new Set(knownNames.map((name) => name.trim()).filter(Boolean)),
-  ];
-  const patterns = [...fullNames, ...nameParts(fullNames)]
+  const patterns = [...fullNames, ...parts]
     .sort((a, b) => b.length - a.length)
-    .map(namePattern);
+    .map((name) => new RegExp(`(?<![\\p{L}])${escapeRegExp(name)}(?![\\p{L}])`, "gu"));
 
   let replacements = 0;
   const scrub = (value: string): string => {
@@ -960,7 +871,7 @@ export function scrubPersonalNames(
     for (const pattern of patterns) {
       result = result.replace(pattern, () => {
         replacements += 1;
-        return "a colleague";
+        return "a contributor";
       });
     }
     return result;

@@ -19,7 +19,7 @@ import {
   normalizeRecommendations,
   RECOMMENDATION_PROMPT_VARIANTS,
   recommendationsPromptVersion,
-  scrubRecommendationNames,
+  scrubContributorNames,
   type GeneratedRecommendation,
   type RecommendationPromptVariant,
 } from "./lib/recommendationStage";
@@ -225,9 +225,11 @@ export const runRecommendationPreview = internalAction({
       return;
     }
 
-    const userContent = buildRecommendationsUserContent(input);
     const request = {
-      ...buildRecommendationsAIRequest(userContent, preview.variant),
+      ...buildRecommendationsAIRequest(
+        buildRecommendationsUserContent(input),
+        preview.variant,
+      ),
       // Kept apart from the live stage in the usage ledger.
       operation: "process-recommendations-preview",
     };
@@ -287,12 +289,10 @@ export const runRecommendationPreview = internalAction({
     );
     const followOnCount = (recs: GeneratedRecommendation[]) =>
       recs.filter((rec) => rec.buildsOnIndex !== undefined).length;
-    const { recommendations } = scrubRecommendationNames(normalized, {
-      contributorNames: input.contributorNames,
-      knownPeopleNames: input.knownPeopleNames,
-      inputText: userContent,
-      actorNames: input.nodes.flatMap((node) => node.detail?.actors ?? []),
-    });
+    const { recommendations } = scrubContributorNames(
+      normalized,
+      input.contributorNames,
+    );
 
     await ctx.runMutation(
       internal.recommendationPreviews.finishRecommendationPreview,
