@@ -363,6 +363,58 @@ export const getFlowByProcess = internalQuery({
  */
 const MAX_CONVERSATIONS_PER_FLOW = 50;
 
+/**
+ * Whether the overview still describes a contribution that has left the
+ * process (deleted, or moved elsewhere).
+ *
+ * Removal only flags the overview; it is rebuilt when someone asks. A flow
+ * refreshed in between would otherwise take the departed contribution's
+ * content in through the overview background, and `markFlowStale` would not
+ * catch it later because the contribution counts agree. An overview that is
+ * merely behind — a new contribution it has not absorbed yet — is still
+ * accurate about everything it says, so it is kept.
+ */
+async function overviewDescribesRemovedEvidence(
+  ctx: QueryCtx,
+  process: Doc<"processes">,
+  doneCount: number | null,
+): Promise<boolean> {
+  const overview = process.summaryV2;
+  if (!overview) return false;
+
+  // Covers more contributions than the process now has: one has left, whether
+  // or not any finding cites it. Unknown when the done list was truncated.
+  if (doneCount !== null && overview.coverage.includedSources > doneCount) {
+    return true;
+  }
+
+  const cited = new Set<Id<"conversations">>();
+  for (const findings of [
+    overview.scope,
+    overview.consensus,
+    overview.variations,
+    overview.gaps,
+    overview.notable,
+  ]) {
+    for (const finding of findings) {
+      for (const source of finding.sources) {
+        if (source.kind === "conversation") cited.add(source.conversationId);
+      }
+    }
+  }
+  for (const conversationId of cited) {
+    const conversation = await ctx.db.get(conversationId);
+    if (
+      !conversation ||
+      conversation.processId !== process._id ||
+      conversation.status !== "done"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export const getFlowGenerationData = internalQuery({
   args: { processId: v.id("processes"), clerkOrgId: v.string() },
   handler: async (ctx, args) => {
@@ -370,7 +422,6 @@ export const getFlowGenerationData = internalQuery({
     if (!process || process.clerkOrgId !== args.clerkOrgId) {
       throw new Error("Process not found in this organisation");
     }
-    const rollingSummary = process.rollingSummary ?? null;
     const summarySourceSnapshot = process.summaryV2
       ? {
           sourceSnapshotHash:
@@ -405,6 +456,17 @@ export const getFlowGenerationData = internalQuery({
       });
     }
 
+    // Background only: every contribution reaches the flow directly below, so
+    // leaving out an overview that cites removed evidence loses nothing true.
+    const overviewIsUnsafe = await overviewDescribesRemovedEvidence(
+      ctx,
+      process,
+      doneRows.length > MAX_CONVERSATIONS_PER_FLOW ? null : doneRows.length,
+    );
+    const rollingSummary = overviewIsUnsafe
+      ? null
+      : (process.rollingSummary ?? null);
+
     const usedRows = doneRows.slice(0, MAX_CONVERSATIONS_PER_FLOW);
     // Who each contribution stands for, so step confidence can count people
     // from the `Conv. N` references (contributorIdentity.ts).
@@ -418,7 +480,9 @@ export const getFlowGenerationData = internalQuery({
 
     return {
       rollingSummary,
-      summarySourceSnapshot,
+      // Provenance records the overview the flow actually read: none, when it
+      // was left out.
+      summarySourceSnapshot: overviewIsUnsafe ? null : summarySourceSnapshot,
       conversations: doneConversations,
     };
   },
@@ -1251,7 +1315,10 @@ export const reapStuckFlowGenerations = internalMutation({
  *   from. Rebuilds became slow once they ran map-reduce, so one triggered by the
  *   same conversations the flow was just generated from lands minutes later;
  *   flagging there told the user to regenerate for a byte-identical result, and
- *   the UI explained it as a count mismatch when the counts were equal.
+ *   the UI explained it as a count mismatch when the counts were equal. The
+ *   flow does use the overview text as background, but every contribution's
+ *   own extraction already reaches it directly, so an overview that is newer
+ *   than the one the flow read is not a reason to flag.
  *
  * Known gap: a conversation re-transcribed in place reaches neither trigger from
  * the summary path. Catching that needs a content fingerprint on the flow, the
@@ -1373,24 +1440,13 @@ export const markFlowStale = internalMutation({
     if (!flow || flow.status !== "ready") return;
 
     if (args.trigger === "summaryRebuilt") {
-      const process = await ctx.db.get(args.processId);
-      const generatedFromSnapshot = flow.summarySourceSnapshot;
-      const currentSnapshot = process?.summaryV2?.provenance;
-
-      // New flows carry an exact overview snapshot. Once both sides have it,
-      // compare hashes instead of falling back to conversation counts. Legacy
-      // rows keep the established count-based behavior until regenerated.
-      if (generatedFromSnapshot && currentSnapshot) {
-        if (
-          generatedFromSnapshot.sourceSnapshotHash ===
-          currentSnapshot.sourceSnapshotHash
-        ) {
-          return;
-        }
-        await ctx.db.patch(flow._id, { stale: true });
-        return;
-      }
-
+      // Deliberately counts conversations rather than comparing the overview
+      // hash in `summarySourceSnapshot`. A new contribution starts the overview
+      // and the flow together, and the flow reads the overview before the new
+      // one is published, so the hashes nearly always differ once the overview
+      // lands. Flagging on that showed "New evidence available" seconds after
+      // the automatic refresh, for a flow that already includes every
+      // contribution. The snapshot stays on the flow as provenance only.
       const done = await ctx.db
         .query("conversations")
         .withIndex("by_clerkOrgId_and_processId_and_status", (q) =>

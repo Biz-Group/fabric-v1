@@ -761,3 +761,126 @@ export const verifyAskSuggestionTopics = internalQuery({
     return { rows, prompts, missing };
   },
 });
+
+// --- Process Flow: clear false "New evidence available" flags ---------------
+//
+// Until 2026-11-25 a flow was flagged stale whenever the overview it had read
+// was superseded. A new contribution starts the overview and the flow
+// together, and the flow reads the overview first, so nearly every automatic
+// refresh ended with a false flag on a flow that already included every
+// contribution. `markFlowStale` now counts contributions instead; this clears
+// the flags the old rule left behind.
+//
+// Conservative: a flag is cleared only when it can only have come from that
+// rule. The flow must hold exactly the process's current done contributions,
+// the overview must have moved on from the one the flow read, and no
+// contribution may have been deleted from or moved out of the process since
+// that overview was built (the flow could then carry removed content through
+// the overview background). Legacy flows without an overview snapshot are
+// left alone. Anything else keeps its flag and its Refresh control.
+//
+//   npx convex run migrations:listFalseFlowStaleFlags '{"cursor":null}'
+//   npx convex run migrations:run '{"fn":"migrations:clearFalseFlowStaleFlags"}'
+
+const MAX_FLOW_CONVERSATIONS_FOR_CLEANUP = 50;
+
+async function isFalseFlowStaleFlag(
+  ctx: QueryCtx,
+  flow: DataModel["processFlows"]["document"],
+): Promise<boolean> {
+  if (flow.status !== "ready" || !flow.stale) return false;
+  const snapshot = flow.summarySourceSnapshot;
+  if (!snapshot) return false;
+
+  const process = await ctx.db.get(flow.processId);
+  if (!process || process.clerkOrgId !== flow.clerkOrgId) return false;
+  const current = process.summaryV2?.provenance;
+  if (!current || current.sourceSnapshotHash === snapshot.sourceSnapshotHash) {
+    return false;
+  }
+
+  const done = await ctx.db
+    .query("conversations")
+    .withIndex("by_clerkOrgId_and_processId_and_status", (q) =>
+      q
+        .eq("clerkOrgId", flow.clerkOrgId)
+        .eq("processId", flow.processId)
+        .eq("status", "done"),
+    )
+    .take(MAX_FLOW_CONVERSATIONS_FOR_CLEANUP + 1);
+  if (
+    done.length > MAX_FLOW_CONVERSATIONS_FOR_CLEANUP ||
+    done.length !== flow.conversationCount
+  ) {
+    return false;
+  }
+
+  const since = snapshot.summaryGeneratedAt;
+  const deletions = await ctx.db
+    .query("conversationDeletions")
+    .withIndex("by_clerkOrgId_and_createdAt", (q) =>
+      q.eq("clerkOrgId", flow.clerkOrgId).gte("createdAt", since),
+    )
+    .take(1000);
+  if (deletions.length === 1000) return false;
+  if (deletions.some((row) => row.processId === flow.processId)) return false;
+
+  const moves = await ctx.db
+    .query("conversationMoves")
+    .withIndex("by_clerkOrgId_and_createdAt", (q) =>
+      q.eq("clerkOrgId", flow.clerkOrgId).gte("createdAt", since),
+    )
+    .take(1000);
+  if (moves.length === 1000) return false;
+  if (
+    moves.some(
+      (row) =>
+        row.fromProcessId === flow.processId ||
+        row.toProcessId === flow.processId,
+    )
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+export const listFalseFlowStaleFlags = internalQuery({
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, args) => {
+    const page = await ctx.db
+      .query("processFlows")
+      .paginate({ cursor: args.cursor, numItems: 20 });
+    const clearable: Array<{
+      processFlowId: Id<"processFlows">;
+      processId: Id<"processes">;
+      clerkOrgId: string;
+    }> = [];
+    let flagged = 0;
+    for (const flow of page.page) {
+      if (flow.status === "ready" && flow.stale) flagged++;
+      if (await isFalseFlowStaleFlag(ctx, flow)) {
+        clearable.push({
+          processFlowId: flow._id,
+          processId: flow.processId,
+          clerkOrgId: flow.clerkOrgId,
+        });
+      }
+    }
+    return {
+      flagged,
+      clearable,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
+export const clearFalseFlowStaleFlags = migrations.define({
+  table: "processFlows",
+  batchSize: 20,
+  migrateOne: async (ctx, flow) => {
+    if (!(await isFalseFlowStaleFlag(ctx, flow))) return;
+    await ctx.db.patch(flow._id, { stale: false });
+  },
+});

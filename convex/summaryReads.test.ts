@@ -164,3 +164,136 @@ describe("bounded process-summary reads", () => {
     ).toBe(true);
   });
 });
+
+/** A process overview citing `cited`, built from `includedSources` contributions. */
+function overviewCiting(
+  cited: Id<"conversations">[],
+  includedSources: number,
+): NonNullable<Doc<"processes">["summaryV2"]> {
+  return {
+    schemaVersion: "v2",
+    sourceMode: "interview_evidence",
+    headline: "Synthetic overview",
+    executiveBrief: "A synthetic overview used only by this test.",
+    scope: [],
+    consensus: cited.map((conversationId, index) => ({
+      id: `consensus-${index}`,
+      title: "A finding",
+      body: "What the contributor said.",
+      evidenceLevel: "single_source" as const,
+      supportCount: 1,
+      sources: [
+        { kind: "conversation" as const, conversationId, label: `Conv. ${index + 1}` },
+      ],
+    })),
+    variations: [],
+    gaps: [],
+    notable: [],
+    coverage: { includedSources, totalEligibleSources: includedSources, complete: true },
+    provenance: {
+      sourceSnapshotHash: "sha256:overview",
+      generatedAt: 1_786_000_000_000,
+      promptVersion: "summary-v2-process-overview-v1",
+      provider: "fabric-foundry",
+      model: "test-model",
+    },
+  };
+}
+
+describe("the overview background the flow reads", () => {
+  test("an overview that has not absorbed a new contribution yet is kept", async () => {
+    // The everyday case: a contribution finishes, and the flow starts before
+    // the overview has been rebuilt to include it.
+    const t = convexTest(schema, modules);
+    const processId = await t.run(async (ctx) => {
+      const id = await seedProcess(ctx, "Behind process");
+      const first = await ctx.db.insert("conversations", conversation(id));
+      await ctx.db.insert("conversations", conversation(id));
+      await ctx.db.patch(id, {
+        rollingSummary: "Overview of the first contribution",
+        summaryV2: overviewCiting([first], 1),
+      });
+      return id;
+    });
+
+    const data = await t.query(internal.processFlows.getFlowGenerationData, {
+      processId,
+      clerkOrgId: ORG,
+    });
+
+    expect(data.rollingSummary).toBe("Overview of the first contribution");
+    expect(data.summarySourceSnapshot?.sourceSnapshotHash).toBe("sha256:overview");
+  });
+
+  test("an overview citing a deleted contribution is left out", async () => {
+    const t = convexTest(schema, modules);
+    const processId = await t.run(async (ctx) => {
+      const id = await seedProcess(ctx, "Deleted process");
+      const kept = await ctx.db.insert("conversations", conversation(id));
+      const deleted = await ctx.db.insert("conversations", conversation(id));
+      // A contribution added since keeps the counts level, so only the
+      // citation shows the overview is out of date.
+      await ctx.db.insert("conversations", conversation(id));
+      await ctx.db.patch(id, {
+        rollingSummary: "Overview that quotes the deleted interview",
+        summaryV2: overviewCiting([kept, deleted], 2),
+      });
+      await ctx.db.delete(deleted);
+      return id;
+    });
+
+    const data = await t.query(internal.processFlows.getFlowGenerationData, {
+      processId,
+      clerkOrgId: ORG,
+    });
+
+    expect(data.rollingSummary).toBeNull();
+    expect(data.summarySourceSnapshot).toBeNull();
+    expect(data.conversations).toHaveLength(2);
+  });
+
+  test("an overview citing a contribution moved to another process is left out", async () => {
+    const t = convexTest(schema, modules);
+    const processId = await t.run(async (ctx) => {
+      const id = await seedProcess(ctx, "Source process");
+      const elsewhere = await seedProcess(ctx, "Destination process");
+      const kept = await ctx.db.insert("conversations", conversation(id));
+      const moved = await ctx.db.insert("conversations", conversation(id));
+      await ctx.db.patch(id, {
+        rollingSummary: "Overview that quotes the moved interview",
+        summaryV2: overviewCiting([kept, moved], 2),
+      });
+      await ctx.db.patch(moved, { processId: elsewhere });
+      return id;
+    });
+
+    const data = await t.query(internal.processFlows.getFlowGenerationData, {
+      processId,
+      clerkOrgId: ORG,
+    });
+
+    expect(data.rollingSummary).toBeNull();
+  });
+
+  test("an overview built from more contributions than remain is left out", async () => {
+    // The removed contribution was never cited by a finding, but it still
+    // shaped the overview's text.
+    const t = convexTest(schema, modules);
+    const processId = await t.run(async (ctx) => {
+      const id = await seedProcess(ctx, "Shrunk process");
+      const kept = await ctx.db.insert("conversations", conversation(id));
+      await ctx.db.patch(id, {
+        rollingSummary: "Overview of two contributions",
+        summaryV2: overviewCiting([kept], 2),
+      });
+      return id;
+    });
+
+    const data = await t.query(internal.processFlows.getFlowGenerationData, {
+      processId,
+      clerkOrgId: ORG,
+    });
+
+    expect(data.rollingSummary).toBeNull();
+  });
+});

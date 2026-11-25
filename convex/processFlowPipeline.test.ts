@@ -746,7 +746,7 @@ describe("staged flow generation pipeline", () => {
     expect(flow?.stale).toBe(false);
   });
 
-  test("new flows use the exact overview snapshot instead of conversation counts", async () => {
+  test("a newer overview alone does not flag a flow that has every contribution", async () => {
     const t = harness();
     const processId = await t.run(async (ctx) => {
       const id = await seedOrg(ctx);
@@ -780,6 +780,9 @@ describe("staged flow generation pipeline", () => {
     });
     expect((await readFlow(t, processId))?.stale).toBe(false);
 
+    // The overview publishes after the flow read it — the race every new
+    // contribution runs. The flow already counts both contributions, so this
+    // must not raise "New evidence available".
     await t.run(async (ctx) => {
       await ctx.db.patch(processId, {
         summaryV2: processSummaryArtifact("snapshot-b"),
@@ -790,7 +793,7 @@ describe("staged flow generation pipeline", () => {
       clerkOrgId: ORG,
       trigger: "summaryRebuilt",
     });
-    expect((await readFlow(t, processId))?.stale).toBe(true);
+    expect((await readFlow(t, processId))?.stale).toBe(false);
   });
 
   test("a new conversation does flag the flow as stale", async () => {

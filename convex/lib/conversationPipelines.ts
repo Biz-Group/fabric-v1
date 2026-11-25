@@ -5,10 +5,12 @@ import type { Id } from "../_generated/dataModel";
 /**
  * Fans a finished conversation out to the two pipelines that consume it.
  *
- * The two are deliberately independent. They read different things — the
- * overview extracts evidence from transcripts, the flow builds a graph from each
- * conversation's structured extraction — and they fail in different ways, so
- * neither is allowed to gate, delay, or break the other. Each is dispatched
+ * The two are deliberately independent. The overview extracts evidence from
+ * transcripts; the flow builds a graph from each conversation's structured
+ * extraction, with whatever overview text exists when it starts as background
+ * (usually the previous one, since both start together — `markFlowStale`
+ * accounts for that). They fail in different ways, so neither is allowed to
+ * gate, delay, or break the other. Each is dispatched
  * inside its own try/catch: a summary pipeline that cannot start must still
  * leave the process flow generating, and vice versa.
  *
