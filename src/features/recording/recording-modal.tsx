@@ -1199,222 +1199,236 @@ export function RecordingModal({
           "flex max-h-[calc(100dvh-1rem)] flex-col gap-0 overflow-hidden p-0",
           step === "recording" || step === "speakerLabels"
             ? "h-[min(90dvh,48rem)] sm:max-w-2xl"
-            : "overflow-y-auto sm:max-w-md"
+            : step === "name"
+              ? "sm:max-w-md md:max-w-3xl"
+              : "overflow-y-auto sm:max-w-md"
         )}
       >
-        {/* Step 1: Name + Consent */}
+        {/* Step 1: Name + Consent. On a wide screen it splits into what you
+            fill in (left) and what you read (right), so the whole step fits a
+            landscape window without scrolling; narrow screens keep one column.
+            The footer sits outside the scrolling body so the start button is
+            always in view. */}
         {step === "name" && (
-          <div className="p-6">
-            <DialogHeader>
-              <DialogTitle>
-                {mode === "audioUpload"
-                  ? "Upload files"
-                  : mode === "voiceRecord"
-                    ? "Record a voice note"
-                    : "Start an AI interview"}
-              </DialogTitle>
-              <DialogDescription>
-                {mode === "audioUpload"
-                  ? "You're about to upload files about "
-                  : mode === "voiceRecord"
-                    ? isOnBehalf
-                      ? "You're about to record them describing "
-                      : "You're about to record yourself describing "
-                    : "You're about to start an AI interview about "}
-                <span className="font-medium text-foreground">
-                  {processName}
-                </span>
-                {isOnBehalf
-                  ? ". Confirm who is being recorded and review the notices below to get started."
-                  : ". Confirm your name and review the notices below to get started."}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="mt-4 space-y-4">
-              {canRecordForOthers && (
-                <div className="space-y-2">
-                  <span className="text-sm font-medium">
-                    Who is being recorded?
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+              <DialogHeader>
+                <DialogTitle>
+                  {mode === "audioUpload"
+                    ? "Upload files"
+                    : mode === "voiceRecord"
+                      ? "Record a voice note"
+                      : "Start an AI interview"}
+                </DialogTitle>
+                <DialogDescription>
+                  {mode === "audioUpload"
+                    ? "You're about to upload files about "
+                    : mode === "voiceRecord"
+                      ? isOnBehalf
+                        ? "You're about to record them describing "
+                        : "You're about to record yourself describing "
+                      : "You're about to start an AI interview about "}
+                  <span className="font-medium text-foreground">
+                    {processName}
                   </span>
-                  <div className="flex flex-wrap gap-2">
-                    {SUBJECT_MODE_OPTIONS.map((option) => (
-                      <Button
-                        key={option.id}
-                        type="button"
-                        size="sm"
-                        variant={
-                          subjectMode === option.id ? "default" : "outline"
-                        }
-                        className="rounded-full"
-                        onClick={() => {
-                          setSubjectMode(option.id);
-                          // Consent is specific to the person named, so a change
-                          // of subject must be attested again.
+                  {isOnBehalf
+                    ? ". Confirm who is being recorded and review the notices below to get started."
+                    : ". Confirm your name and review the notices below to get started."}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="mt-4 grid gap-4 md:mt-5 md:grid-cols-2 md:gap-6">
+                <div className="min-w-0 space-y-4">
+                  {canRecordForOthers && (
+                    <div className="space-y-2">
+                      <span className="text-sm font-medium">
+                        Who is being recorded?
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {SUBJECT_MODE_OPTIONS.map((option) => (
+                          <Button
+                            key={option.id}
+                            type="button"
+                            size="sm"
+                            variant={
+                              subjectMode === option.id ? "default" : "outline"
+                            }
+                            className="rounded-full"
+                            onClick={() => {
+                              setSubjectMode(option.id);
+                              // Consent is specific to the person named, so a change
+                              // of subject must be attested again.
+                              setConsentAttested(false);
+                            }}
+                          >
+                            {option.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="contributor-name"
+                      className="text-sm font-medium"
+                    >
+                      {isOnBehalf ? "Person being recorded" : "Your name"}
+                    </label>
+                    {subjectMode === "member" ? (
+                      <Select
+                        value={subjectMemberId ?? undefined}
+                        onValueChange={(value) => {
+                          setSubjectMemberId(value as Id<"users">);
                           setConsentAttested(false);
                         }}
                       >
-                        {option.label}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <label
-                  htmlFor="contributor-name"
-                  className="text-sm font-medium"
-                >
-                  {isOnBehalf ? "Person being recorded" : "Your name"}
-                </label>
-                {subjectMode === "member" ? (
-                  <Select
-                    value={subjectMemberId ?? undefined}
-                    onValueChange={(value) => {
-                      setSubjectMemberId(value as Id<"users">);
-                      setConsentAttested(false);
-                    }}
-                  >
-                    <SelectTrigger id="contributor-name" className="w-full">
-                      <SelectValue
+                        <SelectTrigger id="contributor-name" className="w-full">
+                          <SelectValue
+                            placeholder={
+                              orgMembers === undefined
+                                ? "Loading team members…"
+                                : "Select a team member"
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(orgMembers ?? [])
+                            .filter((m) => m.userId !== accountUserId)
+                            .map((member) => (
+                              <SelectItem key={member.userId} value={member.userId}>
+                                {member.jobTitle
+                                  ? `${member.name} — ${member.jobTitle}`
+                                  : member.name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id="contributor-name"
+                        value={subjectMode === "external" ? externalName : accountName}
+                        readOnly={subjectMode === "self"}
+                        maxLength={MAX_CONTRIBUTOR_NAME_LENGTH}
                         placeholder={
-                          orgMembers === undefined
-                            ? "Loading team members…"
-                            : "Select a team member"
+                          subjectMode === "external"
+                            ? "Enter their full name"
+                            : "Enter your name"
                         }
+                        onChange={(e) => setExternalName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleNameSubmit();
+                        }}
                       />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(orgMembers ?? [])
-                        .filter((m) => m.userId !== accountUserId)
-                        .map((member) => (
-                          <SelectItem key={member.userId} value={member.userId}>
-                            {member.jobTitle
-                              ? `${member.name} — ${member.jobTitle}`
-                              : member.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    id="contributor-name"
-                    value={subjectMode === "external" ? externalName : accountName}
-                    readOnly={subjectMode === "self"}
-                    maxLength={MAX_CONTRIBUTOR_NAME_LENGTH}
-                    placeholder={
-                      subjectMode === "external"
-                        ? "Enter their full name"
-                        : "Enter your name"
-                    }
-                    onChange={(e) => setExternalName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleNameSubmit();
-                    }}
-                  />
-                )}
-                <p className="text-xs text-muted-foreground">
-                  {subjectMode === "self"
-                    ? "Taken from your Fabric profile."
-                    : `This recording will be attributed to them, and recorded as submitted by ${accountName || "your account"}.`}
-                </p>
-              </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {subjectMode === "self"
+                        ? "Taken from your Fabric profile."
+                        : `This recording will be attributed to them, and recorded as submitted by ${accountName || "your account"}.`}
+                    </p>
+                  </div>
 
-              {isOnBehalf && (
-                <div className="flex items-start gap-2.5 rounded-lg border border-warning-border bg-warning-subtle p-4 text-sm leading-relaxed">
-                  <Checkbox
-                    id="consent-attestation"
-                    checked={consentAttested}
-                    onCheckedChange={(checked) =>
-                      setConsentAttested(checked === true)
-                    }
-                    aria-labelledby="consent-attestation-label"
-                    className="mt-0.5"
-                  />
-                  {/* The text toggles too, for a usable hit area. It sits beside
-                      the checkbox rather than wrapping it, so a click can never
-                      reach both handlers and cancel itself out. */}
-                  <span
-                    id="consent-attestation-label"
-                    className="cursor-pointer"
-                    onClick={() => setConsentAttested((prev) => !prev)}
-                  >
-                    <span className="font-medium">Consent confirmation</span>
-                    <span className="mt-1 block text-muted-foreground">
-                      I confirm that{" "}
-                      {contributorName.trim() || "this person"} was shown the
-                      recording notice below and consented to being recorded,
-                      transcribed, and analysed. This confirmation is stored
-                      against your account.
-                    </span>
-                  </span>
+                  {isOnBehalf && (
+                    <div className="flex items-start gap-2.5 rounded-lg border border-warning-border bg-warning-subtle p-4 text-sm leading-relaxed">
+                      <Checkbox
+                        id="consent-attestation"
+                        checked={consentAttested}
+                        onCheckedChange={(checked) =>
+                          setConsentAttested(checked === true)
+                        }
+                        aria-labelledby="consent-attestation-label"
+                        className="mt-0.5"
+                      />
+                      {/* The text toggles too, for a usable hit area. It sits beside
+                          the checkbox rather than wrapping it, so a click can never
+                          reach both handlers and cancel itself out. */}
+                      <span
+                        id="consent-attestation-label"
+                        className="cursor-pointer"
+                        onClick={() => setConsentAttested((prev) => !prev)}
+                      >
+                        <span className="font-medium">Consent confirmation</span>
+                        <span className="mt-1 block text-muted-foreground">
+                          I confirm that{" "}
+                          {contributorName.trim() || "this person"} was shown the
+                          recording notice and consented to being recorded,
+                          transcribed, and analysed. This confirmation is stored
+                          against your account.
+                        </span>
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
 
-              <div className="rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed">
-                <p className="flex items-center gap-1.5 font-medium">
-                  <Shield className="size-4 text-primary" />
-                  Recording notice
-                </p>
-                <p className="mt-1 text-muted-foreground">
-                  {mode === "audioUpload"
-                    ? "The uploaded audio will be transcribed and stored to help document our processes."
-                    : mode === "voiceRecord"
-                      ? "This recording will be transcribed and stored to help document our processes."
-                      : "This interview will be recorded, transcribed, and stored to help document our processes."}
-                </p>
-                {isOnBehalf && (
-                  // The notice is only meaningful to the person whose voice is
-                  // captured, and they are not the one reading this screen.
-                  <p className="mt-2 text-muted-foreground">
-                    Because you are recording on someone else&apos;s behalf, show
-                    or read this notice to{" "}
-                    {contributorName.trim() || "the person being recorded"}{" "}
-                    {mode === "audioUpload"
-                      ? "before uploading their audio."
-                      : "before you start."}
-                  </p>
-                )}
-              </div>
-              <div className="rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed">
-                <p className="font-medium">Content guidelines</p>
-                <p className="mt-1 text-muted-foreground">
-                  Please focus on how the process works — the steps, tools, and
-                  handoffs involved. Avoid sharing sensitive information such
-                  as specific salaries, personal situations, confidential
-                  outcomes, or negative comments about individuals.
-                </p>
-              </div>
-
-              {/* Mic errors: a fix per cause, and a way to contribute without one */}
-              {micFailure && (
-                <div
-                  role="alert"
-                  className="flex items-start gap-2 rounded-lg border border-destructive-border bg-destructive-subtle p-3 text-sm text-destructive"
-                >
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  <div>
-                    <p className="font-medium">
-                      {MIC_FAILURE_COPY[micFailure].title}
+                {/* One panel for both notices, split by a rule, rather than two
+                    boxes: same wording, less chrome. */}
+                <div className="min-w-0 self-start divide-y rounded-lg border bg-muted/30 text-sm leading-relaxed">
+                  <div className="p-4">
+                    <p className="flex items-center gap-1.5 font-medium">
+                      <Shield className="size-4 text-primary" />
+                      Recording notice
                     </p>
-                    <p className="mt-1 text-xs text-destructive/80">
-                      {MIC_FAILURE_COPY[micFailure].body}
+                    <p className="mt-1 text-muted-foreground">
+                      {mode === "audioUpload"
+                        ? "The uploaded audio will be transcribed and stored to help document our processes."
+                        : mode === "voiceRecord"
+                          ? "This recording will be transcribed and stored to help document our processes."
+                          : "This interview will be recorded, transcribed, and stored to help document our processes."}
                     </p>
-                    <Button
-                      variant="link"
-                      size="sm"
-                      className="mt-1 h-auto px-0 text-xs"
-                      onClick={() => {
-                        setModeOverride("audioUpload");
-                        setMicPermission("prompt");
-                      }}
-                    >
-                      Upload files instead
-                    </Button>
+                    {isOnBehalf && (
+                      // The notice is only meaningful to the person whose voice is
+                      // captured, and they are not the one reading this screen.
+                      <p className="mt-2 text-muted-foreground">
+                        Because you are recording on someone else&apos;s behalf, show
+                        or read this notice to{" "}
+                        {contributorName.trim() || "the person being recorded"}{" "}
+                        {mode === "audioUpload"
+                          ? "before uploading their audio."
+                          : "before you start."}
+                      </p>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <p className="font-medium">Content guidelines</p>
+                    <p className="mt-1 text-muted-foreground">
+                      Please focus on how the process works — the steps, tools, and
+                      handoffs involved. Avoid sharing sensitive information such
+                      as specific salaries, personal situations, confidential
+                      outcomes, or negative comments about individuals.
+                    </p>
                   </div>
                 </div>
-              )}
+
+                {/* Mic errors: a fix per cause, and a way to contribute without one */}
+                {micFailure && (
+                  <div
+                    role="alert"
+                    className="flex items-start gap-2 rounded-lg border border-destructive-border bg-destructive-subtle p-3 text-sm text-destructive md:col-span-2"
+                  >
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                    <div>
+                      <p className="font-medium">
+                        {MIC_FAILURE_COPY[micFailure].title}
+                      </p>
+                      <p className="mt-1 text-xs text-destructive/80">
+                        {MIC_FAILURE_COPY[micFailure].body}
+                      </p>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="mt-1 h-auto px-0 text-xs"
+                        onClick={() => {
+                          setModeOverride("audioUpload");
+                          setMicPermission("prompt");
+                        }}
+                      >
+                        Upload files instead
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-            <DialogFooter className="mt-6">
+            <DialogFooter className="mx-0 mb-0 shrink-0 px-6 py-4">
               <Button variant="outline" onClick={requestClose}>
                 Cancel
               </Button>
