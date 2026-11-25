@@ -934,18 +934,20 @@ export default defineSchema({
     rollingSummary: v.optional(v.string()),
     summaryV2: v.optional(processOverviewArtifactV2Validator),
     summaryUpdatedAt: v.optional(v.number()),
-    // Coalescing gate for rolling-summary regeneration. Several conversations
+    // Coalescing gate for summary regeneration. Several conversations
     // finishing at once must not each start their own regen: the first sets
     // `summaryRegenScheduledAt`, later ones just raise
     // `summaryRegenRequestedAgain`, and the in-flight run schedules exactly
     // one more pass when it sees that flag. Requests are never dropped — see
-    // requestProcessSummaryRegen in postCall.ts.
+    // requestProcessSummaryV2 in processSummaryV2.ts.
     summaryRegenScheduledAt: v.optional(v.number()),
     summaryRegenRequestedAgain: v.optional(v.boolean()),
-    // Phase 2 preparation gate. Evidence and the compatibility Markdown map
-    // finish before this gate hands the process to the existing reduce gate.
+    // Preparation gate. Conversation evidence finishes before this gate hands
+    // the process to the reduce gate above.
     summaryEvidenceRefreshScheduledAt: v.optional(v.number()),
     summaryEvidenceRefreshRequestedAgain: v.optional(v.boolean()),
+    // No longer written: only the removed incremental reducer read it. Kept
+    // until a migration clears stored values.
     summaryEvidenceForceRefreshRequested: v.optional(v.boolean()),
     summaryEvidenceRefreshGenerationId: v.optional(v.string()),
     // Monotonic invalidation token. A V2 run captures this after evidence
@@ -1017,14 +1019,10 @@ export default defineSchema({
     transcript: v.optional(v.array(transcriptMessageValidator)),
     speakerLabels: v.optional(v.array(speakerLabelValidator)),
     summary: v.optional(v.string()),
-    // Fabric-owned structured summary of this conversation, written once when
-    // the conversation completes and reused as the map input to the rolling
-    // summary's reduce pass. Deliberately NOT the vendor `summary` above:
-    // that one is ElevenLabs', its depth and shape can change without notice,
-    // and it is display-only. `processSummaryInputHash` fingerprints the
-    // transcript and prompt version this was derived from, so a re-transcribed
-    // conversation or hardened prompt regenerates it while unchanged input
-    // never pays for it twice.
+    // Per-conversation record the removed rolling-summary reducer used as its
+    // map input, and the fingerprint of what it was derived from. Nothing
+    // populates or reads it now (`processSummaryEvidenceV2` replaced it); kept
+    // until a migration clears stored values.
     processSummaryInput: v.optional(v.string()),
     processSummaryInputHash: v.optional(v.string()),
     processSummaryEvidenceV2: v.optional(processSummaryEvidenceV2Validator),

@@ -28,7 +28,6 @@ import {
   type FunctionOverviewPromptSource,
   type HierarchyChildState,
 } from "./lib/hierarchyOverviewV2";
-import { isSummaryV2EnabledForOrg } from "./lib/summaryV2Feature";
 import {
   departmentOverviewArtifactV2Validator,
   functionOverviewArtifactV2Validator,
@@ -197,7 +196,6 @@ export async function requestDepartmentSummaryV2ForOrg(
     actorUserId?: Id<"users">;
   },
 ) {
-    if (!isSummaryV2EnabledForOrg(args.clerkOrgId)) throw new Error("SUMMARY_V2 is disabled");
     const department = await ctx.db.get(args.departmentId);
     if (!department || department.clerkOrgId !== args.clerkOrgId) {
       throw new Error("Department not found in this organisation");
@@ -268,7 +266,6 @@ export async function requestFunctionSummaryV2ForOrg(
     actorUserId?: Id<"users">;
   },
 ) {
-    if (!isSummaryV2EnabledForOrg(args.clerkOrgId)) throw new Error("SUMMARY_V2 is disabled");
     const fn = await ctx.db.get(args.functionId);
     if (!fn || fn.clerkOrgId !== args.clerkOrgId) {
       throw new Error("Function not found in this organisation");
@@ -343,16 +340,6 @@ export const startDepartmentRun = internalMutation({
     ) {
       return null;
     }
-    if (!isSummaryV2EnabledForOrg(department.clerkOrgId)) {
-      await ctx.db.patch(department._id, {
-        summaryRegenScheduledAt: undefined,
-        summaryRegenRequestedAgain: undefined,
-        summaryForceRefreshRequested: undefined,
-        summaryV2GenerationId: undefined,
-        summaryV2RunId: undefined,
-      });
-      return null;
-    }
     const now = Date.now();
     const runId = await ctx.db.insert("summaryRuns", {
       clerkOrgId: args.clerkOrgId,
@@ -405,16 +392,6 @@ export const startFunctionRun = internalMutation({
     ) {
       return null;
     }
-    if (!isSummaryV2EnabledForOrg(fn.clerkOrgId)) {
-      await ctx.db.patch(fn._id, {
-        summaryRegenScheduledAt: undefined,
-        summaryRegenRequestedAgain: undefined,
-        summaryForceRefreshRequested: undefined,
-        summaryV2GenerationId: undefined,
-        summaryV2RunId: undefined,
-      });
-      return null;
-    }
     const now = Date.now();
     const runId = await ctx.db.insert("summaryRuns", {
       clerkOrgId: args.clerkOrgId,
@@ -461,7 +438,7 @@ export const prepareFunctionChildren = internalMutation({
       !run.rollupScan
     ) return;
     const fn = await ownsRun(ctx, run);
-    if (!fn || !isSummaryV2EnabledForOrg(fn.clerkOrgId)) return;
+    if (!fn) return;
     const functionId = run.entity.functionId;
     const scan = run.rollupScan;
     const page = await ctx.db
@@ -972,20 +949,6 @@ export const claimHierarchyFinal = internalMutation({
     ) return false;
     const owner = await ownsRun(ctx, run);
     if (!owner) return false;
-    if (!isSummaryV2EnabledForOrg(owner.clerkOrgId)) {
-      await ctx.db.patch(run._id, {
-        state: "failed",
-        error: runError(
-          "feature_disabled",
-          "Summary V2 was disabled before this run completed.",
-          false,
-        ),
-        completedAt: Date.now(),
-        lastProgressAt: Date.now(),
-      });
-      await scheduleFinish(ctx, run, owner);
-      return false;
-    }
     if (
       owner.summaryRegenRequestedAgain ||
       (owner.summarySourceRevision ?? 0) !== (run.sourceRevision ?? 0)
@@ -1302,7 +1265,6 @@ async function saveFinal(
   const owner = await ownsRun(ctx, run);
   if (!owner) return { saved: false };
   if (
-    !isSummaryV2EnabledForOrg(owner.clerkOrgId) ||
     owner.summaryRegenRequestedAgain ||
     (owner.summarySourceRevision ?? 0) !== args.sourceRevision ||
     (run.sourceRevision ?? 0) !== args.sourceRevision ||
@@ -1437,16 +1399,7 @@ export const finishRollupRun = internalMutation({
       summaryV2LastError: run.error,
       summaryV2LastCompletedAt: run.completedAt ?? Date.now(),
     };
-    if (!isSummaryV2EnabledForOrg(owner.clerkOrgId)) {
-      await ctx.db.patch(owner._id, {
-        ...terminalPatch,
-        summaryRegenScheduledAt: undefined,
-        summaryRegenRequestedAgain: undefined,
-        summaryForceRefreshRequested: undefined,
-        summaryV2GenerationId: undefined,
-        summaryV2RunId: undefined,
-      });
-    } else if (owner.summaryRegenRequestedAgain) {
+    if (owner.summaryRegenRequestedAgain) {
       const generationId = crypto.randomUUID();
       const forceRefresh = owner.summaryForceRefreshRequested ?? false;
       await ctx.db.patch(owner._id, {
@@ -1609,14 +1562,12 @@ export const reapStuckHierarchySummaryRuns = internalMutation({
       if (!entity) continue;
       const owner = await ownsRun(ctx, run);
       if (!owner) continue;
-      if (!isSummaryV2EnabledForOrg(owner.clerkOrgId) || run.resumeCount >= MAX_RESUMES) {
+      if (run.resumeCount >= MAX_RESUMES) {
         await ctx.db.patch(run._id, {
           state: "failed",
           error: runError(
-            isSummaryV2EnabledForOrg(owner.clerkOrgId) ? "watchdog_exhausted" : "feature_disabled",
-            isSummaryV2EnabledForOrg(owner.clerkOrgId)
-              ? "Summary generation stopped after repeated recovery attempts."
-              : "Summary V2 was disabled before this run completed.",
+            "watchdog_exhausted",
+            "Summary generation stopped after repeated recovery attempts.",
             false,
           ),
           completedAt: Date.now(),

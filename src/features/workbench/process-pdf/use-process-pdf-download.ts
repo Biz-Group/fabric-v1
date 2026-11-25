@@ -29,8 +29,7 @@ function sanitizeFilename(name: string) {
 /**
  * Generates a polished process report PDF on the client. The overview read model
  * and the flow document are both fetched fresh at click time — the export reads
- * exactly what the Overview tab and the clipboard read, including a
- * `SUMMARY_V2` rollback to the legacy projection — and @react-pdf/renderer is
+ * exactly what the Overview tab and the clipboard read — and @react-pdf/renderer is
  * dynamically imported so it never ships in the main bundle.
  */
 export function useProcessPdfDownload() {

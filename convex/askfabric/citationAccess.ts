@@ -1,10 +1,8 @@
 import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
-import { readableSummaryV2 } from "../lib/summaryV2Feature";
 import { HELP_ARTICLES } from "../askTools/helpCorpus.generated";
 import { getOrgConversation, getOrgEntity } from "../askTools/scope";
 import { parseFabricSource, type HierarchyKind } from "../askTools/results";
-import type { SummaryArtifactV2 } from "../summaryV2";
 
 /**
  * Citation re-authorization on load (FR-5.5). Every cited entity is checked
@@ -32,7 +30,7 @@ const FINDING_SECTIONS = [
 ] as const;
 
 function hasFinding(doc: { clerkOrgId: string; summaryV2?: unknown }, findingId: string): boolean {
-  const artifact = readableSummaryV2(doc.clerkOrgId, doc.summaryV2 as SummaryArtifactV2 | undefined) as
+  const artifact = doc.summaryV2 as
     | Record<string, Array<{ id: string }> | undefined>
     | undefined;
   if (!artifact) return false;

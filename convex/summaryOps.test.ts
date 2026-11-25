@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import schema from "./schema";
@@ -13,7 +13,6 @@ const modules = import.meta.glob("./**/*.ts");
 const ORG = "org_summary_ops";
 const OTHER_ORG = "org_summary_ops_other";
 const NOW = 1_786_000_000_000;
-const originalSummaryV2 = process.env.SUMMARY_V2;
 
 function usageRow(
   operation: string,
@@ -114,14 +113,6 @@ async function seedHierarchy(
 }
 
 describe("summary ops reporting", () => {
-  beforeEach(() => {
-    process.env.SUMMARY_V2 = "true";
-  });
-  afterEach(() => {
-    if (originalSummaryV2 === undefined) delete process.env.SUMMARY_V2;
-    else process.env.SUMMARY_V2 = originalSummaryV2;
-  });
-
   test("stage cost report separates stages, levels, and latency percentiles", async () => {
     const t = convexTest(schema, modules);
     await t.run(async (ctx) => {
@@ -295,7 +286,6 @@ describe("summary ops reporting", () => {
     expect(report.errorsByCode).toEqual([
       { code: "generation_failed", count: 1 },
     ]);
-    expect(report.rollout.mode).toBe("all");
   });
 
   test("stored artifact audit fails a measured-language artifact", async () => {
@@ -411,7 +401,6 @@ describe("summary ops reporting", () => {
 
     expect(report.overall.withAnySummary).toBe(3);
     expect(report.overall.withV2).toBe(1);
-    expect(report.rollout.mode).toBe("all");
   });
 
   test("coverage report scans every tenant when no organization is named", async () => {

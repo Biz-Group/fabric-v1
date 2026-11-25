@@ -82,8 +82,8 @@ function evidencePhrase(finding: Finding): string {
 
 /**
  * T3. AI overviews for 1–10 entities of one kind, read exactly as the overview
- * page reads them (`summaries.getOverview`): the `SUMMARY_V2` gate applies, so
- * an org with V2 off gets the Markdown projection and no V2 findings (FR-1.5).
+ * page reads them (`summaries.getOverview`): an entity that only has an
+ * old-format summary gets its Markdown and no structured findings (FR-1.5).
  * Every result carries freshness and pending work (FR-1.7). With several
  * entities, findings are compacted to title and evidence.
  */

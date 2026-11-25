@@ -20,7 +20,6 @@ import {
   resolveOrgForAction,
 } from "./lib/orgAuth";
 import { toLightweightSummaryListRow } from "./summaryV2";
-import { withSummaryV2ReadGate } from "./lib/summaryV2Feature";
 import {
   derivePendingWorkStatus,
   getConversationCounts,
@@ -49,7 +48,7 @@ export const listByDepartment = query({
     return docs
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((doc) =>
-        toLightweightSummaryListRow(withSummaryV2ReadGate(doc), {
+        toLightweightSummaryListRow(doc, {
           legacyMarkdown: doc.rollingSummary,
           legacyGeneratedAt: doc.summaryUpdatedAt,
           stale:
@@ -94,7 +93,7 @@ export const listAll = query({
         const dept = deptMap.get(p.departmentId);
         const functionId = dept?.functionId ?? null;
         return {
-          ...toLightweightSummaryListRow(withSummaryV2ReadGate(p), {
+          ...toLightweightSummaryListRow(p, {
             legacyMarkdown: p.rollingSummary,
             legacyGeneratedAt: p.summaryUpdatedAt,
             stale:
@@ -223,10 +222,9 @@ export const getWorkbench = query({
         descriptionSafetyStatus: process.descriptionSafetyStatus ?? null,
         rollingSummary: process.rollingSummary ?? null,
         // The structured artifact is deliberately NOT returned here. Every
-        // overview surface reads it through `summaries.getOverview`, which
-        // applies the `SUMMARY_V2` rollback and per-tenant gates; returning it
-        // raw from the workbench query would serve it to a tenant the rollout
-        // has not reached and would survive a rollback.
+        // overview surface reads it through `summaries.getOverview`, and no
+        // client reads it from this query, so returning it would only add
+        // payload to a hot read.
         summaryRun: summaryRun
           ? {
               generationId: summaryRun.generationId,

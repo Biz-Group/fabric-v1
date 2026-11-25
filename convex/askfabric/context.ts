@@ -1,6 +1,5 @@
 import { estimateTokens } from "../askTools/results";
 import type { OrgHierarchy } from "../askTools/scope";
-import { readableSummaryV2 } from "../lib/summaryV2Feature";
 
 /**
  * Context assembly (FR-2.6, FR-2.7). The order is fixed for prompt caching:
@@ -15,7 +14,7 @@ export const HISTORY_MAX_TOKENS = 60_000;
 export type TocProcess = {
   id: string;
   name: string;
-  /** Gated by `SUMMARY_V2`; null when there is no readable overview. */
+  /** Null when there is no structured overview. */
   headline: string | null;
   generatedAt: number | null;
 };
@@ -91,7 +90,7 @@ export function tocFromHierarchy(
         processes: hierarchy.processes
           .filter((process) => process.departmentId === dept._id)
           .map((process) => {
-            const overview = readableSummaryV2(process.clerkOrgId, process.summaryV2);
+            const overview = process.summaryV2;
             return {
               id: process._id,
               name: process.name,

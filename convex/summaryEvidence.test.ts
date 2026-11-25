@@ -362,7 +362,6 @@ describe("process evidence preparation gate", () => {
 
     let process = await t.run((ctx) => ctx.db.get(processId));
     expect(process?.summaryEvidenceRefreshRequestedAgain).toBe(true);
-    expect(process?.summaryEvidenceForceRefreshRequested).toBe(true);
     expect(process?.summaryRegenScheduledAt).toBeUndefined();
 
     await t.mutation(internal.summaryEvidence.finishProcessEvidenceRefresh, {
@@ -498,7 +497,6 @@ describe("automatic rebuild when a conversation finishes", () => {
     // Nothing is dropped: the second arrival flags a trailing pass instead of
     // buying a competing one.
     expect(process?.summaryEvidenceRefreshRequestedAgain).toBe(true);
-    expect(process?.summaryEvidenceForceRefreshRequested).toBe(true);
   });
 
   test("ignores a process belonging to another organization", async () => {

@@ -149,8 +149,8 @@ export type PdfOverview = {
     sections: PdfOverviewSection[];
   } | null;
   /**
-   * Markdown for a V1-only row, or for a `SUMMARY_V2` rollback that hides an
-   * artifact the database still holds. Null once `structured` is present.
+   * Markdown for a row that only has an old-format summary. Null once
+   * `structured` is present.
    */
   legacyMarkdown: string | null;
   /** Navigation-only readiness, worded exactly as the in-app footer. */

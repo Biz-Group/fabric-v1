@@ -30,7 +30,6 @@ variables rather than client-side.
 | `npm test` | Vitest (Convex functions via `convex-test`, plus pure frontend modules) |
 | `npm run foundry:smoke` / `foundry:throughput` | Foundry deployment checks |
 | `npm run elevenlabs:charging` | ElevenLabs charging probe |
-| `npm run flow-layout:spike` | Compare dagre and ELK layouts for process flows |
 
 ## Documentation
 

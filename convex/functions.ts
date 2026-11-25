@@ -7,7 +7,6 @@ import {
   requireOrgMember,
 } from "./lib/orgAuth";
 import { toLightweightSummaryListRow } from "./summaryV2";
-import { withSummaryV2ReadGate } from "./lib/summaryV2Feature";
 import { clearCitedTextFor } from "./askLifecycle";
 
 export const list = query({
@@ -26,7 +25,7 @@ export const list = query({
     return docs
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((doc) =>
-        toLightweightSummaryListRow(withSummaryV2ReadGate(doc), {
+        toLightweightSummaryListRow(doc, {
           legacyMarkdown: doc.summary,
           legacyGeneratedAt: doc.summaryUpdatedAt,
           stale: doc.summaryStale,

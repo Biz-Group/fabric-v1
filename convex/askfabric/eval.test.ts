@@ -16,7 +16,6 @@ const ENV = {
   ASKFABRIC_EVAL_DEPLOYMENTS: `${ANSWERER}=claude-sonnet-5-5, ${JUDGE}=claude-opus-5-5`,
   FOUNDRY_ENDPOINT: "https://example.services.ai.azure.com/anthropic",
   FOUNDRY_API_KEY: "k",
-  SUMMARY_V2: ORG,
 };
 const saved = Object.fromEntries([...Object.keys(ENV), "USAGE_DEPLOYMENT_LABEL"].map((k) => [k, process.env[k]]));
 

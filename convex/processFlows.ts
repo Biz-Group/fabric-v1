@@ -360,7 +360,6 @@ export const getFlowByProcess = internalQuery({
  * Cap on how many conversations feed one flow generation. Convex reads whole
  * documents, so every conversation row costs its transcript whether or not the
  * caller wants it — the only lever a query has is how many rows it touches.
- * Keep in step with MAX_CONVERSATIONS_PER_SUMMARY in postCall.ts.
  */
 const MAX_CONVERSATIONS_PER_FLOW = 50;
 
@@ -1256,7 +1255,7 @@ export const reapStuckFlowGenerations = internalMutation({
  *
  * Known gap: a conversation re-transcribed in place reaches neither trigger from
  * the summary path. Catching that needs a content fingerprint on the flow, the
- * way `processSummaryInputHash` does for summaries.
+ * way the conversation evidence's transcript hash does for summaries.
  */
 /**
  * Puts a single failed node back in the queue.

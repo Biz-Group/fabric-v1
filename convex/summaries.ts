@@ -1,34 +1,19 @@
-import { v } from "convex/values";
 import {
-  action,
   mutation,
   query,
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import {
   assertOrgOwns,
   requireOrgContributor,
   requireOrgMember,
-  resolveOrgForAction,
 } from "./lib/orgAuth";
-import {
-  AITruncationError,
-  assertCompletionNotTruncated,
-  isAIConfigured,
-} from "./lib/aiProvider";
-import { meteredCompletion } from "./lib/aiUsageMeter";
-import {
-  isSummaryV2EnabledForOrg,
-  readableSummaryV2,
-} from "./lib/summaryV2Feature";
 import {
   getSummaryEntityKey,
   isEmptySourceFailure,
   readCompatibleSummary,
-  renderSummaryV2AsLegacyMarkdown,
   summaryEntityRefValidator,
   type SummaryCompatibilityRead,
   type SummaryEntityRef,
@@ -43,7 +28,6 @@ import {
   requestFunctionSummaryV2ForOrg,
 } from "./hierarchySummaryV2";
 import { isUsableHierarchyChild } from "./lib/hierarchyOverviewV2";
-import { withBritishEnglish } from "./lib/aiLanguage";
 
 const SUMMARY_PIPELINE_STALE_MS = 10 * 60_000;
 
@@ -53,7 +37,7 @@ type SummaryOwner =
   | { kind: "function"; doc: Doc<"functions"> };
 
 type SummaryRefreshResult = {
-  status: "current" | "scheduled" | "coalesced" | "disabled";
+  status: "current" | "scheduled" | "coalesced";
   scheduled: boolean;
 };
 
@@ -149,20 +133,6 @@ function ownerLegacyMarkdown(owner: SummaryOwner): string | null {
   return owner.kind === "process"
     ? (owner.doc.rollingSummary ?? null)
     : (owner.doc.summary ?? null);
-}
-
-/**
- * The Markdown an overview falls back to when the structured artifact is not
- * readable. Publishing writes the projection into the legacy field, so this is
- * normally that stored string; deriving it from a retained artifact keeps a
- * rollback from blanking a row whose legacy field was never written.
- */
-function ownerCompatibilityMarkdown(owner: SummaryOwner): string | null {
-  const stored = ownerLegacyMarkdown(owner);
-  if (stored?.trim()) return stored;
-  return owner.doc.summaryV2
-    ? renderSummaryV2AsLegacyMarkdown(owner.doc.summaryV2)
-    : null;
 }
 
 function overviewRefreshKey(owner: SummaryOwner): string {
@@ -432,11 +402,9 @@ export async function readOverviewSnapshot(
   const owner = await getSummaryOwner(ctx, orgId, entity);
   const run = await getRelevantRun(ctx, orgId, entity, ownerRunId(owner));
   const content = readCompatibleSummary({
-    // `readableSummaryV2` is the rollback gate: with `SUMMARY_V2` disabled
-    // every surface reads the deterministic Markdown projection instead, and
-    // no stored artifact is touched.
-    summaryV2: readableSummaryV2(owner.doc.clerkOrgId, owner.doc.summaryV2),
-    legacyMarkdown: ownerCompatibilityMarkdown(owner),
+    summaryV2: owner.doc.summaryV2,
+    // Only read for a row that has an old-format summary and no artifact.
+    legacyMarkdown: ownerLegacyMarkdown(owner),
   });
   // Each level asks the question its own scan would: a process looks for a
   // completed conversation, a rollup for a child holding a readable overview.
@@ -462,9 +430,6 @@ async function requestSummaryRefresh(
 ): Promise<SummaryRefreshResult> {
   const { owner, run, content, state, hasEligibleSource } =
     await readOverviewSnapshot(ctx, orgId, entity);
-  if (!isSummaryV2EnabledForOrg(orgId)) {
-    return { status: "disabled", scheduled: false };
-  }
 
   const active = hasActiveSummaryWork(owner, run);
   if (!forceRefresh && active) {
@@ -497,7 +462,6 @@ async function requestSummaryRefresh(
       ? await requestProcessEvidenceRefreshForOrg(ctx, {
           processId: entity.processId,
           clerkOrgId: orgId,
-          forceRefresh,
         })
       : entity.kind === "department"
         ? await requestDepartmentSummaryV2ForOrg(ctx, {
@@ -607,382 +571,5 @@ export const forceRefresh = mutation({
       args.entity,
       true,
     );
-  },
-});
-
-// --- Shared Prompt Constants ---
-
-// Rollup summaries are bounded markdown briefs, but their input grows with the
-// org, so the output can too. Truncated output is never saved — see the
-// AITruncationError branches below.
-const ROLLUP_SUMMARY_MAX_TOKENS = 8192;
-
-const DEPARTMENT_SUMMARY_SYSTEM_PROMPT = withBritishEnglish(`You are an analyst synthesising process-level summaries for an organisational department into a structured brief. Your output must use the following markdown format exactly:
-
-## Overview
-Executive summary of how this department operates (2-3 sentences).
-
-## Cross-Process Handoffs
-How processes feed into each other — inputs, outputs, and dependencies. Cite the source process using [Process name] format — e.g., "Output from [Compensation] feeds into [Bank Transfers] for payment execution."
-
-## Shared Themes
-Patterns that appear across multiple processes — common tools, shared bottlenecks, recurring pain points. Cite which processes share each theme.
-
-## Tensions & Gaps
-Contradictions between processes or uncovered gaps in the handoff chain. Be specific about which processes conflict and how.
-
-## Notable Details
-Unique findings from individual processes worth surfacing at the department level. Cite the source process.
-
-Rules:
-- Always cite processes using [Process name] format.
-- Write in clear, concise prose within each section.
-- If there is only one process, note that a fuller picture will emerge as more processes are documented.
-- Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
-- Output ONLY the markdown sections above, nothing else.`);
-
-const FUNCTION_SUMMARY_SYSTEM_PROMPT = withBritishEnglish(`You are an analyst synthesising department-level summaries for an organisational function into a structured brief. Your output must use the following markdown format exactly:
-
-## Overview
-High-level summary of how this function operates as a whole (2-3 sentences).
-
-## Cross-Department Patterns
-How departments relate — shared dependencies, organisational handoffs. Cite the source department using [Dept name] format — e.g., "Both [Payroll] and [Treasury] depend on the same HRIS data feed."
-
-## Strategic Themes
-Recurring patterns across departments — common tooling, shared constraints, workforce themes. Cite which departments share each theme.
-
-## Tensions & Gaps
-Cross-departmental contradictions or organisational blind spots. Be specific about which departments are affected.
-
-## Notable Details
-Department-specific findings worth escalating to the function level. Cite the source department.
-
-Rules:
-- Always cite departments using [Dept name] format.
-- Write in clear, concise prose within each section.
-- If there is only one department, note that a fuller picture will emerge as more departments are documented.
-- Never infer anyone's gender. Refer to a contributor by name or role, and use "they" where a pronoun is needed, never he, she, his or her, unless the evidence itself states the pronoun.
-- Output ONLY the markdown sections above, nothing else.`);
-
-// --- Summary Generation Actions ---
-
-export const generateDepartmentSummary = action({
-  args: {
-    departmentId: v.id("departments"),
-    forceRefresh: v.optional(v.boolean()),
-  },
-  handler: async (
-    ctx,
-    args,
-  ): Promise<{ summary: string | null; message: string | null }> => {
-    const { orgId } = await resolveOrgForAction(ctx);
-    const caller = await ctx.runQuery(
-      internal.postCall.requireOrgContributorInternal,
-      {},
-    );
-
-    const dept: Doc<"departments"> | null = await ctx.runQuery(
-      internal.summariesHelpers.getDepartment,
-      { departmentId: args.departmentId, clerkOrgId: orgId },
-    );
-    if (!dept) {
-      return { summary: null, message: "Department not found." };
-    }
-
-    if (isSummaryV2EnabledForOrg(orgId)) {
-      if (
-        !args.forceRefresh &&
-        dept.summaryV2 &&
-        dept.summaryStale !== true &&
-        dept.summaryV2SourceRevision === (dept.summarySourceRevision ?? 0)
-      ) {
-        return {
-          summary: renderSummaryV2AsLegacyMarkdown(dept.summaryV2),
-          message: null,
-        };
-      }
-      await ctx.runMutation(
-        internal.hierarchySummaryV2.requestDepartmentSummaryV2,
-        {
-          departmentId: dept._id,
-          clerkOrgId: orgId,
-          forceRefresh: args.forceRefresh,
-          actorUserId: caller.userId,
-        },
-      );
-      return { summary: dept.summary ?? null, message: null };
-    }
-
-    if (!args.forceRefresh && dept.summary && dept.summaryStale === false) {
-      return { summary: dept.summary, message: null };
-    }
-
-    const processSummaries: Array<{
-      processName: string;
-      summary: string;
-    }> = await ctx.runQuery(
-      internal.summariesHelpers.getProcessSummariesByDepartment,
-      { departmentId: args.departmentId, clerkOrgId: orgId },
-    );
-
-    if (processSummaries.length === 0) {
-      return {
-        summary: null,
-        message:
-          "No process summaries available yet. Record conversations for the processes in this department first.",
-      };
-    }
-
-    if (!isAIConfigured("synthesis")) {
-      return {
-        summary: null,
-        message: "Summary generation is not configured (missing API key).",
-      };
-    }
-
-    const summaryBlock = processSummaries
-      .map((s) => `[Process: ${s.processName}]\n${s.summary}`)
-      .join("\n\n");
-
-    let generated: string | null;
-    try {
-      const completion = await meteredCompletion(
-        ctx,
-        {
-          clerkOrgId: orgId,
-          entityType: "department",
-          entityId: args.departmentId,
-          entityLabel: dept.name,
-          actorUserId: caller.userId,
-        },
-        {
-          capability: "synthesis",
-          operation: "department-summary",
-          system: DEPARTMENT_SUMMARY_SYSTEM_PROMPT,
-          user: `Here are the process summaries for this department:\n\n${summaryBlock}`,
-          maxTokens: ROLLUP_SUMMARY_MAX_TOKENS,
-        },
-      );
-      assertCompletionNotTruncated(
-        completion,
-        "department-summary",
-        ROLLUP_SUMMARY_MAX_TOKENS,
-      );
-      generated = completion.text;
-    } catch (error) {
-      if (error instanceof AITruncationError) {
-        console.error(error.message);
-        return {
-          summary: null,
-          message:
-            "This department has too much content to summarise in one pass. Try again, or summarise fewer processes.",
-        };
-      }
-      return {
-        summary: null,
-        message: "Failed to generate summary. Please try again.",
-      };
-    }
-
-    if (!generated) {
-      return {
-        summary: null,
-        message: "Failed to generate summary. Please try again.",
-      };
-    }
-
-    await ctx.runMutation(internal.summariesHelpers.saveDepartmentSummary, {
-      departmentId: args.departmentId,
-      summary: generated,
-    });
-
-    return { summary: generated, message: null };
-  },
-});
-
-export const generateFunctionSummary = action({
-  args: {
-    functionId: v.id("functions"),
-    forceRefresh: v.optional(v.boolean()),
-  },
-  handler: async (
-    ctx,
-    args,
-  ): Promise<{ summary: string | null; message: string | null }> => {
-    const { orgId } = await resolveOrgForAction(ctx);
-    const caller = await ctx.runQuery(
-      internal.postCall.requireOrgContributorInternal,
-      {},
-    );
-
-    const func: Doc<"functions"> | null = await ctx.runQuery(
-      internal.summariesHelpers.getFunction,
-      { functionId: args.functionId, clerkOrgId: orgId },
-    );
-    if (!func) {
-      return { summary: null, message: "Function not found." };
-    }
-
-    if (isSummaryV2EnabledForOrg(orgId)) {
-      if (
-        !args.forceRefresh &&
-        func.summaryV2 &&
-        func.summaryStale !== true &&
-        func.summaryV2SourceRevision === (func.summarySourceRevision ?? 0)
-      ) {
-        return {
-          summary: renderSummaryV2AsLegacyMarkdown(func.summaryV2),
-          message: null,
-        };
-      }
-      await ctx.runMutation(internal.hierarchySummaryV2.requestFunctionSummaryV2, {
-        functionId: func._id,
-        clerkOrgId: orgId,
-        forceRefresh: args.forceRefresh,
-        actorUserId: caller.userId,
-      });
-      return { summary: func.summary ?? null, message: null };
-    }
-
-    if (!args.forceRefresh && func.summary && func.summaryStale === false) {
-      return { summary: func.summary, message: null };
-    }
-
-    const deptSummaries: Array<{
-      departmentId: Id<"departments">;
-      departmentName: string;
-      summary: string | null;
-    }> = await ctx.runQuery(
-      internal.summariesHelpers.getDepartmentSummariesByFunction,
-      { functionId: args.functionId, clerkOrgId: orgId },
-    );
-
-    if (deptSummaries.length === 0) {
-      return {
-        summary: null,
-        message: "No departments exist under this function yet.",
-      };
-    }
-
-    // Cascade generation: generate missing department summaries first
-    const deptResults: Array<{ departmentName: string; summary: string }> = [];
-    for (const dept of deptSummaries) {
-      if (dept.summary) {
-        deptResults.push({
-          departmentName: dept.departmentName,
-          summary: dept.summary,
-        });
-      } else {
-        const genResult: {
-          summary: string | null;
-          message: string | null;
-        } = await ctx.runAction(
-          internal.summariesHelpers.generateDepartmentSummaryInternal,
-          { departmentId: dept.departmentId, clerkOrgId: orgId },
-        );
-        if (genResult.summary) {
-          deptResults.push({
-            departmentName: dept.departmentName,
-            summary: genResult.summary,
-          });
-        }
-      }
-    }
-
-    if (deptResults.length === 0) {
-      return {
-        summary: null,
-        message:
-          "No department summaries available yet. Record conversations for the processes first.",
-      };
-    }
-
-    if (!isAIConfigured("synthesis")) {
-      return {
-        summary: null,
-        message: "Summary generation is not configured (missing API key).",
-      };
-    }
-
-    const summaryBlock = deptResults
-      .map((s) => `[Department: ${s.departmentName}]\n${s.summary}`)
-      .join("\n\n");
-
-    let summary: string | null;
-    try {
-      const completion = await meteredCompletion(
-        ctx,
-        {
-          clerkOrgId: orgId,
-          entityType: "function",
-          entityId: args.functionId,
-          entityLabel: func.name,
-          actorUserId: caller.userId,
-        },
-        {
-          capability: "synthesis",
-          operation: "function-summary",
-          system: FUNCTION_SUMMARY_SYSTEM_PROMPT,
-          user: `Here are the department summaries for this function:\n\n${summaryBlock}`,
-          maxTokens: ROLLUP_SUMMARY_MAX_TOKENS,
-        },
-      );
-      assertCompletionNotTruncated(
-        completion,
-        "function-summary",
-        ROLLUP_SUMMARY_MAX_TOKENS,
-      );
-      summary = completion.text;
-    } catch (error) {
-      if (error instanceof AITruncationError) {
-        console.error(error.message);
-        return {
-          summary: null,
-          message:
-            "This function has too much content to summarise in one pass. Try again, or summarise fewer departments.",
-        };
-      }
-      return {
-        summary: null,
-        message: "Failed to generate summary. Please try again.",
-      };
-    }
-
-    if (!summary) {
-      return {
-        summary: null,
-        message: "Failed to generate summary. Please try again.",
-      };
-    }
-
-    await ctx.runMutation(internal.summariesHelpers.saveFunctionSummary, {
-      functionId: args.functionId,
-      summary,
-    });
-
-    return { summary, message: null };
-  },
-});
-
-export const forceRefreshProcessSummary = action({
-  args: {
-    processId: v.id("processes"),
-  },
-  handler: async (ctx, args): Promise<{ message: string | null }> => {
-    const { orgId } = await resolveOrgForAction(ctx);
-    await ctx.runQuery(internal.postCall.requireOrgContributorInternal, {});
-    // Through the gate, not straight to the action: a manual rebuild pressed
-    // while conversations are still landing should join the in-flight run
-    // rather than start a competing one.
-    await ctx.runMutation(
-      internal.summaryEvidence.requestProcessEvidenceRefresh,
-      {
-        processId: args.processId,
-        clerkOrgId: orgId,
-        forceRefresh: true,
-      },
-    );
-    return { message: null };
   },
 });

@@ -1,7 +1,16 @@
 # Summary and Overview V2 — Rollout, Soak, and Evaluation Runbook
 
-Status: Phase 10 in progress  
+Status: SUPERSEDED on 2026-11-25. The `SUMMARY_V2` switch and the legacy
+generator were removed in code (see "Update 2026-11-25" in
+[summary-overview-v2-cleanup-decision.md](summary-overview-v2-cleanup-decision.md)).  
 Created: 2026-08-09  
+
+> **Do not follow the rollback steps below.** Until prod runs the new code,
+> `npx convex env set SUMMARY_V2 false` sends every rebuild down the legacy
+> path, which erases the structured overviews. After prod runs the new code the
+> variable does nothing, and rolling back means reverting the code. The
+> `summaryOps` reports described here still work.
+
 Reference design: [summary-overview-v2-plan.md](summary-overview-v2-plan.md)  
 Task list: [summary-overview-v2-task-list.md](summary-overview-v2-task-list.md)
 

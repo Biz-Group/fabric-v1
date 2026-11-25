@@ -1,6 +1,5 @@
 import { v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
-import { readableSummaryV2 } from "../lib/summaryV2Feature";
 import { deriveHandoffs, type FlowNode } from "../lib/insightsDerivations";
 import { isManualRework, normalizeKey } from "../lib/askNormalize";
 import type { SummaryArtifactV2 } from "../summaryV2";
@@ -84,7 +83,7 @@ export function scoreOf(item: SignalItem): number {
   return 3 * item.processes.size + 2 * item.contributors.size + item.evidenceWeight;
 }
 
-/** Findings from overviews in scope, gated by `SUMMARY_V2` (FR-1.5). */
+/** Findings from overviews in scope (FR-1.5). */
 export type GapSource = {
   kind: HierarchyKind;
   doc: Doc<"functions"> | Doc<"departments"> | Doc<"processes">;
@@ -291,7 +290,7 @@ export function collectSignals(
 
   if (wanted.has("gap")) {
     for (const { kind, doc, processIds, departmentProcessIds } of gapSources) {
-      const artifact = readableSummaryV2(doc.clerkOrgId, doc.summaryV2) as SummaryArtifactV2 | undefined;
+      const artifact = doc.summaryV2 as SummaryArtifactV2 | undefined;
       for (const finding of artifact?.gaps ?? []) {
         c.add(
           "gap",

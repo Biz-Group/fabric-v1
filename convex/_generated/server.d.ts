@@ -51,7 +51,6 @@ type Env = {
   readonly FOUNDRY_SYNTHESIS_BACKEND: "claude" | "openai" | undefined;
   readonly INTERVIEW_SESSIONS_ENFORCED_FROM: string | undefined;
   readonly ONBOARDING_LAUNCHED_AT: string | undefined;
-  readonly SUMMARY_V2: string | undefined;
   readonly USAGE_DEPLOYMENT_LABEL: "prod" | "dev" | undefined;
   readonly USAGE_SINK_SECRET: string | undefined;
   readonly USAGE_SINK_URL: string | undefined;

@@ -21,7 +21,6 @@ import {
 } from "./lib/orgAuth";
 import { toLightweightSummaryListRow } from "./summaryV2";
 import { clearPlacementsForDepartment } from "./users";
-import { withSummaryV2ReadGate } from "./lib/summaryV2Feature";
 import { clearCitedTextFor } from "./askLifecycle";
 
 export const listByFunction = query({
@@ -45,7 +44,7 @@ export const listByFunction = query({
     return docs
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((doc) =>
-        toLightweightSummaryListRow(withSummaryV2ReadGate(doc), {
+        toLightweightSummaryListRow(doc, {
           legacyMarkdown: doc.summary,
           legacyGeneratedAt: doc.summaryUpdatedAt,
           stale: doc.summaryStale,
@@ -100,7 +99,7 @@ export const listAll = query({
     const fnMap = new Map(functions.map((f) => [f._id, f.name]));
     return depts
       .map((d) => ({
-        ...toLightweightSummaryListRow(withSummaryV2ReadGate(d), {
+        ...toLightweightSummaryListRow(d, {
           legacyMarkdown: d.summary,
           legacyGeneratedAt: d.summaryUpdatedAt,
           stale: d.summaryStale,

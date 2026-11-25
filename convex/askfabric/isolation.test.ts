@@ -36,7 +36,6 @@ const ENV = {
   FOUNDRY_ENDPOINT: "https://example.services.ai.azure.com",
   FOUNDRY_API_KEY: "k",
   FOUNDRY_CLAUDE_DEPLOYMENT: "fabric-claude-haiku-5-5",
-  SUMMARY_V2: `${ORG_A},${ORG_B}`,
 };
 const saved = Object.fromEntries(Object.keys(ENV).map((k) => [k, process.env[k]]));
 

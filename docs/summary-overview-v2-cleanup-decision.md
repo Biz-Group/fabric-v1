@@ -1,9 +1,51 @@
 # Summary and Overview V2 — Consumer Inventory and Cleanup Decision Record
 
-Status: Phase 11 prepared; no removal approved or executed  
+Status: Legacy generation and the `SUMMARY_V2` switch removed in code on
+2026-11-25 (approved by Saish; on dev, uncommitted, not yet on prod). See
+"Update 2026-11-25" below. Everything under it is the original August record.  
 Created: 2026-08-09  
 Reference design: [summary-overview-v2-plan.md](summary-overview-v2-plan.md)  
 Rollout runbook: [summary-overview-v2-rollout-runbook.md](summary-overview-v2-rollout-runbook.md)
+
+## Update 2026-11-25
+
+**Evidence.** `SUMMARY_V2` was `true` on dev and prod. `v2CoverageReport` on
+prod: processes 72 of 72 on V2, functions 5 of 5, departments 19 of 20 (one
+legacy-only department, so exactly on the 0.95 threshold). The last UI caller
+of the three compatibility actions was removed on 2026-08-10. The usage
+counter §3.3 asked for was never added; the git history stood in for it.
+
+**Removed.**
+
+- The V1 process reducer, map step and regen gate in `convex/postCall.ts`.
+- The V1 department/function cascade in `convex/summariesHelpers.ts` (the two
+  mark-stale mutations stay; V2 calls them).
+- `summaries.generateDepartmentSummary`, `generateFunctionSummary` and
+  `forceRefreshProcessSummary`.
+- The legacy phase of the evidence refresh in `convex/summaryEvidence.ts`.
+- `convex/lib/summaryV2Feature.ts`, every `SUMMARY_V2` check, and the
+  variable's declaration in `convex/convex.config.ts`.
+
+**Kept.**
+
+- Every schema field. `rollingSummary` is still read by Flow generation and the
+  recording agent (§2.3).
+- The legacy read fallback ("Compatibility view", PDF fallback), which the one
+  legacy-only department still needs until someone rebuilds it.
+- `summaries.ensureCurrent`, which has no caller but was outside this approval.
+
+**Deploy order — do not reverse.** Deploy this code to prod first, then unset
+`SUMMARY_V2`. While prod still runs the old code, unsetting the variable sends
+every rebuild down the V1 path, which erases `summaryV2`.
+
+**Fields nothing populates any more** (candidates for a later
+widen → migrate → narrow): `conversations.processSummaryInput`,
+`conversations.processSummaryInputHash`,
+`processes.summaryEvidenceForceRefreshRequested`. `departments.summary` and
+`functions.summary` are still written as the V2 projection and read by the
+fallback.
+
+---
 
 Phase 11 removes legacy mechanisms only after broad V2 confidence, as a
 separate explicit decision. This document is the evidence and the

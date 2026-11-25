@@ -26,7 +26,6 @@ import {
   PROCESS_OVERVIEW_V2_FINAL_OPERATION,
 } from "./lib/processOverviewV2";
 import { evaluateSummaryArtifact } from "./lib/summaryEvaluation";
-import { summaryV2Rollout } from "./lib/summaryV2Feature";
 import type { SummaryArtifactV2 } from "./summaryV2";
 
 /**
@@ -286,7 +285,6 @@ export const runHealthReport = internalQuery({
     return {
       now,
       stalledAfterMs,
-      rollout: describeRollout(),
       byState,
       retriedRuns,
       resumedRuns,
@@ -298,13 +296,6 @@ export const runHealthReport = internalQuery({
     };
   },
 });
-
-function describeRollout() {
-  const rollout = summaryV2Rollout();
-  return rollout.mode === "allowlist"
-    ? { mode: rollout.mode, orgCount: rollout.orgIds.size }
-    : { mode: rollout.mode, orgCount: null };
-}
 
 type AuditRow = {
   clerkOrgId: string;
@@ -554,7 +545,6 @@ export const v2CoverageReport = internalQuery({
     const withV2 = byLevel.reduce((total, entry) => total + entry.withV2, 0);
 
     return {
-      rollout: describeRollout(),
       organizationsScanned: orgIds.length,
       byLevel,
       overall: {

@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import schema from "./schema";
@@ -13,7 +13,6 @@ import {
 const modules = import.meta.glob("./**/*.ts");
 const ORG = "org_manual_rebuild";
 const ISSUER = "https://manual-rebuild.test";
-const originalSummaryV2 = process.env.SUMMARY_V2;
 
 function identity(name: string) {
   return {
@@ -142,14 +141,6 @@ async function scheduledCount(t: ReturnType<typeof convexTest>) {
 }
 
 describe("summary generation is a human action", () => {
-  beforeEach(() => {
-    process.env.SUMMARY_V2 = "true";
-  });
-  afterEach(() => {
-    if (originalSummaryV2 === undefined) delete process.env.SUMMARY_V2;
-    else process.env.SUMMARY_V2 = originalSummaryV2;
-  });
-
   test("new evidence marks the process stale and schedules nothing", async () => {
     const t = convexTest(schema, modules);
     const ids = await t.run(async (ctx) => await seed(ctx));

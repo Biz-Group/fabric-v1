@@ -21,12 +21,7 @@ import {
   isConversationEvidenceV2Current,
   normalizeProcessSummaryEvidenceV2,
 } from "./lib/conversationEvidenceV2";
-import {
-  hashTranscript,
-  processSummaryInputCacheKey,
-} from "./lib/transcriptHash";
-import { isSummaryV2EnabledForOrg } from "./lib/summaryV2Feature";
-import { generateSummaryInputForConversation } from "./postCall";
+import { hashTranscript } from "./lib/transcriptHash";
 import {
   conversationEvidenceFailureCodeV2Validator,
   processSummaryEvidenceV2Validator,
@@ -37,8 +32,10 @@ import {
 
 const PREPARATION_PAGE_SIZE = 20;
 const EVIDENCE_REFRESH_STALE_MS = 10 * 60_000;
-const phaseValidator = v.union(v.literal("evidence"), v.literal("legacy"));
-type PreparationPhase = "evidence" | "legacy";
+// Evidence is the only preparation phase left. The argument stays accepted so a
+// refresh that was already scheduled when this deployed still validates; new
+// calls no longer pass it.
+const phaseValidator = v.optional(v.literal("evidence"));
 
 export const getConversationForEvidence = internalQuery({
   args: {
@@ -305,13 +302,6 @@ export const getProcessPreparationPage = internalQuery({
     const candidateIds = page.page
       .filter((conversation) => {
         const transcriptHash = hashTranscript(conversation.transcript ?? null);
-        if (args.phase === "legacy") {
-          return (
-            !conversation.processSummaryInput ||
-            conversation.processSummaryInputHash !==
-              processSummaryInputCacheKey(conversation.transcript ?? null)
-          );
-        }
         if (
           isConversationEvidenceV2Current(
             conversation.processSummaryEvidenceV2,
@@ -344,7 +334,6 @@ export async function requestProcessEvidenceRefreshForOrg(
   args: {
     processId: Id<"processes">;
     clerkOrgId: string;
-    forceRefresh?: boolean;
   },
 ) {
     const process = await ctx.db.get(args.processId);
@@ -361,10 +350,6 @@ export async function requestProcessEvidenceRefreshForOrg(
     if (inFlight) {
       await ctx.db.patch(args.processId, {
         summaryEvidenceRefreshRequestedAgain: true,
-        // Two or more completions landed before reduction. A full rebuild is
-        // required because the legacy incremental reducer can ingest only one
-        // latest conversation per pass.
-        summaryEvidenceForceRefreshRequested: true,
         summaryEvidenceRevision:
           (process.summaryEvidenceRevision ?? 0) + 1,
       });
@@ -378,7 +363,6 @@ export async function requestProcessEvidenceRefreshForOrg(
     await ctx.db.patch(args.processId, {
       summaryEvidenceRefreshScheduledAt: now,
       summaryEvidenceRefreshRequestedAgain: false,
-      summaryEvidenceForceRefreshRequested: Boolean(args.forceRefresh),
       summaryEvidenceRefreshGenerationId: generationId,
       summaryEvidenceRevision: (process.summaryEvidenceRevision ?? 0) + 1,
     });
@@ -389,7 +373,6 @@ export async function requestProcessEvidenceRefreshForOrg(
         processId: args.processId,
         clerkOrgId: args.clerkOrgId,
         generationId,
-        phase: "evidence",
         cursor: null,
       },
     );
@@ -400,9 +383,11 @@ export const requestProcessEvidenceRefresh = internalMutation({
   args: {
     processId: v.id("processes"),
     clerkOrgId: v.string(),
+    // Still accepted so existing manual commands keep working. It changes
+    // nothing: every refresh rebuilds from all current evidence.
     forceRefresh: v.optional(v.boolean()),
   },
-  handler: requestProcessEvidenceRefreshForOrg,
+  handler: (ctx, args) => requestProcessEvidenceRefreshForOrg(ctx, args),
 });
 
 /**
@@ -413,7 +398,7 @@ export const requestProcessEvidenceRefresh = internalMutation({
  * raises the stale flag, so the overview keeps showing its last good content
  * with a Rebuild control instead of paying for extraction and reduction that
  * nobody asked for. Short test recordings were reliably triggering a full
- * refresh — evidence extraction, the compatibility map, and a reduce — for a few
+ * refresh — evidence extraction and a reduce — for a few
  * seconds of audio with nothing in it.
  */
 export const markProcessSummaryStale = internalMutation({
@@ -527,7 +512,6 @@ async function scheduleAfterPage(
     processId: Id<"processes">;
     clerkOrgId: string;
     generationId: string;
-    phase: PreparationPhase;
   },
   continueCursor: string,
   pageIsDone: boolean,
@@ -536,26 +520,12 @@ async function scheduleAfterPage(
     await ctx.scheduler.runAfter(
       0,
       internal.summaryEvidence.prepareProcessEvidenceRefresh,
-      { ...args, cursor: continueCursor },
-    );
-    return;
-  }
-  if (args.phase === "evidence") {
-    if (isSummaryV2EnabledForOrg(args.clerkOrgId)) {
-      await ctx.runMutation(
-        internal.summaryEvidence.finishProcessEvidenceRefresh,
-        {
-          processId: args.processId,
-          clerkOrgId: args.clerkOrgId,
-          generationId: args.generationId,
-        },
-      );
-      return;
-    }
-    await ctx.scheduler.runAfter(
-      0,
-      internal.summaryEvidence.prepareProcessEvidenceRefresh,
-      { ...args, phase: "legacy", cursor: null },
+      {
+        processId: args.processId,
+        clerkOrgId: args.clerkOrgId,
+        generationId: args.generationId,
+        cursor: continueCursor,
+      },
     );
     return;
   }
@@ -590,24 +560,14 @@ export const prepareConversationArtifacts = internalAction({
     if (!owned) return;
 
     try {
-      if (args.phase === "evidence") {
-        await generateEvidenceForConversation(
-          ctx,
-          args.conversationId,
-          args.clerkOrgId,
-          args.generationId,
-        );
-      } else if (isAIConfigured("synthesis")) {
-        await generateSummaryInputForConversation(
-          ctx,
-          args.conversationId,
-          args.clerkOrgId,
-          args.generationId,
-        );
-      }
+      await generateEvidenceForConversation(
+        ctx,
+        args.conversationId,
+        args.clerkOrgId,
+        args.generationId,
+      );
     } catch (error) {
       console.error("Conversation preparation step failed; continuing", {
-        phase: args.phase,
         conversationId: args.conversationId,
         errorType: error instanceof Error ? error.name : "UnknownError",
       });
@@ -659,34 +619,21 @@ export const finishProcessEvidenceRefresh = internalMutation({
           processId: args.processId,
           clerkOrgId: args.clerkOrgId,
           generationId: args.generationId,
-          phase: "evidence",
           cursor: null,
         },
       );
       return;
     }
 
-    const forceRefresh = Boolean(process.summaryEvidenceForceRefreshRequested);
     await ctx.db.patch(args.processId, {
       summaryEvidenceRefreshScheduledAt: undefined,
       summaryEvidenceRefreshRequestedAgain: undefined,
       summaryEvidenceForceRefreshRequested: undefined,
       summaryEvidenceRefreshGenerationId: undefined,
     });
-    if (isSummaryV2EnabledForOrg(args.clerkOrgId)) {
-      await ctx.runMutation(
-        internal.processSummaryV2.requestProcessSummaryV2,
-        {
-          processId: args.processId,
-          clerkOrgId: args.clerkOrgId,
-        },
-      );
-    } else {
-      await ctx.runMutation(internal.postCall.requestProcessSummaryRegen, {
-        processId: args.processId,
-        clerkOrgId: args.clerkOrgId,
-        forceRefresh,
-      });
-    }
+    await ctx.runMutation(internal.processSummaryV2.requestProcessSummaryV2, {
+      processId: args.processId,
+      clerkOrgId: args.clerkOrgId,
+    });
   },
 });

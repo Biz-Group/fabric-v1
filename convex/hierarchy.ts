@@ -10,7 +10,6 @@ import {
   summarizeFlow,
 } from "./readModelHelpers";
 import { getSummaryListMetadata } from "./summaryV2";
-import { readableSummaryV2 } from "./lib/summaryV2Feature";
 // Each level asks what the overview surface asks before calling a failed run
 // "nothing to build from": a process wants a completed conversation, a rollup
 // a child holding a readable overview.
@@ -123,7 +122,7 @@ export const getTree = query({
           summaryUpdatedAt: fn.summaryUpdatedAt ?? null,
           summaryStale: fn.summaryStale ?? false,
           summaryOverview: getSummaryListMetadata({
-            summaryV2: readableSummaryV2(fn.clerkOrgId, fn.summaryV2),
+            summaryV2: fn.summaryV2,
             legacyMarkdown: fn.summary,
             legacyGeneratedAt: fn.summaryUpdatedAt,
             stale: fn.summaryStale,
@@ -150,7 +149,7 @@ export const getTree = query({
               summaryUpdatedAt: department.summaryUpdatedAt ?? null,
               summaryStale: department.summaryStale ?? false,
               summaryOverview: getSummaryListMetadata({
-                summaryV2: readableSummaryV2(department.clerkOrgId, department.summaryV2),
+                summaryV2: department.summaryV2,
                 legacyMarkdown: department.summary,
                 legacyGeneratedAt: department.summaryUpdatedAt,
                 stale: department.summaryStale,
@@ -185,7 +184,7 @@ export const getTree = query({
                   sortOrder: process.sortOrder,
                   hasSummary: Boolean(process.rollingSummary?.trim()),
                   summaryOverview: getSummaryListMetadata({
-                    summaryV2: readableSummaryV2(process.clerkOrgId, process.summaryV2),
+                    summaryV2: process.summaryV2,
                     legacyMarkdown: process.rollingSummary,
                     legacyGeneratedAt: process.summaryUpdatedAt,
                     stale:

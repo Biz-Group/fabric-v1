@@ -3,7 +3,6 @@ import { query, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { askEntityRefValidator, MAX_DISPLAY_REFS } from "./lib/askSchema";
 import { requireOrgMember } from "./lib/orgAuth";
-import { readableSummaryV2 } from "./lib/summaryV2Feature";
 import { conversationCountsFor, getOrgEntity, overviewListState } from "./askTools/scope";
 
 /**
@@ -65,7 +64,7 @@ export async function buildEntityCards(
     const doc = await getOrgEntity(ctx, orgId, ref.kind, ref.id);
     if (!doc) continue;
     const overview = overviewListState(ref.kind, doc);
-    const headline = readableSummaryV2(orgId, doc.summaryV2)?.headline ?? null;
+    const headline = doc.summaryV2?.headline ?? null;
     const base = {
       kind: ref.kind,
       id: doc._id as string,

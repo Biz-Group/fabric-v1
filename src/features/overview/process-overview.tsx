@@ -573,10 +573,7 @@ export function ProcessOverview({
     setRefreshPending(true);
     setRefreshError(null);
     try {
-      const result = await forceRefresh({ entity });
-      if (result.status === "disabled") {
-        setRefreshError("Structured overview generation is not enabled yet.");
-      }
+      await forceRefresh({ entity });
     } catch {
       setRefreshError("The overview refresh could not be started. Please try again.");
     } finally {

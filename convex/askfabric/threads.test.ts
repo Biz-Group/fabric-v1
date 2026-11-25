@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
@@ -11,7 +11,6 @@ import { SUMMARY_V2_PROMPT_VERSIONS, type ProcessOverviewArtifactV2 } from "../s
 const modules = import.meta.glob("/convex/**/*.ts");
 const ORG = "org_ask_threads";
 const ISSUER = "https://ask-threads.test";
-const saved = process.env.SUMMARY_V2;
 
 function artifact(findingId: string): ProcessOverviewArtifactV2 {
   return {
@@ -60,14 +59,8 @@ async function thread(s: Setup, title: string, lastMessageAt = 1) {
   );
 }
 
-beforeEach(() => {
-  process.env.SUMMARY_V2 = ORG;
-});
-
 afterEach(() => {
   vi.useRealTimers();
-  if (saved === undefined) delete process.env.SUMMARY_V2;
-  else process.env.SUMMARY_V2 = saved;
 });
 
 describe("thread management (FR-3)", () => {
@@ -173,13 +166,5 @@ describe("citation re-authorization (FR-5.5)", () => {
     await s.t.run((ctx) => ctx.db.delete("conversations", s.ids.conversationId));
     const third = (await s.ana.query(api.ask.getThread, { threadId: id }))!.messages[0].citations[2];
     expect(third).toMatchObject({ availability: "unavailable", title: "Source no longer available", citedText: null });
-  });
-
-  test("with SUMMARY_V2 off, a cited finding reads as updated", async () => {
-    process.env.SUMMARY_V2 = "false";
-    const s = await setup();
-    const id = await citeAll(s);
-    const first = (await s.ana.query(api.ask.getThread, { threadId: id }))!.messages[0].citations[0];
-    expect(first.availability).toBe("updated");
   });
 });

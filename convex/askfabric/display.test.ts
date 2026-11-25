@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { api, internal } from "../_generated/api";
 import type { MutationCtx } from "../_generated/server";
 import schema from "../schema";
@@ -11,7 +11,6 @@ const modules = import.meta.glob("/convex/**/*.ts");
 const ORG = "org_ask_display";
 const OTHER = "org_ask_display_other";
 const ISSUER = "https://ask-display.test";
-const saved = process.env.SUMMARY_V2;
 
 const overview: ProcessOverviewArtifactV2 = {
   schemaVersion: "v2",
@@ -89,15 +88,6 @@ async function setup() {
   return { t, ids, ana };
 }
 
-beforeEach(() => {
-  process.env.SUMMARY_V2 = ORG;
-});
-
-afterEach(() => {
-  if (saved === undefined) delete process.env.SUMMARY_V2;
-  else process.env.SUMMARY_V2 = saved;
-});
-
 describe("entity cards (D56, Phase 2D.1)", () => {
   test("show each entity's live counts, path and headline, in the order given", async () => {
     const { ids, ana } = await setup();
@@ -138,13 +128,6 @@ describe("entity cards (D56, Phase 2D.1)", () => {
       ],
     });
     expect(cards.map((card) => card.id)).toEqual([ids.own.processId]);
-  });
-
-  test("withhold the overview headline where SUMMARY_V2 is off for the org", async () => {
-    const { ids, ana } = await setup();
-    process.env.SUMMARY_V2 = "off";
-    const [card] = await ana.query(api.askDisplay.getEntityCards, { refs: [{ kind: "process", id: ids.own.processId }] });
-    expect(card.headline).toBeNull();
   });
 
   test("show entities keeps only grounded, readable entities, as the viewer (FR-9.1)", async () => {

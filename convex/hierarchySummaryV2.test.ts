@@ -21,7 +21,6 @@ const AI_ENV = [
   "FOUNDRY_ENDPOINT",
   "FOUNDRY_API_KEY",
   "FOUNDRY_CLAUDE_DEPLOYMENT",
-  "SUMMARY_V2",
 ] as const;
 
 function configureFoundry() {
@@ -300,7 +299,6 @@ function stubClaude() {
 beforeEach(() => {
   vi.useFakeTimers();
   for (const name of AI_ENV) delete process.env[name];
-  process.env.SUMMARY_V2 = "true";
   vi.spyOn(console, "info").mockImplementation(() => undefined);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   vi.spyOn(console, "warn").mockImplementation(() => undefined);

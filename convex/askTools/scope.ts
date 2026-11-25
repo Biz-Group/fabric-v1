@@ -7,7 +7,6 @@ import {
   type ConversationCounts,
 } from "../readModelHelpers";
 import { toLightweightSummaryListRow } from "../summaryV2";
-import { withSummaryV2ReadGate } from "../lib/summaryV2Feature";
 import { sources, type HierarchyKind } from "./results";
 
 /**
@@ -177,7 +176,7 @@ export function processesInScope(
 
 /**
  * Overview state as the list surfaces compute it (`processes.listAll`,
- * `departments.listAll`, `functions.list`), with the `SUMMARY_V2` read gate.
+ * `departments.listAll`, `functions.list`).
  */
 export function overviewListState(
   kind: HierarchyKind,
@@ -185,7 +184,7 @@ export function overviewListState(
 ) {
   if (kind === "process") {
     const process = doc as Doc<"processes">;
-    return toLightweightSummaryListRow(withSummaryV2ReadGate(process), {
+    return toLightweightSummaryListRow(process, {
       legacyMarkdown: process.rollingSummary,
       legacyGeneratedAt: process.summaryUpdatedAt,
       stale:
@@ -198,7 +197,7 @@ export function overviewListState(
     }).summaryOverview;
   }
   const rollup = doc as Doc<"functions"> | Doc<"departments">;
-  return toLightweightSummaryListRow(withSummaryV2ReadGate(rollup), {
+  return toLightweightSummaryListRow(rollup, {
     legacyMarkdown: rollup.summary,
     legacyGeneratedAt: rollup.summaryUpdatedAt,
     stale: rollup.summaryStale,

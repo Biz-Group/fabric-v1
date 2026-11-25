@@ -17,11 +17,9 @@ const app = defineApp({
     FOUNDRY_CLAUDE_DEPLOYMENT: v.optional(v.string()),
     FOUNDRY_OPENAI_FALLBACK_DEPLOYMENT: v.optional(v.string()),
     FOUNDRY_SAFETY_DEPLOYMENT: v.optional(v.string()),
-    // "true" (all tenants), "false"/unset (no tenants), or a comma-separated
-    // Clerk organization allowlist for staged rollout on the shared prod
-    // deployment. See lib/summaryV2Feature.ts.
-    SUMMARY_V2: v.optional(v.string()),
-    // AskFabric rollout switch, same three forms as SUMMARY_V2. See
+    // AskFabric rollout switch: "true" (all tenants), "false"/unset (no
+    // tenants), or a comma-separated Clerk organization allowlist for staged
+    // rollout on the shared prod deployment. See lib/orgRollout.ts and
     // lib/askFabricFeature.ts.
     ASKFABRIC: v.optional(v.string()),
     // AskFabric's own Foundry deployment and its canonical model ID (for
@@ -64,7 +62,7 @@ const app = defineApp({
     // off, which makes this the kill switch. See lib/onboarding.ts.
     ONBOARDING_LAUNCHED_AT: v.optional(v.string()),
     // Fabric MCP server (docs/fabric-mcp-server-feasibility.md, convex/mcp/).
-    // Deployment-level switch in the same three forms as SUMMARY_V2.
+    // Deployment-level switch in the same three forms as ASKFABRIC.
     FABRIC_MCP: v.optional(v.string()),
     // Comma-separated Clerk OAuth client ids whose tokens the MCP server
     // accepts. Unset accepts none (fails closed).

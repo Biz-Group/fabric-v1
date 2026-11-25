@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import schema from "../schema";
@@ -20,7 +20,6 @@ const modules = import.meta.glob("/convex/**/*.ts");
 const ORG_A = "org_ask_tools_a";
 const ORG_B = "org_ask_tools_b";
 const ISSUER = "https://ask-tools.test";
-const originalSummaryV2 = process.env.SUMMARY_V2;
 
 const NOW = Date.UTC(2026, 9, 20);
 
@@ -269,15 +268,6 @@ function textOf(result: AskToolResult): string {
     .join("\n");
 }
 
-beforeEach(() => {
-  process.env.SUMMARY_V2 = ORG_A;
-});
-
-afterEach(() => {
-  if (originalSummaryV2 === undefined) delete process.env.SUMMARY_V2;
-  else process.env.SUMMARY_V2 = originalSummaryV2;
-});
-
 describe("AskFabric core tools (T1–T9)", () => {
   test("every tool answers within budget, citing only its FR-1.8 source formats", async () => {
     const s = await setup();
@@ -361,18 +351,6 @@ describe("AskFabric core tools (T1–T9)", () => {
       code = authErrorCode({ data });
     }
     expect(code).toBe("REMOVED");
-  });
-
-  test("with SUMMARY_V2 off, no tool returns V2 findings (FR-1.5)", async () => {
-    process.env.SUMMARY_V2 = "false";
-    const s = await setup();
-    for (const [name, input] of Object.entries(calls(s))) {
-      const result = await run(s, name, input);
-      if (!result.found) continue;
-      expect(sourcesOf(result).some((source) => source.startsWith("fabric:finding/")), name).toBe(false);
-      expect(textOf(result), name).not.toContain("No owner for order exceptions");
-    }
-    expect(textOf(await run(s, "getOverview", calls(s).getOverview))).toContain("Legacy overview for A");
   });
 
   test("T3 returns state, coverage and pending work with its findings (FR-1.7)", async () => {

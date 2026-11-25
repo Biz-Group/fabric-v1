@@ -19,7 +19,6 @@ const AI_ENV = [
   "FOUNDRY_ENDPOINT",
   "FOUNDRY_API_KEY",
   "FOUNDRY_CLAUDE_DEPLOYMENT",
-  "SUMMARY_V2",
 ] as const;
 
 function configureFoundry(): void {
@@ -276,7 +275,6 @@ function stubClaude(mode: StubMode = "valid") {
 beforeEach(() => {
   vi.useFakeTimers();
   for (const name of AI_ENV) delete process.env[name];
-  process.env.SUMMARY_V2 = "true";
   vi.spyOn(console, "info").mockImplementation(() => undefined);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -628,26 +626,6 @@ describe("process Summary V2 pipeline", () => {
     expect(stored.process?.summaryV2).toEqual(oldArtifact());
   });
 
-  test("disabling the feature flag blocks an in-flight final result", async () => {
-    configureFoundry();
-    const t = convexTest(schema, modules);
-    const { processId } = await t.run((ctx) => seed(ctx, 1, true));
-    const { runId, generationId } = await startScannedRun(t, processId);
-    process.env.SUMMARY_V2 = "false";
-    const fetchMock = stubClaude();
-    await t.action(internal.processSummaryV2.generateProcessFinal, {
-      runId,
-      generationId,
-    });
-    const stored = await t.run(async (ctx) => ({
-      process: await ctx.db.get(processId),
-      run: await ctx.db.get(runId),
-    }));
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(stored.run?.error?.code).toBe("feature_disabled");
-    expect(stored.process?.summaryV2).toEqual(oldArtifact());
-  });
-
   test("relabeling and deletion change the exact source snapshot", async () => {
     const t = convexTest(schema, modules);
     const { processId, conversationIds } = await t.run((ctx) => seed(ctx, 2));
@@ -758,8 +736,7 @@ describe("process Summary V2 pipeline", () => {
     expect(remaining.newestRun).not.toBeNull();
   });
 
-  test("the feature flag routes the post-evidence handoff to V2", async () => {
-    process.env.SUMMARY_V2 = "true";
+  test("the post-evidence handoff starts a summary run", async () => {
     const t = convexTest(schema, modules);
     const { processId } = await t.run((ctx) => seed(ctx, 1));
     const evidenceRequest = await t.mutation(

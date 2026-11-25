@@ -5,7 +5,6 @@ import { api } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import schema from "./schema";
 import {
-  renderSummaryV2AsLegacyMarkdown,
   SUMMARY_V2_PROMPT_VERSIONS,
   type DepartmentOverviewArtifactV2,
   type ProcessOverviewArtifactV2,
@@ -15,7 +14,6 @@ const modules = import.meta.glob("./**/*.ts");
 const ORG = "org_summary_overview_api";
 const OTHER_ORG = "org_summary_overview_api_other";
 const ISSUER = "https://summary-overview.test";
-const originalSummaryV2 = process.env.SUMMARY_V2;
 
 type Role = "viewer" | "contributor" | "admin";
 
@@ -132,12 +130,9 @@ async function seedHierarchy(ctx: MutationCtx) {
 describe("unified summary overview API", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    process.env.SUMMARY_V2 = "true";
   });
 
   afterEach(() => {
-    if (originalSummaryV2 === undefined) delete process.env.SUMMARY_V2;
-    else process.env.SUMMARY_V2 = originalSummaryV2;
     vi.useRealTimers();
   });
 
@@ -579,163 +574,5 @@ describe("unified summary overview API", () => {
     expect(serialized).not.toContain("secret-node");
     expect(serialized).not.toContain("Secret opportunity");
     expect(serialized).not.toContain("handoffCount");
-  });
-
-  test("a SUMMARY_V2 rollback reads the legacy projection and keeps every artifact", async () => {
-    const t = convexTest(schema, modules);
-    const ids = await t.run(async (ctx) => {
-      await seedMember(ctx, "contributor", "contributor");
-      const { functionId, departmentId, processId } = await seedHierarchy(ctx);
-      await ctx.db.patch(departmentId, {
-        summaryV2: departmentArtifact("rollback", 1_780_000_000_010),
-        summary: "## Stored projection\n\nWritten beside the artifact.",
-        summaryUpdatedAt: 1_780_000_000_010,
-        summarySourceRevision: 1,
-        summaryV2SourceRevision: 1,
-        summaryStale: false,
-      });
-      // Publishing writes the projection beside the artifact in one mutation, so
-      // this row is the defensive case: a rollback must still show content
-      // rather than blanking an entity that has an artifact.
-      const projectionOnly = await ctx.db.insert("departments", {
-        functionId,
-        name: "Projection only",
-        sortOrder: 2,
-        summaryV2: departmentArtifact("projection-only", 1_780_000_000_011),
-        summarySourceRevision: 1,
-        summaryV2SourceRevision: 1,
-        summaryStale: false,
-        clerkOrgId: ORG,
-      });
-      await ctx.db.patch(processId, {
-        summaryV2: processArtifact("rollback-process"),
-        rollingSummary: "Stored process projection",
-        summaryUpdatedAt: 1_780_000_000_012,
-        summaryV2SourceRevision: 1,
-        summaryEvidenceRevision: 1,
-      });
-      return { functionId, departmentId, processId, projectionOnly };
-    });
-    const contributor = t.withIdentity(identity("contributor"));
-
-    process.env.SUMMARY_V2 = "false";
-    const rolledBack = await contributor.query(api.summaries.getOverview, {
-      entity: { kind: "department", departmentId: ids.departmentId },
-    });
-    expect(rolledBack.content).toEqual({
-      format: "legacy",
-      artifact: null,
-      markdown: "## Stored projection\n\nWritten beside the artifact.",
-    });
-    expect(rolledBack.coverage).toBeNull();
-    expect(rolledBack.state).toBe("current");
-    expect(rolledBack.lastSuccessfulGenerationAt).toBe(1_780_000_000_010);
-
-    const derived = await contributor.query(api.summaries.getOverview, {
-      entity: { kind: "department", departmentId: ids.projectionOnly },
-    });
-    const stored = await t.run(async (ctx) => ctx.db.get(ids.projectionOnly));
-    expect(derived.content.format).toBe("legacy");
-    expect(derived.content.markdown).toBe(
-      renderSummaryV2AsLegacyMarkdown(stored!.summaryV2!),
-    );
-
-    // List metadata follows the same gate, so no badge claims structured
-    // coverage the UI is no longer rendering.
-    const departments = await contributor.query(api.departments.listByFunction, {
-      functionId: ids.functionId,
-    });
-    const processes = await contributor.query(api.processes.listByDepartment, {
-      departmentId: ids.departmentId,
-    });
-    expect(departments[0].name).toBe("Service");
-    expect(departments[0].summaryOverview).toMatchObject({
-      format: "legacy",
-      state: "current",
-      coverage: null,
-    });
-    expect(departments[0]).not.toHaveProperty("summaryV2");
-    expect(processes[0].summaryOverview).toMatchObject({
-      format: "legacy",
-      state: "current",
-      coverage: null,
-    });
-
-    // Rollback also stops generation, and nothing was deleted on the way.
-    expect(
-      await contributor.mutation(api.summaries.forceRefresh, {
-        entity: { kind: "department", departmentId: ids.departmentId },
-      }),
-    ).toEqual({ status: "disabled", scheduled: false });
-    expect(
-      await contributor.mutation(api.summaries.ensureCurrent, {
-        entity: { kind: "process", processId: ids.processId },
-      }),
-    ).toEqual({ status: "disabled", scheduled: false });
-
-    process.env.SUMMARY_V2 = "true";
-    const restored = await contributor.query(api.summaries.getOverview, {
-      entity: { kind: "department", departmentId: ids.departmentId },
-    });
-    expect(restored.content.format).toBe("v2");
-    expect(restored.coverage).toEqual({
-      includedSources: 2,
-      totalEligibleSources: 2,
-      complete: true,
-    });
-    const afterRollback = await t.run(async (ctx) => ({
-      department: await ctx.db.get(ids.departmentId),
-      process: await ctx.db.get(ids.processId),
-    }));
-    expect(afterRollback.department?.summaryV2?.provenance.sourceSnapshotHash).toBe(
-      "rollback",
-    );
-    expect(afterRollback.process?.summaryV2?.provenance.sourceSnapshotHash).toBe(
-      "rollback-process",
-    );
-    expect(afterRollback.process?.summaryEvidenceRefreshGenerationId).toBeUndefined();
-  });
-
-  test("keeps existing generation actions as response-compatible V2 adapters", async () => {
-    const t = convexTest(schema, modules);
-    const ids = await t.run(async (ctx) => {
-      await seedMember(ctx, "contributor", "contributor");
-      const hierarchy = await seedHierarchy(ctx);
-      await ctx.db.patch(hierarchy.departmentId, {
-        summary: "Existing department brief",
-        summaryStale: true,
-      });
-      await ctx.db.patch(hierarchy.functionId, {
-        summary: "Existing function brief",
-        summaryStale: true,
-      });
-      return hierarchy;
-    });
-    const contributor = t.withIdentity(identity("contributor"));
-
-    expect(
-      await contributor.action(api.summaries.generateDepartmentSummary, {
-        departmentId: ids.departmentId,
-      }),
-    ).toEqual({ summary: "Existing department brief", message: null });
-    expect(
-      await contributor.action(api.summaries.generateFunctionSummary, {
-        functionId: ids.functionId,
-      }),
-    ).toEqual({ summary: "Existing function brief", message: null });
-    expect(
-      await contributor.action(api.summaries.forceRefreshProcessSummary, {
-        processId: ids.processId,
-      }),
-    ).toEqual({ message: null });
-
-    const scheduled = await t.run(async (ctx) => ({
-      department: await ctx.db.get(ids.departmentId),
-      fn: await ctx.db.get(ids.functionId),
-      process: await ctx.db.get(ids.processId),
-    }));
-    expect(scheduled.department?.summaryV2GenerationId).toBeTruthy();
-    expect(scheduled.fn?.summaryV2GenerationId).toBeTruthy();
-    expect(scheduled.process?.summaryEvidenceRefreshGenerationId).toBeTruthy();
   });
 });

@@ -31,7 +31,6 @@ import { hashTranscript } from "./lib/transcriptHash";
 import {
   isConversationEvidenceV2Current,
 } from "./lib/conversationEvidenceV2";
-import { isSummaryV2EnabledForOrg } from "./lib/summaryV2Feature";
 import {
   normalizeProcessOverviewArtifactV2,
   processOverviewArtifactV2Validator,
@@ -56,7 +55,6 @@ const CLEANUP_BATCH_SIZE = 20;
 const TERMINAL_STATES = ["succeeded", "partial", "failed"] as const;
 
 type RunFailureCode =
-  | "feature_disabled"
   | "not_configured"
   | "no_evidence_sources"
   | "no_current_evidence"
@@ -143,9 +141,6 @@ export const requestProcessSummaryV2 = internalMutation({
     clerkOrgId: v.string(),
   },
   handler: async (ctx, args) => {
-    if (!isSummaryV2EnabledForOrg(args.clerkOrgId)) {
-      throw new Error("SUMMARY_V2 is disabled");
-    }
     const process = await ctx.db.get(args.processId);
     if (!process || process.clerkOrgId !== args.clerkOrgId) {
       throw new Error("Process not found in this organisation");
@@ -194,15 +189,6 @@ export const startProcessRun = internalMutation({
       process.summaryV2GenerationId !== args.generationId ||
       process.summaryV2RunId !== undefined
     ) {
-      return null;
-    }
-    if (!isSummaryV2EnabledForOrg(process.clerkOrgId)) {
-      await ctx.db.patch(process._id, {
-        summaryRegenScheduledAt: undefined,
-        summaryRegenRequestedAgain: undefined,
-        summaryV2GenerationId: undefined,
-        summaryV2RunId: undefined,
-      });
       return null;
     }
     const now = Date.now();
@@ -449,25 +435,6 @@ export const claimProcessChunk = internalMutation({
     if (!run || run.generationId !== args.generationId) return false;
     const process = await ownsRun(ctx, run);
     if (!process) return false;
-    if (!isSummaryV2EnabledForOrg(process.clerkOrgId)) {
-      await ctx.db.patch(run._id, {
-        state: "failed",
-        error: errorFor(
-          "feature_disabled",
-          "Summary V2 was disabled before this run completed.",
-          false,
-        ),
-        completedAt: Date.now(),
-        lastProgressAt: Date.now(),
-      });
-      await ctx.scheduler.runAfter(0, internal.processSummaryV2.finishProcessRun, {
-        processId: process._id,
-        clerkOrgId: run.clerkOrgId,
-        generationId: run.generationId,
-        runId: run._id,
-      });
-      return false;
-    }
     if (
       process.summaryRegenRequestedAgain ||
       (process.summaryEvidenceRevision ?? 0) !== (run.sourceRevision ?? 0)
@@ -738,26 +705,18 @@ export const saveProcessChunk = internalMutation({
     if (!run || run.generationId !== args.generationId) return;
     const process = await ownsRun(ctx, run);
     if (!process) return;
-    const featureDisabled = !isSummaryV2EnabledForOrg(process.clerkOrgId);
     if (
-      featureDisabled ||
       run.state !== "running" ||
       process.summaryRegenRequestedAgain ||
       (process.summaryEvidenceRevision ?? 0) !== (run.sourceRevision ?? 0)
     ) {
       await ctx.db.patch(run._id, {
         state: "failed",
-        error: featureDisabled
-          ? errorFor(
-              "feature_disabled",
-              "Summary V2 was disabled before this run completed.",
-              false,
-            )
-          : errorFor(
-              "superseded",
-              "Newer evidence superseded this run.",
-              false,
-            ),
+        error: errorFor(
+          "superseded",
+          "Newer evidence superseded this run.",
+          false,
+        ),
         completedAt: Date.now(),
         lastProgressAt: Date.now(),
       });
@@ -897,25 +856,6 @@ export const claimProcessFinal = internalMutation({
     }
     const process = await ownsRun(ctx, run);
     if (!process || run.progress.stage !== "final_reduce") return false;
-    if (!isSummaryV2EnabledForOrg(process.clerkOrgId)) {
-      await ctx.db.patch(run._id, {
-        state: "failed",
-        error: errorFor(
-          "feature_disabled",
-          "Summary V2 was disabled before this run completed.",
-          false,
-        ),
-        completedAt: Date.now(),
-        lastProgressAt: Date.now(),
-      });
-      await ctx.scheduler.runAfter(0, internal.processSummaryV2.finishProcessRun, {
-        processId: process._id,
-        clerkOrgId: run.clerkOrgId,
-        generationId: run.generationId,
-        runId: run._id,
-      });
-      return false;
-    }
     if (
       process.summaryRegenRequestedAgain ||
       (process.summaryEvidenceRevision ?? 0) !== (run.sourceRevision ?? 0)
@@ -1155,9 +1095,7 @@ export const saveProcessFinal = internalMutation({
     if (!run || run.generationId !== args.generationId) return { saved: false };
     const process = await ownsRun(ctx, run);
     if (!process) return { saved: false };
-    const featureDisabled = !isSummaryV2EnabledForOrg(process.clerkOrgId);
     if (
-      featureDisabled ||
       process.summaryRegenRequestedAgain ||
       (process.summaryEvidenceRevision ?? 0) !== args.sourceRevision ||
       (run.sourceRevision ?? 0) !== args.sourceRevision ||
@@ -1165,17 +1103,11 @@ export const saveProcessFinal = internalMutation({
     ) {
       await ctx.db.patch(run._id, {
         state: "failed",
-        error: featureDisabled
-          ? errorFor(
-              "feature_disabled",
-              "Summary V2 was disabled before this run completed.",
-              false,
-            )
-          : errorFor(
-              "superseded",
-              "Newer evidence superseded this run.",
-              false,
-            ),
+        error: errorFor(
+          "superseded",
+          "Newer evidence superseded this run.",
+          false,
+        ),
         completedAt: Date.now(),
         lastProgressAt: Date.now(),
       });
@@ -1290,23 +1222,6 @@ export const finishProcessRun = internalMutation({
       process.summaryV2GenerationId !== args.generationId ||
       process.summaryV2RunId !== args.runId
     ) {
-      return;
-    }
-    if (!isSummaryV2EnabledForOrg(process.clerkOrgId)) {
-      await ctx.db.patch(process._id, {
-        summaryV2LastRunState: run.state,
-        summaryV2LastError: run.error,
-        summaryV2LastCompletedAt: run.completedAt ?? Date.now(),
-        summaryRegenScheduledAt: undefined,
-        summaryRegenRequestedAgain: undefined,
-        summaryV2GenerationId: undefined,
-        summaryV2RunId: undefined,
-      });
-      await ctx.scheduler.runAfter(
-        0,
-        internal.processSummaryV2.cleanupSupersededProcessRuns,
-        { processId: process._id, clerkOrgId: args.clerkOrgId },
-      );
       return;
     }
     if (process.summaryRegenRequestedAgain) {
@@ -1453,25 +1368,6 @@ export const reapStuckProcessSummaryRuns = internalMutation({
       const processId = processIdFromRun(run);
       const process = processId ? await ownsRun(ctx, run) : null;
       if (!process || !processId) continue;
-      if (!isSummaryV2EnabledForOrg(process.clerkOrgId)) {
-        await ctx.db.patch(run._id, {
-          state: "failed",
-          error: errorFor(
-            "feature_disabled",
-            "Summary V2 was disabled before this run completed.",
-            false,
-          ),
-          completedAt: Date.now(),
-          lastProgressAt: Date.now(),
-        });
-        await ctx.scheduler.runAfter(0, internal.processSummaryV2.finishProcessRun, {
-          processId,
-          clerkOrgId: run.clerkOrgId,
-          generationId: run.generationId,
-          runId: run._id,
-        });
-        continue;
-      }
       if (run.resumeCount >= MAX_RUN_RESUMES) {
         await ctx.db.patch(run._id, {
           state: "failed",

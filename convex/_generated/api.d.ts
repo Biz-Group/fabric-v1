@@ -89,6 +89,7 @@ import type * as lib_descriptionSafetyValidators from "../lib/descriptionSafetyV
 import type * as lib_elevenLabsCharging from "../lib/elevenLabsCharging.js";
 import type * as lib_elevenLabsConversation from "../lib/elevenLabsConversation.js";
 import type * as lib_exportRender from "../lib/exportRender.js";
+import type * as lib_flowDuration from "../lib/flowDuration.js";
 import type * as lib_flowNeighbourhood from "../lib/flowNeighbourhood.js";
 import type * as lib_flowQuality from "../lib/flowQuality.js";
 import type * as lib_flowStages from "../lib/flowStages.js";
@@ -110,7 +111,6 @@ import type * as lib_roles from "../lib/roles.js";
 import type * as lib_slugs from "../lib/slugs.js";
 import type * as lib_speakerLabels from "../lib/speakerLabels.js";
 import type * as lib_summaryEvaluation from "../lib/summaryEvaluation.js";
-import type * as lib_summaryV2Feature from "../lib/summaryV2Feature.js";
 import type * as lib_tenantData from "../lib/tenantData.js";
 import type * as lib_textNormalization from "../lib/textNormalization.js";
 import type * as lib_transcriptHash from "../lib/transcriptHash.js";
@@ -247,6 +247,7 @@ declare const fullApi: ApiFromModules<{
   "lib/elevenLabsCharging": typeof lib_elevenLabsCharging;
   "lib/elevenLabsConversation": typeof lib_elevenLabsConversation;
   "lib/exportRender": typeof lib_exportRender;
+  "lib/flowDuration": typeof lib_flowDuration;
   "lib/flowNeighbourhood": typeof lib_flowNeighbourhood;
   "lib/flowQuality": typeof lib_flowQuality;
   "lib/flowStages": typeof lib_flowStages;
@@ -268,7 +269,6 @@ declare const fullApi: ApiFromModules<{
   "lib/slugs": typeof lib_slugs;
   "lib/speakerLabels": typeof lib_speakerLabels;
   "lib/summaryEvaluation": typeof lib_summaryEvaluation;
-  "lib/summaryV2Feature": typeof lib_summaryV2Feature;
   "lib/tenantData": typeof lib_tenantData;
   "lib/textNormalization": typeof lib_textNormalization;
   "lib/transcriptHash": typeof lib_transcriptHash;
