@@ -1,6 +1,7 @@
 import type { AIJsonSchema } from "./aiProvider";
 import { withBritishEnglish } from "./aiLanguage";
 import { resolveSourceRefs } from "./contributorIdentity";
+import { cleanEstimatedDuration } from "./flowDuration";
 
 /**
  * Prompts, schemas, and normalizers for staged process-flow generation.
@@ -420,9 +421,9 @@ export function normalizeGraphResponse(payload: unknown): {
     criticalPath: asStringArray(rawInsights.criticalPath).filter((id) =>
       seen.has(id),
     ),
-    totalEstimatedDuration: rawInsights.totalEstimatedDuration
-      ? String(rawInsights.totalEstimatedDuration)
-      : undefined,
+    totalEstimatedDuration: cleanEstimatedDuration(
+      rawInsights.totalEstimatedDuration,
+    ),
   };
 }
 

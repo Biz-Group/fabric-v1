@@ -9,6 +9,7 @@ import type { api } from "../../../convex/_generated/api";
 import {
   Bot,
   Check,
+  ChevronDown,
   Download,
   GitBranch,
   Mic,
@@ -221,23 +222,92 @@ function ProcessMetadata({
   );
 }
 
+type CaptureActionsProps = {
+  disabled: boolean;
+  onStartInterview: () => void;
+  onRecordVoice: () => void;
+  onUploadAudio: () => void;
+  className?: string;
+};
+
+const captureActionClassName =
+  "h-10 min-w-0 justify-start gap-2.5 px-3 text-sm transition-[background-color,border-color,color,box-shadow,transform] motion-reduce:transition-none";
+
+/**
+ * Narrow-panel replacement for CaptureActions: the AI interview stays one
+ * click away and the other two ways to contribute sit behind the chevron, so
+ * the capture actions, Ask about this and Share fit on one row.
+ */
+function CaptureSplitButton({
+  disabled,
+  onStartInterview,
+  onRecordVoice,
+  onUploadAudio,
+  className,
+}: CaptureActionsProps) {
+  return (
+    <div
+      className={cn("min-w-0", className)}
+      role="group"
+      aria-label="Add a contribution"
+      data-tour="capture"
+    >
+      <span className={styles.aiButtonGlow}>
+        <Button
+          type="button"
+          variant="outline"
+          className={cn(captureActionClassName, "rounded-r-none", styles.aiButton)}
+          disabled={disabled}
+          onClick={onStartInterview}
+        >
+          <Bot className="size-4" aria-hidden="true" />
+          <span className="truncate">Start AI interview</span>
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                className={cn(
+                  "-ml-px h-10 w-9 shrink-0 rounded-l-none px-0",
+                  styles.aiButton,
+                )}
+                disabled={disabled}
+                aria-label="Other ways to contribute"
+              />
+            }
+          >
+            <ChevronDown className="size-4" aria-hidden="true" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem onClick={onRecordVoice}>
+              <Mic className="size-4" />
+              Record a voice note
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onUploadAudio}>
+              <Upload className="size-4" />
+              Upload files
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </span>
+    </div>
+  );
+}
+
 function CaptureActions({
   disabled,
   onStartInterview,
   onRecordVoice,
   onUploadAudio,
-}: {
-  disabled: boolean;
-  onStartInterview: () => void;
-  onRecordVoice: () => void;
-  onUploadAudio: () => void;
-}) {
-  const actionClassName =
-    "h-10 min-w-0 justify-start gap-2.5 px-3 text-sm transition-[background-color,border-color,color,box-shadow,transform] motion-reduce:transition-none";
+  className,
+}: CaptureActionsProps) {
+  const actionClassName = captureActionClassName;
 
   return (
     <div
-      className="flex min-w-0 flex-wrap gap-2"
+      className={cn("flex min-w-0 flex-wrap gap-2", className)}
       role="group"
       aria-label="Add a contribution"
       data-tour="capture"
@@ -501,11 +571,15 @@ export function ProcessHeader({
   // The layout follows the panel's width, not the viewport's: beside the
   // sidebar and tree, the panel is narrow even on a wide screen. Only a panel
   // wide enough for the title and the whole action row puts them side by side.
-  // Below @3xl, Share and More move up beside the title so the capture actions
-  // keep a row to themselves instead of pushing Share onto another.
+  // Below @5xl the capture actions fold into one split button so they, Ask
+  // about this and Share fit one row; below @3xl, Share and More move up
+  // beside the title so the capture button keeps a row to itself. The byline
+  // shares the title's line and drops under it only when the title is long.
+  // Every row here comes off the tab content below, so the header keeps to
+  // three rows: breadcrumb, title, actions.
   return (
     <header className="@container shrink-0 border-b bg-background">
-      <div className="grid min-w-0 gap-y-2 px-4 py-3 md:px-6 @5xl:grid-cols-[minmax(0,1fr)_auto] @5xl:items-center @5xl:gap-x-6">
+      <div className="grid min-w-0 gap-y-2 px-4 py-2.5 md:px-6 @5xl:grid-cols-[minmax(0,1fr)_auto] @5xl:items-center @5xl:gap-x-6 @5xl:py-3">
         {/* Phones drop the breadcrumb: the back button above already names
             the department, and the title below names the process. */}
         {!mobile && (
@@ -518,33 +592,37 @@ export function ProcessHeader({
         )}
 
         <div className="flex min-w-0 items-start gap-2 @5xl:col-start-1 @5xl:row-start-2">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <PageTitle size="lg" className="min-w-0 max-w-full break-words">
-              {processName || "Untitled process"}
-            </PageTitle>
-            <ProcessStatusBadge
-              workbench={workbench}
-              onJumpToLabeling={onJumpToLabeling}
-            />
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1.5">
+            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+              <PageTitle
+                size="lg"
+                className="min-w-0 max-w-full break-words md:text-2xl @5xl:text-3xl"
+              >
+                {processName || "Untitled process"}
+              </PageTitle>
+              <ProcessStatusBadge
+                workbench={workbench}
+                onJumpToLabeling={onJumpToLabeling}
+              />
+            </div>
+            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+              <ProcessMetadata
+                contributorName={latestContributor?.name}
+                submittedByName={latestContributor?.submittedByName}
+                contributorImageUrl={contributorImageUrl}
+                updatedAt={workbench?.lastUpdatedAt}
+                relativeUpdatedAt={lastUpdated}
+                absoluteUpdatedAt={lastUpdatedTitle}
+                dateTime={lastUpdatedDateTime}
+              />
+              {workbench?.flow?.stale && (
+                <Badge tone="warning">Flow out of date</Badge>
+              )}
+            </div>
           </div>
           <div className={cn("-mr-2 shrink-0", !mobile && "@3xl:hidden")}>
             {renderMoreMenu(true)}
           </div>
-        </div>
-
-        <div className="flex min-w-0 flex-wrap items-center gap-2 @5xl:col-start-1 @5xl:row-start-3">
-          <ProcessMetadata
-            contributorName={latestContributor?.name}
-            submittedByName={latestContributor?.submittedByName}
-            contributorImageUrl={contributorImageUrl}
-            updatedAt={workbench?.lastUpdatedAt}
-            relativeUpdatedAt={lastUpdated}
-            absoluteUpdatedAt={lastUpdatedTitle}
-            dateTime={lastUpdatedDateTime}
-          />
-          {workbench?.flow?.stale && (
-            <Badge tone="warning">Flow out of date</Badge>
-          )}
         </div>
 
         {!mobile && (
@@ -556,12 +634,22 @@ export function ProcessHeader({
             )}
           >
             {canEdit && (
-              <CaptureActions
-                disabled={captureDisabled}
-                onStartInterview={onStartInterview}
-                onRecordVoice={onRecordVoice}
-                onUploadAudio={onUploadAudio}
-              />
+              <>
+                <CaptureActions
+                  className="hidden @5xl:flex"
+                  disabled={captureDisabled}
+                  onStartInterview={onStartInterview}
+                  onRecordVoice={onRecordVoice}
+                  onUploadAudio={onUploadAudio}
+                />
+                <CaptureSplitButton
+                  className="@5xl:hidden"
+                  disabled={captureDisabled}
+                  onStartInterview={onStartInterview}
+                  onRecordVoice={onRecordVoice}
+                  onUploadAudio={onUploadAudio}
+                />
+              </>
             )}
             {/* The divider only shows where the row fits on one line; a
                 wrapped Share would start its line with it. */}

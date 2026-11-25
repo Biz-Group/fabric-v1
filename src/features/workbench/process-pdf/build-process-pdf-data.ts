@@ -16,6 +16,7 @@ import {
   type ToolUsage,
   type HeavyArea,
 } from "../../../../convex/lib/insightsDerivations";
+import { cleanEstimatedDuration } from "../../../../convex/lib/flowDuration";
 import { flowStage, isFlowRenderable, type FlowStage } from "@/lib/flow-status";
 import {
   DECISION_LABEL,
@@ -571,6 +572,7 @@ export function buildProcessPdfData(input: ProcessPdfInput): ProcessPdfData {
     uniquePainPoints,
     automationOpportunities: flow.insights.automationOpportunities,
     criticalPathLabels,
-    totalEstimatedDuration: flow.insights.totalEstimatedDuration ?? null,
+    totalEstimatedDuration:
+      cleanEstimatedDuration(flow.insights.totalEstimatedDuration) ?? null,
   };
 }

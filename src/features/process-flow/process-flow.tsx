@@ -36,6 +36,7 @@ import {
   MapPinned,
   ArrowRight,
   ArrowDown,
+  ArrowUpRight,
   Network,
   UsersRound,
   SlidersHorizontal,
@@ -73,6 +74,7 @@ import { describeError } from "@/lib/user-error-message";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { cleanEstimatedDuration } from "../../../convex/lib/flowDuration";
 import { nodeTypes } from "./process-flow-nodes";
 import { edgeTypes } from "./process-flow-edges";
 import { deriveFlowFocus, type FlowFocus } from "./flow-focus";
@@ -1854,25 +1856,29 @@ function InsightsBar({
   const automationUnreviewed =
     insights.automationOpportunitiesSource === "derived";
   const automationCount = insights.automationOpportunities.length;
+  const duration = cleanEstimatedDuration(insights.totalEstimatedDuration);
 
+  // One row at every width: wrapping cost the canvas up to two extra lines in
+  // a narrow panel. The stats scroll sideways instead, fading out at the right
+  // edge, and Insights stays pinned at the end of the row.
   return (
-    <div className="shrink-0 border-t border-border bg-muted/30 px-4 py-2">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-muted-foreground">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-          <span className="flex items-center gap-1">
+    <div className="shrink-0 border-t border-border bg-muted/30 py-1.5 pr-2 pl-4">
+      <div className="flex items-center gap-2 text-xs whitespace-nowrap text-muted-foreground">
+        <div className="flex min-w-0 flex-1 items-center gap-x-3 overflow-x-auto py-0.5 pr-6 scrollbar-hide [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]">
+          <span className="flex shrink-0 items-center gap-1">
             <BarChart3 className="size-3" aria-hidden />
             {nodeCount} steps
           </span>
-          {insights.totalEstimatedDuration && (
-            <span className="flex items-center gap-1">
+          {duration && (
+            <span className="flex shrink-0 items-center gap-1">
               <Clock className="size-3" aria-hidden />
-              {insights.totalEstimatedDuration}
+              {duration}
             </span>
           )}
 
-          <div className="hidden h-5 w-px bg-border sm:block" aria-hidden />
+          <div className="h-5 w-px shrink-0 bg-border" aria-hidden />
           <div
-            className="flex flex-wrap items-center gap-1"
+            className="flex shrink-0 items-center gap-1"
             role="group"
             aria-label="Spotlight process findings"
           >
@@ -1908,7 +1914,7 @@ function InsightsBar({
           {automationCount > 0 && (
             <span
               className={cn(
-                "flex items-center gap-1",
+                "flex shrink-0 items-center gap-1",
                 automationUnreviewed ? "text-muted-foreground" : "text-success",
               )}
               title={
@@ -1928,10 +1934,12 @@ function InsightsBar({
           type="button"
           variant="ghost"
           size="sm"
-          className="focus-ring h-7 shrink-0 px-2 text-xs"
+          className="focus-ring h-7 shrink-0 gap-1 px-2 text-xs"
+          aria-label="Open Insights"
           onClick={onOpenInsights}
         >
-          Open Insights
+          Insights
+          <ArrowUpRight className="size-3" aria-hidden />
         </Button>
       </div>
       {activeSpotlight && (

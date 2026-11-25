@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { cleanEstimatedDuration } from "../../../convex/lib/flowDuration";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cardVariants } from "@/components/ui/card";
@@ -1519,7 +1520,7 @@ export function ProcessInsightsTab({
           onOpenNode={onOpenProcessFlow}
         />
 
-        {flow.insights.totalEstimatedDuration && (
+        {cleanEstimatedDuration(flow.insights.totalEstimatedDuration) && (
           <div
             className={cardVariants({
               padding: "sm",
