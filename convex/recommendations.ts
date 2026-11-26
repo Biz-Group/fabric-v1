@@ -50,6 +50,7 @@ import {
   type RecommendationInputNode,
 } from "./lib/recommendationStage";
 import {
+  capFollowOnValues,
   compareRecommendations,
   computeRecommendationScores,
   recommendationMatchKey,
@@ -898,10 +899,23 @@ export const generateRecommendationsInternal = internalAction({
       });
     }
 
+    const scores = capFollowOnValues(
+      recommendations.map((rec) =>
+        computeRecommendationScores({
+          intervention: rec.intervention,
+          frequency: rec.frequency,
+          nodeIds: rec.nodeIds,
+          nodes: input.nodes,
+          contributorKeysInOrder: input.contributorKeysInOrder,
+        }),
+      ),
+      (index) => recommendations[index].buildsOnIndex ?? null,
+    );
+
     await ctx.runMutation(internal.recommendations.publishRecommendationRun, {
       clerkOrgId: args.clerkOrgId,
       runId: args.runId,
-      recommendations: recommendations.map((rec) => ({
+      recommendations: recommendations.map((rec, index) => ({
         title: rec.title,
         nodeIds: rec.nodeIds,
         content: {
@@ -917,13 +931,7 @@ export const generateRecommendationsInternal = internalAction({
           risks: rec.risks,
           frequency: rec.frequency,
         },
-        scores: computeRecommendationScores({
-          intervention: rec.intervention,
-          frequency: rec.frequency,
-          nodeIds: rec.nodeIds,
-          nodes: input.nodes,
-          contributorKeysInOrder: input.contributorKeysInOrder,
-        }),
+        scores: scores[index],
         matchKey: recommendationMatchKey(rec.nodeIds, rec.intervention),
         previousRecommendationId: rec.previousRecommendationId,
         buildsOnIndex: rec.buildsOnIndex,

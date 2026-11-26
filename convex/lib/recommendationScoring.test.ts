@@ -1,8 +1,11 @@
 import { describe, expect, test } from "vitest";
 import type { FlowNodeDetail } from "./flowStages";
 import {
+  capFollowOnValue,
+  capFollowOnValues,
   compareRecommendations,
   computeRecommendationScores,
+  FOLLOW_ON_VALUE_REASON,
   deriveEvidence,
   distinctProblems,
   recommendationMatchKey,
@@ -164,6 +167,50 @@ describe("value cap", () => {
     });
     expect(scores.value.level).toBe("medium");
     expect(scores.value.reasons[0]).toBe("How often it runs wasn't described");
+  });
+});
+
+describe("follow-on value", () => {
+  const high = { level: "high" as const, reasons: ["Runs monthly", "3 problems reported, 2 bottlenecks", "3 roles involved"] };
+  const medium = { level: "medium" as const, reasons: ["Runs monthly"] };
+  const low = { level: "low" as const, reasons: ["Runs as needed"] };
+  const unknown = { level: "unknown" as const, reasons: ["How often it runs wasn't described"] };
+
+  test("a follow-on on its parent's steps drops one level below the parent, and says why", () => {
+    // The Aldar case: same steps, same chips, so the same "high" as its parent.
+    const capped = capFollowOnValue(high, high);
+    expect(capped.level).toBe("medium");
+    expect(capped.reasons).toEqual([...high.reasons, FOLLOW_ON_VALUE_REASON]);
+    expect(capFollowOnValue(medium, medium).level).toBe("low");
+  });
+
+  test("a follow-on already below the ceiling keeps its own score", () => {
+    expect(capFollowOnValue(medium, high)).toEqual(medium);
+    expect(capFollowOnValue(low, medium)).toEqual(low);
+    expect(capFollowOnValue(low, low)).toEqual(low);
+  });
+
+  test("unknown on either side leaves the follow-on alone", () => {
+    expect(capFollowOnValue(unknown, high)).toEqual(unknown);
+    expect(capFollowOnValue(high, unknown)).toEqual(high);
+  });
+
+  test("capping twice does not repeat the reason", () => {
+    const once = capFollowOnValue(high, high);
+    expect(capFollowOnValue(once, high)).toEqual(once);
+  });
+
+  test("across a run, only follow-ons are capped, and a chain never outranks its root", () => {
+    const rows = [{ value: high }, { value: high }, { value: high }, { value: medium }];
+    const parents = [null, 0, 1, 7];
+    const capped = capFollowOnValues(rows, (index) => parents[index]);
+    expect(capped.map((row) => row.value.level)).toEqual(["high", "medium", "low", "medium"]);
+    expect(rows[1].value.level).toBe("high");
+  });
+
+  test("a cycle of links terminates", () => {
+    const capped = capFollowOnValues([{ value: high }, { value: high }], (index) => (index === 0 ? 1 : 0));
+    expect(capped).toHaveLength(2);
   });
 });
 

@@ -13,7 +13,11 @@ import {
   summarizeAutomationOpportunity,
   type FlowNodeDetail,
 } from "./lib/flowStages";
-import { computeRecommendationScores } from "./lib/recommendationScoring";
+import {
+  capFollowOnValues,
+  computeRecommendationScores,
+  type Score,
+} from "./lib/recommendationScoring";
 import {
   getFlow,
   loadRecommendationInput,
@@ -316,8 +320,10 @@ async function backfillRecommendations(
   });
   // Contributors per row after rescoring, for the flow's opportunity copy.
   const contributorsById = new Map<string, { row: Doc<"processRecommendations">; contributors: number }>();
-  for (const row of rows) {
-    const scores = keysInOrder
+  // A stale flow keeps the stored scores, but the follow-on cap still applies:
+  // it needs only the parent's value, not the flow.
+  const scored = rows.map((row) =>
+    keysInOrder
       ? computeRecommendationScores({
           intervention: row.content!.intervention,
           frequency: row.content!.frequency,
@@ -325,7 +331,33 @@ async function backfillRecommendations(
           nodes: input.nodes,
           contributorKeysInOrder: keysInOrder,
         })
-      : row.scores!;
+      : row.scores!,
+  );
+  // A parent outside this set (superseded, say) is read for its stored value.
+  const outsideParents: Array<{ value: Score }> = [];
+  const parentIndex = new Map<string, number>();
+  for (const row of rows) {
+    if (!row.buildsOnId || parentIndex.has(row.buildsOnId)) continue;
+    const inside = rows.findIndex((other) => other._id === row.buildsOnId);
+    if (inside >= 0) {
+      parentIndex.set(row.buildsOnId, inside);
+      continue;
+    }
+    const parent = await ctx.db.get(row.buildsOnId);
+    if (parent?.scores) {
+      parentIndex.set(row.buildsOnId, rows.length + outsideParents.length);
+      outsideParents.push({ value: parent.scores.value });
+    }
+  }
+  const capped = capFollowOnValues<{ value: Score }>(
+    [...scored, ...outsideParents],
+    (index) => {
+      const parentId = index < rows.length ? rows[index].buildsOnId : undefined;
+      return parentId ? (parentIndex.get(parentId) ?? null) : null;
+    },
+  );
+  for (const [index, row] of rows.entries()) {
+    const scores = { ...scored[index], value: capped[index].value };
     contributorsById.set(row._id, { row, contributors: scores.evidence.contributors });
     if (sameJson(scores, row.scores)) continue;
     if (scores.value.level !== row.scores!.value.level) {

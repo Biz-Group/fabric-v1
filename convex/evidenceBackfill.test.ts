@@ -158,6 +158,15 @@ async function seed(ctx: MutationCtx) {
   return { processId, flowId, recId };
 }
 
+function withoutSystemFields<T extends { _id: unknown; _creationTime: number }>(
+  doc: T,
+): Omit<T, "_id" | "_creationTime"> {
+  const fields: Partial<T> = { ...doc };
+  delete fields._id;
+  delete fields._creationTime;
+  return fields as Omit<T, "_id" | "_creationTime">;
+}
+
 describe("evidence backfill", () => {
   test("dry run reports every change and writes nothing", async () => {
     const t = convexTest(schema, modules);
@@ -234,6 +243,51 @@ describe("evidence backfill", () => {
       recommendations: again!.recommendations,
       skipped: again!.skipped,
     }).toEqual({ overview: [], steps: [], recommendations: [], skipped: [] });
+  });
+
+  test("a follow-on is re-scored one level below its parent, keeps its decision, and stays put on a second run", async () => {
+    const t = convexTest(schema, modules);
+    const { processId, recId } = await t.run(seed);
+    const followOnId = await t.run(async (ctx) => {
+      const fields = withoutSystemFields((await ctx.db.get(recId))!);
+      return await ctx.db.insert("processRecommendations", {
+        ...fields,
+        title: "Connect the routing rule to Zendesk",
+        content: { ...fields.content!, intervention: "integration" },
+        matchKey: "triage|integration",
+        decisionStatus: "in_progress",
+        buildsOnId: recId,
+      });
+    });
+
+    const report = await t.mutation(internal.evidenceBackfill.backfillProcessEvidence, { processId, dryRun: false });
+    expect(report!.totals.valueChanges).toEqual({ "high -> medium": 1, "high -> low": 1 });
+    const followOn = (await t.run((ctx) => ctx.db.get(followOnId)))!;
+    expect(followOn.scores!.value.level).toBe("low");
+    expect(followOn.scores!.value.reasons.at(-1)).toBe("Adds to the change it builds on");
+    expect(followOn.decisionStatus).toBe("in_progress");
+
+    const again = await t.mutation(internal.evidenceBackfill.backfillProcessEvidence, { processId, dryRun: false });
+    expect(again!.recommendations).toEqual([]);
+  });
+
+  test("a stale flow keeps stored scores but still caps a follow-on", async () => {
+    const t = convexTest(schema, modules);
+    const { processId, flowId, recId } = await t.run(seed);
+    const followOnId = await t.run(async (ctx) => {
+      await ctx.db.patch(flowId, { conversationCount: 3 });
+      const fields = withoutSystemFields((await ctx.db.get(recId))!);
+      return await ctx.db.insert("processRecommendations", {
+        ...fields,
+        title: "Connect the routing rule to Zendesk",
+        matchKey: "triage|integration",
+        buildsOnId: recId,
+      });
+    });
+    await t.mutation(internal.evidenceBackfill.backfillProcessEvidence, { processId, dryRun: false });
+    const [parent, followOn] = await t.run(async (ctx) => [await ctx.db.get(recId), await ctx.db.get(followOnId)]);
+    expect(parent!.scores!.value.level).toBe("high");
+    expect(followOn!.scores!.value.level).toBe("medium");
   });
 
   test("a flow whose contributions changed keeps its step values", async () => {

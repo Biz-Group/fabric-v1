@@ -9,7 +9,7 @@ import { HELP_ARTICLES } from "./helpCorpus.generated";
 import { buildHelpCorpus, gatedIds, renderHelpCorpusModule } from "./helpCorpusBuild";
 import { rankHelpArticles } from "./help";
 import { affectedProcesses, collectSignals, scoreOf, SIGNALS } from "./signals";
-import { findDuplicationCandidates, summarizeSystems } from "./systems";
+import { findDuplicationCandidates, splitSystemName, summarizeSystems } from "./systems";
 
 // ---- Fixtures ------------------------------------------------------------------
 
@@ -175,6 +175,40 @@ describe("systems and graph matching", () => {
     expect(systems[0].rekeying).toHaveLength(1);
     expect(systems[0].automation).toBe("high");
     expect(systems.map((s) => s.name)).toContain("Workday");
+  });
+
+  test.each([
+    ["Estate Master (being discontinued)", ["Estate Master"], "being discontinued"],
+    ["Feasibility tool (Aldar internal)", ["Feasibility tool"], "Aldar internal"],
+    ["Data room or share drive", ["Data room", "Share drive"], null],
+    ["Email or government submission portal (inferred)", ["Email", "Government submission portal"], "inferred"],
+    ["Traffic-light (RAG) rating", ["Traffic-light (RAG) rating"], null],
+    ["RFI / DDQ document", ["RFI / DDQ document"], null],
+    ["Email and meetings", ["Email and meetings"], null],
+    ["(planned)", ["(planned)"], null],
+  ])("T16 reads %s as %j with note %j", (raw, names, note) => {
+    expect(splitSystemName(raw)).toEqual({ names, note });
+  });
+
+  test("T16 merges a system named with an aside or as an alternative into the plain name", () => {
+    const aldar = process("p_opp", "Opportunity Initial Assessment");
+    const systems = summarizeSystems(
+      evidence(
+        [flowFor(aldar, [node("brief", { tools: ["Estate Master", "Data room"] }), node("dd", { tools: ["Share drive"] })])],
+        [
+          contribution(aldar, "k1", "Ana", {
+            tools: ["Estate Master (being discontinued)", "Data room or share drive"],
+            frictionPoints: ["Inputs are split across Estate Master and the feasibility tool"],
+          }),
+        ],
+      ),
+    );
+    expect(systems.map((s) => s.name).sort()).toEqual(["Data room", "Estate Master", "Share drive"]);
+    const estateMaster = systems.find((s) => s.name === "Estate Master")!;
+    expect(estateMaster.notes).toEqual(["being discontinued"]);
+    expect(estateMaster.mentions).toBe(2);
+    // The plain name now matches the contributor's friction text.
+    expect(estateMaster.painPoints).toEqual(["Inputs are split across Estate Master and the feasibility tool"]);
   });
 
   test("T11 finds handoffs to a party in flows and in contribution evidence", () => {

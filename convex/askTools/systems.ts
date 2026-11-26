@@ -37,8 +37,39 @@ function placeBlocks(title: string, text: string, places: Place[]): SearchResult
 
 // ---- T16 listSystems ---------------------------------------------------------
 
+const TRAILING_NOTE = /^(.*?\S)\s*\(([^()]*)\)\s*$/u;
+const ALTERNATIVES = /\s+or\s+/iu;
+
+function capitalise(text: string): string {
+  return text.charAt(0).toLocaleUpperCase() + text.slice(1);
+}
+
+/**
+ * The system names in one extracted tool string, and the note it carried.
+ * Extraction writes asides into the name: "Estate Master (being
+ * discontinued)" sat beside "Estate Master" as a second system, and "Data
+ * room or share drive" beside "Data room" and "Share drive" (Aldar, Nov
+ * 2026). The trailing bracket becomes a note on the system, and "X or Y"
+ * names two systems. Only the final bracket is read, so "Traffic-light (RAG)
+ * rating" keeps its name. Tested against every tool name on prod.
+ */
+export function splitSystemName(raw: string): { names: string[]; note: string | null } {
+  const trimmed = raw.trim();
+  const bracket = TRAILING_NOTE.exec(trimmed);
+  const base = bracket ? bracket[1].trim() : trimmed;
+  const note = bracket ? bracket[2].trim() || null : null;
+  const names = base
+    .split(ALTERNATIVES)
+    .map((part) => part.trim())
+    .filter((part) => normalizeKey(part).length > 0)
+    .map(capitalise);
+  return names.length > 0 ? { names, note } : { names: trimmed ? [trimmed] : [], note: null };
+}
+
 export type SystemSummary = {
   name: string;
+  /** Asides extraction wrote beside the name, such as "being discontinued". */
+  notes: string[];
   processes: Set<string>;
   processNames: Set<string>;
   steps: number;
@@ -59,6 +90,7 @@ export function summarizeSystems(evidence: ScopeEvidence): SystemSummary[] {
     if (!entry) {
       entry = {
         name: name.trim(),
+        notes: [],
         processes: new Set(),
         processNames: new Set(),
         steps: 0,
@@ -76,11 +108,24 @@ export function summarizeSystems(evidence: ScopeEvidence): SystemSummary[] {
     if (!list.some((t) => normalizeKey(t) === normalizeKey(text))) list.push(text);
   };
 
+  /** One step's or contribution's systems, each once, notes recorded. */
+  const systemsIn = (tools: readonly string[]): Array<{ entry: SystemSummary; name: string }> => {
+    const found = new Map<SystemSummary, string>();
+    for (const tool of tools) {
+      const { names, note } = splitSystemName(tool);
+      for (const name of names) {
+        const entry = system(name);
+        if (!entry) continue;
+        if (note) addUnique(entry.notes, note);
+        if (!found.has(entry)) found.set(entry, name);
+      }
+    }
+    return [...found].map(([entry, name]) => ({ entry, name }));
+  };
+
   for (const { process, nodes } of evidence.flows) {
     for (const node of nodes) {
-      for (const tool of new Set(node.tools)) {
-        const entry = system(tool);
-        if (!entry) continue;
+      for (const { entry } of systemsIn(node.tools)) {
         entry.processes.add(process._id);
         entry.processNames.add(process.name);
         entry.steps += 1;
@@ -103,9 +148,7 @@ export function summarizeSystems(evidence: ScopeEvidence): SystemSummary[] {
   }
   for (const { conversation, evidence: found } of evidence.contributions) {
     const processName = evidence.processById.get(conversation.processId)?.name ?? "Unknown process";
-    for (const tool of new Set(found.tools)) {
-      const entry = system(tool);
-      if (!entry) continue;
+    for (const { entry, name: tool } of systemsIn(found.tools)) {
       entry.processes.add(conversation.processId);
       entry.processNames.add(processName);
       entry.mentions += 1;
@@ -151,6 +194,7 @@ export const listSystems = askToolQuery({
     for (const [index, entry] of systems.slice(0, MAX_LIST_ITEMS).entries()) {
       const text = [
         `#${index + 1} System: ${entry.name}.`,
+        entry.notes.length ? `Noted: ${clipText(entry.notes.join("; "), 30)}.` : "",
         `Used in ${entry.processes.size} process${entry.processes.size === 1 ? "" : "es"} (${clipText([...entry.processNames].join(", "), 40)}), ${entry.steps} flow steps, ${entry.mentions} mentions.`,
         entry.painPoints.length ? `Pain points: ${clipText(entry.painPoints.join("; "), 90)}.` : "No pain points recorded.",
         entry.rekeying.length ? `Manual re-keying (heuristic): ${clipText(entry.rekeying.join("; "), 50)}.` : "",
@@ -200,12 +244,16 @@ export function findDuplicationCandidates(evidence: ScopeEvidence): DuplicationC
   const usesByTool = new Map<string, { name: string; uses: Use[] }>();
   for (const { process, nodes } of evidence.flows) {
     for (const node of nodes) {
-      for (const tool of new Set(node.tools)) {
-        const key = normalizeKey(tool);
-        if (!key) continue;
-        const entry = usesByTool.get(key) ?? { name: tool.trim(), uses: [] };
-        entry.uses.push({ process, node });
-        usesByTool.set(key, entry);
+      const keys = new Set<string>();
+      for (const tool of node.tools) {
+        for (const name of splitSystemName(tool).names) {
+          const key = normalizeKey(name);
+          if (!key || keys.has(key)) continue;
+          keys.add(key);
+          const entry = usesByTool.get(key) ?? { name, uses: [] };
+          entry.uses.push({ process, node });
+          usesByTool.set(key, entry);
+        }
       }
     }
   }

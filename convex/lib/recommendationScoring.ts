@@ -290,6 +290,58 @@ export function computeRecommendationScores(input: {
   };
 }
 
+const VALUE_RANK: Record<Exclude<ScoreLevel, "unknown">, number> = { low: 0, medium: 1, high: 2 };
+const RANKED_LEVELS = ["low", "medium", "high"] as const;
+
+export const FOLLOW_ON_VALUE_REASON = "Adds to the change it builds on";
+
+/**
+ * A follow-on's value sits at least one level below its parent's. It is
+ * usually scored on the parent's own steps, so its frequency, friction and
+ * reach chips were the parent's: "Connect Estate Master to the feasibility
+ * tool" read "high value" on the strength of problems the first change
+ * (naming one input source) already answers, while its own open questions
+ * asked whether hand-copying happened at all. What a follow-on adds is what
+ * remains after the first change, which is less. Low stays low, and unknown
+ * on either side leaves the follow-on's own score alone.
+ */
+export function capFollowOnValue(value: Score, parentValue: Score): Score {
+  if (value.level === "unknown" || parentValue.level === "unknown") return value;
+  const ceiling = RANKED_LEVELS[Math.max(VALUE_RANK[parentValue.level] - 1, 0)];
+  if (VALUE_RANK[value.level] <= VALUE_RANK[ceiling]) return value;
+  return {
+    level: ceiling,
+    reasons: [
+      ...value.reasons.filter((reason) => reason !== FOLLOW_ON_VALUE_REASON),
+      FOLLOW_ON_VALUE_REASON,
+    ],
+  };
+}
+
+/**
+ * Applies `capFollowOnValue` across one process's recommendations. `parentOf`
+ * gives each row's parent position, or null for a top-level row. Parents are
+ * capped first, so a chain never outranks its root.
+ */
+export function capFollowOnValues<T extends { value: Score }>(
+  scores: readonly T[],
+  parentOf: (index: number) => number | null,
+): T[] {
+  const result = [...scores];
+  const done = new Set<number>();
+  const settle = (index: number, depth: number): void => {
+    if (done.has(index)) return;
+    done.add(index);
+    const parent = parentOf(index);
+    // A cycle or a dangling link leaves the row as scored.
+    if (parent === null || parent === index || parent < 0 || parent >= result.length || depth > result.length) return;
+    settle(parent, depth + 1);
+    result[index] = { ...result[index], value: capFollowOnValue(result[index].value, result[parent].value) };
+  };
+  for (let index = 0; index < result.length; index += 1) settle(index, 0);
+  return result;
+}
+
 export function recommendationMatchKey(
   nodeIds: readonly string[],
   intervention: string,
