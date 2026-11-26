@@ -39,14 +39,14 @@ Select a step to open its details panel. It can show the description, actors, to
 
 ## Spotlights
 
-A summary bar shows the number of steps, the estimated total duration when known, and four buttons: **Bottlenecks**, **Handoffs**, **Automatable steps** and **Tools**. Select one to highlight the matching steps, and select it again to clear it. A handoff is where work passes between steps that share no actor. **Open Insights** takes you to the Insights tab.
+A summary bar shows the number of steps, the estimated total duration when known, and four buttons: **Bottlenecks**, **Handoffs**, **Automatable steps** and **Tools**. Select one to highlight the matching steps, and select it again to clear it. A handoff is where work passes between steps that share no actor. **Insights** takes you to the Insights tab.
 
 ## Controls
 
 - **Zoom in** and **Zoom out**, **Fit entire process**, and **Centre selected step**.
 - **Horizontal layout** or **Vertical layout**.
 - **Process view** or **Owner lanes**, which groups steps by who does them. Steps with several actors sit in a Shared lane.
-- **Show minimap** or **Hide minimap**.
+- **Show minimap** or **Hide minimap**. Hidden while step details are open.
 - **Enter fullscreen**, and **Exit fullscreen** (or press Esc).
 - Drag the divider beside the details panel to resize it.
 

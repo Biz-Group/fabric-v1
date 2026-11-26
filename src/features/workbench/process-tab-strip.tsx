@@ -17,11 +17,14 @@ const EDGE_PEEK_PX = 24;
 export function ProcessTabStrip({
   activeTab,
   className,
+  trailing,
   children,
 }: {
   /** Changes whenever the selected tab does. */
   activeTab: number;
   className?: string;
+  /** Sits after the tabs, outside the scroller, e.g. the active tab's status. */
+  trailing?: ReactNode;
   children: ReactNode;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -84,29 +87,32 @@ export function ProcessTabStrip({
   }, [activeTab, prefersReducedMotion]);
 
   return (
-    <div className={cn("relative shrink-0", className)}>
-      <div
-        ref={scrollerRef}
-        className="overflow-x-auto overflow-y-hidden px-2 sm:px-4"
-        onScroll={updateOverflow}
-        data-tour="process-tabs"
-      >
-        {children}
+    <div className={cn("flex shrink-0 items-center", className)}>
+      <div className="relative min-w-0 flex-1">
+        <div
+          ref={scrollerRef}
+          className="overflow-x-auto overflow-y-hidden px-2 scrollbar-hide sm:px-4"
+          onScroll={updateOverflow}
+          data-tour="process-tabs"
+        >
+          {children}
+        </div>
+        <div
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background to-transparent transition-opacity motion-reduce:transition-none",
+            overflow.start ? "opacity-100" : "opacity-0",
+          )}
+        />
+        <div
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent transition-opacity motion-reduce:transition-none",
+            overflow.end ? "opacity-100" : "opacity-0",
+          )}
+        />
       </div>
-      <div
-        aria-hidden="true"
-        className={cn(
-          "pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background to-transparent transition-opacity motion-reduce:transition-none",
-          overflow.start ? "opacity-100" : "opacity-0",
-        )}
-      />
-      <div
-        aria-hidden="true"
-        className={cn(
-          "pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent transition-opacity motion-reduce:transition-none",
-          overflow.end ? "opacity-100" : "opacity-0",
-        )}
-      />
+      {trailing}
     </div>
   );
 }

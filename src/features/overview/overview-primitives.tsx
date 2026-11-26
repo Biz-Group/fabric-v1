@@ -196,6 +196,7 @@ function OverviewAlert({ children }: { children: ReactNode }) {
 export function OverviewLead({
   id,
   title = "Overview",
+  hideTitle = false,
   state,
   hasContent,
   generatedAt,
@@ -214,6 +215,12 @@ export function OverviewLead({
 }: {
   id: string;
   title?: string;
+  /**
+   * On a process the tab just above already says "Overview", so the heading
+   * stays for screen readers only and the status line moves up to lead.
+   * Department and function pages have no tabs; there it is the only label.
+   */
+  hideTitle?: boolean;
   state: OverviewState;
   hasContent: boolean;
   generatedAt: number | null;
@@ -263,7 +270,10 @@ export function OverviewLead({
         <div className="flex min-h-9 min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 sm:min-h-7">
           <h2
             id={id}
-            className="min-w-0 text-xl font-semibold tracking-tight sm:text-2xl"
+            className={cn(
+              "min-w-0 text-xl font-semibold tracking-tight sm:text-2xl",
+              hideTitle && "sr-only",
+            )}
           >
             {title}
           </h2>

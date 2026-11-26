@@ -30,7 +30,10 @@ import { ProcessTabStrip } from "@/features/workbench/process-tab-strip";
 import { ProcessAppShell } from "@/features/shell/process-app-shell";
 import { useWorkspaceRoutes } from "@/features/shell/use-workspace-routes";
 import { ProcessConversationsTab } from "@/features/conversations/conversations-tab";
-import { ProcessFlowTab } from "@/features/process-flow/process-flow-tab";
+import {
+  FlowGeneratedLabel,
+  ProcessFlowTab,
+} from "@/features/process-flow/process-flow-tab";
 import { ProcessInsightsTab } from "@/features/insights/process-insights-tab";
 import { ProcessRecommendationsTab } from "@/features/recommendations/process-recommendations-tab";
 import {
@@ -1978,7 +1981,22 @@ export function ProcessWorkbench() {
             }}
             className="@container/detail flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-0"
           >
-            <ProcessTabStrip activeTab={detailTab} className="border-b">
+            <ProcessTabStrip
+              activeTab={detailTab}
+              className="border-b"
+              trailing={
+                detailTab === 2 && (
+                  <FlowGeneratedLabel
+                    flow={
+                      processWorkbench === undefined
+                        ? undefined
+                        : (processWorkbench?.flow ?? null)
+                    }
+                    className="hidden shrink-0 pr-4 pl-2 md:pr-6 lg:flex"
+                  />
+                )
+              }
+            >
               <TabsList
                 variant="line"
                 className="h-10 min-w-max justify-start"

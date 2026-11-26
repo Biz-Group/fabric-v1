@@ -138,6 +138,29 @@ const SORT_ORDER_ITEMS: Record<SortOrder, string> = {
   oldest: "Oldest first",
 };
 
+// What the closed filters show. The three sit on one row even in a phone or
+// the narrow list column, so they use shorter words than the menus do; each
+// trigger's aria-label names the filter.
+const STATUS_FILTER_TRIGGER_LABELS: Record<StatusFilter, string> = {
+  ...STATUS_FILTER_ITEMS,
+  all: "Any status",
+};
+
+const TYPE_FILTER_TRIGGER_LABELS: Record<TypeFilter, string> = {
+  ...TYPE_FILTER_ITEMS,
+  all: "Any type",
+  audioUpload: "Upload",
+};
+
+const SORT_ORDER_TRIGGER_LABELS: Record<SortOrder, string> = {
+  newest: "Newest",
+  oldest: "Oldest",
+};
+
+function FilterTriggerLabel({ label }: { label: string }) {
+  return <span className="min-w-0 truncate">{label}</span>;
+}
+
 function formatDateTime(epochMs: number) {
   return new Intl.DateTimeFormat("en-GB", {
     month: "short",
@@ -312,19 +335,27 @@ function ConversationRow({
             </span>
             <StatusBadge meta={status} />
           </span>
-          <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
             {/* The title now describes the conversation rather than naming the
                 contributor, so the byline moves here. */}
-            <span className="inline-flex min-w-0 items-center gap-1.5">
+            <span className="inline-flex min-w-0 items-center gap-1">
               <User className="size-3.5 shrink-0" aria-hidden="true" />
               <span className="truncate">{conversation.contributorName}</span>
             </span>
-            <span className="inline-flex min-w-0 items-center gap-1.5">
+            {/* Date and length share one span so the byline fits one line in
+                the narrow list column beside the detail pane. */}
+            <span className="inline-flex min-w-0 items-center gap-1">
               <Clock className="size-3.5 shrink-0" aria-hidden="true" />
-              <span className="truncate">{formatDateTime(conversation._creationTime)}</span>
-            </span>
-            <span className="tabular-nums" title={conversation.durationSeconds === null ? "Duration unavailable" : undefined}>
-              {formatDuration(conversation.durationSeconds)}
+              <span className="truncate">
+                {formatDateTime(conversation._creationTime)}
+                <span aria-hidden="true"> · </span>
+                <span
+                  className="tabular-nums"
+                  title={conversation.durationSeconds === null ? "Duration unavailable" : undefined}
+                >
+                  {formatDuration(conversation.durationSeconds)}
+                </span>
+              </span>
             </span>
             {/* Set only when an admin recorded on the contributor's behalf. The
                 byline above names the contributor, so without this the entry
@@ -711,7 +742,9 @@ export function ProcessConversationsTab({
           className="@container/list min-w-0 p-4 @3xl/detail:min-h-0 @3xl/detail:overflow-y-auto @3xl/detail:p-6"
         >
           <div className="space-y-4">
-            <div className="grid w-full min-w-0 gap-2 @md/list:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]">
+            {/* One row at every width: stacked, the three filters pushed the
+                first contribution about 140px down on a phone. */}
+            <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
               <Select
                 value={statusFilter}
                 items={STATUS_FILTER_ITEMS}
@@ -719,8 +752,12 @@ export function ProcessConversationsTab({
                   changeFilters(value as StatusFilter, typeFilter)
                 }
               >
-                <SelectTrigger size="sm" className="w-full" aria-label="Status filter">
-                  <SelectValue />
+                <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Status filter">
+                  <SelectValue className="min-w-0">
+                    {(value: StatusFilter) => (
+                      <FilterTriggerLabel label={STATUS_FILTER_TRIGGER_LABELS[value]} />
+                    )}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(STATUS_FILTER_ITEMS).map(([value, label]) => (
@@ -737,8 +774,12 @@ export function ProcessConversationsTab({
                   changeFilters(statusFilter, value as TypeFilter)
                 }
               >
-                <SelectTrigger size="sm" className="w-full" aria-label="Type filter">
-                  <SelectValue />
+                <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Type filter">
+                  <SelectValue className="min-w-0">
+                    {(value: TypeFilter) => (
+                      <FilterTriggerLabel label={TYPE_FILTER_TRIGGER_LABELS[value]} />
+                    )}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All types</SelectItem>
@@ -752,8 +793,12 @@ export function ProcessConversationsTab({
                 items={SORT_ORDER_ITEMS}
                 onValueChange={(value) => setSortOrder(value as SortOrder)}
               >
-                <SelectTrigger size="sm" className="w-full" aria-label="Sort contributions">
-                  <SelectValue />
+                <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Sort contributions">
+                  <SelectValue className="min-w-0">
+                    {(value: SortOrder) => (
+                      <FilterTriggerLabel label={SORT_ORDER_TRIGGER_LABELS[value]} />
+                    )}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="newest">Newest first</SelectItem>

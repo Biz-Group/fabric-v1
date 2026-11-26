@@ -37,6 +37,8 @@ import {
   ArrowRight,
   ArrowDown,
   ArrowUpRight,
+  ChevronUp,
+  Info,
   Network,
   UsersRound,
   SlidersHorizontal,
@@ -312,6 +314,27 @@ function ProcessFlowInner({
         ),
       }
     : null;
+
+  // The owner-lanes note starts as a small button and stays open once opened,
+  // until collapsed again. On desktop an open note still folds while a step
+  // is open, where the canvas is too narrow to spare it; opening it then
+  // holds only for that step.
+  const [ownerNotePeekNodeId, setOwnerNotePeekNodeId] = useState<
+    string | null
+  >(null);
+  const ownerNoteCollapsed =
+    viewPreferences.ownerLanesNoteCollapsed ||
+    (!isMobile && selectedNodeId !== null && ownerNotePeekNodeId !== selectedNodeId);
+  const expandOwnerNote = () => {
+    setOwnerNotePeekNodeId(selectedNodeId);
+    if (viewPreferences.ownerLanesNoteCollapsed) {
+      setViewPreferences({ ...viewPreferences, ownerLanesNoteCollapsed: false });
+    }
+  };
+  const collapseOwnerNote = () => {
+    setOwnerNotePeekNodeId(null);
+    setViewPreferences({ ...viewPreferences, ownerLanesNoteCollapsed: true });
+  };
 
   const handleGenerate = useCallback(async () => {
     setIsGenerating(true);
@@ -1179,20 +1202,52 @@ function ProcessFlowInner({
 
               {viewPreferences.grouping === "owner" && (
                 <Panel position="top-right" className="!m-3 max-w-72">
-                  <div className="rounded-xl border border-border bg-card/95 px-3 py-2 shadow-lg backdrop-blur-md">
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                  {ownerNoteCollapsed ? (
+                    <button
+                      type="button"
+                      className="focus-ring flex items-center gap-1.5 rounded-full border border-border bg-card/95 px-2.5 py-1 text-xs font-semibold text-foreground shadow-md backdrop-blur-md hover:bg-muted pointer-coarse:min-h-10"
+                      aria-expanded={false}
+                      aria-controls="owner-lanes-note"
+                      onClick={expandOwnerNote}
+                    >
                       <UsersRound
                         className="size-3.5 text-org-accent"
                         aria-hidden
                       />
                       Owner lanes
+                      <Info className="size-3.5 text-muted-foreground" aria-hidden />
+                    </button>
+                  ) : (
+                    <div
+                      id="owner-lanes-note"
+                      className="rounded-xl border border-border bg-card/95 py-2 pr-1.5 pl-3 shadow-lg backdrop-blur-md"
+                    >
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                        <UsersRound
+                          className="size-3.5 text-org-accent"
+                          aria-hidden
+                        />
+                        <span className="flex-1">Owner lanes</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          className="text-muted-foreground hover:text-foreground"
+                          aria-label="Collapse the owner lanes note"
+                          aria-expanded
+                          aria-controls="owner-lanes-note"
+                          onClick={collapseOwnerNote}
+                        >
+                          <ChevronUp aria-hidden />
+                        </Button>
+                      </div>
+                      <p className="mt-1 pr-1.5 text-2xs leading-relaxed text-muted-foreground">
+                        A reading aid, not ownership data. Multi-actor steps
+                        appear in Shared; unfinished steps stay in Awaiting
+                        details. Choose Process view to turn it off.
+                      </p>
                     </div>
-                    <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
-                      A reading aid, not ownership data. Multi-actor steps
-                      appear in Shared; unfinished steps stay in Awaiting
-                      details. Choose Process view to turn it off.
-                    </p>
-                  </div>
+                  )}
                 </Panel>
               )}
 
@@ -1212,7 +1267,7 @@ function ProcessFlowInner({
                 zoom={zoom}
                 selectedNodeId={selectedNodeId}
                 showMinimap={showMinimap}
-                canShowMinimap={!isMobile}
+                canShowMinimap={!isMobile && !selectedNode}
                 isFullscreen={isFullscreen}
                 direction={viewPreferences.direction}
                 grouping={viewPreferences.grouping}
@@ -1227,7 +1282,9 @@ function ProcessFlowInner({
                 onGroupingChange={handleGroupingChange}
               />
 
-              {!isMobile && showMinimap && (
+              {/* With a step open the canvas is narrow, and the minimap sat on
+                  the very step being read. It returns when the panel closes. */}
+              {!isMobile && showMinimap && !selectedNode && (
                 <MiniMap
                   nodeColor={(n) => {
                     const colors: Record<string, string> = {
@@ -1356,6 +1413,7 @@ function ProcessFlowInner({
           activeSpotlight={activeSpotlight}
           onSpotlightChange={handleSpotlightChange}
           onOpenInsights={onOpenInsights}
+          reserveFabSpace={isMobile && canEdit}
         />
       </div>
     </TooltipProvider>
@@ -1827,6 +1885,7 @@ function InsightsBar({
   activeSpotlight,
   onSpotlightChange,
   onOpenInsights,
+  reserveFabSpace,
 }: {
   insights: {
     totalEstimatedDuration?: string;
@@ -1841,6 +1900,8 @@ function InsightsBar({
   activeSpotlight: FlowSpotlight | null;
   onSpotlightChange: (mode: FlowSpotlightMode | null) => void;
   onOpenInsights: () => void;
+  /** Phones show the floating capture button over this bar's right end. */
+  reserveFabSpace: boolean;
 }) {
   // "Recommended automations" is the flow-level analysed list, a handful of
   // multi-step recommendations. The "automatable steps" spotlight is a
@@ -1858,27 +1919,72 @@ function InsightsBar({
   const automationCount = insights.automationOpportunities.length;
   const duration = cleanEstimatedDuration(insights.totalEstimatedDuration);
 
+  // The edge fade (and the room it needs) only while more stats sit past the
+  // right edge. Always on, it hid the last stat even when the row fitted.
+  const statsRef = useRef<HTMLDivElement>(null);
+  const [statsOverflowEnd, setStatsOverflowEnd] = useState(false);
+  const updateStatsOverflow = useCallback(() => {
+    const row = statsRef.current;
+    const last = row?.lastElementChild;
+    if (!row || !last) return;
+    // Where the last stat ends, not scrollWidth: the fade's own padding would
+    // otherwise keep the row "overflowing" once it had faded.
+    setStatsOverflowEnd(
+      last.getBoundingClientRect().right >
+        row.getBoundingClientRect().right + 1,
+    );
+  }, []);
+  useEffect(() => {
+    const row = statsRef.current;
+    if (!row) return;
+    updateStatsOverflow();
+    const observer = new ResizeObserver(updateStatsOverflow);
+    observer.observe(row);
+    for (const child of row.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, [updateStatsOverflow]);
+
   // One row at every width: wrapping cost the canvas up to two extra lines in
   // a narrow panel. The stats scroll sideways instead, fading out at the right
   // edge, and Insights stays pinned at the end of the row.
   return (
-    <div className="shrink-0 border-t border-border bg-muted/30 py-1.5 pr-2 pl-4">
-      <div className="flex items-center gap-2 text-xs whitespace-nowrap text-muted-foreground">
-        <div className="flex min-w-0 flex-1 items-center gap-x-3 overflow-x-auto py-0.5 pr-6 scrollbar-hide [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]">
+    <div
+      className={cn(
+        "shrink-0 border-t border-border bg-muted/30 py-1.5 pr-2 pl-3",
+        // Keeps Insights clear of the floating + button (56px, 16px inset).
+        reserveFabSpace && "pr-[4.5rem]",
+      )}
+    >
+      <div className="flex items-center gap-1 text-xs whitespace-nowrap text-muted-foreground">
+        <div
+          ref={statsRef}
+          onScroll={updateStatsOverflow}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-x-2 overflow-x-auto py-0.5 scrollbar-hide",
+            statsOverflowEnd &&
+              "pr-6 [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]",
+          )}
+        >
           <span className="flex shrink-0 items-center gap-1">
             <BarChart3 className="size-3" aria-hidden />
             {nodeCount} steps
           </span>
+          {/* The model sometimes writes a sentence here rather than a span
+              of time; capped, so it can't push the findings out of view.
+              The Insights tab shows it in full. */}
           {duration && (
-            <span className="flex shrink-0 items-center gap-1">
-              <Clock className="size-3" aria-hidden />
-              {duration}
+            <span
+              className="flex max-w-48 shrink-0 items-center gap-1"
+              title={`Estimated duration: ${duration}`}
+            >
+              <Clock className="size-3 shrink-0" aria-hidden />
+              <span className="truncate">{duration}</span>
             </span>
           )}
 
           <div className="h-5 w-px shrink-0 bg-border" aria-hidden />
           <div
-            className="flex shrink-0 items-center gap-1"
+            className="flex shrink-0 items-center gap-0.5"
             role="group"
             aria-label="Spotlight process findings"
           >
@@ -1995,7 +2101,7 @@ function SpotlightButton({
             variant="ghost"
             size="sm"
             className={cn(
-              "focus-ring h-7 gap-1 rounded-full border border-transparent px-2 text-xs",
+              "focus-ring h-7 gap-1 rounded-full border border-transparent px-1.5 text-xs",
               SPOTLIGHT_TONE_CLASSES[tone][active ? "active" : "inactive"],
             )}
             aria-pressed={active}

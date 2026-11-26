@@ -517,59 +517,62 @@ function HandoffsSection({
       {items.length === 0 ? (
         <SectionEmpty message="No handoff steps or actor-change edges are present in this generated flow." />
       ) : (
-        <div className="space-y-3">
-          {items.map((item) => (
-            <div key={item.id} className={INSET_ITEM}>
-              <div className="grid gap-3 @2xl/detail:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @2xl/detail:items-start">
-                <div className="min-w-0">
-                  <SectionLabel>
-                    Source step
-                  </SectionLabel>
+        // One compact row per handoff, "step → step" over "who → who".
+        // Labelled source/target blocks and a chip list of the same people
+        // made each handoff about 240px tall on a phone.
+        <ul className="space-y-2">
+          {items.map((item) => {
+            const sideActors = new Set([
+              ...item.source.actors,
+              ...item.target.actors,
+            ]);
+            // A handoff step's own owner can sit between the two sides.
+            const alsoInvolved = item.actors.filter(
+              (actor) => !sideActors.has(actor),
+            );
+            return (
+              <li key={item.id} className={INSET_ITEM}>
+                <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
                   <FlowNodeLink
                     nodeId={item.source.id}
                     label={item.source.label}
                     onOpenNode={onOpenNode}
                   />
-                  <p className="mt-1 break-words text-xs text-muted-foreground">
-                    {actorList(item.source)}
-                  </p>
+                  {/* The arrow travels with the target, so a wrapped row
+                      starts its second line with it instead of ending the
+                      first. */}
+                  <span className="inline-flex max-w-full min-w-0 items-center gap-1">
+                    <ArrowRight
+                      className="size-3.5 shrink-0 text-muted-foreground"
+                      aria-label="hands off to"
+                    />
+                    <FlowNodeLink
+                      nodeId={item.target.id}
+                      label={item.target.label}
+                      onOpenNode={onOpenNode}
+                    />
+                  </span>
                 </div>
-                <ArrowRight className="hidden size-4 text-muted-foreground @2xl/detail:block" />
-                <div className="min-w-0">
-                  <SectionLabel>
-                    Target step
-                  </SectionLabel>
-                  <FlowNodeLink
-                    nodeId={item.target.id}
-                    label={item.target.label}
-                    onOpenNode={onOpenNode}
-                  />
-                  <p className="mt-1 break-words text-xs text-muted-foreground">
-                    {actorList(item.target)}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-3 space-y-2 border-t pt-3">
-                <div>
-                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-                    Actors involved
-                  </p>
-                  <PillList values={item.actors} />
-                </div>
+                <p className="mt-0.5 break-words text-xs text-muted-foreground">
+                  {actorList(item.source)}
+                  <span aria-label="to"> → </span>
+                  {actorList(item.target)}
+                  {alsoInvolved.length > 0 && (
+                    <> · also {alsoInvolved.join(", ")}</>
+                  )}
+                </p>
                 {item.edge?.label && (
-                  <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-                    <Badge
-                      variant="outline"
-                      className="h-auto whitespace-normal"
-                    >
-                      {item.edge.label}
-                    </Badge>
-                  </div>
+                  <Badge
+                    variant="outline"
+                    className="mt-2 h-auto whitespace-normal"
+                  >
+                    {item.edge.label}
+                  </Badge>
                 )}
-              </div>
-            </div>
-          ))}
-        </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </InsightSection>
   );
@@ -1406,17 +1409,19 @@ export function ProcessInsightsTab({
 
         {/* Columns follow the detail panel, not the viewport: at 1280px with the
             sidebar and tree open, the panel is only about 670px wide. Compact,
-            because the findings above are what to read first. */}
+            because the findings above are what to read first. Captions stay
+            short enough for one line, so four fit across from @2xl and a
+            phone's two columns don't grow tall from wrapping. */}
         <div
           role="group"
           aria-label="Process metrics"
-          className="grid gap-2 @xs/detail:grid-cols-2 @4xl/detail:grid-cols-4"
+          className="grid gap-2 @xs/detail:grid-cols-2 @2xl/detail:grid-cols-4"
         >
           <MetricTile
             icon={Users}
             label="Evidence"
             value={flow.conversationCount}
-            detail={`${flow.conversationCount} of ${completedConversationCount} completed contributions`}
+            detail={`${flow.conversationCount} of ${completedConversationCount} contributions`}
             accent
           />
           <MetricTile
@@ -1429,19 +1434,19 @@ export function ProcessInsightsTab({
             icon={ArrowRightLeft}
             label="Handoffs"
             value={handoffs.length}
-            detail="Where work changes hands between people or roles"
+            detail="Work changing hands"
           />
           <MetricTile
             icon={Monitor}
             label="Tools"
             value={flow.insights.toolCount}
-            detail={`${pluralize(tools.length, "unique tool")} derived from nodes`}
+            detail={pluralize(tools.length, "unique tool")}
           />
           <MetricTile
             icon={Split}
             label="Decisions"
             value={decisionCount}
-            detail="Branching or conditional nodes"
+            detail="Branching steps"
           />
           <MetricTile
             icon={FileWarning}
@@ -1455,15 +1460,15 @@ export function ProcessInsightsTab({
             value={flowLevelAutomationCount}
             detail={
               automationUnreviewed
-                ? "Possible only — not analysed"
-                : "Recommended automations"
+                ? "Possible, not analysed"
+                : "Recommended"
             }
           />
           <MetricTile
             icon={ShieldAlert}
             label="Low Confidence"
             value={lowConfidenceCount}
-            detail="Nodes marked inferred or weak"
+            detail="Inferred or weak steps"
           />
         </div>
 

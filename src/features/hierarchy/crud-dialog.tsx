@@ -246,8 +246,18 @@ export function CrudDialog({
         {mode !== "delete" && (
           <div className="space-y-3 py-2">
             <div>
-              <label htmlFor="crud-name" className="sr-only">
-                {entityType} name
+              {/* Visible wherever other labelled fields follow, so the name
+                  field isn't the one unlabelled box in the form. A name-only
+                  dialog keeps it for screen readers; the title says enough. */}
+              <label
+                htmlFor="crud-name"
+                className={
+                  showLocation || showDescription
+                    ? "mb-1.5 block text-sm font-medium text-foreground"
+                    : "sr-only"
+                }
+              >
+                {showLocation || showDescription ? "Name" : `${entityType} name`}
               </label>
               <Input
                 id="crud-name"

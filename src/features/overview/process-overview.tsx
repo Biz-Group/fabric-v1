@@ -398,6 +398,7 @@ export function ProcessOverviewContent({
     >
       <OverviewLead
         id="process-overview-brief"
+        hideTitle
         state={overview.state}
         hasContent={hasContent}
         generatedAt={overview.lastSuccessfulGenerationAt}

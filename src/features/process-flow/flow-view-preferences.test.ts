@@ -19,7 +19,20 @@ describe("process-flow view preferences", () => {
       parseFlowViewPreferences(
         JSON.stringify({ direction: "vertical", grouping: "owner" }),
       ),
-    ).toEqual({ direction: "vertical", grouping: "owner" });
+    ).toEqual({
+      direction: "vertical",
+      grouping: "owner",
+      ownerLanesNoteCollapsed: true,
+    });
+  });
+
+  it("keeps the owner-lanes note collapsed unless it was opened", () => {
+    expect(DEFAULT_FLOW_VIEW_PREFERENCES.ownerLanesNoteCollapsed).toBe(true);
+    expect(
+      parseFlowViewPreferences(
+        JSON.stringify({ grouping: "owner", ownerLanesNoteCollapsed: false }),
+      ).ownerLanesNoteCollapsed,
+    ).toBe(false);
   });
 
   it("normalizes unsupported stored values", () => {

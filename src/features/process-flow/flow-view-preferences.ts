@@ -6,11 +6,17 @@ import type { FlowDirection, FlowGrouping } from "./flow-layout";
 export type FlowViewPreferences = {
   direction: FlowDirection;
   grouping: FlowGrouping;
+  /**
+   * The owner-lanes note starts as a small button and opens on a click; it
+   * stays open until collapsed again.
+   */
+  ownerLanesNoteCollapsed: boolean;
 };
 
 export const DEFAULT_FLOW_VIEW_PREFERENCES: FlowViewPreferences = {
   direction: "horizontal",
   grouping: "process",
+  ownerLanesNoteCollapsed: true,
 };
 
 const STORAGE_KEY = "fabric:process-flow-view";
@@ -26,6 +32,8 @@ export function parseFlowViewPreferences(
     return {
       direction: parsed.direction === "vertical" ? "vertical" : "horizontal",
       grouping: parsed.grouping === "owner" ? "owner" : "process",
+      // Only an explicit "open" keeps it open; older stored values predate it.
+      ownerLanesNoteCollapsed: parsed.ownerLanesNoteCollapsed !== false,
     };
   } catch {
     return DEFAULT_FLOW_VIEW_PREFERENCES;

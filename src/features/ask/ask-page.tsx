@@ -36,7 +36,10 @@ function AllowanceMeter() {
         aria-valuemax={limit}
         aria-valuenow={remaining}
         aria-valuetext={`${remaining} of ${limit}`}
-        className="h-1 w-10 overflow-hidden rounded-full bg-muted sm:w-16"
+        // On a phone the bar left the page title room only for "Ask…"; the
+        // "10 left" beside it already says the same, so the bar is for
+        // screen readers there.
+        className="h-1 w-16 overflow-hidden rounded-full bg-muted max-sm:sr-only"
       >
         <div
           className="h-full rounded-full bg-org-accent transition-[width] motion-reduce:transition-none"

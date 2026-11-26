@@ -6,6 +6,7 @@ import type { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Clock } from "lucide-react";
 import { cardVariants } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import type { FlowConversationForSources } from "./flow-sources";
 import type { PendingConversationCounts } from "./pending-conversations";
@@ -44,6 +45,39 @@ function formatGeneratedAt(epochMs: number | null | undefined) {
   });
 }
 
+function generatedLabel(flow: FlowSummary | undefined) {
+  return flow === undefined
+    ? "Generated …"
+    : flow === null
+      ? "Not generated"
+      : `Generated ${formatGeneratedAt(flow.generatedAt)}`;
+}
+
+/**
+ * When the flow was generated. On a wide screen the workbench shows it at the
+ * end of the tab strip, which has room to spare; a phone's tab strip doesn't,
+ * so there the flow tab keeps it on its own line.
+ */
+export function FlowGeneratedLabel({
+  flow,
+  className,
+}: {
+  flow: FlowSummary | undefined;
+  className?: string;
+}) {
+  return (
+    <p
+      className={cn(
+        "flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground",
+        className,
+      )}
+    >
+      <Clock className="size-3.5 shrink-0" aria-hidden />
+      <span className="truncate">{generatedLabel(flow)}</span>
+    </p>
+  );
+}
+
 function FlowCanvasFallback() {
   return (
     <LoadingScreen
@@ -66,20 +100,10 @@ export function ProcessFlowTab({
   onOpenInsights,
   conversations,
 }: ProcessFlowTabProps) {
-  const generatedLabel =
-    flow === undefined
-      ? "Generated …"
-      : flow === null
-        ? "Not generated"
-        : `Generated ${formatGeneratedAt(flow.generatedAt)}`;
-
   return (
     <section className="flex h-full min-h-[34rem] min-w-0 flex-col overflow-hidden bg-muted/20 md:min-h-0">
-      <div className="flex h-8 shrink-0 items-center justify-end border-b bg-background px-4 md:px-6">
-        <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-          <Clock className="size-3.5 shrink-0" aria-hidden />
-          <span className="truncate">{generatedLabel}</span>
-        </p>
+      <div className="flex h-8 shrink-0 items-center justify-end border-b bg-background px-4 md:px-6 lg:hidden">
+        <FlowGeneratedLabel flow={flow} />
       </div>
 
       <div className="flex min-h-0 flex-1 p-3 md:p-4">
