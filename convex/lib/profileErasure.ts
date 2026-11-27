@@ -14,6 +14,7 @@ export const FORMER_MEMBER = "Former member";
 export async function blankUserProfile(ctx: MutationCtx, user: Doc<"users">): Promise<void> {
   await ctx.db.patch(user._id, {
     name: FORMER_MEMBER,
+    firstName: undefined,
     email: "",
     emailLower: undefined,
     jobTitle: undefined,

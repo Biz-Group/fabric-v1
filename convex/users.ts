@@ -43,6 +43,7 @@ import {
 import { purgeAskFabricForMember, purgeAskFabricForOrg } from "./askLifecycle";
 import { isWorkspaceClosed } from "./lib/workspaceStatus";
 import { blankUserProfile } from "./lib/profileErasure";
+import { cleanFirstName } from "./lib/contributorAttribution";
 
 const roleValidator = v.union(
   v.literal("admin"),
@@ -72,6 +73,10 @@ type UpsertUserAndMembershipArgs = {
   tokenIdentifier: string;
   clerkUserId?: string | null;
   name?: string | null;
+  /** Clerk's first name. Leave undefined when the source doesn't know it (the
+   * session token, a membership payload), which keeps the stored value; pass
+   * null only from a full Clerk profile that has no first name, which clears it. */
+  firstName?: string | null;
   email?: string | null;
   /** True only when `email` was read as verified from Clerk's Backend API.
    * Only a verified email can claim a pending invite's role. */
@@ -202,10 +207,12 @@ function emailFromClerkUser(user: ClerkUserResponse): string | null {
 
 function profileFromClerkUser(user: ClerkUserResponse): {
   name: string | null;
+  firstName: string | null;
   email: string | null;
 } {
   return {
     name: displayNameFromParts(user.first_name, user.last_name, user.username),
+    firstName: cleanFirstName(user.first_name),
     email: emailFromClerkUser(user),
   };
 }
@@ -220,6 +227,7 @@ function tokenIdentifierFromClerkUserId(clerkUserId: string): string {
 
 async function getClerkUserProfile(clerkUserId: string): Promise<{
   name: string | null;
+  firstName: string | null;
   email: string | null;
 }> {
   const user = (await clerkFetch(`/users/${clerkUserId}`)) as ClerkUserResponse;
@@ -456,6 +464,8 @@ async function upsertUserAndMembership(
     .unique();
 
   const name = args.name?.trim();
+  const firstName =
+    args.firstName === undefined ? undefined : cleanFirstName(args.firstName);
   const email = cleanEmail(args.email);
   const emailLower = normalizeEmail(email);
   const clerkUserId =
@@ -474,6 +484,10 @@ async function upsertUserAndMembership(
       updates.emailLower = emailLower;
     }
     if (name && existing.name !== name) updates.name = name;
+    if (firstName !== undefined && (existing.firstName ?? null) !== firstName) {
+      // Patching `undefined` removes the field, for a first name Clerk dropped.
+      updates.firstName = firstName ?? undefined;
+    }
     if (clerkUserId && existing.clerkUserId !== clerkUserId) {
       updates.clerkUserId = clerkUserId;
     }
@@ -488,6 +502,7 @@ async function upsertUserAndMembership(
       tokenIdentifier: args.tokenIdentifier,
       clerkUserId,
       name: name || "Anonymous",
+      ...(firstName ? { firstName } : {}),
       email: email || "",
       emailLower,
       profileComplete: false,
@@ -643,6 +658,7 @@ export const upsertCurrentUserInternal = internalMutation({
     tokenIdentifier: v.string(),
     clerkUserId: v.optional(v.string()),
     name: v.optional(v.string()),
+    firstName: v.optional(v.union(v.string(), v.null())),
     email: v.optional(v.string()),
     emailVerified: v.optional(v.boolean()),
     orgId: v.optional(v.string()),
@@ -684,6 +700,7 @@ export const syncCurrentUserFromClerk = action({
       tokenIdentifier: string;
       clerkUserId: string;
       name?: string;
+      firstName: string | null;
       email?: string;
       emailVerified?: boolean;
       orgId?: string;
@@ -691,6 +708,7 @@ export const syncCurrentUserFromClerk = action({
     } = {
       tokenIdentifier: identity.tokenIdentifier,
       clerkUserId,
+      firstName: profile.firstName,
       source: "selfSignup",
     };
     if (profile.name ?? identity.name) upsertArgs.name = profile.name ?? identity.name;
@@ -752,6 +770,7 @@ export const reconcileOrgMembersFromClerk = internalAction({
           tokenIdentifier: string;
           clerkUserId: string;
           name?: string;
+          firstName: string | null;
           email?: string;
           emailVerified?: boolean;
           orgId: string;
@@ -759,6 +778,7 @@ export const reconcileOrgMembersFromClerk = internalAction({
         } = {
           tokenIdentifier: tokenIdentifierFromClerkUserId(clerkUserId),
           clerkUserId,
+          firstName: profile.firstName,
           orgId: args.clerkOrgId,
           source: "reconcile",
         };
@@ -782,6 +802,101 @@ export const reconcileOrgMembersFromClerk = internalAction({
     }
 
     return { clerkOrgId: args.clerkOrgId, processed, skipped };
+  },
+});
+
+// --- First-name backfill (2026-11-27) ---------------------------------------
+//
+// `users.firstName` is new; rows written before it was synced have none, and
+// existing members aren't re-synced until their Clerk profile changes. This
+// reads first names from Clerk in batches of up to 100 users. Idempotent:
+// it only fills rows that still have no first name, and skips deleted people.
+//   npx convex run users:backfillUserFirstNames
+
+export const listUsersMissingFirstName = internalQuery({
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, args) => {
+    const page = await ctx.db
+      .query("users")
+      .paginate({ numItems: 100, cursor: args.cursor });
+    const missing: Array<{ userId: Id<"users">; clerkUserId: string }> = [];
+    for (const user of page.page) {
+      if (user.firstName || user.deletedAt !== undefined) continue;
+      let clerkUserId = user.clerkUserId;
+      if (!clerkUserId) {
+        try {
+          clerkUserId = clerkUserIdFromTokenIdentifier(user.tokenIdentifier);
+        } catch {
+          continue;
+        }
+      }
+      missing.push({ userId: user._id, clerkUserId });
+    }
+    return { missing, continueCursor: page.continueCursor, isDone: page.isDone };
+  },
+});
+
+export const setUserFirstNames = internalMutation({
+  args: {
+    updates: v.array(v.object({ userId: v.id("users"), firstName: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    let patched = 0;
+    for (const { userId, firstName } of args.updates) {
+      const user = await ctx.db.get(userId);
+      if (!user || user.firstName || user.deletedAt !== undefined) continue;
+      const clean = cleanFirstName(firstName);
+      if (!clean) continue;
+      await ctx.db.patch(userId, { firstName: clean });
+      patched++;
+    }
+    return patched;
+  },
+});
+
+export const backfillUserFirstNames = internalAction({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{ checked: number; patched: number; noFirstName: number }> => {
+    let cursor: string | null = null;
+    let checked = 0;
+    let patched = 0;
+    let noFirstName = 0;
+    while (true) {
+      const page: {
+        missing: Array<{ userId: Id<"users">; clerkUserId: string }>;
+        continueCursor: string;
+        isDone: boolean;
+      } = await ctx.runQuery(internal.users.listUsersMissingFirstName, { cursor });
+      if (page.missing.length > 0) {
+        checked += page.missing.length;
+        const clerkUsers = (await clerkFetch("/users", {
+          query: {
+            user_id: page.missing.map((m) => m.clerkUserId),
+            limit: "100",
+          },
+        })) as ClerkUserResponse[];
+        const firstNameById = new Map<string, string>();
+        for (const clerkUser of Array.isArray(clerkUsers) ? clerkUsers : []) {
+          const firstName = cleanFirstName(clerkUser.first_name);
+          if (firstName) firstNameById.set(clerkUser.id, firstName);
+        }
+        const updates = page.missing.flatMap((m) => {
+          const firstName = firstNameById.get(m.clerkUserId);
+          return firstName ? [{ userId: m.userId, firstName }] : [];
+        });
+        noFirstName += page.missing.length - updates.length;
+        if (updates.length > 0) {
+          patched += await ctx.runMutation(internal.users.setUserFirstNames, {
+            updates,
+          });
+        }
+      }
+      if (page.isDone) break;
+      cursor = page.continueCursor;
+    }
+    return { checked, patched, noFirstName };
   },
 });
 
@@ -1294,11 +1409,22 @@ export const listOrgMemberOptions = query({
       .query("memberships")
       .withIndex("by_clerkOrgId", (q) => q.eq("clerkOrgId", caller.orgId))
       .take(100);
-    const members = await Promise.all(rows.map((m) => memberRow(ctx, m)));
+    const members = await Promise.all(
+      rows.map(async (m) => {
+        // The first name lives only on the user row, not the membership copy.
+        // The recording modal greets a chosen member by it.
+        const [row, user] = await Promise.all([
+          memberRow(ctx, m),
+          ctx.db.get(m.userId),
+        ]);
+        return { ...row, firstName: user?.firstName ?? null };
+      }),
+    );
     return members
       .map((m) => ({
         userId: m.userId,
         name: m.name,
+        firstName: m.firstName,
         email: m.email,
         jobTitle: m.jobTitle,
       }))
@@ -1925,8 +2051,11 @@ function webhookMembershipData(data: Record<string, unknown>) {
     getString(publicUser?.last_name),
     email ?? clerkUserId,
   );
+  // Set only when present: this payload is not a full profile, so an absent
+  // first name leaves the stored one alone rather than clearing it.
+  const firstName = cleanFirstName(getString(publicUser?.first_name)) ?? undefined;
   const clerkRole = getString(data.role);
-  return { clerkOrgId, clerkUserId, email, name, clerkRole };
+  return { clerkOrgId, clerkUserId, email, name, firstName, clerkRole };
 }
 
 /**
@@ -1965,6 +2094,9 @@ export const handleClerkWebhook = internalMutation({
             getString(data.last_name),
             getString(data.username) ?? clerkUserId,
           ),
+          // user.* events carry the whole profile, so a missing first name
+          // means Clerk has none.
+          firstName: cleanFirstName(getString(data.first_name)),
           email: webhookEmail(data),
         });
       }
@@ -2029,6 +2161,7 @@ export const handleClerkWebhook = internalMutation({
           tokenIdentifier,
           clerkUserId: membership.clerkUserId,
           name: membership.name,
+          firstName: membership.firstName,
           email: knownUser ? null : membership.email,
           orgId: membership.clerkOrgId,
           source: "webhook",

@@ -732,6 +732,7 @@ describe("user provisioning sync", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toContain("/users/user_new");
     expect(stored.user?.email).toBe("new.member@a.test");
+    expect(stored.user?.firstName).toBe("New");
     expect(stored.user?.name).toBe("New Member");
     expect(stored.membership?.role).toBe("contributor");
     expect(stored.membership?.source).toBe("selfSignup");
@@ -1252,6 +1253,45 @@ describe("Clerk webhook processing", () => {
     expect(stored.membership?.role).toBe("contributor");
     expect(stored.membership?.source).toBe("webhook");
     expect(stored.membership?.emailLower).toBe("webhook.member@a.test");
+  });
+
+  test("first name follows the Clerk profile; a membership payload without one keeps it", async () => {
+    const t = convexTest(schema, modules);
+    const firstNameOf = () =>
+      t.run(async (ctx) => {
+        const user = await ctx.db
+          .query("users")
+          .withIndex("by_tokenIdentifier", (q) =>
+            q.eq("tokenIdentifier", `${ISSUER}|user_fn`),
+          )
+          .unique();
+        // t.run returns a missing field as null.
+        return user?.firstName ?? null;
+      });
+
+    await t.mutation(internal.users.handleClerkWebhook, {
+      eventId: "evt_fn_created",
+      eventType: "user.created",
+      data: { id: "user_fn", first_name: "Abdul Rahman", last_name: "Al Mansoori" },
+    });
+    expect(await firstNameOf()).toBe("Abdul Rahman");
+
+    await t.mutation(internal.users.handleClerkWebhook, {
+      eventId: "evt_fn_membership",
+      eventType: "organizationMembership.created",
+      data: {
+        organization: { id: ORG_A },
+        public_user_data: { user_id: "user_fn", identifier: "fn@a.test" },
+      },
+    });
+    expect(await firstNameOf()).toBe("Abdul Rahman");
+
+    await t.mutation(internal.users.handleClerkWebhook, {
+      eventId: "evt_fn_updated",
+      eventType: "user.updated",
+      data: { id: "user_fn", first_name: null, username: "arahman" },
+    });
+    expect(await firstNameOf()).toBeNull();
   });
 });
 

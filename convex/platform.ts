@@ -13,6 +13,7 @@ import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { requireSuperAdmin, type Role } from "./lib/orgAuth";
 import { userError } from "./lib/userError";
+import { cleanFirstName } from "./lib/contributorAttribution";
 import { memberSearchText, membershipTitleFields } from "./lib/memberProfile";
 import {
   assertClerkId,
@@ -169,6 +170,7 @@ export const seedAndBootstrapSuperAdmin = internalAction({
         email: args.email,
         tokenIdentifier,
         name: displayName,
+        firstName: cleanFirstName(firstName) ?? undefined,
       },
     );
 
@@ -192,6 +194,7 @@ export const upsertAndSeedSuperAdminInternal = internalMutation({
     email: v.string(),
     tokenIdentifier: v.string(),
     name: v.string(),
+    firstName: v.optional(v.string()),
   },
   handler: async (
     ctx,
@@ -220,6 +223,7 @@ export const upsertAndSeedSuperAdminInternal = internalMutation({
         email: args.email,
         emailLower: normalizeEmail(args.email),
         name: args.name,
+        firstName: args.firstName,
         platformRole: "superAdmin",
       });
       return { userId: user._id, action: "patched-existing" };
@@ -231,6 +235,7 @@ export const upsertAndSeedSuperAdminInternal = internalMutation({
       email: args.email,
       emailLower: normalizeEmail(args.email),
       name: args.name,
+      firstName: args.firstName,
       profileComplete: false,
       platformRole: "superAdmin",
     });

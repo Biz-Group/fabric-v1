@@ -51,3 +51,30 @@ export function isSamePersonName(a: string, b: string): boolean {
     sanitizeContributorName(b).toLocaleLowerCase()
   );
 }
+
+/**
+ * Normalises a first name read from Clerk. Returns null when nothing usable
+ * is left, so callers can tell "Clerk has no first name" from a real one.
+ */
+export function cleanFirstName(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  return sanitizeContributorName(raw) || null;
+}
+
+/**
+ * The name the interview agent greets someone by. Prefers the first name
+ * stored from Clerk, which keeps compound first names such as "Abdul Rahman"
+ * whole. Without one (a typed external name, a username-only account, a row
+ * not yet backfilled) it falls back to the first word of the full name, and
+ * to the full name only if that is empty. Never returns "" for a non-empty
+ * full name, so the agent never says "Hi ."
+ */
+export function greetingName(
+  storedFirstName: string | null | undefined,
+  fullName: string,
+): string {
+  const stored = cleanFirstName(storedFirstName);
+  if (stored) return stored;
+  const full = sanitizeContributorName(fullName);
+  return full.split(" ")[0] || full;
+}

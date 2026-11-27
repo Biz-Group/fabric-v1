@@ -283,6 +283,10 @@ export default defineSchema({
     tokenIdentifier: v.string(),
     clerkUserId: v.optional(v.string()),
     name: v.string(),
+    // Clerk's first name on its own, kept so the interview agent can greet
+    // people as "Hi Abdul Rahman" rather than by their full name. Absent when
+    // Clerk has none (username-only accounts) or the row predates it.
+    firstName: v.optional(v.string()),
     email: v.string(),
     emailLower: v.optional(v.string()),
     jobTitle: v.optional(v.string()),

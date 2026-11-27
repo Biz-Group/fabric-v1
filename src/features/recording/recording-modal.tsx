@@ -7,6 +7,7 @@ import type { Status } from "@elevenlabs/react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { greetingName } from "../../../convex/lib/contributorAttribution";
 import { cn } from "@/lib/utils";
 import { userErrorMessage } from "@/lib/user-error-message";
 import { Button } from "@/components/ui/button";
@@ -607,8 +608,18 @@ export function RecordingModal({
       ? selectedMember?.jobTitle || "Unknown"
       : user?.jobTitle || "Unknown";
 
+    // The agent greets by first name. Only Clerk accounts carry a stored one;
+    // a typed external name falls back to its first word.
+    const storedFirstName =
+      subjectMode === "member"
+        ? selectedMember?.firstName
+        : subjectMode === "self"
+          ? user?.firstName
+          : null;
+
     return {
       contributor_name: contributorName,
+      contributor_first_name: greetingName(storedFirstName, contributorName),
       job_title: jobTitle,
       years_in_role: tenure,
       function_name: functionName,
@@ -623,6 +634,7 @@ export function RecordingModal({
     selectedProcess,
     existingConversations,
     contributorName,
+    subjectMode,
     subjectUserId,
     isOnBehalf,
     selectedMember,
@@ -722,10 +734,11 @@ export function RecordingModal({
     }
 
     try {
+      // No `userId`: it is optional, and ElevenLabs only receives what the
+      // interview itself needs.
       await conversation.startSession({
         conversationToken,
         connectionType: "webrtc",
-        userId: contributorName,
         dynamicVariables: buildDynamicVariables(),
       });
     } catch (err) {
@@ -734,7 +747,7 @@ export function RecordingModal({
         "Failed to start the interview. Please check your microphone and try again."
       );
     }
-  }, [conversation, contributorName, buildDynamicVariables, startInterview, processId]);
+  }, [conversation, buildDynamicVariables, startInterview, processId]);
 
   // End the session
   const endSession = useCallback(async () => {
