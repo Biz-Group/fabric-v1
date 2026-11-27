@@ -1240,6 +1240,11 @@ export default defineSchema({
     // hypothetical.
     lastProgressAt: v.optional(v.number()),
     resumeAttempts: v.optional(v.number()),
+    // The contribution count for which an automatic rebuild was already spent
+    // because a contribution was cited by no step. One rebuild per set of
+    // evidence: a flow that still leaves it out is kept, never rebuilt again,
+    // until the count changes.
+    uncitedRebuildForCount: v.optional(v.number()),
 
     clerkOrgId: v.string(),
   })

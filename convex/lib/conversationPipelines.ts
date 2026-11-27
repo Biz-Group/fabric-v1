@@ -9,7 +9,8 @@ import type { Id } from "../_generated/dataModel";
  * transcripts; the flow builds a graph from each conversation's structured
  * extraction, with whatever overview text exists when it starts as background
  * (usually the previous one, since both start together — `markFlowStale`
- * accounts for that). They fail in different ways, so neither is allowed to
+ * accounts for that, and a flow that leaves the new contribution out is
+ * rebuilt once when its details finish). They fail in different ways, so neither is allowed to
  * gate, delay, or break the other. Each is dispatched
  * inside its own try/catch: a summary pipeline that cannot start must still
  * leave the process flow generating, and vice versa.

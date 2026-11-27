@@ -4,8 +4,37 @@ import {
   contributorKeysFor,
   countDistinctContributors,
   resolveSourceRefs,
+  uncitedContributionPositions,
   type ContributorIdentityRow,
 } from "./contributorIdentity";
+
+describe("uncitedContributionPositions", () => {
+  test("reports a contribution no step cites", () => {
+    expect(
+      uncitedContributionPositions([["Ana, Conv. 1"], ["Conv. 1"]], 2),
+    ).toEqual([2]);
+  });
+
+  test("reports nothing when every contribution is cited somewhere", () => {
+    expect(
+      uncitedContributionPositions([["Conv. 1"], ["Ben, Conversation 2"]], 2),
+    ).toEqual([]);
+  });
+
+  test("reports nothing when no step cites anything: missing sources, not a drop", () => {
+    expect(uncitedContributionPositions([[], ["the team"]], 3)).toEqual([]);
+  });
+
+  test("reports nothing for a flow built from one contribution", () => {
+    expect(uncitedContributionPositions([["Conv. 1"]], 1)).toEqual([]);
+  });
+
+  test("ignores references past the flow's count", () => {
+    expect(
+      uncitedContributionPositions([["Conv. 1"], ["Conv. 7"]], 3),
+    ).toEqual([2, 3]);
+  });
+});
 
 function row(overrides: Partial<ContributorIdentityRow>): ContributorIdentityRow {
   return { contributorName: "Alice Smith", ...overrides };

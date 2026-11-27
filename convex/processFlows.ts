@@ -19,7 +19,11 @@ import {
 } from "./lib/aiProvider";
 import { meteredCompletion } from "./lib/aiUsageMeter";
 import { extractDataCollection } from "./lib/conversationAnalysis";
-import { contributorKeysFor } from "./lib/contributorIdentity";
+import {
+  contributorKeysFor,
+  uncitedContributionPositions,
+} from "./lib/contributorIdentity";
+import { isWorkspaceClosed } from "./lib/workspaceStatus";
 import {
   applyEvidenceConfidence,
   buildGraphAIRequest,
@@ -279,6 +283,21 @@ function formatConversationData(
     parts.push(`Edge Cases:\n  - ${cases}`);
   }
   return parts.join("\n");
+}
+
+/**
+ * Whether a contribution's own analysis lists any steps, in either the
+ * structured or the legacy form `formatConversationData` reads. One that lists
+ * none gave the graph nothing to place, so no step citing it is not a drop.
+ */
+export function contributionDescribesSteps(analysis: unknown): boolean {
+  const dc = extractDataCollection(analysis);
+  if (!dc) return false;
+  const structured = tryParseJson<StructuredStep[]>(dc.process_steps);
+  if (structured && structured.length > 0) return true;
+  const legacy = dc.steps_described;
+  if (Array.isArray(legacy)) return legacy.length > 0;
+  return typeof legacy === "string" && legacy.trim().length > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -1020,6 +1039,55 @@ export const saveNodeDetailBatch = internalMutation({
   },
 });
 
+/** Checks for the overview to catch up before an uncited rebuild starts anyway. */
+const UNCITED_REBUILD_MAX_WAITS = 10;
+const UNCITED_REBUILD_WAIT_MS = 60_000;
+
+/**
+ * The uncited contributions (1-based "Conv. N") that justify the one automatic
+ * rebuild: each listed steps of its own, so the graph had something to place.
+ * Empty when the rebuild for this evidence set was already spent, or when the
+ * finished contributions no longer match the flow's numbering (one was added,
+ * moved or deleted since, and that change brings its own run).
+ */
+async function uncitedContributionsWorthRebuilding(
+  ctx: MutationCtx,
+  flow: Doc<"processFlows">,
+  detailsByNodeId: ReadonlyMap<string, FlowNodeDetail>,
+): Promise<number[]> {
+  const uncited = uncitedContributionPositions(
+    [...detailsByNodeId.values()].map((detail) => detail.sources),
+    flow.conversationCount,
+  );
+  if (uncited.length === 0) return [];
+  if (flow.uncitedRebuildForCount === flow.conversationCount) {
+    console.warn("Flow still leaves out a contribution after its rebuild", {
+      processId: flow.processId,
+      uncitedPositions: uncited,
+      conversationCount: flow.conversationCount,
+    });
+    return [];
+  }
+
+  // Same rows, same order as `getFlowGenerationData`, so position N is the
+  // contribution the graph saw as "Conversation N".
+  const done = await ctx.db
+    .query("conversations")
+    .withIndex("by_clerkOrgId_and_processId_and_status", (q) =>
+      q
+        .eq("clerkOrgId", flow.clerkOrgId)
+        .eq("processId", flow.processId)
+        .eq("status", "done"),
+    )
+    .order("asc")
+    .take(flow.conversationCount + 1);
+  if (done.length !== flow.conversationCount) return [];
+
+  return uncited.filter((position) =>
+    contributionDescribesSteps(done[position - 1]?.analysis ?? null),
+  );
+}
+
 export const finalizeNodeDetails = internalMutation({
   args: {
     clerkOrgId: v.string(),
@@ -1090,6 +1158,39 @@ export const finalizeNodeDetails = internalMutation({
       lastProgressAt: Date.now(),
     });
 
+    // A contribution no step cites was most likely left out by the graph
+    // stage, which happens most when the flow read an overview written before
+    // that contribution. Rebuild once instead of publishing recommendations
+    // from a flow that is missing it; the rebuild runs them.
+    if (detailsStatus === "ready") {
+      const uncited = await uncitedContributionsWorthRebuilding(
+        ctx,
+        flow,
+        detailsByNodeId,
+      );
+      if (uncited.length > 0) {
+        await ctx.db.patch(flow._id, {
+          uncitedRebuildForCount: flow.conversationCount,
+        });
+        await ctx.scheduler.runAfter(
+          0,
+          internal.processFlows.rebuildFlowForUncitedContributions,
+          {
+            processId: flow.processId,
+            clerkOrgId: args.clerkOrgId,
+            detectedGenerationId: args.generationId,
+            attempt: 0,
+          },
+        );
+        console.warn("Flow leaves out a contribution; rebuilding once", {
+          processId: flow.processId,
+          uncitedPositions: uncited,
+          conversationCount: flow.conversationCount,
+        });
+        return;
+      }
+    }
+
     // The flow is usable from here. Recommendations follow in their own run,
     // so a slow or failed analysis never holds the flow back.
     if (completed > 0) {
@@ -1099,6 +1200,63 @@ export const finalizeNodeDetails = internalMutation({
         trigger: "flow",
       });
     }
+  },
+});
+
+/**
+ * The one automatic rebuild for a flow that left out a contribution.
+ *
+ * Waits, up to UNCITED_REBUILD_MAX_WAITS checks a minute apart, for the overview
+ * to catch up: a newer overview than the one the flow read, or one covering
+ * every contribution the flow counted. Then it rebuilds regardless, so a slow or
+ * failed overview delays the rebuild but cannot cancel it. Stops when the flow
+ * has moved on to another generation (that run publishes recommendations) or
+ * the workspace has closed.
+ */
+export const rebuildFlowForUncitedContributions = internalMutation({
+  args: {
+    processId: v.id("processes"),
+    clerkOrgId: v.string(),
+    detectedGenerationId: v.string(),
+    attempt: v.number(),
+  },
+  handler: async (ctx, args): Promise<null> => {
+    const flow = await ctx.db
+      .query("processFlows")
+      .withIndex("by_clerkOrgId_and_processId", (q) =>
+        q.eq("clerkOrgId", args.clerkOrgId).eq("processId", args.processId),
+      )
+      .first();
+    if (!ownsGeneration(flow, args.detectedGenerationId)) return null;
+    if (await isWorkspaceClosed(ctx, args.clerkOrgId)) return null;
+
+    const overview = (await ctx.db.get(args.processId))?.summaryV2;
+    const overviewCaughtUp =
+      overview !== undefined &&
+      (overview.provenance.sourceSnapshotHash !==
+        flow.summarySourceSnapshot?.sourceSnapshotHash ||
+        overview.coverage.includedSources >= flow.conversationCount);
+    if (!overviewCaughtUp && args.attempt < UNCITED_REBUILD_MAX_WAITS) {
+      await ctx.scheduler.runAfter(
+        UNCITED_REBUILD_WAIT_MS,
+        internal.processFlows.rebuildFlowForUncitedContributions,
+        { ...args, attempt: args.attempt + 1 },
+      );
+      return null;
+    }
+
+    const started = await startFlowGenerationForOrg(ctx, {
+      processId: args.processId,
+      clerkOrgId: args.clerkOrgId,
+    });
+    if (!started.joined) {
+      await ctx.scheduler.runAfter(0, internal.processFlows.generateGraphInternal, {
+        processId: args.processId,
+        clerkOrgId: args.clerkOrgId,
+        generationId: started.generationId,
+      });
+    }
+    return null;
   },
 });
 
@@ -1446,7 +1604,9 @@ export const markFlowStale = internalMutation({
       // one is published, so the hashes nearly always differ once the overview
       // lands. Flagging on that showed "New evidence available" seconds after
       // the automatic refresh, for a flow that already includes every
-      // contribution. The snapshot stays on the flow as provenance only.
+      // contribution. The snapshot stays on the flow as provenance only. A flow
+      // that read the old overview and left the new contribution out anyway is
+      // caught when its details finish (`finalizeNodeDetails`), not here.
       const done = await ctx.db
         .query("conversations")
         .withIndex("by_clerkOrgId_and_processId_and_status", (q) =>

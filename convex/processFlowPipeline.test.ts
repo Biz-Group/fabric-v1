@@ -1161,3 +1161,180 @@ describe("automatic flow generation when a conversation finishes", () => {
     expect(second.generationId).toBe(first.generationId);
   });
 });
+
+describe("a flow that leaves out a contribution", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
+  const STEPS_ANALYSIS = {
+    data_collection: {
+      process_steps: JSON.stringify([
+        { id: "draft", name: "Draft the terms", type: "action" },
+      ]),
+    },
+  };
+
+  /** Two finished contributions, oldest first, as `getFlowGenerationData` numbers them. */
+  async function seedContributions(
+    t: Harness,
+    processId: Id<"processes">,
+    second: Record<string, unknown>,
+  ) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("conversations", {
+        processId,
+        contributorName: "Ana",
+        status: "done",
+        clerkOrgId: ORG,
+        analysis: STEPS_ANALYSIS,
+      });
+      await ctx.db.insert("conversations", {
+        processId,
+        contributorName: "Ben",
+        status: "done",
+        clerkOrgId: ORG,
+        analysis: second,
+      });
+    });
+  }
+
+  /** Every step cites only the first contribution. */
+  async function finishCitingOnlyFirst(t: Harness, processId: Id<"processes">) {
+    const { generationId, processFlowId } = await startAndSaveGraph(t, processId);
+    await t.mutation(internal.processFlows.saveNodeDetailBatch, {
+      clerkOrgId: ORG,
+      processFlowId,
+      generationId,
+      results: GRAPH_NODES.map((n) => ({
+        nodeId: n.id,
+        detail: { ...DETAIL, sources: ["Ana, Conv. 1"] },
+      })),
+    });
+    await t.mutation(internal.processFlows.finalizeNodeDetails, {
+      clerkOrgId: ORG,
+      processFlowId,
+      generationId,
+    });
+    return { generationId, processFlowId };
+  }
+
+  function recommendationRuns(t: Harness, processId: Id<"processes">) {
+    return t.run(async (ctx) =>
+      (await ctx.db.query("recommendationRuns").collect()).filter(
+        (run) => run.processId === processId,
+      ),
+    );
+  }
+
+  test("schedules one rebuild instead of recommendations", async () => {
+    const t = harness();
+    const processId = await t.run(seedOrg);
+    await seedContributions(t, processId, STEPS_ANALYSIS);
+
+    await finishCitingOnlyFirst(t, processId);
+
+    const flow = await readFlow(t, processId);
+    expect(flow?.detailsStatus).toBe("ready");
+    expect(flow?.uncitedRebuildForCount).toBe(2);
+    expect(await recommendationRuns(t, processId)).toHaveLength(0);
+  });
+
+  test("a contribution that listed no steps is not a drop", async () => {
+    const t = harness();
+    const processId = await t.run(seedOrg);
+    await seedContributions(t, processId, {
+      data_collection: { process_steps: "[]", frequency: "monthly" },
+    });
+
+    await finishCitingOnlyFirst(t, processId);
+
+    const flow = await readFlow(t, processId);
+    expect(flow?.uncitedRebuildForCount).toBeUndefined();
+    expect(await recommendationRuns(t, processId)).toHaveLength(1);
+  });
+
+  test("the rebuild is spent once per set of evidence, never looped", async () => {
+    const t = harness();
+    const processId = await t.run(seedOrg);
+    await seedContributions(t, processId, STEPS_ANALYSIS);
+    await finishCitingOnlyFirst(t, processId);
+
+    // The rebuilt flow still leaves the second contribution out.
+    await finishCitingOnlyFirst(t, processId);
+
+    const flow = await readFlow(t, processId);
+    expect(flow?.uncitedRebuildForCount).toBe(2);
+    expect(flow?.status).toBe("ready");
+    // Kept as it is, and recommendations publish from it this time.
+    expect(await recommendationRuns(t, processId)).toHaveLength(1);
+  });
+
+  test("the rebuild waits for the overview, then starts", async () => {
+    const t = harness();
+    const processId = await t.run(seedOrg);
+    await seedContributions(t, processId, STEPS_ANALYSIS);
+    const { generationId } = await finishCitingOnlyFirst(t, processId);
+
+    // No overview yet: the rebuild holds rather than reading the same evidence.
+    await t.mutation(internal.processFlows.rebuildFlowForUncitedContributions, {
+      processId,
+      clerkOrgId: ORG,
+      detectedGenerationId: generationId,
+      attempt: 0,
+    });
+    expect((await readFlow(t, processId))?.generationId).toBe(generationId);
+
+    // The overview covering both contributions lands.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(processId, { summaryV2: processSummaryArtifact("new") });
+    });
+    await t.mutation(internal.processFlows.rebuildFlowForUncitedContributions, {
+      processId,
+      clerkOrgId: ORG,
+      detectedGenerationId: generationId,
+      attempt: 1,
+    });
+
+    const flow = await readFlow(t, processId);
+    expect(flow?.status).toBe("generating");
+    expect(flow?.generationId).not.toBe(generationId);
+    // Carried across the new generation, so its finish cannot rebuild again.
+    expect(flow?.uncitedRebuildForCount).toBe(2);
+  });
+
+  test("the rebuild starts anyway once the wait runs out", async () => {
+    const t = harness();
+    const processId = await t.run(seedOrg);
+    await seedContributions(t, processId, STEPS_ANALYSIS);
+    const { generationId } = await finishCitingOnlyFirst(t, processId);
+
+    await t.mutation(internal.processFlows.rebuildFlowForUncitedContributions, {
+      processId,
+      clerkOrgId: ORG,
+      detectedGenerationId: generationId,
+      attempt: 10,
+    });
+
+    expect((await readFlow(t, processId))?.status).toBe("generating");
+  });
+
+  test("the rebuild stands down when the flow has moved on", async () => {
+    const t = harness();
+    const processId = await t.run(seedOrg);
+    await seedContributions(t, processId, STEPS_ANALYSIS);
+    const { generationId } = await finishCitingOnlyFirst(t, processId);
+    // Someone regenerated in the meantime: that run publishes recommendations.
+    const newer = await startAndSaveGraph(t, processId);
+
+    await t.mutation(internal.processFlows.rebuildFlowForUncitedContributions, {
+      processId,
+      clerkOrgId: ORG,
+      detectedGenerationId: generationId,
+      attempt: 10,
+    });
+
+    expect((await readFlow(t, processId))?.generationId).toBe(newer.generationId);
+  });
+});

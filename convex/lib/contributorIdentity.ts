@@ -157,3 +157,32 @@ export function resolveSourceRefs(
   }
   return { conversations, contributors };
 }
+
+/**
+ * The 1-based contribution positions ("Conv. N") that no step of a flow cites,
+ * out of the `contributionCount` the flow was built from.
+ *
+ * Returns nothing when a drop cannot be told apart from missing sources: a flow
+ * built from one contribution, or one whose steps cite no contribution at all
+ * (legacy flows, or a detail pass that wrote no sources). Only a contribution
+ * left out while others are cited is reported.
+ */
+export function uncitedContributionPositions(
+  sourceLists: Iterable<readonly string[]>,
+  contributionCount: number,
+): number[] {
+  if (contributionCount < 2) return [];
+  const keysInOrder = Array.from({ length: contributionCount }, () => []);
+  const cited = new Set<number>();
+  for (const sources of sourceLists) {
+    for (const position of resolveSourceRefs(sources, keysInOrder).conversations) {
+      cited.add(position);
+    }
+  }
+  if (cited.size === 0) return [];
+  const uncited: number[] = [];
+  for (let position = 1; position <= contributionCount; position += 1) {
+    if (!cited.has(position)) uncited.push(position);
+  }
+  return uncited;
+}
